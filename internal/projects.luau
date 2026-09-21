@@ -14,11 +14,11 @@ return function(page, windowControls, gui)
 	local projectsPage = windowControls.pages.Projects
 
 	UI.toast("Changes saved", {
-		type = "error",
+		type = "success",
 
-		message = "",
+		message = "i see you crimson",
 
-		detailsTitle = "Test",
+		detailsTitle = "crim",
 
 		details = [[
 Project: My Game
