@@ -8,6 +8,7 @@ local StudioThemeService = game:GetService("StudioThemeService")
 local theme = StudioThemeService.SelectedTheme
 local TextService = game:GetService("TextService")
 local Selection = game:GetService("Selection")
+local PlaytestService = game:GetService("PlaytestService")
 
 local colors = UI.colors
 local tokens = UI.tokens
@@ -95,7 +96,9 @@ local playGroup = UI.group(header, UDim2.new(0.5, -30, 0, 2), UDim2.fromOffset(6
 	radius = tokens.radius.sm,
 })
 
-UI.iconButton(playGroup, iconRoot .. "Play.svg", UDim2.fromOffset(1, 1), UDim2.fromOffset(28, 21), function() end, {
+UI.iconButton(playGroup, iconRoot .. "Play.svg", UDim2.fromOffset(1, 1), UDim2.fromOffset(28, 21), function()
+	PlaytestService:Start()
+end, {
 	color = tokens.color.surfaceAlt,
 	radius = tokens.radius.xs,
 	border = false,
@@ -104,7 +107,9 @@ UI.iconButton(playGroup, iconRoot .. "Play.svg", UDim2.fromOffset(1, 1), UDim2.f
 
 UI.separator(playGroup, UDim2.fromOffset(29, 3), UDim2.fromOffset(1, 17))
 
-UI.iconButton(playGroup, iconRoot .. "Stop.svg", UDim2.fromOffset(31, 1), UDim2.fromOffset(28, 21), function() end, {
+UI.iconButton(playGroup, iconRoot .. "Stop.svg", UDim2.fromOffset(31, 1), UDim2.fromOffset(28, 21), function()
+	PlaytestService:Stop()
+end, {
 	color = tokens.color.surfaceAlt,
 	radius = tokens.radius.xs,
 	border = false,
