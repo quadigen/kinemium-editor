@@ -415,8 +415,14 @@ local function addRow(instance, depth, y)
 	})
 
 	row.Activated:Connect(function(input, clickCount)
+		-- double click
 		if clickCount == 2 then
-			print("Double clicked!")
+			if instance:IsA("Script") or instance:isA("ModuleScript") or instance:isA("LocalScript") then
+				local source = instance.Source
+				if source then
+					viewport.ToggleCodeEditor(true, source)
+				end
+			end
 		end
 	end)
 
