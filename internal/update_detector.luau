@@ -1,4 +1,5 @@
 local UpdateService = game:GetService("UpdateService")
+local RunService = game:GetService("RunService")
 local UI = require("@internal/editor_ui")
 
 local function ShowEngineUpdatePrompt(report)
@@ -9,6 +10,10 @@ local function ShowEngineUpdatePrompt(report)
 	local current = report.current
 	local latest = report.latest
 	local staged = report.staged
+
+	local progressLabel
+	local progressConnection
+	local installing = false
 
 	local function formatBytes(bytes)
 		if not bytes then
@@ -68,17 +73,77 @@ local function ShowEngineUpdatePrompt(report)
 				role = "primary",
 
 				callback = function(controller)
-					controller:SetBusy(true, "install", "Starting installer...")
+					controller:SetBusy(true, "install", "Installing...")
 
-					local success = UpdateService:ApplyUpdate()
-
-					-- ApplyUpdate exits the process when successful,
-					-- so reaching this point with false means launch failed.
-					if not success then
-						controller:SetBusy(false)
-
-						warn("Failed to launch the Kinemium updater.")
+					if installing then
+						return
 					end
+
+					local started = UpdateService:ApplyUpdate()
+					if not started then
+						controller:SetBusy(false)
+						warn("Failed to start the update installer.")
+						return
+					end
+
+					installing = true
+
+					progressConnection = RunService.Heartbeat:Connect(function()
+						local progress = UpdateService:GetUpdateProgress()
+						if not progress then
+							return
+						end
+
+						local status = progress.status or "waiting"
+
+						if status == "ready" then
+							if progressConnection then
+								progressConnection:Disconnect()
+							end
+							progressConnection = nil
+
+							local restarted = UpdateService:FinishUpdateRestart()
+							if not restarted then
+								installing = false
+								controller:SetBusy(false)
+								warn("Failed to launch the update installer, please retry.")
+							end
+							return
+						end
+
+						if status == "failed" then
+							if progressConnection then
+								progressConnection:Disconnect()
+							end
+							progressConnection = nil
+							installing = false
+							controller:SetBusy(false)
+							warn("Update failed: " .. tostring(progress.message or "unknown error"))
+							return
+						end
+
+						if progressLabel then
+							if status == "downloading" then
+								local percent = typeof(progress.percent) == "number"
+									and math.floor(progress.percent + 0.5)
+
+								if percent then
+									progressLabel.Text = string.format(
+										"Downloading update: %d%% (%s of %s)",
+										percent,
+										formatBytes(progress.downloaded),
+										formatBytes(progress.total)
+									)
+								else
+									progressLabel.Text = "Downloading update: " .. formatBytes(progress.downloaded)
+								end
+							elseif status == "extracting" then
+								progressLabel.Text = "Installing update files..."
+							elseif status == "fetching" then
+								progressLabel.Text = "Checking for updates..."
+							end
+						end
+					end)
 				end,
 			},
 		},
@@ -194,6 +259,14 @@ local function ShowEngineUpdatePrompt(report)
 			)
 
 			restartNotice.TextXAlignment = Enum.TextXAlignment.Left
+
+			y += 20
+
+			local progress =
+				UI.label(content, "", UDim2.fromOffset(0, y), UDim2.new(1, 0, 0, 20), 12, UI.tokens.color.accent)
+
+			progress.TextXAlignment = Enum.TextXAlignment.Left
+			progressLabel = progress
 		end,
 
 		onResult = function(id, value)
@@ -202,6 +275,12 @@ local function ShowEngineUpdatePrompt(report)
 
 		onClose = function(reason, result)
 			print("Update prompt closed:", reason, result)
+
+			if progressConnection then
+				progressConnection:Disconnect()
+			end
+			progressConnection = nil
+			installing = false
 		end,
 	})
 
