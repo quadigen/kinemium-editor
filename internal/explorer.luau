@@ -20,6 +20,7 @@ panel.Position =
 	UDim2.new(panel.Position.X.Scale, panel.Position.X.Offset, panel.Position.Y.Scale, panel.Position.Y.Offset)
 
 local inset = UI.metrics.panelInset
+local events = {}
 local searchField =
 	UI.input(content, "Search Explorer...", UDim2.fromOffset(inset, 6), UDim2.new(1, -42, 0, UI.metrics.inputHeight))
 local expanded = {}
@@ -422,6 +423,8 @@ local function addRow(instance, depth, y)
 				if source then
 					viewport.ToggleCodeEditor(true, source)
 				end
+			else
+				viewport.ToggleCodeEditor(false)
 			end
 		end
 	end)
