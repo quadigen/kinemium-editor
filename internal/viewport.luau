@@ -263,6 +263,7 @@ local CodeEditor = Instance.new("TextBox")
 CodeEditor.Size = UDim2.new(1, 0, 1, 0)
 CodeEditor.CodeEditor = true
 CodeEditor.Visible = false
+CodeEditor.Active = true
 CodeEditor.BackgroundTransparency = 0.6
 CodeEditor.BackgroundColor3 = Color3.new(0, 0, 0)
 CodeEditor.TextColor3 = Color3.new(1, 1, 1)
