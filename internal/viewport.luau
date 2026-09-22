@@ -460,4 +460,23 @@ return {
 			CodeEditor.Text = source
 		end
 	end,
+
+	ActivateTool = function(tool: "size" | "rotate" | "position")
+		local tools = {
+			size = "Size",
+			rotate = "Rotate",
+			position = "Move",
+		}
+
+		local target = tools[tool]
+		if not target then
+			return
+		end
+
+		activeTool = target
+		colorPicker.Visible = false
+
+		updateGizmos()
+		updateTools()
+	end,
 }

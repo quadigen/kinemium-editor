@@ -3,6 +3,7 @@ if IsServer or IsClient then
 end
 
 local UI = require("@internal/editor_ui")
+local viewport = require("@internal/viewport")
 
 local StudioThemeService = game:GetService("StudioThemeService")
 local theme = StudioThemeService.SelectedTheme
@@ -66,18 +67,32 @@ local toolbarCategories = {
 			},
 
 			{
+				name = "Select",
+				icon = "Cursor.svg",
+				callback = function()
+					viewport.ActivateTool("select")
+				end,
+			},
+			{
 				name = "Move",
 				icon = "Move.svg",
+				callback = function()
+					viewport.ActivateTool("position")
+				end,
 			},
-
 			{
 				name = "Rotate",
 				icon = "Rotate.svg",
+				callback = function()
+					viewport.ActivateTool("rotate")
+				end,
 			},
-
 			{
 				name = "Scale",
 				icon = "Size.svg",
+				callback = function()
+					viewport.ActivateTool("size")
+				end,
 			},
 
 			{
@@ -195,9 +210,6 @@ local function themeColor(value, fallback)
 		return fallback
 	end
 
-	-- Native StudioThemeService currently exposes theme colors as
-	-- plain Luau tables: { R = ..., G = ..., B = ..., A = ... }.
-	-- GUI properties require the actual Color3 userdata.
 	if typeof(value) == "Color3" then
 		return value
 	end
