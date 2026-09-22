@@ -3,6 +3,7 @@ if IsServer or IsClient then
 end
 
 local UI = require("@internal/editor_ui")
+local viewport = require("@internal/viewport")
 
 local StudioThemeService = game:GetService("StudioThemeService")
 local theme = StudioThemeService.SelectedTheme
@@ -412,6 +413,12 @@ local function addRow(instance, depth, y)
 
 		border = false,
 	})
+
+	row.Activated:Connect(function(input, clickCount)
+		if clickCount == 2 then
+			print("Double clicked!")
+		end
+	end)
 
 	row.BackgroundTransparency = isSelected and 0 or 0.12
 

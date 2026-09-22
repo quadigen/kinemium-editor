@@ -43,7 +43,6 @@ local function getViewportSize()
 	)
 end
 
--- Normal viewport UI container.
 local viewportRoot = UI.frame(root, getViewportPosition(), getViewportSize(), tokens.color.canvas)
 
 viewportRoot.Name = "ViewportRoot"
@@ -446,3 +445,12 @@ renderer.Pool.new("2da", function()
 		end
 	end
 end)
+
+return {
+	ToggleCodeEditor = function(bool, source)
+		CodeEditor.Enabled = bool
+		if source then
+			CodeEditor.Text = source
+		end
+	end,
+}

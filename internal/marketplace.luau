@@ -1,9 +1,6 @@
 local UI = require("@internal/editor_ui")
 
-local Project = game.Project
 local Marketplace = game.PluginMarketplace
-
-local colors = UI.colors
 local tokens = UI.tokens
 local marketplaceLayoutMode = "List"
 

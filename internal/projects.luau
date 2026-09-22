@@ -13,23 +13,6 @@ return function(page, windowControls, gui)
 
 	local projectsPage = windowControls.pages.Projects
 
-	UI.toast("Changes saved", {
-		type = "success",
-
-		message = "i see you crimson",
-
-		detailsTitle = "crim",
-
-		details = [[
-Project: My Game
-File: game.kine
-Saved 148 instances
-Saved 23 scripts
-No errors were reported.
-]],
-
-		duration = 9,
-	})
 	local prompt, content, promptController = UI.prompt({
 		name = "CreateProject",
 
@@ -95,8 +78,6 @@ No errors were reported.
 
 					local success = Project:CreateProject(props.Name, props.FolderPath, props.Description, props.Icon)
 					if success then
-						print("success: created project!")
-
 						if props.FolderPath then
 							Project:SetActiveProject(props.FolderPath)
 						end

@@ -18,7 +18,6 @@ local FLYOUT_BOTTOM_PADDING = 5
 local expanded = true
 local selectedCategory
 
-
 local lastTheme = theme
 
 local categoryRecords = {}
@@ -260,8 +259,12 @@ local function applyUpperPaneLayout(name, extraHeight)
 		coordinates.Position.Y.Offset + extraHeight
 	)
 
-	coordinates.Size =
-		UDim2.new(coordinates.Size.X.Scale, coordinates.Size.X.Offset, coordinates.Size.Y.Scale, coordinates.Size.Y.Offset - extraHeight)
+	coordinates.Size = UDim2.new(
+		coordinates.Size.X.Scale,
+		coordinates.Size.X.Offset,
+		coordinates.Size.Y.Scale,
+		coordinates.Size.Y.Offset - extraHeight
+	)
 end
 
 local function layoutExtraHeight()
@@ -702,8 +705,6 @@ local function refreshTheme()
 		theme = selectedTheme
 
 		lastTheme = selectedTheme
-
-		
 	end
 
 	local colors = palette()
