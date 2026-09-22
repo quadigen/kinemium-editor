@@ -448,7 +448,8 @@ end)
 
 return {
 	ToggleCodeEditor = function(bool, source)
-		CodeEditor.Enabled = bool
+		CodeEditor.Visible = bool
+
 		if source then
 			CodeEditor.Text = source
 		end
