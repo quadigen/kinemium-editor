@@ -461,6 +461,10 @@ return {
 		end
 	end,
 
+	GetSource = function()
+		return CodeEditor.Text
+	end,
+
 	ActivateTool = function(tool: "size" | "rotate" | "position")
 		local tools = {
 			size = "Size",

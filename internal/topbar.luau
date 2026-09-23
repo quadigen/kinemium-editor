@@ -61,10 +61,6 @@ local toolbarCategories = {
 		name = "Home",
 
 		buttons = {
-			{
-				name = "Select",
-				icon = "Cursor.svg",
-			},
 
 			{
 				name = "Select",
