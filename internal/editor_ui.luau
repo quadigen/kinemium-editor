@@ -1735,8 +1735,6 @@ function UI.toast(text, options)
 		ZIndex = zIndex + 3,
 	}, iconCircle)
 
-	iconLabel.TextXAlignment = Enum.TextXAlignment.Center
-	iconLabel.TextTransparency = 1
 	iconLabel.ZIndex = zIndex + 3
 
 	----------------------------------------------------------------
