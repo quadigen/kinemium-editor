@@ -1600,22 +1600,22 @@ function UI.toast(text, options)
 	local typeConfigs = {
 		info = {
 			color = colors.accent,
-			icon = "i",
+			icon = "builtin://global-images/info",
 		},
 
 		success = {
 			color = colors.success,
-			icon = "✓",
+			icon = "builtin://global-images/check",
 		},
 
 		warning = {
 			color = colors.warning,
-			icon = "!",
+			icon = "builtin://global-images/warning",
 		},
 
 		error = {
 			color = colors.error,
-			icon = "×",
+			icon = "builtin://global-images/error",
 		},
 	}
 
@@ -1721,16 +1721,28 @@ function UI.toast(text, options)
 	iconCircle.BackgroundTransparency = 1
 	iconCircle.ZIndex = zIndex + 2
 
+	local iconImage = options.icon or typeConfig.icon
 	local iconStroke = UI.stroke(iconCircle, accentColor, options.iconThickness or 2, 1)
 
-	local iconLabel = UI.label(
-		iconCircle,
-		iconCharacter,
-		UDim2.fromOffset(0, -1),
-		UDim2.fromScale(1, 1),
-		options.iconTextSize or 17,
-		accentColor
-	)
+	local iconLabel = UI.create("ImageLabel", {
+		Name = "Icon",
+
+		Image = iconImage,
+
+		Size = UDim2.fromOffset(options.iconGlyphSize or 14, options.iconGlyphSize or 14),
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.5),
+
+		BackgroundTransparency = 1,
+		BorderSizePixel = 0,
+
+		ImageColor3 = accentColor,
+		ImageTransparency = 1,
+
+		ScaleType = Enum.ScaleType.Fit,
+
+		ZIndex = zIndex + 3,
+	}, iconCircle)
 
 	iconLabel.TextXAlignment = Enum.TextXAlignment.Center
 	iconLabel.TextTransparency = 1
@@ -2192,11 +2204,10 @@ function UI.toast(text, options)
 		typeConfig = config
 
 		accentColor = config.color
+		iconImage = config.icon
 
-		iconCharacter = config.icon
-
-		iconLabel.Text = iconCharacter
-		iconLabel.TextColor3 = accentColor
+		iconLabel.Image = iconImage
+		iconLabel.ImageColor3 = accentColor
 
 		iconStroke.Color = accentColor
 
@@ -2338,8 +2349,6 @@ function UI.toast(text, options)
 		border.Transparency = 1 - state.alpha * (1 - borderTransparency)
 
 		iconStroke.Transparency = 1 - state.alpha
-
-		iconLabel.TextTransparency = 1 - state.alpha
 
 		titleLabel.TextTransparency = 1 - state.alpha
 
