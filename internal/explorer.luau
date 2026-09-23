@@ -541,7 +541,6 @@ renderer.Pool.new("2d", function()
 	local hash = treeHash(game) .. "#" .. (selected and selected:GetFullName() or "")
 
 	if selected then
-		print(selected)
 		if selected:IsA("Script") or selected:IsA("ModuleScript") or selected:IsA("LocalScript") then
 			selected.Source = viewport.CodeEditor.Text
 		end
