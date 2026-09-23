@@ -16,6 +16,10 @@ local tokens = UI.tokens
 local panel, content =
 	UI.window("Explorer", theme.ExplorerCoordinates.Position, theme.ExplorerCoordinates.Size, "Explorer")
 
+local gui = Instance.new("ScreenGui")
+gui.Parent = game.CoreGui
+panel.Parent = gui
+
 panel.Position =
 	UDim2.new(panel.Position.X.Scale, panel.Position.X.Offset, panel.Position.Y.Scale, panel.Position.Y.Offset)
 
