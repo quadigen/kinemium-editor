@@ -1751,16 +1751,6 @@ function UI.toast(text, options)
 	titleLabel.ZIndex = zIndex + 2
 
 	----------------------------------------------------------------
-	-- Header separator
-	----------------------------------------------------------------
-
-	local headerDivider =
-		UI.frame(frame, UDim2.fromOffset(0, headerHeight), UDim2.new(1, 0, 0, 1), options.dividerColor or colors.border)
-
-	headerDivider.BackgroundTransparency = 1
-	headerDivider.ZIndex = zIndex + 2
-
-	----------------------------------------------------------------
 	-- Summary / timer body
 	----------------------------------------------------------------
 
@@ -1829,12 +1819,6 @@ function UI.toast(text, options)
 
 		ZIndex = zIndex + 2,
 	}, frame)
-
-	local detailsDivider =
-		UI.frame(detailsFrame, UDim2.fromOffset(16, 0), UDim2.new(1, -32, 0, 1), options.dividerColor or colors.border)
-
-	detailsDivider.BackgroundTransparency = 1
-	detailsDivider.ZIndex = zIndex + 2
 
 	local detailsTitle = nil
 

@@ -19,9 +19,13 @@ return function(page, windowControls, gui)
 		message = "Kinemium was built successfully.",
 		details = "Target: Windows x64\nConfiguration: Release\nBuild time: 12.4 seconds",
 		detailsTitle = "Build Details",
-		backgroundTransparency = 0.5,
+		backgroundTransparency = 0.3,
 		duration = 1000,
 	})
+
+	local backdrop = Instance.new("UIBackdrop")
+	backdrop.TintColor3 = Color3.new(0, 0, 0)
+	backdrop.Parent = toast
 
 	local prompt, content, promptController = UI.prompt({
 		name = "CreateProject",
