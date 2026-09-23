@@ -84,12 +84,12 @@ local readonlyProperties = {
 	CFrame = true,
 }
 
-local panel, content =
-	UI.window("Inspector", theme.InspectorCoordinates.Position, theme.InspectorCoordinates.Size, "Inspector")
-
 local gui = Instance.new("ScreenGui")
 gui.RenderOnTop = true
 gui.Parent = game.CoreGui
+
+local panel, content =
+	UI.window("Inspector", theme.InspectorCoordinates.Position, theme.InspectorCoordinates.Size, "Inspector")
 panel.Parent = gui
 
 local inset = UI.metrics.panelInset
