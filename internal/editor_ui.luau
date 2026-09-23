@@ -1623,6 +1623,7 @@ function UI.toast(text, options)
 
 	local accentColor = options.accentColor or typeConfig.color
 	local iconCharacter = options.icon or typeConfig.icon
+	local blur
 
 	local title = options.title or tostring(text or "Notification")
 	local messagePrefix = options.message or ""
@@ -1702,6 +1703,11 @@ function UI.toast(text, options)
 		}, frame)
 	end
 
+	if options.blur ~= false then
+		blur = UI.create("UIBackdrop", {
+			TintColor3 = options.shadowColor or Color3.new(0, 0, 0),
+		}, frame)
+	end
 	local iconSize = options.iconSize or 28
 
 	local iconCircle = UI.frame(
