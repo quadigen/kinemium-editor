@@ -358,23 +358,14 @@ function UI.prompt(options)
 	local backdrop = nil
 
 	if needsBackdrop then
-		backdrop = UI.create("TextButton", {
+		backdrop = UI.create("Frame", {
 			Name = "Backdrop",
-
-			Text = "",
-
 			Position = UDim2.fromOffset(0, 0),
 			Size = UDim2.fromScale(1, 1),
-
 			BackgroundColor3 = options.dimColor or Color3.new(0, 0, 0),
 			BackgroundTransparency = dim and (options.dimTransparency or 0.45) or 1,
-
 			BorderSizePixel = 0,
-
-			Active = modal or options.closeOnBackdrop == true,
 			InputSink = modal,
-			AutoButtonColor = false,
-
 			ZIndex = baseZIndex,
 		}, host)
 
