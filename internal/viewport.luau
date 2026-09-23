@@ -461,6 +461,8 @@ return {
 		end
 	end,
 
+	CodeEditor = CodeEditor,
+
 	GetSource = function()
 		return CodeEditor.Text
 	end,

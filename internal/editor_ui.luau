@@ -369,9 +369,6 @@ function UI.prompt(options)
 			ZIndex = baseZIndex,
 		}, host)
 
-		local blur = Instance.new("UIBackdrop")
-		blur.Parent = backdrop
-
 		controller.backdrop = backdrop
 
 		if options.blur then

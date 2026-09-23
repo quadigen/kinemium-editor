@@ -528,6 +528,17 @@ UserInputService.InputBegan:Connect(function(input: InputObject, gameProcessed: 
 	end
 end)
 
+viewport.CodeEditor.FocusLost:Connect(function()
+	local selected = selectedObject()
+
+	if selected then
+		if selected:IsA("Script") or selected:IsA("ModuleScript") or selected:isA("LocalScript") then
+			selected.Source = viewport.CodeEditor.Text
+			print("Applied code")
+		end
+	end
+end)
+
 rebuild()
 
 renderer.Pool.new("2d", function()
