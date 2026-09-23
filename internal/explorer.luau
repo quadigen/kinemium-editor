@@ -17,6 +17,7 @@ local panel, content =
 	UI.window("Explorer", theme.ExplorerCoordinates.Position, theme.ExplorerCoordinates.Size, "Explorer")
 
 local gui = Instance.new("ScreenGui")
+gui.RenderOnTop = true
 gui.Parent = game.CoreGui
 panel.Parent = gui
 
