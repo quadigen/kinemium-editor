@@ -213,7 +213,7 @@ return function(page, windowControls, gui)
 		end,
 	})
 	promptController:Close()
-	prompt.BackgroundTransparency = 0.12
+	prompt.BackgroundTransparency = 1
 
 	local bannerFrame = UI.frame(
 		projectsPage,
