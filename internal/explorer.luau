@@ -417,14 +417,16 @@ local function addRow(instance, depth, y)
 
 	row.Activated:Connect(function(input, clickCount)
 		-- double click
+		viewport.ToggleCodeEditor(false)
+
 		if clickCount == 2 then
 			if instance:IsA("Script") or instance:isA("ModuleScript") or instance:isA("LocalScript") then
 				local source = instance.Source
 				if source then
 					viewport.ToggleCodeEditor(true, source)
+				else
+					viewport.ToggleCodeEditor(false)
 				end
-			else
-				viewport.ToggleCodeEditor(false)
 			end
 		end
 	end)
@@ -529,6 +531,7 @@ UserInputService.InputBegan:Connect(function(input: InputObject, gameProcessed: 
 end)
 
 viewport.CodeEditor.FocusLost:Connect(function()
+	print("Focus lost")
 	local selected = selectedObject()
 
 	if selected then
