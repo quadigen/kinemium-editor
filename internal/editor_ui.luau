@@ -2198,7 +2198,6 @@ function UI.toast(text, options)
 		iconImage = config.icon
 
 		iconLabel.Image = iconImage
-		iconLabel.ImageColor3 = accentColor
 
 		iconStroke.Color = accentColor
 
