@@ -1661,6 +1661,7 @@ function UI.toast(text, options)
 
 	local frame = UI.create("Frame", {
 		Name = "Toast" .. tostring(shared.toastSerial),
+		ClipsDescendants = true,
 
 		AnchorPoint = Vector2.new(0.5, 0),
 
@@ -1878,22 +1879,20 @@ function UI.toast(text, options)
 	-- Expand button
 	----------------------------------------------------------------
 
+	local expandIconImage = options.expandIcon or "builtin://global-images/chevron-down"
+	local collapseIconImage = options.collapseIcon or "builtin://global-images/chevron-up"
+
 	local expandButton = UI.create("TextButton", {
 		Name = "Expand",
 
-		Text = options.expandIcon or "⌄",
+		Text = "",
 
 		Position = UDim2.new(1, -84, 0, 10),
 
 		Size = UDim2.fromOffset(32, 32),
 
+		BackgroundTransparency = 1,
 		BorderSizePixel = 0,
-
-		TextColor3 = options.expandColor or colors.subtext,
-
-		TextTransparency = 1,
-
-		TextSize = options.expandTextSize or 22,
 
 		AutoButtonColor = false,
 
@@ -1905,6 +1904,26 @@ function UI.toast(text, options)
 		ZIndex = zIndex + 4,
 	}, frame)
 
+	local expandIcon = UI.create("ImageLabel", {
+		Name = "Icon",
+
+		Image = expandIconImage,
+
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.5),
+		Size = UDim2.fromOffset(options.expandIconSize or 16, options.expandIconSize or 16),
+
+		BackgroundTransparency = 1,
+		BorderSizePixel = 0,
+
+		ImageColor3 = options.expandColor or colors.subtext,
+		ImageTransparency = 1,
+
+		ScaleType = Enum.ScaleType.Fit,
+
+		ZIndex = zIndex + 4,
+	}, expandButton)
+
 	----------------------------------------------------------------
 	-- Close button
 	----------------------------------------------------------------
@@ -1912,19 +1931,14 @@ function UI.toast(text, options)
 	local closeButton = UI.create("TextButton", {
 		Name = "Close",
 
-		Text = "×",
+		Text = "",
 
 		Position = UDim2.new(1, -46, 0, 10),
 
 		Size = UDim2.fromOffset(32, 32),
 
+		BackgroundTransparency = 1,
 		BorderSizePixel = 0,
-
-		TextColor3 = options.closeColor or colors.subtext,
-
-		TextTransparency = 1,
-
-		TextSize = options.closeTextSize or 25,
 
 		AutoButtonColor = false,
 
@@ -1935,6 +1949,26 @@ function UI.toast(text, options)
 
 		ZIndex = zIndex + 4,
 	}, frame)
+
+	local closeIcon = UI.create("ImageLabel", {
+		Name = "Icon",
+
+		Image = options.closeIcon or "builtin://global-images/x.svg",
+
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.5),
+		Size = UDim2.fromOffset(options.closeIconSize or 14, options.closeIconSize or 14),
+
+		BackgroundTransparency = 1,
+		BorderSizePixel = 0,
+
+		ImageColor3 = options.closeColor or colors.subtext,
+		ImageTransparency = 1,
+
+		ScaleType = Enum.ScaleType.Fit,
+
+		ZIndex = zIndex + 4,
+	}, closeButton)
 
 	----------------------------------------------------------------
 	-- Progress bar
@@ -2076,9 +2110,8 @@ function UI.toast(text, options)
 
 			detailsFrame.Visible = true
 
-			expandButton.Text = options.collapseIcon or "⌃"
+			expandIcon.Image = collapseIconImage
 
-			-- Give the user time to actually read the details.
 			if options.stopOnExpand ~= false and duration > 0 then
 				state.timerStopped = true
 			end
@@ -2087,7 +2120,7 @@ function UI.toast(text, options)
 
 			detailsFrame.Visible = false
 
-			expandButton.Text = options.expandIcon or "⌄"
+			expandIcon.Image = expandIconImage
 		end
 
 		updateSummary()
@@ -2341,10 +2374,6 @@ function UI.toast(text, options)
 		titleLabel.TextTransparency = 1 - state.alpha
 
 		summaryLabel.TextTransparency = 1 - state.alpha
-
-		expandButton.TextTransparency = 1 - state.alpha
-
-		closeButton.TextTransparency = 1 - state.alpha
 
 		progressBackground.BackgroundTransparency = 1 - state.alpha
 
