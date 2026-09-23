@@ -1595,10 +1595,6 @@ function UI.toast(text, options)
 
 	local root = shared.toastRoot
 
-	----------------------------------------------------------------
-	-- Configuration
-	----------------------------------------------------------------
-
 	local kind = options.type or "info"
 
 	local typeConfigs = {
@@ -1662,10 +1658,6 @@ function UI.toast(text, options)
 
 	local zIndex = options.zIndex or (150000 + shared.toastSerial * 10)
 
-	----------------------------------------------------------------
-	-- Main toast
-	----------------------------------------------------------------
-
 	local frame = UI.create("Frame", {
 		Name = "Toast" .. tostring(shared.toastSerial),
 
@@ -1690,10 +1682,6 @@ function UI.toast(text, options)
 
 	local border = UI.stroke(frame, options.borderColor or colors.borderStrong, options.borderThickness or 1, 1)
 
-	----------------------------------------------------------------
-	-- Shadow
-	----------------------------------------------------------------
-
 	local shadow = nil
 
 	if options.shadow ~= false then
@@ -1713,10 +1701,6 @@ function UI.toast(text, options)
 			Enabled = true,
 		}, frame)
 	end
-
-	----------------------------------------------------------------
-	-- Status icon
-	----------------------------------------------------------------
 
 	local iconSize = options.iconSize or 28
 
