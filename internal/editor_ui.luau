@@ -1726,21 +1726,12 @@ function UI.toast(text, options)
 
 	local iconLabel = UI.create("ImageLabel", {
 		Name = "Icon",
-
 		Image = iconImage,
-
 		Size = UDim2.fromOffset(options.iconGlyphSize or 14, options.iconGlyphSize or 14),
 		AnchorPoint = Vector2.new(0.5, 0.5),
 		Position = UDim2.fromScale(0.5, 0.5),
-
 		BackgroundTransparency = 1,
 		BorderSizePixel = 0,
-
-		ImageColor3 = accentColor,
-		ImageTransparency = 1,
-
-		ScaleType = Enum.ScaleType.Fit,
-
 		ZIndex = zIndex + 3,
 	}, iconCircle)
 
