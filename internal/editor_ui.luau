@@ -1916,7 +1916,6 @@ function UI.toast(text, options)
 		BackgroundTransparency = 1,
 		BorderSizePixel = 0,
 
-		ImageColor3 = options.expandColor or colors.subtext,
 		ImageTransparency = 1,
 
 		ScaleType = Enum.ScaleType.Fit,
@@ -1962,7 +1961,6 @@ function UI.toast(text, options)
 		BackgroundTransparency = 1,
 		BorderSizePixel = 0,
 
-		ImageColor3 = options.closeColor or colors.subtext,
 		ImageTransparency = 1,
 
 		ScaleType = Enum.ScaleType.Fit,
