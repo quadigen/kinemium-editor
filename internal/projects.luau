@@ -19,7 +19,7 @@ return function(page, windowControls, gui)
 		message = "Kinemium was built successfully.",
 		details = "Target: Windows x64\nConfiguration: Release\nBuild time: 12.4 seconds",
 		detailsTitle = "Build Details",
-		backgroundTransparency = 0.3,
+		BackgroundTransparency = 0.3,
 		duration = 1000,
 	})
 

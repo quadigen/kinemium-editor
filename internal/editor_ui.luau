@@ -2339,8 +2339,6 @@ function UI.toast(text, options)
 
 		summaryLabel.TextTransparency = 1 - state.alpha
 
-		headerDivider.BackgroundTransparency = 1 - state.alpha
-
 		expandButton.TextTransparency = 1 - state.alpha
 
 		closeButton.TextTransparency = 1 - state.alpha
@@ -2350,8 +2348,6 @@ function UI.toast(text, options)
 		progress.BackgroundTransparency = 1 - state.alpha
 
 		if state.expanded then
-			detailsDivider.BackgroundTransparency = 1 - state.alpha
-
 			detailsLabel.TextTransparency = 1 - state.alpha
 
 			if detailsTitle then
