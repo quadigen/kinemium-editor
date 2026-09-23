@@ -274,6 +274,9 @@ CodeEditor.BackgroundColor3 = Color3.new(0, 0, 0)
 CodeEditor.TextColor3 = Color3.new(1, 1, 1)
 CodeEditor.Parent = viewportOverlay
 
+local LuauSyntaxHighlighter = Instance.new("SyntaxHighlighter")
+LuauSyntaxHighlighter.Parent = CodeEditor
+
 local backDrop = Instance.new("UIBackdrop")
 backDrop.Parent = CodeEditor
 

@@ -530,18 +530,6 @@ UserInputService.InputBegan:Connect(function(input: InputObject, gameProcessed: 
 	end
 end)
 
-viewport.CodeEditor.FocusLost:Connect(function()
-	print("Focus lost")
-	local selected = selectedObject()
-
-	if selected then
-		if selected:IsA("Script") or selected:IsA("ModuleScript") or selected:isA("LocalScript") then
-			selected.Source = viewport.CodeEditor.Text
-			print("Applied code")
-		end
-	end
-end)
-
 rebuild()
 
 renderer.Pool.new("2d", function()
@@ -551,6 +539,13 @@ renderer.Pool.new("2d", function()
 	local selected = selectedObject()
 
 	local hash = treeHash(game) .. "#" .. (selected and selected:GetFullName() or "")
+
+	if selected then
+		if selected:IsA("Script") or selected:IsA("ModuleScript") or selected:isA("LocalScript") then
+			selected.Source = viewport.CodeEditor.Text
+			print("Applied code")
+		end
+	end
 
 	if hash ~= lastHash then
 		lastHash = hash
