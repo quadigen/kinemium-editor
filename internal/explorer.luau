@@ -543,7 +543,6 @@ renderer.Pool.new("2d", function()
 	if selected then
 		if selected:IsA("Script") or selected:IsA("ModuleScript") or selected:isA("LocalScript") then
 			selected.Source = viewport.CodeEditor.Text
-			print("Applied code")
 		end
 	end
 
