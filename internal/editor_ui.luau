@@ -1885,12 +1885,10 @@ function UI.toast(text, options)
 
 	local expandButton, _, expandIcon = UI.iconButton(
 		frame,
-		options.closeIcon or expandIconImage,
+		expandIconImage,
 		UDim2.new(1, -46, 0, 10),
 		UDim2.fromOffset(32, 32),
-		function()
-			--controller:Close("close")
-		end,
+		function() end,
 		{
 			color = colors.panelRaised,
 			bgTransparency = 1,
@@ -1906,9 +1904,7 @@ function UI.toast(text, options)
 		options.closeIcon or "builtin://global-icons/x.svg",
 		UDim2.new(1, -46, 0, 10),
 		UDim2.fromOffset(32, 32),
-		function()
-			--controller:Close("close")
-		end,
+		function() end,
 		{
 			color = colors.panelRaised,
 			bgTransparency = 1,
