@@ -1925,36 +1925,13 @@ function UI.toast(text, options)
 	-- Close button
 	----------------------------------------------------------------
 
-	local closeButton = UI.create("TextButton", {
+	local closeButton = UI.create("ImageButton", {
 		Name = "Close",
-
-		Text = "",
-
-		Position = UDim2.new(1, -46, 0, 10),
-
-		Size = UDim2.fromOffset(32, 32),
-
-		BackgroundTransparency = 1,
-		BorderSizePixel = 0,
-
-		AutoButtonColor = false,
-
-		Active = options.closable ~= false,
-		InputSink = options.closable ~= false,
-
-		Visible = options.closable ~= false,
-
-		ZIndex = zIndex + 4,
-	}, frame)
-
-	local closeIcon = UI.create("ImageLabel", {
-		Name = "Icon",
 
 		Image = options.closeIcon or "builtin://global-images/x.svg",
 
-		AnchorPoint = Vector2.new(0.5, 0.5),
-		Position = UDim2.fromScale(0.5, 0.5),
-		Size = UDim2.fromOffset(options.closeIconSize or 14, options.closeIconSize or 14),
+		Position = UDim2.new(1, -46, 0, 10),
+		Size = UDim2.fromOffset(32, 32),
 
 		BackgroundTransparency = 1,
 		BorderSizePixel = 0,
@@ -1962,7 +1939,7 @@ function UI.toast(text, options)
 		ImageTransparency = 1,
 
 		ZIndex = zIndex + 4,
-	}, closeButton)
+	}, frame)
 
 	----------------------------------------------------------------
 	-- Progress bar
