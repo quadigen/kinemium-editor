@@ -1925,21 +1925,23 @@ function UI.toast(text, options)
 	-- Close button
 	----------------------------------------------------------------
 
-	local closeButton = UI.create("ImageButton", {
-		Name = "Close",
-
-		Image = options.closeIcon or "builtin://global-icons/x.svg",
-
-		Position = UDim2.new(1, -46, 0, 10),
-		Size = UDim2.fromOffset(32, 32),
-
-		BackgroundTransparency = 1,
-		BorderSizePixel = 0,
-
-		ImageTransparency = 1,
-
-		ZIndex = zIndex + 4,
-	}, frame)
+	local closeButton = UI.iconButton(
+		frame,
+		options.closeIcon or "builtin://global-icons/x.svg",
+		UDim2.new(1, -46, 0, 10),
+		UDim2.fromOffset(32, 32),
+		function()
+			--controller:Close("close")
+		end,
+		{
+			color = colors.panelRaised,
+			bgTransparency = 1,
+			hoverColor = colors.hover,
+			pressedColor = colors.pressed,
+			iconSize = options.closeIconSize or 16,
+			border = false,
+		}
+	)
 
 	----------------------------------------------------------------
 	-- Progress bar
