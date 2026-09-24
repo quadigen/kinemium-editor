@@ -1746,7 +1746,7 @@ function UI.toast(text, options)
 	local titleLabel = UI.label(
 		frame,
 		title,
-		UDim2.fromOffset(58, 0),
+		UDim2.fromOffset(58, 15),
 		UDim2.new(1, -155, 0, headerHeight),
 		options.titleSize or 15,
 		options.titleColor or colors.text
