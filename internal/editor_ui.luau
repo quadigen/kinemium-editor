@@ -1600,22 +1600,22 @@ function UI.toast(text, options)
 	local typeConfigs = {
 		info = {
 			color = colors.accent,
-			icon = "builtin://global-images/info",
+			icon = "builtin://global-icons/info",
 		},
 
 		success = {
 			color = colors.success,
-			icon = "builtin://global-images/check",
+			icon = "builtin://global-icons/check",
 		},
 
 		warning = {
 			color = colors.warning,
-			icon = "builtin://global-images/warning",
+			icon = "builtin://global-icons/warning",
 		},
 
 		error = {
 			color = colors.error,
-			icon = "builtin://global-images/error",
+			icon = "builtin://global-icons/error",
 		},
 	}
 
@@ -1879,8 +1879,8 @@ function UI.toast(text, options)
 	-- Expand button
 	----------------------------------------------------------------
 
-	local expandIconImage = options.expandIcon or "builtin://global-images/chevron-down"
-	local collapseIconImage = options.collapseIcon or "builtin://global-images/chevron-up"
+	local expandIconImage = options.expandIcon or "builtin://global-icons/chevron-down"
+	local collapseIconImage = options.collapseIcon or "builtin://global-icons/chevron-up"
 
 	local expandButton = UI.create("TextButton", {
 		Name = "Expand",
@@ -1928,7 +1928,7 @@ function UI.toast(text, options)
 	local closeButton = UI.create("ImageButton", {
 		Name = "Close",
 
-		Image = options.closeIcon or "builtin://global-images/x.svg",
+		Image = options.closeIcon or "builtin://global-icons/x.svg",
 
 		Position = UDim2.new(1, -46, 0, 10),
 		Size = UDim2.fromOffset(32, 32),
