@@ -926,6 +926,8 @@ function UI.prompt(options)
 		self.destroyed = true
 		self.open = false
 
+		UI.forgetButtons(self.screenGui)
+
 		self.screenGui:Destroy()
 	end
 
@@ -1545,7 +1547,51 @@ function UI.image(parent, path, position, size)
 	}, parent)
 end
 
+local function probeInstanceAlive(gui)
+	return gui:IsDescendantOf(gui)
+end
+
+-- Destroy() detaches an Instance from the VM: reading a property, calling a
+-- method or walking its children raises from that point on. A button record
+-- that still points at a destroyed Instance would therefore abort the next
+-- rebuild, so every registry lookup has to treat "cannot be inspected" as
+-- "gone" instead of touching the Instance.
+function UI.isAlive(gui)
+	if gui == nil then
+		return false
+	end
+
+	return pcall(probeInstanceAlive, gui)
+end
+
+-- Drops every button record that belongs to `container`, to one of its
+-- descendants or to an Instance that no longer exists. Call this before
+-- destroying a container so the shared registry never keeps destroyed
+-- Instances around.
+function UI.forgetButtons(container)
+	if container == nil then
+		return
+	end
+
+	local retained = {}
+
+	for _, item in ipairs(shared.buttons) do
+		local gui = item.gui
+
+		if gui ~= nil and gui ~= container and UI.isAlive(gui) and not gui:IsDescendantOf(container) then
+			table.insert(retained, item)
+		else
+			item.destroyed = true
+		end
+	end
+
+	shared.buttons = retained
+end
+
 function UI.clear(parent, keep)
+	local doomedChildren = {}
+	local doomed = {}
+
 	for _, child in ipairs(parent:GetChildren()) do
 		local decoration = child:IsA("UICorner")
 			or child:IsA("UIStroke")
@@ -1553,18 +1599,32 @@ function UI.clear(parent, keep)
 			or child:IsA("UIBackdrop")
 
 		if not decoration and (not keep or not keep[child]) then
-			local retained = {}
+			table.insert(doomedChildren, child)
 
-			for _, item in ipairs(shared.buttons) do
-				if item.gui ~= child and not item.gui:IsDescendantOf(child) then
-					table.insert(retained, item)
-				end
+			doomed[child] = true
+
+			for _, descendant in ipairs(child:GetDescendants()) do
+				doomed[descendant] = true
 			end
-
-			shared.buttons = retained
-
-			child:Destroy()
 		end
+	end
+
+	local retained = {}
+
+	for _, item in ipairs(shared.buttons) do
+		local gui = item.gui
+
+		if gui ~= nil and not doomed[gui] and UI.isAlive(gui) then
+			table.insert(retained, item)
+		else
+			item.destroyed = true
+		end
+	end
+
+	shared.buttons = retained
+
+	for _, child in ipairs(doomedChildren) do
+		child:Destroy()
 	end
 end
 
@@ -2157,6 +2217,8 @@ function UI.toast(text, options)
 
 		removeToast()
 
+		UI.forgetButtons(frame)
+
 		frame:Destroy()
 	end
 
@@ -2291,6 +2353,8 @@ function UI.toast(text, options)
 
 			removeToast()
 
+			UI.forgetButtons(frame)
+
 			frame:Destroy()
 
 			if options.onClose then
@@ -2370,7 +2434,7 @@ local function wireNativeButton(button, record)
 end
 
 function UI.setButtonState(record, state)
-	if not record then
+	if not record or record.destroyed or not UI.isAlive(record.gui) then
 		return
 	end
 
@@ -3161,15 +3225,7 @@ function UI.input(parent, placeholder, position, size, options)
 end
 
 local function removeButtonRecords(gui)
-	local retained = {}
-
-	for _, item in ipairs(shared.buttons) do
-		if item.gui and item.gui ~= gui and not item.gui:IsDescendantOf(gui) then
-			table.insert(retained, item)
-		end
-	end
-
-	shared.buttons = retained
+	UI.forgetButtons(gui)
 end
 
 closeActiveDropdown = function()

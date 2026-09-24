@@ -29,6 +29,22 @@ local function logColor(kind)
 	return colors.text
 end
 
+local function formatTimestamp(value)
+	local stamp = tonumber(value)
+
+	if not stamp or stamp <= 0 then
+		return "00:00:00"
+	end
+
+	-- The engine drops the `os` library (DateTime replaces it) and hands log
+	-- entries a unix timestamp in seconds, so the clock is derived here.
+	local seconds = math.floor(stamp % 60)
+	local minutes = math.floor((stamp / 60) % 60)
+	local hours = math.floor((stamp / 3600) % 24)
+
+	return string.format("%02d:%02d:%02d", hours, minutes, seconds)
+end
+
 local function rebuild(history)
 	UI.clear(logList)
 	if #history == 0 then
@@ -47,7 +63,7 @@ local function rebuild(history)
 	local y = 1
 	for index = start, #history do
 		local log = history[index]
-		local timestamp = log.timestamp and os.date("%H:%M:%S", log.timestamp) or string.format("%08.3f", log.time or 0)
+		local timestamp = formatTimestamp(log.timestamp or log.time)
 		local row = UI.frame(
 			logList,
 			UDim2.fromOffset(1, y),

@@ -367,7 +367,9 @@ local function updateCategoryAppearance()
 
 		record.pressedColor = colors.input
 
-		record.gui.BackgroundColor3 = record.color
+		if UI.isAlive(record.gui) then
+			record.gui.BackgroundColor3 = record.color
+		end
 	end
 
 	local position = categoryPositions[selectedCategory]
@@ -728,7 +730,9 @@ local function refreshTheme()
 
 		record.pressedColor = colors.input
 
-		record.gui.BackgroundColor3 = colors.panel
+		if UI.isAlive(record.gui) then
+			record.gui.BackgroundColor3 = colors.panel
+		end
 	end
 
 	if collapseRecord then
@@ -742,7 +746,9 @@ local function refreshTheme()
 
 		collapseRecord.pressedColor = colors.input
 
-		collapseRecord.gui.BackgroundColor3 = colors.panel
+		if UI.isAlive(collapseRecord.gui) then
+			collapseRecord.gui.BackgroundColor3 = colors.panel
+		end
 	end
 
 	if themeChanged then

@@ -343,6 +343,10 @@ return function(page, windowControls, gui)
 	local function clearMarketplace()
 		for _, child in pairs(marketplaceList:GetChildren()) do
 			if child ~= marketplaceLayout then
+				-- The cards own UI.button records; drop them before the
+				-- Instances are destroyed so no rebuild touches a dead Instance.
+				UI.forgetButtons(child)
+
 				child:Destroy()
 			end
 		end
