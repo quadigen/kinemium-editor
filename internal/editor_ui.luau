@@ -1918,8 +1918,6 @@ function UI.toast(text, options)
 
 		ImageTransparency = 1,
 
-		ScaleType = Enum.ScaleType.Fit,
-
 		ZIndex = zIndex + 4,
 	}, expandButton)
 
@@ -1962,8 +1960,6 @@ function UI.toast(text, options)
 		BorderSizePixel = 0,
 
 		ImageTransparency = 1,
-
-		ScaleType = Enum.ScaleType.Fit,
 
 		ZIndex = zIndex + 4,
 	}, closeButton)
