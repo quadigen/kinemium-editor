@@ -1886,7 +1886,7 @@ function UI.toast(text, options)
 	local expandButton, _, expandIcon = UI.iconButton(
 		frame,
 		expandIconImage,
-		UDim2.new(1, -46 - 38, 0, 10),
+		UDim2.new(1, -70, 0, 10),
 		UDim2.fromOffset(32, 32),
 		function() end,
 		{
@@ -2027,10 +2027,6 @@ function UI.toast(text, options)
 		end
 	end
 
-	----------------------------------------------------------------
-	-- Expanded state
-	----------------------------------------------------------------
-
 	local function setExpanded(expanded)
 		if not hasDetails then
 			return false
@@ -2071,10 +2067,6 @@ function UI.toast(text, options)
 
 		return true
 	end
-
-	----------------------------------------------------------------
-	-- Controller
-	----------------------------------------------------------------
 
 	local heartbeatConnection = nil
 
@@ -2205,10 +2197,6 @@ function UI.toast(text, options)
 		frame:Destroy()
 	end
 
-	----------------------------------------------------------------
-	-- Buttons
-	----------------------------------------------------------------
-
 	summaryButton.MouseButton1Click:Connect(function()
 		controller:StopTimer()
 	end)
@@ -2220,10 +2208,6 @@ function UI.toast(text, options)
 	closeButton.MouseButton1Click:Connect(function()
 		controller:Close("close")
 	end)
-
-	----------------------------------------------------------------
-	-- Custom details content
-	----------------------------------------------------------------
 
 	if options.buildDetails then
 		options.buildDetails(detailsFrame, controller)
