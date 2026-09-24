@@ -208,6 +208,7 @@ local categoryByClass = {
 	Camera = "Parts & Models",
 
 	Script = "Scripts & Values",
+	LocalScript = "Scripts & Values",
 	ModuleScript = "Scripts & Values",
 	BinaryStringValue = "Scripts & Values",
 	BrickColorValue = "Scripts & Values",
