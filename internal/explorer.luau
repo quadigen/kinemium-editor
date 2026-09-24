@@ -423,7 +423,7 @@ local function addRow(instance, depth, y)
 		viewport.ToggleCodeEditor(false)
 
 		if clickCount == 2 then
-			if instance:IsA("Script") or instance:isA("ModuleScript") or instance:isA("LocalScript") then
+			if instance:IsA("Script") or instance:IsA("ModuleScript") or instance:IsA("LocalScript") then
 				local source = instance.Source
 				if source then
 					viewport.ToggleCodeEditor(true, source)
