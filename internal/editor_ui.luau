@@ -2129,11 +2129,6 @@ function UI.toast(text, options)
 		typeConfig = config
 
 		accentColor = config.color
-		iconImage = config.icon
-
-		iconLabel.Image = iconImage
-
-		iconStroke.Color = accentColor
 
 		progress.BackgroundColor3 = accentColor
 
