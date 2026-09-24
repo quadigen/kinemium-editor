@@ -1600,17 +1600,17 @@ function UI.toast(text, options)
 	local typeConfigs = {
 		info = {
 			color = colors.accent,
-			icon = "builtin://global-icons/info",
+			icon = "builtin://global-icons/info.svg",
 		},
 
 		success = {
 			color = colors.success,
-			icon = "builtin://global-icons/check",
+			icon = "builtin://global-icons/check.svg",
 		},
 
 		warning = {
 			color = colors.warning,
-			icon = "builtin://global-icons/warning",
+			icon = "builtin://global-icons/warning.svg",
 		},
 
 		error = {
@@ -1710,34 +1710,6 @@ function UI.toast(text, options)
 			TintColor3 = options.shadowColor or Color3.new(0, 0, 0),
 		}, frame)
 	end
-	local iconSize = options.iconSize or 28
-
-	local iconCircle = UI.frame(
-		frame,
-		UDim2.fromOffset(18, math.floor((headerHeight - iconSize) / 2)),
-		UDim2.fromOffset(iconSize, iconSize),
-		options.backgroundColor or colors.panelRaised,
-		math.floor(iconSize / 2)
-	)
-
-	iconCircle.BackgroundTransparency = 1
-	iconCircle.ZIndex = zIndex + 2
-
-	local iconImage = options.icon or typeConfig.icon
-	local iconStroke = UI.stroke(iconCircle, accentColor, options.iconThickness or 2, 1)
-
-	local iconLabel = UI.create("ImageLabel", {
-		Name = "Icon",
-		Image = iconImage,
-		Size = UDim2.fromOffset(options.iconGlyphSize or 14, options.iconGlyphSize or 14),
-		AnchorPoint = Vector2.new(0.5, 0.5),
-		Position = UDim2.fromScale(0.5, 0.5),
-		BackgroundTransparency = 1,
-		BorderSizePixel = 0,
-		ZIndex = zIndex + 3,
-	}, iconCircle)
-
-	iconLabel.ZIndex = zIndex + 3
 
 	----------------------------------------------------------------
 	-- Title
