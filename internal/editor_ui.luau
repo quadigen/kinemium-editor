@@ -1624,6 +1624,7 @@ function UI.toast(text, options)
 	local accentColor = options.accentColor or typeConfig.color
 	local iconCharacter = options.icon or typeConfig.icon
 	local blur
+	local controller = {}
 
 	local title = options.title or tostring(text or "Notification")
 	local messagePrefix = options.message or ""
@@ -1879,53 +1880,28 @@ function UI.toast(text, options)
 	-- Expand button
 	----------------------------------------------------------------
 
-	local expandIconImage = options.expandIcon or "builtin://global-icons/chevron-down"
-	local collapseIconImage = options.collapseIcon or "builtin://global-icons/chevron-up"
+	local expandIconImage = options.expandIcon or "builtin://global-icons/chevron-down.svg"
+	local collapseIconImage = options.collapseIcon or "builtin://global-icons/chevron-up.svg"
 
-	local expandButton = UI.create("TextButton", {
-		Name = "Expand",
+	local expandButton, _, expandIcon = UI.iconButton(
+		frame,
+		options.closeIcon or expandIconImage,
+		UDim2.new(1, -46, 0, 10),
+		UDim2.fromOffset(32, 32),
+		function()
+			--controller:Close("close")
+		end,
+		{
+			color = colors.panelRaised,
+			bgTransparency = 1,
+			hoverColor = colors.hover,
+			pressedColor = colors.pressed,
+			iconSize = options.closeIconSize or 16,
+			border = false,
+		}
+	)
 
-		Text = "",
-
-		Position = UDim2.new(1, -84, 0, 10),
-
-		Size = UDim2.fromOffset(32, 32),
-
-		BackgroundTransparency = 1,
-		BorderSizePixel = 0,
-
-		AutoButtonColor = false,
-
-		Active = hasDetails,
-		InputSink = hasDetails,
-
-		Visible = hasDetails,
-
-		ZIndex = zIndex + 4,
-	}, frame)
-
-	local expandIcon = UI.create("ImageLabel", {
-		Name = "Icon",
-
-		Image = expandIconImage,
-
-		AnchorPoint = Vector2.new(0.5, 0.5),
-		Position = UDim2.fromScale(0.5, 0.5),
-		Size = UDim2.fromOffset(options.expandIconSize or 16, options.expandIconSize or 16),
-
-		BackgroundTransparency = 1,
-		BorderSizePixel = 0,
-
-		ImageTransparency = 1,
-
-		ZIndex = zIndex + 4,
-	}, expandButton)
-
-	----------------------------------------------------------------
-	-- Close button
-	----------------------------------------------------------------
-
-	local closeButton = UI.iconButton(
+	local closeButton, _, closeIcon = UI.iconButton(
 		frame,
 		options.closeIcon or "builtin://global-icons/x.svg",
 		UDim2.new(1, -46, 0, 10),
@@ -1942,10 +1918,6 @@ function UI.toast(text, options)
 			border = false,
 		}
 	)
-
-	----------------------------------------------------------------
-	-- Progress bar
-	----------------------------------------------------------------
 
 	local progressBackground = UI.frame(
 		frame,
@@ -1965,8 +1937,6 @@ function UI.toast(text, options)
 	----------------------------------------------------------------
 	-- Controller state
 	----------------------------------------------------------------
-
-	local controller = {}
 
 	local state = {
 		alpha = 0,
@@ -2564,14 +2534,14 @@ function UI.iconButton(parent, icon, position, size, callback, options)
 
 	local iconSize = options.iconSize or 16
 
-	UI.image(
+	local image = UI.image(
 		button,
 		icon,
 		UDim2.new(0.5, -math.floor(iconSize / 2), 0.5, -math.floor(iconSize / 2)),
 		UDim2.fromOffset(iconSize, iconSize)
 	)
 
-	return button, record
+	return button, record, image
 end
 
 function UI.colorPicker(parent, position, size, initialColor, callback)
