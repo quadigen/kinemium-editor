@@ -1718,7 +1718,7 @@ function UI.toast(text, options)
 	local titleLabel = UI.label(
 		frame,
 		title,
-		UDim2.fromOffset(58, 15),
+		UDim2.fromOffset(20, 15),
 		UDim2.new(1, -155, 0, headerHeight),
 		options.titleSize or 15,
 		options.titleColor or colors.text
@@ -1847,10 +1847,6 @@ function UI.toast(text, options)
 
 		ZIndex = zIndex + 3,
 	}, detailsFrame)
-
-	----------------------------------------------------------------
-	-- Expand button
-	----------------------------------------------------------------
 
 	local expandIconImage = options.expandIcon or "builtin://global-icons/chevron-down.svg"
 	local collapseIconImage = options.collapseIcon or "builtin://global-icons/chevron-up.svg"
