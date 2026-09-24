@@ -1886,7 +1886,7 @@ function UI.toast(text, options)
 	local expandButton, _, expandIcon = UI.iconButton(
 		frame,
 		expandIconImage,
-		UDim2.new(1, -46, 0, 10),
+		UDim2.new(1, -46 - 38, 0, 10),
 		UDim2.fromOffset(32, 32),
 		function() end,
 		{
