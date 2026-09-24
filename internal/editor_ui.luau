@@ -2264,8 +2264,6 @@ function UI.toast(text, options)
 
 		border.Transparency = 1 - state.alpha * (1 - borderTransparency)
 
-		iconStroke.Transparency = 1 - state.alpha
-
 		titleLabel.TextTransparency = 1 - state.alpha
 
 		summaryLabel.TextTransparency = 1 - state.alpha
