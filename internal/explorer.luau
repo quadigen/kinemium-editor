@@ -406,6 +406,7 @@ local visibleRows = {}
 local rowRegistry = {}
 local drag = nil
 local dragLayer = nil
+local dragTween = nil
 local clipboard = nil
 local renaming = nil
 local pendingRebuild = false
@@ -458,6 +459,16 @@ local function clearDropHighlight()
 end
 
 local function disposeDrag()
+	-- Stop the follow tween before the ghost goes away; a tween left pointing at
+	-- a destroyed Instance keeps writing to it.
+	if dragTween ~= nil then
+		pcall(function()
+			dragTween:Cancel()
+		end)
+
+		dragTween = nil
+	end
+
 	if dragLayer ~= nil and UI.isAlive(dragLayer) then
 		dragLayer:Destroy()
 	end
@@ -971,19 +982,53 @@ local function moveDragVisual()
 	end
 
 	local mouse = UserInputService:GetMouseLocation()
+	local goal = UDim2.fromOffset(mouse.X + 10, mouse.Y)
 
-	TweenService:Create(
+	-- Cancel the previous follow tween so only one is ever live on the ghost.
+	-- Overlapping tweens would all write to it, and any still in flight when it
+	-- is destroyed on drop would keep writing to freed memory.
+	if dragTween ~= nil then
+		pcall(function()
+			dragTween:Cancel()
+		end)
+	end
+
+	dragTween = TweenService:Create(
 		dragLayer,
 		TweenInfo.new(0.08, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
 		{
-			Position = UDim2.fromOffset(mouse.X + 10, mouse.Y),
+			Position = goal,
 		}
-	):Play()
+	)
+
+	dragTween:Play()
 end
 
 local function animateDrop(reparent)
+	-- Capture the drag now: finishDrop runs from the tween's Completed callback
+	-- ~0.12s later, by which point `drag` may describe a different gesture.
+	local source = drag.source
+	local target = drag.target
+
+	local function apply()
+		disposeDrag()
+		clearDropHighlight()
+
+		if reparent and source ~= nil and target ~= nil and canReparent(source, target) then
+			source.Parent = target
+
+			expanded[target] = true
+
+			Selection:Set({
+				source,
+			})
+
+			lastHash = ""
+		end
+	end
+
 	if dragLayer == nil then
-		finishDrop(reparent)
+		apply()
 		return
 	end
 
@@ -998,7 +1043,7 @@ local function animateDrop(reparent)
 	)
 
 	tween.Completed:Once(function()
-		finishDrop(reparent)
+		apply()
 	end)
 
 	tween:Play()
