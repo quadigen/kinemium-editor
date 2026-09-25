@@ -406,7 +406,6 @@ local visibleRows = {}
 local rowRegistry = {}
 local drag = nil
 local dragLayer = nil
-local dragTween = nil
 local clipboard = nil
 local renaming = nil
 local renamedInstance = nil
@@ -483,16 +482,6 @@ local function clearDropHighlight()
 end
 
 local function disposeDrag()
-	-- Stop the follow tween before the ghost goes away; a tween left pointing at
-	-- a destroyed Instance keeps writing to it.
-	if dragTween ~= nil then
-		pcall(function()
-			dragTween:Cancel()
-		end)
-
-		dragTween = nil
-	end
-
 	if dragLayer ~= nil and UI.isAlive(dragLayer) then
 		dragLayer:Destroy()
 	end
@@ -774,7 +763,12 @@ local function beginRename(instance, row)
 	)
 
 	renaming.Text = instance.Name
-	renaming.SelectAll()
+
+	-- Preselecting is cosmetic; a runtime that rejects the native call must not
+	-- take the whole rename down with it.
+	pcall(function()
+		renaming:SelectAll()
+	end)
 
 	renamedInstance = instance
 
@@ -988,34 +982,59 @@ local function mouseInList()
 end
 
 local function updateDragTarget()
+	-- Read the cursor once. The previous version called GetMouseLocation() (and
+	-- ran a full canReparent ancestry walk) for every visible row on every
+	-- mouse-move, which made dragging crawl on large trees.
+	local mouse = UserInputService:GetMouseLocation()
+
 	local best = nil
 	local bestDistance = math.huge
+	local source = drag.source
 
 	for instance, entry in pairs(rowRegistry) do
 		local row = entry.row
 
-		if UI.isAlive(row) and canReparent(drag.source, instance) then
-			local position = row.AbsolutePosition
-			local size = row.AbsoluteSize
+		if not UI.isAlive(row) then
+			continue
+		end
 
-			-- The top half reparents as a sibling, the bottom half as a child,
-			-- which is the behaviour the Roblox explorer uses.
-			local offset = UserInputService:GetMouseLocation().Y - position.Y
-			local target = offset > size.Y / 2 and instance or instance.Parent
+		local position = row.AbsolutePosition
+		local size = row.AbsoluteSize
+		local offset = mouse.Y - position.Y
 
-			if target ~= nil and canReparent(drag.source, target) then
-				local distance = math.abs(offset - size.Y / 2)
+		-- Cheap vertical reject before any ancestry work: only rows the cursor
+		-- is actually near can win.
+		if offset < -size.Y or offset > size.Y * 2 then
+			continue
+		end
 
-				if distance < bestDistance then
-					bestDistance = distance
-					best = target
-				end
+		if not canReparent(source, instance) then
+			continue
+		end
+
+		-- The top half reparents as a sibling, the bottom half as a child,
+		-- which is the behaviour the Roblox explorer uses.
+		local target = offset > size.Y / 2 and instance or instance.Parent
+
+		if target ~= nil and canReparent(source, target) then
+			local distance = math.abs(offset - size.Y / 2)
+
+			if distance < bestDistance then
+				bestDistance = distance
+				best = target
 			end
 		end
 	end
 
 	if best ~= drag.target then
-		clearDropHighlight()
+		-- Only the previously highlighted row needs resetting, rather than
+		-- walking the whole registry.
+		local previous = drag.target and rowRegistry[drag.target]
+
+		if previous ~= nil and UI.isAlive(previous.row) then
+			previous.row.BackgroundTransparency = previous.baseTransparency
+			previous.dropTarget = false
+		end
 
 		drag.target = best
 
@@ -1053,27 +1072,13 @@ local function moveDragVisual()
 		return
 	end
 
+	-- Follow the cursor directly. Tweening the ghost spawned a new TweenService
+	-- tween on every mouse-move, each one stepping the VM for the rest of its
+	-- duration, which made dragging visibly laggy. The drop still animates, so
+	-- the gesture keeps its polish without the per-frame cost.
 	local mouse = UserInputService:GetMouseLocation()
-	local goal = UDim2.fromOffset(mouse.X + 10, mouse.Y)
 
-	-- Cancel the previous follow tween so only one is ever live on the ghost.
-	-- Overlapping tweens would all write to it, and any still in flight when it
-	-- is destroyed on drop would keep writing to freed memory.
-	if dragTween ~= nil then
-		pcall(function()
-			dragTween:Cancel()
-		end)
-	end
-
-	dragTween = TweenService:Create(
-		dragLayer,
-		TweenInfo.new(0.08, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
-		{
-			Position = goal,
-		}
-	)
-
-	dragTween:Play()
+	dragLayer.Position = UDim2.fromOffset(mouse.X + 10, mouse.Y)
 end
 
 local function animateDrop(reparent)
