@@ -834,6 +834,9 @@ local function openContextMenu(instance, screenPoint)
 				itemHeight = UI.metrics.inputHeight,
 				maxVisibleItems = 6,
 				itemBgTransparency = 1,
+			-- Outside-click dismissal only listens for left-click, which would
+			-- leave the menu stuck open after a right-click elsewhere.
+			closeOnOutsideClick = false,
 				menuPosition = function()
 					return UDim2.fromOffset(0, 0)
 				end,
@@ -887,19 +890,30 @@ local function openContextMenu(instance, screenPoint)
 		contextMenu = controller
 	end
 
-	contextMenuOptions.items = {
+	-- SetItems, not options.items: the dropdown snapshots `options.items` into a
+	-- local at construction time, so reassigning the options table afterwards
+	-- would leave the menu permanently empty.
+	contextMenu:SetItems({
 		{ label = "Rename", value = "rename", icon = "builtin://icons/pencil.svg" },
 		{ label = "Duplicate", value = "duplicate", icon = "builtin://icons/Plus.svg" },
 		{ label = "Delete", value = "delete", icon = "builtin://icons/x.svg" },
 		{ label = "Copy", value = "copy" },
 		{ label = "Paste", value = "paste" },
-	}
+	})
 
 	contextMenuOptions.menuPosition = function()
 		return UDim2.fromOffset(screenPoint.X, screenPoint.Y)
 	end
 
 	contextMenu:Open()
+end
+
+local function closeContextMenu()
+	if contextMenu ~= nil then
+		contextMenu:Close()
+	end
+
+	contextTarget = nil
 end
 
 local DRAG_THRESHOLD = 4
@@ -1107,11 +1121,23 @@ UserInputService.InputBegan:Connect(function(input: InputObject, gameProcessed: 
 	-- that field, not to the tree.
 	local typing = UserInputService:GetFocusedTextBox() ~= nil
 
+	if input.UserInputType == Enum.UserInputType.MouseButton2 then
+		-- A right-click outside the tree dismisses the context menu, since the
+		-- shared outside-click handling only listens for the left button.
+		if not mouseInList() then
+			closeContextMenu()
+		end
+
+		return
+	end
+
 	if input.KeyCode == Enum.KeyCode.Escape then
 		if drag ~= nil then
 			finishDrop(false)
 		elseif UI.isAlive(renaming) then
 			cancelRename()
+		elseif contextMenu ~= nil then
+			closeContextMenu()
 		elseif typing then
 			searchField.Text = ""
 		else
