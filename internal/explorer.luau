@@ -527,15 +527,6 @@ local function applyRowSelection(row, record, isSelected)
 	UI.setButtonState(record, isSelected and "selected" or "default")
 
 	row.BackgroundTransparency = isSelected and 0 or 0.12
-
-	-- Selected rows are rounded; the rest are square. setButtonState does not
-	-- touch corners, so drive the UICorner directly.
-	for _, child in ipairs(row:GetChildren()) do
-		if child:IsA("UICorner") then
-			child.CornerRadius = isSelected and tokens.radius.sm or UDim.new(0, 0)
-			break
-		end
-	end
 end
 
 local function addRow(instance, depth, y)
@@ -1258,6 +1249,16 @@ UserInputService.InputBegan:Connect(function(input: InputObject, gameProcessed: 
 			closeContextMenu()
 			commitRename()
 		end
+
+		-- A mouse InputObject carries no meaningful KeyCode, so letting clicks
+		-- fall through to the keyboard handling below could match whatever
+		-- garbage KeyCode it held -- including Delete, which was destroying the
+		-- selected object on every click.
+		return
+	end
+
+	if input.UserInputType ~= Enum.UserInputType.Keyboard then
+		return
 	end
 
 	if input.KeyCode == Enum.KeyCode.Escape then
