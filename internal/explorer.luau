@@ -430,26 +430,29 @@ local function isDescendantOf(candidate, ancestor)
 	return false
 end
 
+local function isRoot(instance)
+	return instance ~= nil and instance:IsA("DataModel")
+end
+
+-- Services and the DataModel root cannot be renamed, deleted, duplicated or
+-- moved. They can, however, still be drop targets: a Part may be parented into
+-- Lighting, it just may not be parented *from* there.
 local function isProtected(instance)
 	if instance == nil then
 		return true
 	end
 
-	-- The DataModel root and every service are fixed: they cannot be renamed,
-	-- deleted, duplicated, reparented or accepted as a new parent.
-	if instance:IsA("DataModel") or instance:IsA("Service") then
-		return true
-	end
-
-	return false
+	return isRoot(instance) or instance:IsA("Service")
 end
 
 local function canReparent(instance, newParent)
-	if isProtected(instance) or isProtected(newParent) then
+	if instance == nil or newParent == nil then
 		return false
 	end
 
-	if instance == nil or newParent == nil then
+	-- A service can never be the thing being moved, and nothing can go into the
+	-- DataModel root.
+	if isProtected(instance) or isRoot(newParent) then
 		return false
 	end
 
