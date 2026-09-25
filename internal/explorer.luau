@@ -9,6 +9,7 @@ local StudioThemeService = game:GetService("StudioThemeService")
 local theme = StudioThemeService.SelectedTheme
 local Selection = game:GetService("Selection")
 local UserInputService = game:GetService("UserInputService")
+local TweenService = game:GetService("TweenService")
 
 local colors = UI.colors
 local tokens = UI.tokens
@@ -400,6 +401,86 @@ end
 
 local rowIndex = 0
 
+local rowRegistry = {}
+local drag = nil
+local dragLayer = nil
+
+local function isDescendantOf(candidate, ancestor)
+	local current = candidate
+
+	while current ~= nil do
+		if current == ancestor then
+			return true
+		end
+
+		current = current.Parent
+	end
+
+	return false
+end
+
+local function canReparent(instance, newParent)
+	if instance == nil or newParent == nil then
+		return false
+	end
+
+	if instance:IsA("DataModel") or newParent:IsA("DataModel") then
+		return false
+	end
+
+	if instance == newParent then
+		return false
+	end
+
+	-- Dropping a node into its own subtree would detach the branch entirely.
+	if isDescendantOf(newParent, instance) then
+		return false
+	end
+
+	return true
+end
+
+local function clearDropHighlight()
+	for _, entry in pairs(rowRegistry) do
+		local row = entry.row
+
+		if UI.isAlive(row) then
+			row.BackgroundTransparency = entry.baseTransparency
+		end
+
+		entry.dropTarget = false
+	end
+end
+
+local function disposeDrag()
+	if dragLayer ~= nil and UI.isAlive(dragLayer) then
+		dragLayer:Destroy()
+	end
+
+	dragLayer = nil
+	drag = nil
+end
+
+local function finishDrop(reparent)
+	local source = drag.source
+	local target = drag.target
+
+	disposeDrag()
+	clearDropHighlight()
+
+	if reparent and source ~= nil and target ~= nil and canReparent(source, target) then
+		source.Parent = target
+
+		expanded[target] = true
+
+		Selection:Set({
+			source,
+		})
+
+		lastHash = ""
+	end
+end
+
 local function addRow(instance, depth, y)
 	local children = sortedChildren(instance)
 
@@ -440,7 +521,29 @@ local function addRow(instance, depth, y)
 		end
 	end)
 
+	row.InputBegan:Connect(function(input)
+		if input.UserInputType ~= Enum.UserInputType.MouseButton1 then
+			return
+		end
+
+		drag = {
+			source = instance,
+			target = nil,
+			startX = input.Position.X,
+			startY = input.Position.Y,
+			active = false,
+		}
+	end)
+
 	row.BackgroundTransparency = isSelected and 0 or 0.12
+
+	rowRegistry[instance] = {
+		row = row,
+		depth = depth,
+		y = y,
+		baseTransparency = row.BackgroundTransparency,
+		dropTarget = false,
+	}
 
 	local indent = 7 + depth * 16
 
@@ -492,6 +595,8 @@ rebuild = function()
 
 	rowIndex = 0
 
+	rowRegistry = {}
+
 	local finalY = walk(game, 0, 1)
 
 	list.CanvasSize = UDim2.new(1, 0, 0, finalY + 4)
@@ -505,13 +610,201 @@ Selection.SelectionChanged:Connect(function()
 	lastHash = ""
 end)
 
+local DRAG_THRESHOLD = 4
+
+local function mouseInList()
+	local mouse = UserInputService:GetMouseLocation()
+	local position = list.AbsolutePosition
+	local size = list.AbsoluteSize
+
+	return mouse.X >= position.X
+		and mouse.X <= position.X + size.X
+		and mouse.Y >= position.Y
+		and mouse.Y <= position.Y + size.Y
+end
+
+local function updateDragTarget()
+	local best = nil
+	local bestDistance = math.huge
+
+	for instance, entry in pairs(rowRegistry) do
+		local row = entry.row
+
+		if UI.isAlive(row) and canReparent(drag.source, instance) then
+			local position = row.AbsolutePosition
+			local size = row.AbsoluteSize
+
+			-- The top half reparents as a sibling, the bottom half as a child,
+			-- which is the behaviour the Roblox explorer uses.
+			local offset = UserInputService:GetMouseLocation().Y - position.Y
+			local target = offset > size.Y / 2 and instance or instance.Parent
+
+			if target ~= nil and canReparent(drag.source, target) then
+				local distance = math.abs(offset - size.Y / 2)
+
+				if distance < bestDistance then
+					bestDistance = distance
+					best = target
+				end
+			end
+		end
+	end
+
+	if best ~= drag.target then
+		clearDropHighlight()
+
+		drag.target = best
+
+		local entry = best and rowRegistry[best]
+
+		if entry ~= nil and UI.isAlive(entry.row) then
+			entry.row.BackgroundTransparency = 0
+			entry.dropTarget = true
+		end
+	end
+end
+
+local function beginDragVisual()
+	if dragLayer ~= nil then
+		return
+	end
+
+	dragLayer = UI.create("Frame", {
+		Position = UDim2.fromOffset(drag.startX + 10, drag.startY),
+		Size = UDim2.fromOffset(180, UI.metrics.treeRow),
+		BackgroundColor3 = colors.selection,
+		BackgroundTransparency = 0.2,
+		BorderSizePixel = 0,
+		Active = false,
+		ZIndex = 5000,
+	}, UI.root())
+
+	UI.corner(dragLayer, tokens.radius.sm)
+
+	UI.label(dragLayer, drag.source.Name, UDim2.fromOffset(8, 2), UDim2.new(1, -16, 0, 16), tokens.type.small, tokens.color.text)
+end
+
+local function moveDragVisual()
+	if dragLayer == nil then
+		return
+	end
+
+	local mouse = UserInputService:GetMouseLocation()
+
+	TweenService:Create(
+		dragLayer,
+		TweenInfo.new(0.08, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+		{
+			Position = UDim2.fromOffset(mouse.X + 10, mouse.Y),
+		}
+	):Play()
+end
+
+local function animateDrop(reparent)
+	if dragLayer == nil then
+		finishDrop(reparent)
+		return
+	end
+
+	local layer = dragLayer
+
+	local tween = TweenService:Create(
+		layer,
+		TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.In),
+		{
+			BackgroundTransparency = 1,
+		}
+	)
+
+	tween.Completed:Once(function()
+		finishDrop(reparent)
+	end)
+
+	tween:Play()
+end
+
+UserInputService.InputChanged:Connect(function(input: InputObject)
+	if drag == nil then
+		return
+	end
+
+	if input.UserInputType ~= Enum.UserInputType.MouseMovement then
+		return
+	end
+
+	local dx = input.Position.X - drag.startX
+	local dy = input.Position.Y - drag.startY
+
+	if not drag.active then
+		if math.sqrt(dx * dx + dy * dy) < DRAG_THRESHOLD then
+			return
+		end
+
+		drag.active = true
+
+		Selection:Set({
+			drag.source,
+		})
+
+		beginDragVisual()
+	end
+
+	if mouseInList() then
+		updateDragTarget()
+	else
+		clearDropHighlight()
+		drag.target = nil
+	end
+
+	moveDragVisual()
+end)
+
+UserInputService.InputEnded:Connect(function(input: InputObject)
+	if drag == nil or input.UserInputType ~= Enum.UserInputType.MouseButton1 then
+		return
+	end
+
+	if not drag.active then
+		drag = nil
+		return
+	end
+
+	animateDrop(drag.target ~= nil)
+end)
+
 UserInputService.InputBegan:Connect(function(input: InputObject, gameProcessed: boolean)
 	if gameProcessed then
 		return
 	end
 
 	if input.KeyCode == Enum.KeyCode.Escape then
-		Selection:Set({})
+		if drag ~= nil then
+			finishDrop(false)
+		else
+			Selection:Set({})
+		end
+
+		return
+	end
+
+	if input.KeyCode == Enum.KeyCode.Delete or input.KeyCode == Enum.KeyCode.Backspace then
+		if UserInputService:GetFocusedTextBox() ~= nil then
+			return
+		end
+
+		local selected = selectedObject()
+
+		if selected ~= nil and not selected:IsA("DataModel") then
+			viewport.CloseScript(selected)
+			expanded[selected] = nil
+
+			Selection:Set({})
+
+			selected:Destroy()
+
+			lastHash = ""
+		end
+
 		return
 	end
 
