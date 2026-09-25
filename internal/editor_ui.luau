@@ -3778,6 +3778,19 @@ function UI.dropdown(parent, value, position, size, chevronIcon, options)
 		end
 	end
 
+	-- Opens (or toggles closed) the popup without the caller needing a visible
+	-- trigger button. Context menus reuse this: they create an offscreen
+	-- dropdown purely to borrow its popup, set `options.menuPosition` to the
+	-- cursor, then call Open(). The button callback is the same closure the
+	-- record holds, so this is a toggle exactly like a real click.
+	function controller:Open()
+		if record == nil or record.destroyed or not UI.isAlive(record.gui) then
+			return
+		end
+
+		record.callback()
+	end
+
 	function controller:Close()
 		if shared.activeDropdown and shared.activeDropdown.controller == controller then
 			closeActiveDropdown()

@@ -25,6 +25,7 @@ local events = {}
 local searchField =
 	UI.input(content, "Search Explorer...", UDim2.fromOffset(inset, 6), UDim2.new(1, -42, 0, UI.metrics.inputHeight))
 local expanded = {}
+local filter = ""
 
 local list = UI.create("ScrollingFrame", {
 	Position = UDim2.fromOffset(inset, 36),
@@ -400,10 +401,14 @@ local function iconPathFor(instance)
 end
 
 local rowIndex = 0
+local visibleRows = {}
 
 local rowRegistry = {}
 local drag = nil
 local dragLayer = nil
+local clipboard = nil
+local renaming = nil
+local pendingRebuild = false
 
 local function isDescendantOf(candidate, ancestor)
 	local current = candidate
@@ -522,6 +527,16 @@ local function addRow(instance, depth, y)
 	end)
 
 	row.InputBegan:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton2 then
+			Selection:Set({
+				instance,
+			})
+
+			openContextMenu(instance, input.Position)
+
+			return
+		end
+
 		if input.UserInputType ~= Enum.UserInputType.MouseButton1 then
 			return
 		end
@@ -544,6 +559,8 @@ local function addRow(instance, depth, y)
 		baseTransparency = row.BackgroundTransparency,
 		dropTarget = false,
 	}
+
+	visibleRows[#visibleRows + 1] = instance
 
 	local indent = 7 + depth * 16
 
@@ -570,12 +587,32 @@ local function addRow(instance, depth, y)
 	return y + UI.metrics.treeRow
 end
 
+-- True when `instance` or anything beneath it matches the active search, so a
+-- filtered tree keeps the ancestors of a hit visible for context.
+local function subtreeMatches(instance, depth)
+	if filter == "" then
+		return true
+	end
+
+	if depth > 0 and string.find(string.lower(instance.Name), filter, 1, true) then
+		return true
+	end
+
+	if depth > 0 and #instance:GetChildren() > 0 then
+		return subtreeMatches(instance, depth - 1)
+	end
+
+	return false
+end
+
 local function walk(parent, depth, y)
 	for _, child in ipairs(sortedChildren(parent)) do
-		y = addRow(child, depth, y)
+		if subtreeMatches(child, 1) then
+			y = addRow(child, depth, y)
 
-		if expanded[child] then
-			y = walk(child, depth + 1, y)
+			if expanded[child] or filter ~= "" then
+				y = walk(child, depth + 1, y)
+			end
 		end
 	end
 
@@ -584,6 +621,13 @@ end
 
 rebuild = function()
 	if rebuilding then
+		return
+	end
+
+	-- A live rename box lives inside a row, so rebuilding would destroy the
+	-- field mid-edit. Defer until the rename finishes.
+	if UI.isAlive(renaming) then
+		pendingRebuild = true
 		return
 	end
 
@@ -597,6 +641,8 @@ rebuild = function()
 
 	rowRegistry = {}
 
+	visibleRows = {}
+
 	local finalY = walk(game, 0, 1)
 
 	list.CanvasSize = UDim2.new(1, 0, 0, finalY + 4)
@@ -609,6 +655,241 @@ end
 Selection.SelectionChanged:Connect(function()
 	lastHash = ""
 end)
+
+searchField.TextChanged:Connect(function()
+	filter = string.lower(searchField.Text or "")
+	lastHash = ""
+	rebuild()
+end)
+
+local function deleteInstance(instance)
+	if instance == nil or instance:IsA("DataModel") then
+		return
+	end
+
+	viewport.CloseScript(instance)
+
+	expanded[instance] = nil
+	renaming = nil
+
+	Selection:Set({})
+
+	instance:Destroy()
+
+	lastHash = ""
+end
+
+local function duplicateInstance(instance)
+	if instance == nil or instance:IsA("DataModel") then
+		return
+	end
+
+	local ok, clone = pcall(function()
+		return instance:Clone()
+	end)
+
+	if ok and clone then
+		clone.Name = instance.Name
+		clone.Parent = instance.Parent
+
+		Selection:Set({
+			clone,
+		})
+
+		lastHash = ""
+	end
+end
+
+local function beginRename(instance, row)
+	if instance == nil or UI.isAlive(renaming) then
+		return
+	end
+
+	local entry = rowRegistry[instance]
+
+	if entry == nil or not UI.isAlive(entry.row) then
+		return
+	end
+
+	local indent = 7 + entry.depth * 16
+
+	renaming = UI.input(
+		entry.row,
+		instance.Name,
+		UDim2.fromOffset(indent + 31, 1),
+		UDim2.new(1, -(indent + 36), 0, 18),
+		{ textSize = tokens.type.small, color = tokens.color.input, selectAllOnFocus = true }
+	)
+
+	renaming.Text = instance.Name
+	renaming.SelectAll()
+
+	local committed = false
+
+	local function finish(apply)
+		if committed then
+			return
+		end
+
+		committed = true
+
+		local text = renaming.Text
+
+		if renaming ~= nil and UI.isAlive(renaming) then
+			renaming:Destroy()
+		end
+
+		renaming = nil
+
+		if apply and text ~= nil and text ~= "" and text ~= instance.Name then
+			instance.Name = text
+		end
+
+		lastHash = ""
+
+		if pendingRebuild then
+			pendingRebuild = false
+
+			rebuild()
+		end
+	end
+
+	renaming.FocusLost:Connect(function()
+		finish(true)
+	end)
+
+	renaming.TextSubmitted:Connect(function()
+		finish(true)
+	end)
+end
+
+local function cancelRename()
+	if renaming ~= nil and UI.isAlive(renaming) then
+		local field = renaming
+
+		renaming = nil
+
+		field:Destroy()
+	end
+end
+
+local function rowIndexOf(instance)
+	for index, candidate in ipairs(visibleRows) do
+		if candidate == instance then
+			return index
+		end
+	end
+
+	return nil
+end
+
+local function selectAndReveal(index)
+	local instance = visibleRows[index]
+
+	if instance == nil then
+		return
+	end
+
+	Selection:Set({
+		instance,
+	})
+
+	local entry = rowRegistry[instance]
+
+	if entry ~= nil then
+		local target = math.max(0, entry.y - list.AbsoluteSize.Y / 2)
+
+		list.CanvasPosition = Vector2.new(0, target)
+	end
+end
+
+local contextMenu
+local contextMenuOptions
+local contextTarget = nil
+
+local function openContextMenu(instance, screenPoint)
+	if instance == nil or instance:IsA("DataModel") then
+		return
+	end
+
+	contextTarget = instance
+
+	if contextMenu == nil then
+		-- An offscreen dropdown that exists only to borrow the shared popup
+		-- styling, search field and outside-click dismissal.
+		contextMenuOptions = {
+				items = {},
+				menuWidth = 168,
+				itemHeight = UI.metrics.inputHeight,
+				maxVisibleItems = 6,
+				itemBgTransparency = 1,
+				menuPosition = function()
+					return UDim2.fromOffset(0, 0)
+				end,
+				onChanged = function(action)
+					local target = contextTarget
+					contextTarget = nil
+
+					if target == nil then
+						return
+					end
+
+					if action == "rename" then
+						local entry = rowRegistry[target]
+
+						if entry ~= nil then
+							beginRename(target, entry.row)
+						end
+					elseif action == "duplicate" then
+						duplicateInstance(target)
+					elseif action == "delete" then
+						deleteInstance(target)
+					elseif action == "copy" then
+						clipboard = target
+					elseif action == "paste" then
+						local source = clipboard
+
+						if source ~= nil and UI.isAlive(source) then
+							local ok, clone = pcall(function()
+								return source:Clone()
+							end)
+
+							if ok and clone then
+								clone.Parent = target
+								Selection:Set({ clone })
+								lastHash = ""
+							end
+						end
+					end
+				end,
+		}
+
+		local _, _, controller = UI.dropdown(
+			content,
+			"",
+			UDim2.fromOffset(-400, -400),
+			UDim2.fromOffset(1, 1),
+			nil,
+			contextMenuOptions
+		)
+
+		contextMenu = controller
+	end
+
+	contextMenuOptions.items = {
+		{ label = "Rename", value = "rename", icon = "builtin://icons/pencil.svg" },
+		{ label = "Duplicate", value = "duplicate", icon = "builtin://icons/Plus.svg" },
+		{ label = "Delete", value = "delete", icon = "builtin://icons/x.svg" },
+		{ label = "Copy", value = "copy" },
+		{ label = "Paste", value = "paste" },
+	}
+
+	contextMenuOptions.menuPosition = function()
+		return UDim2.fromOffset(screenPoint.X, screenPoint.Y)
+	end
+
+	contextMenu:Open()
+end
 
 local DRAG_THRESHOLD = 4
 
@@ -777,9 +1058,17 @@ UserInputService.InputBegan:Connect(function(input: InputObject, gameProcessed: 
 		return
 	end
 
+	-- Keystrokes aimed at a field (search, rename box, script editor) belong to
+	-- that field, not to the tree.
+	local typing = UserInputService:GetFocusedTextBox() ~= nil
+
 	if input.KeyCode == Enum.KeyCode.Escape then
 		if drag ~= nil then
 			finishDrop(false)
+		elseif UI.isAlive(renaming) then
+			cancelRename()
+		elseif typing then
+			searchField.Text = ""
 		else
 			Selection:Set({})
 		end
@@ -787,23 +1076,119 @@ UserInputService.InputBegan:Connect(function(input: InputObject, gameProcessed: 
 		return
 	end
 
-	if input.KeyCode == Enum.KeyCode.Delete or input.KeyCode == Enum.KeyCode.Backspace then
-		if UserInputService:GetFocusedTextBox() ~= nil then
+	if typing then
+		return
+	end
+
+	local selected = selectedObject()
+	local index = selected and rowIndexOf(selected) or nil
+
+	if input.KeyCode == Enum.KeyCode.Up or input.KeyCode == Enum.KeyCode.Down then
+		if #visibleRows == 0 then
 			return
 		end
 
-		local selected = selectedObject()
+		local next_ = index or 0
 
-		if selected ~= nil and not selected:IsA("DataModel") then
-			viewport.CloseScript(selected)
-			expanded[selected] = nil
+		if input.KeyCode == Enum.KeyCode.Up then
+			next_ = next_ - 1
+		else
+			next_ = next_ + 1
+		end
 
-			Selection:Set({})
+		selectAndReveal(math.clamp(next_, 1, #visibleRows))
 
-			selected:Destroy()
+		return
+	end
+
+	if input.KeyCode == Enum.KeyCode.Home then
+		selectAndReveal(1)
+		return
+	end
+
+	if input.KeyCode == Enum.KeyCode.End then
+		selectAndReveal(#visibleRows)
+		return
+	end
+
+	if input.KeyCode == Enum.KeyCode.Right then
+		if selected ~= nil and not expanded[selected] and #selected:GetChildren() > 0 then
+			expanded[selected] = true
 
 			lastHash = ""
 		end
+
+		return
+	end
+
+	if input.KeyCode == Enum.KeyCode.Left then
+		if selected ~= nil then
+			if expanded[selected] then
+				expanded[selected] = nil
+
+				lastHash = ""
+			elseif selected.Parent ~= nil and selected.Parent ~= game then
+				local parentIndex = rowIndexOf(selected.Parent)
+
+				if parentIndex ~= nil then
+					selectAndReveal(parentIndex)
+				end
+			end
+		end
+
+		return
+	end
+
+	if input.KeyCode == Enum.KeyCode.F2 then
+		if selected ~= nil then
+			local entry = rowRegistry[selected]
+
+			if entry ~= nil then
+				beginRename(selected, entry.row)
+			end
+		end
+
+		return
+	end
+
+	if input.KeyCode == Enum.KeyCode.C then
+		local ctrlDown = UserInputService:IsKeyDown(Enum.KeyCode.LeftControl)
+			or UserInputService:IsKeyDown(Enum.KeyCode.RightControl)
+
+		if ctrlDown and selected ~= nil then
+			clipboard = selected
+		end
+
+		return
+	end
+
+	if input.KeyCode == Enum.KeyCode.V then
+		local ctrlDown = UserInputService:IsKeyDown(Enum.KeyCode.LeftControl)
+			or UserInputService:IsKeyDown(Enum.KeyCode.RightControl)
+
+		local destination = selected or workspace
+
+		if ctrlDown and clipboard ~= nil and UI.isAlive(clipboard) and destination ~= clipboard then
+			local ok, clone = pcall(function()
+				return clipboard:Clone()
+			end)
+
+			if ok and clone then
+				clone.Parent = destination
+
+				Selection:Set({
+					clone,
+				})
+
+				lastHash = ""
+			end
+		end
+
+		return
+	end
+
+	if input.KeyCode == Enum.KeyCode.Delete or input.KeyCode == Enum.KeyCode.Backspace then
+		deleteInstance(selectedObject())
 
 		return
 	end
