@@ -434,6 +434,11 @@ local function addRow(instance, depth, y)
 		if clickCount == 2 then
 			if instance:IsA("Script") or instance:IsA("ModuleScript") or instance:IsA("LocalScript") then
 				viewport.OpenScript(instance)
+			else
+				-- Opening a script is the only way into the editor, so anything
+				-- else dismisses it. Without this the editor would linger with no
+				-- visible cause, since single clicks deliberately leave it alone.
+				viewport.CloseAllScripts()
 			end
 		end
 	end)
