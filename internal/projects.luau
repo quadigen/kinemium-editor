@@ -17,7 +17,7 @@ return function(page, windowControls, gui)
 		type = "error",
 		title = "Please stop",
 		message = "Please stop.",
-		details = "Target: Windows x64\nConfiguration: Release\nBuild time: 12.4 seconds",
+		details = "nicobloxy for the love of god!!!!!!!!!!!!!!",
 		detailsTitle = "Build Details",
 		backgroundTransparency = 0.4,
 		blur = true,
