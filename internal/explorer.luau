@@ -381,6 +381,12 @@ local function treeHash(parent)
 end
 
 local lastHash = ""
+local hashClock = 0
+
+-- Rebuilding the whole tree every frame is only needed when its *shape* could
+-- have changed. Sampling the hash a few times a second keeps structural edits
+-- feeling instant while removing a full tree walk from every frame.
+local HASH_INTERVAL = 6
 local rebuilding = false
 local rebuild
 
@@ -404,6 +410,7 @@ local rowIndex = 0
 local visibleRows = {}
 
 local rowRegistry = {}
+local highlightedInstance = nil
 local drag = nil
 local dragLayer = nil
 local clipboard = nil
@@ -596,6 +603,8 @@ local function addRow(instance, depth, y)
 		row = row,
 		depth = depth,
 		y = y,
+		rowColor = rowColor,
+		selected = isSelected,
 		baseTransparency = row.BackgroundTransparency,
 		dropTarget = false,
 	}
@@ -693,7 +702,28 @@ rebuild = function()
 end
 
 Selection.SelectionChanged:Connect(function()
-	lastHash = ""
+	-- Repainting just the two affected rows avoids tearing down and rebuilding
+	-- every row in the tree, which is what made selecting an object spike.
+	local selected = selectedObject()
+
+	for _, instance in ipairs({ highlightedInstance, selected }) do
+		local entry = instance and rowRegistry[instance]
+
+		if entry ~= nil and UI.isAlive(entry.row) then
+			local isSelected = instance == selected
+			local wasSelected = entry.selected
+
+			entry.selected = isSelected
+			entry.baseTransparency = isSelected and 0 or 0.12
+
+			if isSelected ~= wasSelected then
+				entry.row.BackgroundColor3 = isSelected and colors.selection or entry.rowColor
+				entry.row.BackgroundTransparency = entry.baseTransparency
+			end
+		end
+	end
+
+	highlightedInstance = selected
 end)
 
 searchField.TextChanged:Connect(function()
@@ -1369,12 +1399,19 @@ renderer.Pool.new("2d", function()
 	panel.Size = theme.ExplorerCoordinates.Size
 	panel.Position = theme.ExplorerCoordinates.Position
 
-	local selected = selectedObject()
+	-- Structural changes (add/remove/rename/reparent/expand) are the only thing
+	-- that needs a rebuild. Selection is repainted in place by
+	-- SelectionChanged, so it deliberately stays out of this signature.
+	hashClock += 1
 
-	local hash = treeHash(game) .. "#" .. (selected and selected:GetFullName() or "")
+	if hashClock >= HASH_INTERVAL then
+		hashClock = 0
 
-	if hash ~= lastHash then
-		lastHash = hash
-		rebuild()
+		local hash = treeHash(game)
+
+		if hash ~= lastHash then
+			lastHash = hash
+			rebuild()
+		end
 	end
 end)

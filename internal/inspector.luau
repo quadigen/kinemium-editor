@@ -136,6 +136,12 @@ local collapsed = {}
 local activeEditors = {}
 
 local lastSignature = ""
+local signatureClock = 0
+
+-- How often the property signature is re-evaluated. Every rebuild is a full
+-- teardown of the property rows, so a fast-changing object would otherwise
+-- rebuild the panel every single frame.
+local SIGNATURE_INTERVAL = 6
 local rebuilding = false
 
 local BUBBLE_GAP = 7
@@ -1417,6 +1423,10 @@ end
 
 Selection.SelectionChanged:Connect(function()
 	lastSignature = ""
+
+	-- A new selection must repaint immediately; do not make the user wait out
+	-- the sampling interval to see the object they just clicked.
+	signatureClock = SIGNATURE_INTERVAL
 end)
 
 renderer.Pool.new("2d", function()
@@ -1428,6 +1438,18 @@ renderer.Pool.new("2d", function()
 	updateEnumDropdownPosition()
 
 	local object = selectedObject()
+
+	-- Building this signature reads and string-formats every tracked property.
+	-- For objects that change properties continuously that differs every single
+	-- frame, and each difference was forcing a full rebuild of every row. Sample
+	-- it a few times a second instead: values still track, cheaply.
+	signatureClock += 1
+
+	if signatureClock < SIGNATURE_INTERVAL then
+		return
+	end
+
+	signatureClock = 0
 
 	local searchQuery = getSearchQuery()
 
