@@ -310,10 +310,6 @@ local tabStrip = UI.create("ScrollingFrame", {
 	Visible = false,
 }, viewportOverlay)
 
--- One entry per script the user has opened. `source` is the live buffer and
--- `instance` is the backing Script (nil for a scratch buffer). The remaining
--- fields point at that tab's widgets so they can be refreshed or dropped
--- without rebuilding the whole strip.
 local documents = {}
 local documentByInstance = {}
 local activeDocument = nil
@@ -425,7 +421,6 @@ local function rebuildTabs()
 
 	tabStrip.CanvasSize = UDim2.fromOffset(x, 0)
 
-	-- Recreated after UI.clear, which destroys every non-decoration child.
 	UI.frame(tabStrip, UDim2.new(0, 0, 1, -1), UDim2.new(1, 0, 0, 1), tokens.color.border)
 end
 
@@ -445,8 +440,6 @@ focusDocument = function(document)
 		return
 	end
 
-	-- Flush the outgoing buffer before the TextBox is repurposed, otherwise
-	-- switching away would drop whatever was typed since the last commit.
 	if activeDocument ~= nil then
 		activeDocument.source = CodeEditor.Text
 
@@ -484,7 +477,6 @@ closeDocument = function(document)
 	if wasActive then
 		activeDocument = nil
 
-		-- Prefer the tab that slid into this slot, then the one before it.
 		local neighbour = documents[index] or documents[index - 1]
 
 		if neighbour ~= nil then
@@ -531,7 +523,6 @@ local function openScript(instance)
 end
 
 local function closeAllScripts()
-	-- closeDocument mutates `documents`, so iterate a snapshot.
 	local snapshot = table.clone(documents)
 
 	for _, document in ipairs(snapshot) do
@@ -666,8 +657,6 @@ renderer.Pool.new("2d", function()
 		rebuildBreadcrumb(path)
 	end
 
-	-- Renaming a script has to relabel its tab, deleting one has to drop it, and
-	-- a 2D/3D switch has to re-evaluate the chrome behind the open editor.
 	if #documents > 0 or toolbar.Visible then
 		local relabelled = false
 		local doomed = nil
@@ -684,7 +673,6 @@ renderer.Pool.new("2d", function()
 			end
 		end
 
-		-- closeDocument mutates `documents`, so drain a snapshot of the dead ones.
 		for _, document in ipairs(doomed or {}) do
 			closeDocument(document)
 		end
