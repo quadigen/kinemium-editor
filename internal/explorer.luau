@@ -10,6 +10,7 @@ local theme = StudioThemeService.SelectedTheme
 local Selection = game:GetService("Selection")
 local UserInputService = game:GetService("UserInputService")
 local TweenService = game:GetService("TweenService")
+local ReflectionService = game:GetService("ReflectionService")
 
 local colors = UI.colors
 local tokens = UI.tokens
@@ -68,145 +69,59 @@ local function selectedObject()
 	return selection and selection[1]
 end
 
-local classIcons = {
-	ArcHandles = "Handles",
-	Atmosphere = "Atmosphere",
-	BlurEffect = "BlurEffect",
-	BloomEffect = "BloomEffect",
-	BoolValue = "BoolValue",
-	Camera = "Camera",
-	ColorCorrectionEffect = "ColorCorrectionEffect",
-	Decal = "Decal",
-	DepthOfFieldEffect = "DepthOfFieldEffect",
-	Folder = "Folder",
-	Frame = "Frame",
-	Handles = "Handles",
-	ImageButton = "ImageButton",
-	ImageLabel = "ImageLabel",
-	MeshPart = "MeshPart",
-	Model = "Model",
-	ModuleScript = "ModuleScript",
-	NumberValue = "NumberValue",
-	Part = "Part",
-	PointLight = "PointLight",
-	ScreenGui = "ScreenGui",
-	Script = "Script",
-	LocalScript = "LocalScript",
-	ScrollingFrame = "ScrollingFrame",
-	Sound = "Sound",
-	SpotLight = "SpotLight",
-	SurfaceLight = "SurfaceLight",
-	SyntaxHighlighter = "SyntaxHighlighter",
-	TextBox = "TextBox",
-	TextButton = "TextButton",
-	TextLabel = "TextLabel",
-	UIBackdrop = "UIBackdrop",
-	UICorner = "UICorner",
-	RemoteEvent = "RemoteEvent",
-	RemoteFunction = "RemoteFunction",
-	UIGradient = "UIGradient",
-	UIShadow = "UIShadow",
-	UIStroke = "UIStroke",
-}
+local categoriesByName = {}
 
-local creatableClasses = {
-	"ArcHandles",
-	"Atmosphere",
-	"BinaryStringValue",
-	"BlurEffect",
-	"BloomEffect",
-	"BoolValue",
-	"BrickColorValue",
-	"Camera",
-	"RemoteEvent",
-	"RemoteFunction",
-	"CFrameValue",
-	"Color3Value",
-	"ColorCorrectionEffect",
-	"Decal",
-	"DepthOfFieldEffect",
-	"DoubleConstrainedValue",
-	"Folder",
-	"Frame",
-	"LocalScript",
-	"Handles",
-	"ImageButton",
-	"ImageLabel",
-	"IntConstrainedValue",
-	"IntValue",
-	"MeshPart",
-	"Model",
-	"ModuleScript",
-	"NumberValue",
-	"ObjectValue",
-	"Part",
-	"PointLight",
-	"RayValue",
-	"ScreenGui",
-	"Script",
-	"ScrollingFrame",
-	"Sound",
-	"SpotLight",
-	"SSAOEffect",
-	"StringValue",
-	"SurfaceLight",
-	"SunRaysEffect",
-	"SyntaxHighlighter",
-	"TextBox",
-	"TextButton",
-	"TextLabel",
-	"UIBackdrop",
-	"UICorner",
-	"UIGradient",
-	"UIShadow",
-	"UIStroke",
-	"Vector3Value",
-}
+for _, classInfo in ipairs(ReflectionService:GetClasses()) do
+	if classInfo.Permits and classInfo.Permits.New then
+		local categoryName = classInfo.Display and classInfo.Display.Category or "General"
+
+		if not categoriesByName[categoryName] then
+			categoriesByName[categoryName] = {
+				name = categoryName,
+				items = {},
+			}
+		end
+	end
+end
+
+local categories = {}
 
 local classItems = {}
 
-for _, className in ipairs(creatableClasses) do
-	table.insert(classItems, {
-		value = className,
-		label = className,
-		icon = "builtin://icons/" .. (classIcons[className] or className) .. ".svg",
-	})
+for _, classInfo in ipairs(ReflectionService:GetClasses()) do
+	if classInfo.Permits and classInfo.Permits.New then
+		local categoryName = classInfo.Display and classInfo.Display.Category or "General"
+
+		local iconName = classInfo.Display and classInfo.Display.Icon or classInfo.Name
+
+		local item = {
+			value = classInfo.Name,
+			label = classInfo.Name,
+			icon = "builtin://icons/" .. iconName .. ".svg",
+		}
+
+		table.insert(classItems, item)
+		table.insert(categoriesByName[categoryName].items, item)
+	end
 end
 
 table.sort(classItems, function(a, b)
 	return a.label < b.label
 end)
 
-local categories = {
-	{
-		name = "Containers",
-		items = {},
-	},
-	{
-		name = "Parts & Models",
-		items = {},
-	},
-	{
-		name = "Scripts & Values",
-		items = {},
-	},
-	{
-		name = "Networking",
-		items = {},
-	},
-	{
-		name = "UI",
-		items = {},
-	},
-	{
-		name = "Lighting & Effects",
-		items = {},
-	},
-	{
-		name = "Handles",
-		items = {},
-	},
-}
+for _, category in ipairs(categories) do
+	table.sort(category.items, function(a, b)
+		return a.label < b.label
+	end)
+end
+
+for _, category in pairs(categoriesByName) do
+	table.insert(categories, category)
+end
+
+table.sort(categories, function(a, b)
+	return a.name < b.name
+end)
 
 local categoryByClass = {
 	Folder = "Containers",
@@ -882,65 +797,59 @@ openContextMenu = function(instance, screenPoint)
 		-- An offscreen dropdown that exists only to borrow the shared popup
 		-- styling, search field and outside-click dismissal.
 		contextMenuOptions = {
-				items = {},
-				menuWidth = 168,
-				itemHeight = UI.metrics.inputHeight,
-				maxVisibleItems = 6,
-				itemBgTransparency = 1,
+			items = {},
+			menuWidth = 168,
+			itemHeight = UI.metrics.inputHeight,
+			maxVisibleItems = 6,
+			itemBgTransparency = 1,
 			-- No filter field: this is a short fixed action list.
 			showSearch = false,
 			-- Outside-click dismissal only listens for left-click, which would
 			-- leave the menu stuck open after a right-click elsewhere.
 			closeOnOutsideClick = false,
-				menuPosition = function()
-					return UDim2.fromOffset(0, 0)
-				end,
-				onChanged = function(action)
-					local target = contextTarget
-					contextTarget = nil
+			menuPosition = function()
+				return UDim2.fromOffset(0, 0)
+			end,
+			onChanged = function(action)
+				local target = contextTarget
+				contextTarget = nil
 
-					if target == nil then
-						return
+				if target == nil then
+					return
+				end
+
+				if action == "rename" then
+					local entry = rowRegistry[target]
+
+					if entry ~= nil then
+						beginRename(target, entry.row)
 					end
+				elseif action == "duplicate" then
+					duplicateInstance(target)
+				elseif action == "delete" then
+					deleteInstance(target)
+				elseif action == "copy" then
+					clipboard = target
+				elseif action == "paste" then
+					local source = clipboard
 
-					if action == "rename" then
-						local entry = rowRegistry[target]
+					if source ~= nil and UI.isAlive(source) then
+						local ok, clone = pcall(function()
+							return source:Clone()
+						end)
 
-						if entry ~= nil then
-							beginRename(target, entry.row)
-						end
-					elseif action == "duplicate" then
-						duplicateInstance(target)
-					elseif action == "delete" then
-						deleteInstance(target)
-					elseif action == "copy" then
-						clipboard = target
-					elseif action == "paste" then
-						local source = clipboard
-
-						if source ~= nil and UI.isAlive(source) then
-							local ok, clone = pcall(function()
-								return source:Clone()
-							end)
-
-							if ok and clone then
-								clone.Parent = target
-								Selection:Set({ clone })
-								lastHash = ""
-							end
+						if ok and clone then
+							clone.Parent = target
+							Selection:Set({ clone })
+							lastHash = ""
 						end
 					end
-				end,
+				end
+			end,
 		}
 
-		local _, _, controller = UI.dropdown(
-			content,
-			"",
-			UDim2.fromOffset(-400, -400),
-			UDim2.fromOffset(1, 1),
-			nil,
-			contextMenuOptions
-		)
+		local _, _, controller =
+			UI.dropdown(content, "", UDim2.fromOffset(-400, -400), UDim2.fromOffset(1, 1), nil, contextMenuOptions)
 
 		contextMenu = controller
 	end
@@ -1067,7 +976,14 @@ local function beginDragVisual()
 
 	UI.corner(dragLayer, tokens.radius.sm)
 
-	UI.label(dragLayer, drag.source.Name, UDim2.fromOffset(8, 2), UDim2.new(1, -16, 0, 16), tokens.type.small, tokens.color.text)
+	UI.label(
+		dragLayer,
+		drag.source.Name,
+		UDim2.fromOffset(8, 2),
+		UDim2.new(1, -16, 0, 16),
+		tokens.type.small,
+		tokens.color.text
+	)
 end
 
 local function moveDragVisual()
@@ -1114,13 +1030,9 @@ local function animateDrop(reparent)
 
 	local layer = dragLayer
 
-	local tween = TweenService:Create(
-		layer,
-		TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.In),
-		{
-			BackgroundTransparency = 1,
-		}
-	)
+	local tween = TweenService:Create(layer, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
+		BackgroundTransparency = 1,
+	})
 
 	tween.Completed:Once(function()
 		apply()
