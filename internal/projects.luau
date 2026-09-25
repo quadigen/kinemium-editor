@@ -13,17 +13,6 @@ return function(page, windowControls, gui)
 
 	local projectsPage = windowControls.pages.Projects
 
-	local toast = UI.toast("nico stop", {
-		type = "error",
-		title = "Please stop",
-		message = "Please stop.",
-		details = "nicobloxy for the love of god!!!!!!!!!!!!!!",
-		detailsTitle = "Build Details",
-		backgroundTransparency = 0.4,
-		blur = true,
-		duration = 1000,
-	})
-
 	local prompt, content, promptController = UI.prompt({
 		name = "CreateProject",
 
@@ -96,6 +85,17 @@ return function(page, windowControls, gui)
 						gui.Enabled = false
 						UI.root().Enabled = true
 						UI.RootOverlay().Enabled = true
+
+						UI.toast("creation", {
+							type = "success",
+							title = "Successfully created project!",
+							message = `Successfully created project {props.Name}.`,
+							details = `Description: {props.Description}\nIcon: {props.Icon}\nPath: {props.FolderPath}`,
+							detailsTitle = "Project details",
+							backgroundTransparency = 0.4,
+							blur = true,
+							duration = 5,
+						})
 					end
 				end,
 			},
