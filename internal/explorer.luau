@@ -410,6 +410,7 @@ local dragTween = nil
 local clipboard = nil
 local renaming = nil
 local pendingRebuild = false
+local openContextMenu
 
 local function isDescendantOf(candidate, ancestor)
 	local current = candidate
@@ -818,7 +819,7 @@ local contextMenu
 local contextMenuOptions
 local contextTarget = nil
 
-local function openContextMenu(instance, screenPoint)
+openContextMenu = function(instance, screenPoint)
 	if instance == nil or instance:IsA("DataModel") then
 		return
 	end
