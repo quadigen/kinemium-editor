@@ -431,16 +431,9 @@ local function addRow(instance, depth, y)
 
 	row.Activated:Connect(function(input, clickCount)
 		-- double click
-		viewport.ToggleCodeEditor(false)
-
 		if clickCount == 2 then
 			if instance:IsA("Script") or instance:IsA("ModuleScript") or instance:IsA("LocalScript") then
-				local source = instance.Source
-				if source then
-					viewport.ToggleCodeEditor(true, source)
-				else
-					viewport.ToggleCodeEditor(false)
-				end
+				viewport.OpenScript(instance)
 			end
 		end
 	end)
@@ -553,12 +546,6 @@ renderer.Pool.new("2d", function()
 	local selected = selectedObject()
 
 	local hash = treeHash(game) .. "#" .. (selected and selected:GetFullName() or "")
-
-	if selected then
-		if selected:IsA("Script") or selected:IsA("ModuleScript") or selected:IsA("LocalScript") then
-			selected.Source = viewport.CodeEditor.Text
-		end
-	end
 
 	if hash ~= lastHash then
 		lastHash = hash

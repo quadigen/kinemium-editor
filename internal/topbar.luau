@@ -458,7 +458,7 @@ local headerX = 35
 for _, category in ipairs(engineCategories) do
 	local current = category
 	local categoryName = current.name
-	local width = #categoryName * 8 + 30
+	local width = #categoryName * 8 + 20
 	local items = {}
 
 	for _, definition in ipairs(current.buttons) do
@@ -476,7 +476,7 @@ for _, category in ipairs(engineCategories) do
 		categoryName,
 		UDim2.fromOffset(headerX, 4),
 		UDim2.fromOffset(width, 24),
-		"builtin://icons/ArrowDown.svg",
+		nil,
 		{
 			items = items,
 
@@ -541,7 +541,7 @@ selectedIndicator = UI.frame(
 for _, category in ipairs(toolbarCategories) do
 	local current = category
 
-	local width = #current.name * 8 + 32
+	local width = #current.name * 8 + 22
 
 	categoryPositions[current] = {
 		x = headerX,
@@ -586,8 +586,6 @@ for _, category in ipairs(toolbarCategories) do
 	)
 
 	categoryButton.Name = current.name .. "Dropdown"
-
-	UI.image(categoryButton, "builtin://icons/ArrowDown.svg", UDim2.new(1, -15, 0.5, -4), UDim2.fromOffset(8, 8))
 
 	categoryRecords[current] = record
 
