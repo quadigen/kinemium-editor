@@ -13,10 +13,10 @@ return function(page, windowControls, gui)
 
 	local projectsPage = windowControls.pages.Projects
 
-	local toast = UI.toast("Build completed successfully!", {
-		type = "success",
-		title = "Build Complete",
-		message = "Kinemium was built successfully.",
+	local toast = UI.toast("nico stop", {
+		type = "error",
+		title = "Please stop",
+		message = "Please stop.",
 		details = "Target: Windows x64\nConfiguration: Release\nBuild time: 12.4 seconds",
 		detailsTitle = "Build Details",
 		backgroundTransparency = 0.4,
