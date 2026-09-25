@@ -520,6 +520,24 @@ local function finishDrop(reparent)
 	end
 end
 
+local function applyRowSelection(row, record, isSelected)
+	-- Route through the shared helper so the button record's own colour and
+	-- hover colour stay in sync; setting BackgroundColor3 alone left the record
+	-- holding a stale colour that hover would restore on mouse-leave.
+	UI.setButtonState(record, isSelected and "selected" or "default")
+
+	row.BackgroundTransparency = isSelected and 0 or 0.12
+
+	-- Selected rows are rounded; the rest are square. setButtonState does not
+	-- touch corners, so drive the UICorner directly.
+	for _, child in ipairs(row:GetChildren()) do
+		if child:IsA("UICorner") then
+			child.CornerRadius = isSelected and tokens.radius.sm or UDim.new(0, 0)
+			break
+		end
+	end
+end
+
 local function addRow(instance, depth, y)
 	local children = sortedChildren(instance)
 
@@ -540,9 +558,12 @@ local function addRow(instance, depth, y)
 			lastHash = ""
 		end
 	end, {
-		color = isSelected and colors.selection or rowColor,
+		-- Always the striped base colour: UI.button stores this as the record's
+		-- defaultColor, and hover restores it on mouse-leave. Baking the
+		-- selection colour in here made the orange stick after hovering away.
+		color = rowColor,
 
-		hoverColor = isSelected and colors.selection or colors.hover,
+		hoverColor = colors.hover,
 
 		radius = isSelected and tokens.radius.sm or 0,
 
@@ -599,8 +620,13 @@ local function addRow(instance, depth, y)
 
 	row.BackgroundTransparency = isSelected and 0 or 0.12
 
+	if isSelected then
+		applyRowSelection(row, record, true)
+	end
+
 	rowRegistry[instance] = {
 		row = row,
+		record = record,
 		depth = depth,
 		y = y,
 		rowColor = rowColor,
@@ -711,14 +737,12 @@ Selection.SelectionChanged:Connect(function()
 
 		if entry ~= nil and UI.isAlive(entry.row) then
 			local isSelected = instance == selected
-			local wasSelected = entry.selected
 
-			entry.selected = isSelected
-			entry.baseTransparency = isSelected and 0 or 0.12
+			if isSelected ~= entry.selected then
+				entry.selected = isSelected
+				entry.baseTransparency = isSelected and 0 or 0.12
 
-			if isSelected ~= wasSelected then
-				entry.row.BackgroundColor3 = isSelected and colors.selection or entry.rowColor
-				entry.row.BackgroundTransparency = entry.baseTransparency
+				applyRowSelection(entry.row, entry.record, isSelected)
 			end
 		end
 	end
