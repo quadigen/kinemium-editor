@@ -3,6 +3,8 @@ if IsServer or IsClient then
 end
 
 local UI = require("@internal/editor_ui")
+local gameCategory = require("@internal/topbar_game")
+local projectsCategory = require("@internal/topbar_projects")
 local homeCategory = require("@internal/topbar_home")
 local fileCategory = require("@internal/topbar_file")
 local modelCategory = require("@internal/topbar_model")
@@ -40,6 +42,8 @@ local selectedIndicator
 local collapseButton
 local collapseIcon
 
+local engineButtonRecords = {}
+local engineButtonLabels = {}
 local categoryLabels = {}
 
 local rebuildFlyout
@@ -59,6 +63,12 @@ local function safeAction(callback)
 	end
 end
 
+local engineCategories = {
+	fileCategory,
+	gameCategory,
+	projectsCategory,
+}
+
 local toolbarCategories = {
 	homeCategory,
 	fileCategory,
@@ -69,6 +79,10 @@ local toolbarCategories = {
 }
 
 UI.buttonCategories = {
+	{
+		name = "Engine",
+		buttons = engineCategories,
+	},
 	{
 		name = "Toolbar",
 		buttons = toolbarCategories,
@@ -290,6 +304,10 @@ local function applyTheme()
 		collapseButton.BackgroundColor3 = colors.panel
 	end
 
+	for _, label in ipairs(engineButtonLabels) do
+		label.TextColor3 = colors.subtext
+	end
+
 	for category, label in pairs(categoryLabels) do
 		label.TextColor3 = category == selectedCategory and colors.text or colors.subtext
 	end
@@ -437,6 +455,81 @@ flyoutStroke = UI.stroke(flyout, initialColors.border, 1, 0.55)
 
 local headerX = 35
 
+for _, category in ipairs(engineCategories) do
+	local current = category
+	local categoryName = current.name
+	local width = #categoryName * 8 + 30
+	local items = {}
+
+	for _, definition in ipairs(current.buttons) do
+		if definition.type ~= "separator" then
+			table.insert(items, {
+				value = definition,
+				label = definition.name,
+				icon = definition.icon,
+			})
+		end
+	end
+
+	local button, label, record = UI.dropdown(
+		headerSurface,
+		categoryName,
+		UDim2.fromOffset(headerX, 4),
+		UDim2.fromOffset(width, 24),
+		"builtin://icons/ArrowDown.svg",
+		{
+			items = items,
+
+			format = function()
+				return categoryName
+			end,
+			keepLabel = true,
+
+			onChanged = function(definition)
+				if type(definition) ~= "table" then
+					return
+				end
+
+				safeAction(function()
+					fireRoute(definition.route)
+
+					if definition.callback then
+						definition.callback()
+					end
+				end)()
+
+				setExpanded(false)
+			end,
+
+			color = initialColors.panel,
+			hoverColor = initialColors.raised,
+			pressedColor = initialColors.input,
+			textColor = initialColors.subtext,
+			textSize = tokens.type.small,
+			textY = 3,
+			paddingX = 8,
+			border = false,
+			radius = buttonRadius(),
+			menuWidth = 180,
+			menuColor = initialColors.surface,
+			borderColor = initialColors.border,
+			menuPosition = function()
+				return UDim2.fromOffset(button.AbsolutePosition.X, button.AbsolutePosition.Y + button.AbsoluteSize.Y + 2)
+			end,
+			itemHeight = 28,
+			maxVisibleItems = 8,
+			chevronSize = 8,
+		}
+	)
+
+	button.Name = categoryName .. "Menu"
+
+	table.insert(engineButtonRecords, record)
+	table.insert(engineButtonLabels, label)
+
+	headerX += width + 2
+end
+
 selectedIndicator = UI.frame(
 	headerSurface,
 	UDim2.fromOffset(headerX, baseHeaderHeight()),
@@ -494,12 +587,7 @@ for _, category in ipairs(toolbarCategories) do
 
 	categoryButton.Name = current.name .. "Dropdown"
 
-	UI.image(
-		categoryButton,
-		"builtin://icons/ArrowDown.svg",
-		UDim2.new(1, -15, 0.5, -4),
-		UDim2.fromOffset(8, 8)
-	)
+	UI.image(categoryButton, "builtin://icons/ArrowDown.svg", UDim2.new(1, -15, 0.5, -4), UDim2.fromOffset(8, 8))
 
 	categoryRecords[current] = record
 
@@ -554,6 +642,18 @@ local function refreshTheme()
 	end
 
 	local colors = palette()
+
+	for _, record in ipairs(engineButtonRecords) do
+		record.color = colors.panel
+		record.defaultColor = colors.panel
+		record.hoverColor = colors.raised
+		record.defaultHoverColor = colors.raised
+		record.pressedColor = colors.input
+
+		if UI.isAlive(record.gui) then
+			record.gui.BackgroundColor3 = colors.panel
+		end
+	end
 
 	if collapseRecord then
 		collapseRecord.color = colors.panel

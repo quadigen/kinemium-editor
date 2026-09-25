@@ -100,6 +100,8 @@ local classIcons = {
 	TextLabel = "TextLabel",
 	UIBackdrop = "UIBackdrop",
 	UICorner = "UICorner",
+	RemoteEvent = "RemoteEvent",
+	RemoteFunction = "RemoteFunction",
 	UIGradient = "UIGradient",
 	UIShadow = "UIShadow",
 	UIStroke = "UIStroke",
@@ -114,6 +116,8 @@ local creatableClasses = {
 	"BoolValue",
 	"BrickColorValue",
 	"Camera",
+	"RemoteEvent",
+	"RemoteFunction",
 	"CFrameValue",
 	"Color3Value",
 	"ColorCorrectionEffect",
@@ -185,6 +189,10 @@ local categories = {
 		items = {},
 	},
 	{
+		name = "Networking",
+		items = {},
+	},
+	{
 		name = "UI",
 		items = {},
 	},
@@ -206,6 +214,9 @@ local categoryByClass = {
 	MeshPart = "Parts & Models",
 	Decal = "Parts & Models",
 	Camera = "Parts & Models",
+
+	RemoteEvent = "Networking",
+	RemoteFunction = "Networking",
 
 	Script = "Scripts & Values",
 	LocalScript = "Scripts & Values",

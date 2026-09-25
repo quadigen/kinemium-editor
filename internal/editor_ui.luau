@@ -3386,7 +3386,9 @@ function UI.dropdown(parent, value, position, size, chevronIcon, options)
 										UDim2.new(1, 0, 0, rowHeight),
 										function()
 											currentValue = itemValue
-											label.Text = itemText
+											if not options.keepLabel then
+												label.Text = itemText
+											end
 											closeActiveDropdown()
 											if options.onChanged then
 												options.onChanged(itemValue, item)
@@ -3424,7 +3426,9 @@ function UI.dropdown(parent, value, position, size, chevronIcon, options)
 									UDim2.new(1, 0, 0, rowHeight),
 									function()
 										currentValue = itemValue
-										label.Text = itemText
+										if not options.keepLabel then
+											label.Text = itemText
+										end
 										closeActiveDropdown()
 										if options.onChanged then
 											options.onChanged(itemValue, item)
@@ -3674,7 +3678,11 @@ function UI.dropdown(parent, value, position, size, chevronIcon, options)
 					function()
 						currentValue = itemValue
 
-						label.Text = tostring(options.format and options.format(itemValue) or itemText)
+						if not options.keepLabel then
+
+							label.Text = tostring(options.format and options.format(itemValue) or itemText)
+
+						end
 
 						closeActiveDropdown()
 
@@ -3719,7 +3727,7 @@ function UI.dropdown(parent, value, position, size, chevronIcon, options)
 
 			radius = options.radius or UI.tokens.radius.sm,
 
-			border = true,
+			border = options.border ~= false,
 
 			borderColor = options.borderColor or colors.border,
 
@@ -3751,7 +3759,11 @@ function UI.dropdown(parent, value, position, size, chevronIcon, options)
 	function controller:SetValue(newValue, silent)
 		currentValue = newValue
 
-		label.Text = tostring(options.format and options.format(newValue) or newValue or "")
+		if not options.keepLabel then
+
+			label.Text = tostring(options.format and options.format(newValue) or newValue or "")
+
+		end
 
 		if not silent and options.onChanged then
 			options.onChanged(newValue)
