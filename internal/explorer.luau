@@ -381,12 +381,6 @@ local function treeHash(parent)
 end
 
 local lastHash = ""
-local hashClock = 0
-
--- Rebuilding the whole tree every frame is only needed when its *shape* could
--- have changed. Sampling the hash a few times a second keeps structural edits
--- feeling instant while removing a full tree walk from every frame.
-local HASH_INTERVAL = 6
 local rebuilding = false
 local rebuild
 
@@ -410,7 +404,6 @@ local rowIndex = 0
 local visibleRows = {}
 
 local rowRegistry = {}
-local highlightedInstance = nil
 local drag = nil
 local dragLayer = nil
 local clipboard = nil
@@ -520,15 +513,6 @@ local function finishDrop(reparent)
 	end
 end
 
-local function applyRowSelection(row, record, isSelected)
-	-- Route through the shared helper so the button record's own colour and
-	-- hover colour stay in sync; setting BackgroundColor3 alone left the record
-	-- holding a stale colour that hover would restore on mouse-leave.
-	UI.setButtonState(record, isSelected and "selected" or "default")
-
-	row.BackgroundTransparency = isSelected and 0 or 0.12
-end
-
 local function addRow(instance, depth, y)
 	local children = sortedChildren(instance)
 
@@ -549,12 +533,9 @@ local function addRow(instance, depth, y)
 			lastHash = ""
 		end
 	end, {
-		-- Always the striped base colour: UI.button stores this as the record's
-		-- defaultColor, and hover restores it on mouse-leave. Baking the
-		-- selection colour in here made the orange stick after hovering away.
-		color = rowColor,
+		color = isSelected and colors.selection or rowColor,
 
-		hoverColor = colors.hover,
+		hoverColor = isSelected and colors.selection or colors.hover,
 
 		radius = isSelected and tokens.radius.sm or 0,
 
@@ -611,17 +592,10 @@ local function addRow(instance, depth, y)
 
 	row.BackgroundTransparency = isSelected and 0 or 0.12
 
-	if isSelected then
-		applyRowSelection(row, record, true)
-	end
-
 	rowRegistry[instance] = {
 		row = row,
-		record = record,
 		depth = depth,
 		y = y,
-		rowColor = rowColor,
-		selected = isSelected,
 		baseTransparency = row.BackgroundTransparency,
 		dropTarget = false,
 	}
@@ -719,26 +693,7 @@ rebuild = function()
 end
 
 Selection.SelectionChanged:Connect(function()
-	-- Repainting just the two affected rows avoids tearing down and rebuilding
-	-- every row in the tree, which is what made selecting an object spike.
-	local selected = selectedObject()
-
-	for _, instance in ipairs({ highlightedInstance, selected }) do
-		local entry = instance and rowRegistry[instance]
-
-		if entry ~= nil and UI.isAlive(entry.row) then
-			local isSelected = instance == selected
-
-			if isSelected ~= entry.selected then
-				entry.selected = isSelected
-				entry.baseTransparency = isSelected and 0 or 0.12
-
-				applyRowSelection(entry.row, entry.record, isSelected)
-			end
-		end
-	end
-
-	highlightedInstance = selected
+	lastHash = ""
 end)
 
 searchField.TextChanged:Connect(function()
@@ -1250,10 +1205,9 @@ UserInputService.InputBegan:Connect(function(input: InputObject, gameProcessed: 
 			commitRename()
 		end
 
-		-- A mouse InputObject carries no meaningful KeyCode, so letting clicks
-		-- fall through to the keyboard handling below could match whatever
-		-- garbage KeyCode it held -- including Delete, which was destroying the
-		-- selected object on every click.
+		-- A mouse InputObject carries no meaningful KeyCode. Without this guard
+		-- the click falls through to the keyboard handling below and can match
+		-- Delete/Backspace, destroying the selected object on every click.
 		return
 	end
 
@@ -1424,19 +1378,12 @@ renderer.Pool.new("2d", function()
 	panel.Size = theme.ExplorerCoordinates.Size
 	panel.Position = theme.ExplorerCoordinates.Position
 
-	-- Structural changes (add/remove/rename/reparent/expand) are the only thing
-	-- that needs a rebuild. Selection is repainted in place by
-	-- SelectionChanged, so it deliberately stays out of this signature.
-	hashClock += 1
+	local selected = selectedObject()
 
-	if hashClock >= HASH_INTERVAL then
-		hashClock = 0
+	local hash = treeHash(game) .. "#" .. (selected and selected:GetFullName() or "")
 
-		local hash = treeHash(game)
-
-		if hash ~= lastHash then
-			lastHash = hash
-			rebuild()
-		end
+	if hash ~= lastHash then
+		lastHash = hash
+		rebuild()
 	end
 end)
