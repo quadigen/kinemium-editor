@@ -26,6 +26,20 @@ local chromeHeight = UI.metrics.windowHeader + 1
 local root = UI.root()
 local rootOverlay = UI.RootOverlay()
 
+local scriptLayer = UI.create("ScreenGui", {
+	Name = "ScriptEditorLayer",
+	DisplayOrder = 2000,
+	IgnoreGuiInset = true,
+}, game.CoreGui)
+
+scriptLayer.RenderOnTop = true
+
+local scriptRoot = UI.frame(scriptLayer, UDim2.new(), UDim2.new(), tokens.color.canvas)
+
+scriptRoot.Name = "ScriptEditorRoot"
+scriptRoot.BackgroundTransparency = 1
+scriptRoot.Visible = false
+
 local function getViewportPosition()
 	return UDim2.new(
 		theme.ViewportCoordinates.Position.X.Scale,
@@ -280,7 +294,7 @@ CodeEditor.ShowMinimap = true
 CodeEditor.BackgroundTransparency = 0.6
 CodeEditor.BackgroundColor3 = Color3.new(0, 0, 0)
 CodeEditor.TextColor3 = Color3.new(1, 1, 1)
-CodeEditor.Parent = viewportOverlay
+CodeEditor.Parent = scriptRoot
 
 local LuauSyntaxHighlighter = Instance.new("SyntaxHighlighter")
 LuauSyntaxHighlighter.Parent = CodeEditor
@@ -309,7 +323,7 @@ local tabStrip = UI.create("ScrollingFrame", {
 	Active = true,
 	InputSink = true,
 	Visible = false,
-}, viewportOverlay)
+}, scriptRoot)
 
 local documents = {}
 local documentByInstance = {}
@@ -344,6 +358,7 @@ end
 local function updateEditorVisibility()
 	local hasDocument = activeDocument ~= nil
 
+	scriptRoot.Visible = hasDocument
 	tabStrip.Visible = #documents > 0
 	CodeEditor.Visible = hasDocument
 	toolbar.Visible = not hasDocument
@@ -639,6 +654,9 @@ renderer.Pool.new("2d", function()
 
 	viewportOverlay.Position = getViewportPosition()
 	viewportOverlay.Size = viewportSize
+
+	scriptRoot.Position = getViewportPosition()
+	scriptRoot.Size = viewportSize
 
 	panel.Position = theme.ViewportCoordinates.Position
 	panel.Size = UDim2.new(
