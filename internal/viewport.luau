@@ -276,6 +276,7 @@ CodeEditor.Position = UDim2.fromOffset(0, TAB_STRIP_HEIGHT)
 CodeEditor.CodeEditor = true
 CodeEditor.Visible = false
 CodeEditor.Active = true
+CodeEditor.ShowMinimap = true
 CodeEditor.BackgroundTransparency = 0.6
 CodeEditor.BackgroundColor3 = Color3.new(0, 0, 0)
 CodeEditor.TextColor3 = Color3.new(1, 1, 1)
