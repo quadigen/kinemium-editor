@@ -409,8 +409,13 @@ local dragLayer = nil
 local dragTween = nil
 local clipboard = nil
 local renaming = nil
+local renamedInstance = nil
+local renameCommit = nil
 local pendingRebuild = false
 local openContextMenu
+local commitRename
+local cancelRename
+local closeContextMenu
 
 local function isDescendantOf(candidate, ancestor)
 	local current = candidate
@@ -426,7 +431,25 @@ local function isDescendantOf(candidate, ancestor)
 	return false
 end
 
+local function isProtected(instance)
+	if instance == nil then
+		return true
+	end
+
+	-- The DataModel root and every service are fixed: they cannot be renamed,
+	-- deleted, duplicated, reparented or accepted as a new parent.
+	if instance:IsA("DataModel") or instance:IsA("Service") then
+		return true
+	end
+
+	return false
+end
+
 local function canReparent(instance, newParent)
+	if isProtected(instance) or isProtected(newParent) then
+		return false
+	end
+
 	if instance == nil or newParent == nil then
 		return false
 	end
@@ -540,6 +563,11 @@ local function addRow(instance, depth, y)
 
 	row.InputBegan:Connect(function(input)
 		if input.UserInputType == Enum.UserInputType.MouseButton2 then
+			-- Commit any in-flight rename and dismiss the previous menu before
+			-- opening a new one, so neither outlives the interaction.
+			commitRename()
+			closeContextMenu()
+
 			Selection:Set({
 				instance,
 			})
@@ -551,6 +579,14 @@ local function addRow(instance, depth, y)
 
 		if input.UserInputType ~= Enum.UserInputType.MouseButton1 then
 			return
+		end
+
+		-- Clicking any row dismisses an open context menu and commits an
+		-- in-flight rename; neither should survive the interaction.
+		closeContextMenu()
+
+		if UI.isAlive(renaming) and not isDescendantOf(instance, renamedInstance) then
+			commitRename()
 		end
 
 		drag = {
@@ -675,7 +711,7 @@ searchField.TextChanged:Connect(function()
 end)
 
 local function deleteInstance(instance)
-	if instance == nil or instance:IsA("DataModel") then
+	if isProtected(instance) then
 		return
 	end
 
@@ -692,7 +728,7 @@ local function deleteInstance(instance)
 end
 
 local function duplicateInstance(instance)
-	if instance == nil or instance:IsA("DataModel") then
+	if isProtected(instance) then
 		return
 	end
 
@@ -713,7 +749,11 @@ local function duplicateInstance(instance)
 end
 
 local function beginRename(instance, row)
-	if instance == nil or UI.isAlive(renaming) then
+	if isProtected(instance) then
+		return
+	end
+
+	if UI.isAlive(renaming) then
 		return
 	end
 
@@ -736,6 +776,8 @@ local function beginRename(instance, row)
 	renaming.Text = instance.Name
 	renaming.SelectAll()
 
+	renamedInstance = instance
+
 	local committed = false
 
 	local function finish(apply)
@@ -744,6 +786,9 @@ local function beginRename(instance, row)
 		end
 
 		committed = true
+
+		renameCommit = nil
+		renamedInstance = nil
 
 		local text = renaming.Text
 
@@ -766,6 +811,8 @@ local function beginRename(instance, row)
 		end
 	end
 
+	renameCommit = finish
+
 	renaming.FocusLost:Connect(function()
 		finish(true)
 	end)
@@ -775,13 +822,21 @@ local function beginRename(instance, row)
 	end)
 end
 
-local function cancelRename()
-	if renaming ~= nil and UI.isAlive(renaming) then
-		local field = renaming
+-- Applies the pending rename, if any. Clicking elsewhere in the tree should
+-- keep whatever was typed rather than silently discarding it.
+commitRename = function()
+	local commit = renameCommit
 
-		renaming = nil
+	if commit ~= nil then
+		commit(true)
+	end
+end
 
-		field:Destroy()
+cancelRename = function()
+	local commit = renameCommit
+
+	if commit ~= nil then
+		commit(false)
 	end
 end
 
@@ -835,6 +890,8 @@ openContextMenu = function(instance, screenPoint)
 				itemHeight = UI.metrics.inputHeight,
 				maxVisibleItems = 6,
 				itemBgTransparency = 1,
+			-- No filter field: this is a short fixed action list.
+			showSearch = false,
 			-- Outside-click dismissal only listens for left-click, which would
 			-- leave the menu stuck open after a right-click elsewhere.
 			closeOnOutsideClick = false,
@@ -909,7 +966,7 @@ openContextMenu = function(instance, screenPoint)
 	contextMenu:Open()
 end
 
-local function closeContextMenu()
+closeContextMenu = function()
 	if contextMenu ~= nil then
 		contextMenu:Close()
 	end
@@ -1130,6 +1187,15 @@ UserInputService.InputBegan:Connect(function(input: InputObject, gameProcessed: 
 		end
 
 		return
+	end
+
+	if input.UserInputType == Enum.UserInputType.MouseButton1 then
+		-- A left-click that did not land on a row (the row handler opens and
+		-- dismisses its own menu) still dismisses the menu and any rename.
+		if not mouseInList() then
+			closeContextMenu()
+			commitRename()
+		end
 	end
 
 	if input.KeyCode == Enum.KeyCode.Escape then

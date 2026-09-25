@@ -3289,6 +3289,11 @@ function UI.dropdown(parent, value, position, size, chevronIcon, options)
 			local menuWidth = options.menuWidth or 140
 			local menuHeight = visibleRows * rowHeight
 
+			-- Context menus pass showSearch = false to drop the built-in filter
+			-- field; the list then occupies the full menu height.
+			local showSearch = options.showSearch ~= false
+			local searchHeight = showSearch and 34 or 0
+
 			local fixedMenuPosition = options.menuPosition
 			if type(fixedMenuPosition) == "function" then
 				fixedMenuPosition = fixedMenuPosition()
@@ -3298,7 +3303,7 @@ function UI.dropdown(parent, value, position, size, chevronIcon, options)
 				local menu = UI.frame(
 					UI.RootOverlay(),
 					fixedMenuPosition,
-					UDim2.fromOffset(menuWidth, menuHeight + 34),
+					UDim2.fromOffset(menuWidth, menuHeight + searchHeight),
 					options.menuColor or colors.panelRaised,
 					options.radius or UI.tokens.radius.sm
 				)
@@ -3317,18 +3322,21 @@ function UI.dropdown(parent, value, position, size, chevronIcon, options)
 				menu.ClipsDescendants = true
 				UI.stroke(menu, options.borderColor or colors.borderStrong, 1, options.borderTransparency or 0)
 
-				local search = UI.input(
-					menu,
-					options.searchPlaceholder or "Search...",
-					UDim2.fromOffset(5, 5),
-					UDim2.new(1, -10, 0, 24),
-					{ textSize = options.textSize or UI.tokens.type.small }
-				)
-				search.ZIndex = (options.menuZIndex or 100000) + 1
+				local search
+				if showSearch then
+					search = UI.input(
+						menu,
+						options.searchPlaceholder or "Search...",
+						UDim2.fromOffset(5, 5),
+						UDim2.new(1, -10, 0, 24),
+						{ textSize = options.textSize or UI.tokens.type.small }
+					)
+					search.ZIndex = (options.menuZIndex or 100000) + 1
+				end
 
 				local list = UI.create("ScrollingFrame", {
-					Position = UDim2.fromOffset(0, 34),
-					Size = UDim2.new(1, 0, 1, -34),
+					Position = UDim2.fromOffset(0, searchHeight),
+					Size = UDim2.new(1, 0, 1, -searchHeight),
 					BackgroundTransparency = 1,
 					BorderSizePixel = 0,
 					CanvasPosition = Vector2.new(0, 0),
@@ -3353,7 +3361,7 @@ function UI.dropdown(parent, value, position, size, chevronIcon, options)
 
 				local function renderItems()
 					UI.clear(list)
-					local query = string.lower(search.Text or "")
+					local query = search and string.lower(search.Text or "") or ""
 					local y = 0
 					local visible = 0
 					local categories = options.categories
@@ -3455,7 +3463,10 @@ function UI.dropdown(parent, value, position, size, chevronIcon, options)
 					end
 					list.CanvasSize = UDim2.new(1, 0, 0, math.max(y, rowHeight))
 				end
-				search.FocusLost:Connect(renderItems)
+				if search then
+					search.TextChanged:Connect(renderItems)
+					search.FocusLost:Connect(renderItems)
+				end
 				renderItems()
 
 				shared.activeDropdown = {
