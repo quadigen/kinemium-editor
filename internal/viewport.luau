@@ -296,6 +296,7 @@ local tabStrip = UI.create("ScrollingFrame", {
 	BorderSizePixel = 0,
 	CanvasSize = UDim2.new(),
 	ScrollingEnabled = true,
+	ScrollingDirection = Enum.ScrollingDirection.X,
 	ScrollBarThickness = 4,
 	ScrollBarImageColor3 = tokens.color.subtext,
 	ScrollBarImageTransparency = 0.4,
@@ -308,12 +309,6 @@ local tabStrip = UI.create("ScrollingFrame", {
 	InputSink = true,
 	Visible = false,
 }, viewportOverlay)
-
--- `Enum.ScrollingDirection` is not guaranteed on every runtime, so restrict the
--- strip to horizontal scrolling when it is available instead of hard-failing.
-pcall(function()
-	tabStrip.ScrollingDirection = Enum.ScrollingDirection.X
-end)
 
 -- One entry per script the user has opened. `source` is the live buffer and
 -- `instance` is the backing Script (nil for a scratch buffer). The remaining
@@ -480,11 +475,6 @@ closeDocument = function(document)
 
 	commitDocument(document)
 
-	if document.destroyConnection then
-		document.destroyConnection:Disconnect()
-		document.destroyConnection = nil
-	end
-
 	if document.instance ~= nil then
 		documentByInstance[document.instance] = nil
 	end
@@ -535,14 +525,6 @@ local function openScript(instance)
 
 		table.insert(documents, document)
 		documentByInstance[instance] = document
-
-		-- Preferred signal, but the render pool also prunes documents whose
-		-- instance is gone, so a runtime without `Destroying` still converges.
-		pcall(function()
-			document.destroyConnection = instance.Destroying:Connect(function()
-				closeDocument(document)
-			end)
-		end)
 	end
 
 	focusDocument(document)
@@ -557,7 +539,7 @@ local function closeAllScripts()
 	end
 end
 
-CodeEditor:GetPropertyChangedSignal("Text"):Connect(function()
+CodeEditor.TextChanged:Connect(function()
 	if suppressTextSync or activeDocument == nil then
 		return
 	end
