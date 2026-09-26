@@ -3405,7 +3405,9 @@ function UI.dropdown(parent, value, position, size, chevronIcon, options)
 											iconSize = options.iconSize or 14,
 										}
 									)
-									button.BackgroundTransparency = options.itemBgTransparency or 0
+									button.BackgroundTransparency = options.itemBgTransparency
+										or options.BackgroundTransparency
+										or 0
 									y += rowHeight
 									visible += 1
 								end
