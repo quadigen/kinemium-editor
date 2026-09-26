@@ -291,11 +291,6 @@ end)
 -- Update loop -------------------------------------------------------------
 
 local function update()
-	gui.Enabled = profiler.Enabled
-	if not gui.Enabled then
-		return
-	end
-
 	local paused = profiler.Paused
 	pauseBtn.Text = paused and "Resume" or "Pause"
 	navRow.Visible = paused and expanded
