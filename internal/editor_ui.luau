@@ -3622,9 +3622,7 @@ function UI.dropdown(parent, value, position, size, chevronIcon, options)
 					itemText,
 					UDim2.fromOffset(0, (index - 1) * rowHeight),
 					UDim2.new(1, 0, 0, rowHeight),
-					function()
-						-- unchanged
-					end,
+					function() end,
 					{
 						color = selected and colors.selection or options.menuColor or colors.panelRaised,
 						hoverColor = selected and colors.selectionHover or colors.hover,
@@ -3705,11 +3703,6 @@ function UI.dropdown(parent, value, position, size, chevronIcon, options)
 		end
 	end
 
-	-- Opens (or toggles closed) the popup without the caller needing a visible
-	-- trigger button. Context menus reuse this: they create an offscreen
-	-- dropdown purely to borrow its popup, set `options.menuPosition` to the
-	-- cursor, then call Open(). The button callback is the same closure the
-	-- record holds, so this is a toggle exactly like a real click.
 	function controller:Open()
 		if record == nil or record.destroyed or not UI.isAlive(record.gui) then
 			return
