@@ -3301,7 +3301,7 @@ function UI.dropdown(parent, value, position, size, chevronIcon, options)
 						Enabled = true,
 						BlurRadius = options.backdropBlur or 18,
 						TintColor3 = options.backdropColor or colors.panelRaised,
-						TintTransparency = options.backdropTransparency or 0.85,
+						TintTransparency = options.backdropTransparency or options.BackgroundTransparency or 0.85,
 					}, menu)
 				end
 
