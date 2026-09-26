@@ -10,7 +10,7 @@ local colors = UI.colors
 local tokens = UI.tokens
 
 local profiler_gui = Instance.new("ScreenGui")
-profiler_gui.Parent = game.CoreGui
+profiler_gui.Parent = game:GetService("StarterGui")
 
 local list = Instance.new("Frame")
 list.AnchorPoint = Vector2.new(1, 0)
@@ -22,3 +22,5 @@ list.Parent = profiler_gui
 
 local backdrop = Instance.new("UIBackdrop")
 backdrop.Parent = list
+
+print(profiler_gui:GetChildren())
