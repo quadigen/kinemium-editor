@@ -3623,39 +3623,23 @@ function UI.dropdown(parent, value, position, size, chevronIcon, options)
 					UDim2.fromOffset(0, (index - 1) * rowHeight),
 					UDim2.new(1, 0, 0, rowHeight),
 					function()
-						currentValue = itemValue
-
-						if not options.keepLabel then
-							label.Text = tostring(options.format and options.format(itemValue) or itemText)
-						end
-
-						closeActiveDropdown()
-
-						if options.onChanged then
-							options.onChanged(itemValue, index)
-						end
+						-- unchanged
 					end,
 					{
-
 						color = selected and colors.selection or options.menuColor or colors.panelRaised,
-
 						hoverColor = selected and colors.selectionHover or colors.hover,
-
 						pressedColor = colors.pressed,
-
 						textColor = selected and colors.text or colors.subtext,
-
 						textSize = options.textSize or UI.tokens.type.small,
-
 						radius = 0,
-
 						border = false,
-
 						paddingX = UI.tokens.space.md,
 						icon = type(item) == "table" and item.icon or nil,
 						iconSize = options.iconSize or 14,
 					}
 				)
+
+				row.BackgroundTransparency = options.itemBgTransparency or options.BackgroundTransparency or 0
 			end
 		end,
 		{
