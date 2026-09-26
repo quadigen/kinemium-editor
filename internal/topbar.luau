@@ -1,4 +1,4 @@
-if IsServer or IsClient then
+if (IsServer or IsClient) and not IsPlaytest then
 	return
 end
 

@@ -1,3 +1,6 @@
+if (IsServer or IsClient) and not IsPlaytest then
+	return
+end
 local UI = require("@internal/editor_ui")
 local project_manager = require("@internal/projects")
 local plugin_marketplace = require("@internal/marketplace")
