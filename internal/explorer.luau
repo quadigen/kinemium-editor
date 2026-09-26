@@ -793,18 +793,13 @@ openContextMenu = function(instance, screenPoint)
 	contextTarget = instance
 
 	if contextMenu == nil then
-		-- An offscreen dropdown that exists only to borrow the shared popup
-		-- styling, search field and outside-click dismissal.
 		contextMenuOptions = {
 			items = {},
 			menuWidth = 168,
 			itemHeight = UI.metrics.inputHeight,
 			maxVisibleItems = 6,
 			itemBgTransparency = 1,
-			-- No filter field: this is a short fixed action list.
 			showSearch = false,
-			-- Outside-click dismissal only listens for left-click, which would
-			-- leave the menu stuck open after a right-click elsewhere.
 			closeOnOutsideClick = false,
 			menuPosition = function()
 				return UDim2.fromOffset(0, 0)
