@@ -1,4 +1,4 @@
-if (IsServer or IsClient) or not IsPlaytest then
+if (IsServer or IsClient) or IsPlaytest then
 	return nil
 end
 local UI = require("@internal/editor_ui")

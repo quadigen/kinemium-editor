@@ -1,7 +1,7 @@
 print(IsServer)
 print(IsClient)
 print(IsPlaytest)
-if (IsServer or IsClient) and not IsPlaytest then
+if (IsServer or IsClient) or IsPlaytest then
 	return
 end
 
