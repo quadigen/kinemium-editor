@@ -3552,7 +3552,7 @@ function UI.dropdown(parent, value, position, size, chevronIcon, options)
 				Position = UDim2.fromOffset(menuX, menuY),
 				Size = UDim2.fromOffset(menuWidth, menuHeight),
 				BackgroundColor3 = options.menuColor or colors.panelRaised,
-				BackgroundTransparency = 0,
+				BackgroundTransparency = options.BackgroundTransparency or 0,
 				BorderSizePixel = 0,
 				CanvasPosition = Vector2.new(0, 0),
 				CanvasSize = UDim2.new(1, 0, 0, #items * rowHeight),
