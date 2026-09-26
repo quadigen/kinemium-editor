@@ -496,6 +496,7 @@ for _, category in ipairs(engineCategories) do
 
 				setExpanded(false)
 			end,
+
 			BackgroundTransparency = 0.6,
 			backdrop = true,
 
@@ -524,6 +525,7 @@ for _, category in ipairs(engineCategories) do
 		})
 
 	button.Name = categoryName .. "Menu"
+	button.BackgroundTransparency = 0.5
 
 	table.insert(engineButtonRecords, record)
 	table.insert(engineButtonLabels, label)
