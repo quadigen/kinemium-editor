@@ -44,10 +44,17 @@ create_counter("FPS", function()
 	return ProfilerService.FPS
 end)
 
+create_counter("Frame Time", function()
+	return ProfilerService.FrameTime
+end)
+
 RunService.Heartbeat:Connect(function(a0: number)
 	for _, label in pairs(counters) do
 		local val = label.cb()
 		if val then
+			if label.label == nil then
+				continue
+			end
 			label.label.Text = `{label.name}: {tostring(val)}`
 		end
 	end
