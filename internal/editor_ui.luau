@@ -3305,7 +3305,7 @@ function UI.dropdown(parent, value, position, size, chevronIcon, options)
 					}, menu)
 				end
 
-				menu.BackgroundTransparency = 1
+				menu.BackgroundTransparency = options.BackgroundTransparency or 0
 				menu.Name = "DropdownMenu"
 				menu.ZIndex = options.menuZIndex or 100000
 				menu.ClipsDescendants = true
@@ -3554,7 +3554,7 @@ function UI.dropdown(parent, value, position, size, chevronIcon, options)
 				Position = UDim2.fromOffset(menuX, menuY),
 				Size = UDim2.fromOffset(menuWidth, menuHeight),
 				BackgroundColor3 = options.menuColor or colors.panelRaised,
-				BackgroundTransparency = 1,
+				BackgroundTransparency = options.BackgroundTransparency or 0,
 				BorderSizePixel = 0,
 				CanvasPosition = Vector2.new(0, 0),
 				CanvasSize = UDim2.new(1, 0, 0, #items * rowHeight),
