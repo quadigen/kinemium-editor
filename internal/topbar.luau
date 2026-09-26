@@ -471,7 +471,8 @@ for _, category in ipairs(engineCategories) do
 		end
 	end
 
-	local button, label, record =
+	local button
+	button, label, record =
 		UI.dropdown(headerSurface, categoryName, UDim2.fromOffset(headerX, 4), UDim2.fromOffset(width, 24), nil, {
 			items = items,
 
