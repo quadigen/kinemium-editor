@@ -2,374 +2,396 @@ if not IsPlaytest then
 	return
 end
 
-local UI = require("@internal/editor_ui")
 local StudioThemeService = game:GetService("StudioThemeService")
-local theme = StudioThemeService.SelectedTheme
-local LogService = game:GetService("LogService")
 local RunService = game:GetService("RunService")
+local theme = StudioThemeService.SelectedTheme
+
 local profiler = game:GetService("ProfilerService")
-local colors = UI.colors
-local tokens = UI.tokens
 
-local ROW_H = 18
-local MAX_ROWS = 16
-local GRAPH_POINTS = 60
+-- Try to pull colors from the editor theme; fall back to the same palette
+-- used by the in-game profiler overlay if the theme API doesn't match.
+local function themeColor(styleGuideColor, fallback)
+	local ok, col = pcall(function()
+		return theme:GetColor(styleGuideColor)
+	end)
+	if ok and typeof(col) == "Color3" then
+		return col
+	end
+	return fallback
+end
 
-local PANEL_BG = Color3.new(0.055, 0.07, 0.10)
-local GRAPH_BG = Color3.new(0.09, 0.11, 0.14)
-local ROW_BG = Color3.new(0.13, 0.145, 0.18)
-local TEXT = Color3.new(0.82, 0.86, 0.92)
-local DIM = Color3.new(0.45, 0.50, 0.58)
+local BG = themeColor(Enum.StudioStyleGuideColor.MainBackground, Color3.new(0.055, 0.07, 0.10))
+local BG_ALT = themeColor(Enum.StudioStyleGuideColor.Tab, Color3.new(0.09, 0.11, 0.14))
+local ROW_BG = themeColor(Enum.StudioStyleGuideColor.Item, Color3.new(0.13, 0.145, 0.18))
+local TEXT = themeColor(Enum.StudioStyleGuideColor.MainText, Color3.new(0.82, 0.86, 0.92))
+local DIM = themeColor(Enum.StudioStyleGuideColor.SubText, Color3.new(0.45, 0.50, 0.58))
+
 local ACCENT = Color3.new(0.337, 0.714, 0.761)
+local GOOD = Color3.new(0.35, 0.75, 0.45)
+local WARN = Color3.new(0.85, 0.70, 0.25)
+local BAD = Color3.new(0.85, 0.35, 0.35)
+
+local GRAPH_POINTS = 40
+local MAX_ROWS = 8
+local ROW_H = 15
+local TOPBAR_W = 300
+local TOPBAR_H = 26
+local EXPANDED_H = 230
 
 local function colorFromRGB(c)
 	return Color3.new(math.floor(c / 65536) / 255, math.floor((c % 65536) / 256) / 255, (c % 256) / 255)
 end
 
-local function makeLabel(parent, text, size, color)
+local function fpsColor(fps)
+	if fps >= 50 then
+		return GOOD
+	elseif fps >= 30 then
+		return WARN
+	end
+	return BAD
+end
+
+local function makeLabel(parent, text, size, color, bold)
 	local l = Instance.new("TextLabel")
 	l.Parent = parent
 	l.Text = text or ""
 	l.TextSize = size or 12
 	l.TextColor3 = color or TEXT
+	l.Font = bold and Enum.Font.GothamBold or Enum.Font.Gotham
 	l.BackgroundTransparency = 1
+	l.TextXAlignment = Enum.TextXAlignment.Left
 	return l
 end
 
-local screenGui = Instance.new("ScreenGui")
-screenGui.Name = "ProfilerOverlay"
-screenGui.RenderOnTop = true
-screenGui.IgnoreGuiInset = true
-screenGui.Enabled = true
+-- Root GUI ------------------------------------------------------------
 
-local panel = Instance.new("Frame")
-panel.Name = "Panel"
-panel.Parent = screenGui
-panel.Position = UDim2.new(0, 0, 0, 0)
-panel.Size = UDim2.new(1, 0, 1, 0)
-panel.BackgroundColor3 = PANEL_BG
-panel.BackgroundTransparency = 0.06
-panel.ZIndex = 1
+local gui = Instance.new("ScreenGui")
+gui.Name = "ProfilerTopbar"
+gui.ResetOnSpawn = false
+gui.IgnoreGuiInset = true
+gui.Enabled = profiler.Enabled
+gui.Parent = game:GetService("StarterGui")
 
-local headerBg = Instance.new("Frame")
-headerBg.Parent = panel
-headerBg.Position = UDim2.new(0, 0, 0, 0)
-headerBg.Size = UDim2.new(1, 0, 0, 34)
-headerBg.BackgroundColor3 = Color3.new(0.02, 0.025, 0.04)
-headerBg.ZIndex = 2
+local root = Instance.new("Frame")
+root.Name = "Root"
+root.AnchorPoint = Vector2.new(0.5, 0)
+root.Position = UDim2.new(0.5, 0, 0, 4)
+root.Size = UDim2.new(0, TOPBAR_W, 0, TOPBAR_H)
+root.BackgroundTransparency = 1
+root.ClipsDescendants = false
+root.Parent = gui
 
-local title = makeLabel(headerBg, "PROFILER", 15, ACCENT)
-title.Position = UDim2.new(0, 12, 0, 7)
-title.Size = UDim2.new(0, 120, 0, 20)
-title.ZIndex = 3
+-- Topbar (always visible) ----------------------------------------------
 
-local header = makeLabel(headerBg, "FPS --", 13, TEXT)
-header.Position = UDim2.new(0, 140, 0, 8)
-header.Size = UDim2.new(0, 260, 0, 20)
-header.ZIndex = 3
+local topbar = Instance.new("Frame")
+topbar.Name = "Topbar"
+topbar.Size = UDim2.new(1, 0, 0, TOPBAR_H)
+topbar.BackgroundColor3 = BG
+topbar.BackgroundTransparency = 0.08
+topbar.Parent = root
+
+local statusDot = Instance.new("Frame")
+statusDot.Name = "StatusDot"
+statusDot.AnchorPoint = Vector2.new(0, 0.5)
+statusDot.Position = UDim2.new(0, 8, 0.5, 0)
+statusDot.Size = UDim2.new(0, 8, 0, 8)
+statusDot.BackgroundColor3 = GOOD
+statusDot.Parent = topbar
+
+local fpsLabel = makeLabel(topbar, "FPS --", 13, TEXT, true)
+fpsLabel.Position = UDim2.new(0, 22, 0, 0)
+fpsLabel.Size = UDim2.new(0, 64, 1, 0)
+fpsLabel.Parent = topbar
+
+local msLabel = makeLabel(topbar, "-- ms", 12, DIM)
+msLabel.Position = UDim2.new(0, 88, 0, 0)
+msLabel.Size = UDim2.new(0, 90, 1, 0)
+msLabel.Parent = topbar
 
 local pauseBtn = Instance.new("TextButton")
 pauseBtn.Name = "PauseButton"
-pauseBtn.Parent = headerBg
-pauseBtn.Position = UDim2.new(1, -110, 0, 5)
-pauseBtn.Size = UDim2.new(0, 100, 0, 24)
+pauseBtn.AnchorPoint = Vector2.new(1, 0.5)
+pauseBtn.Position = UDim2.new(1, -30, 0.5, 0)
+pauseBtn.Size = UDim2.new(0, 44, 0, 18)
 pauseBtn.BackgroundColor3 = ACCENT
-pauseBtn.BackgroundTransparency = 0.15
+pauseBtn.BackgroundTransparency = 0.2
 pauseBtn.Text = "Pause"
-pauseBtn.TextSize = 13
+pauseBtn.TextSize = 11
 pauseBtn.TextColor3 = Color3.new(1, 1, 1)
-pauseBtn.ZIndex = 3
+pauseBtn.Parent = topbar
 
-local nav = Instance.new("Frame")
-nav.Parent = headerBg
-nav.Position = UDim2.new(1, -360, 0, 5)
-nav.Size = UDim2.new(0, 240, 0, 24)
-nav.BackgroundTransparency = 1
-nav.ZIndex = 3
-nav.Visible = profiler.Paused
+local expandBtn = Instance.new("TextButton")
+expandBtn.Name = "ExpandButton"
+expandBtn.AnchorPoint = Vector2.new(1, 0.5)
+expandBtn.Position = UDim2.new(1, -4, 0.5, 0)
+expandBtn.Size = UDim2.new(0, 20, 0, 18)
+expandBtn.BackgroundTransparency = 1
+expandBtn.Text = "v"
+expandBtn.TextSize = 13
+expandBtn.TextColor3 = TEXT
+expandBtn.Parent = topbar
 
-local frameLabel = makeLabel(nav, "frame --/--", 13, TEXT)
-frameLabel.Position = UDim2.new(0, 0, 0, 2)
-frameLabel.Size = UDim2.new(0, 160, 0, 20)
-frameLabel.ZIndex = 4
+-- Expanded panel (hidden until maximized) ------------------------------
 
-local prevBtn = Instance.new("TextButton")
-prevBtn.Parent = nav
-prevBtn.Position = UDim2.new(0, 165, 0, 0)
-prevBtn.Size = UDim2.new(0, 34, 0, 22)
-prevBtn.BackgroundColor3 = Color3.new(0.2, 0.25, 0.32)
-prevBtn.Text = "<"
-prevBtn.TextSize = 14
-prevBtn.TextColor3 = TEXT
-prevBtn.ZIndex = 4
-
-local nextBtn = Instance.new("TextButton")
-nextBtn.Parent = nav
-nextBtn.Position = UDim2.new(0, 204, 0, 0)
-nextBtn.Size = UDim2.new(0, 34, 0, 22)
-nextBtn.BackgroundColor3 = Color3.new(0.2, 0.25, 0.32)
-nextBtn.Text = ">"
-nextBtn.TextSize = 14
-nextBtn.TextColor3 = TEXT
-nextBtn.ZIndex = 4
-
-local BODY_Y = 44
-local GRAPH_H = 92
+local panel = Instance.new("Frame")
+panel.Name = "Panel"
+panel.Position = UDim2.new(0, 0, 0, TOPBAR_H + 2)
+panel.Size = UDim2.new(1, 0, 0, EXPANDED_H)
+panel.BackgroundColor3 = BG
+panel.BackgroundTransparency = 0.08
+panel.Visible = false
+panel.Parent = root
 
 local graph = Instance.new("Frame")
-graph.Name = "FrameGraph"
+graph.Name = "Graph"
+graph.Position = UDim2.new(0, 6, 0, 6)
+graph.Size = UDim2.new(1, -12, 0, 54)
+graph.BackgroundColor3 = BG_ALT
+graph.BackgroundTransparency = 0.2
 graph.Parent = panel
-graph.Position = UDim2.new(0, 12, 0, BODY_Y)
-graph.Size = UDim2.new(1, -24, 0, GRAPH_H)
-graph.BackgroundColor3 = GRAPH_BG
-graph.BackgroundTransparency = 0.25
-graph.ZIndex = 2
-
-local graphTitle = makeLabel(graph, "frame time (ms)", 11, DIM)
-graphTitle.Position = UDim2.new(0, 8, 0, 4)
-graphTitle.Size = UDim2.new(0, 180, 0, 16)
-graphTitle.ZIndex = 3
 
 local graphBars = {}
-local barWidth = math.max(math.floor((1280 - 24) / GRAPH_POINTS), 1)
 for i = 1, GRAPH_POINTS do
 	local bar = Instance.new("Frame")
-	bar.Parent = graph
 	bar.Name = "Bar"
-	bar.Size = UDim2.new(0, barWidth - 1, 0, 0)
-	bar.ZIndex = 3
+	bar.AnchorPoint = Vector2.new(0, 1)
+	bar.BackgroundColor3 = ACCENT
+	bar.BorderSizePixel = 0
+	bar.Parent = graph
 	graphBars[i] = bar
 end
 
-local rowArea = Instance.new("Frame")
-rowArea.Parent = panel
-rowArea.Position = UDim2.new(0, 12, 0, BODY_Y + GRAPH_H + 8)
-rowArea.Size = UDim2.new(1, -340, 1, -(BODY_Y + GRAPH_H + 20))
-rowArea.BackgroundColor3 = GRAPH_BG
-rowArea.BackgroundTransparency = 0.25
-rowArea.ZIndex = 2
+local statsRow = Instance.new("Frame")
+statsRow.Name = "Stats"
+statsRow.Position = UDim2.new(0, 6, 0, 64)
+statsRow.Size = UDim2.new(1, -12, 0, 16)
+statsRow.BackgroundTransparency = 1
+statsRow.Parent = panel
 
-local rowTitle = makeLabel(rowArea, "zones", 11, DIM)
-rowTitle.Position = UDim2.new(0, 8, 0, 4)
-rowTitle.Size = UDim2.new(0, 120, 0, 16)
-rowTitle.ZIndex = 3
+local minLabel = makeLabel(statsRow, "min --", 11, DIM)
+minLabel.Position = UDim2.new(0, 0, 0, 0)
+minLabel.Size = UDim2.new(0.25, 0, 1, 0)
 
-local statsPanel = Instance.new("Frame")
-statsPanel.Name = "StatsPanel"
-statsPanel.Parent = panel
-statsPanel.Position = UDim2.new(1, -316, 0, BODY_Y + GRAPH_H + 8)
-statsPanel.Size = UDim2.new(0, 296, 1, -(BODY_Y + GRAPH_H + 20))
-statsPanel.BackgroundColor3 = GRAPH_BG
-statsPanel.BackgroundTransparency = 0.25
-statsPanel.ZIndex = 2
+local maxLabel = makeLabel(statsRow, "max --", 11, DIM)
+maxLabel.Position = UDim2.new(0.25, 0, 0, 0)
+maxLabel.Size = UDim2.new(0.25, 0, 1, 0)
 
-local statLabels = {}
-local function addStat(name)
-	local cap = makeLabel(statsPanel, name, 11, DIM)
-	cap.Position = UDim2.new(0, 10, 0, 8 + #statLabels * 22)
-	cap.Size = UDim2.new(0, 140, 0, 16)
-	cap.ZIndex = 3
-	local val = makeLabel(statsPanel, "--", 12, TEXT)
-	val.Position = UDim2.new(0, 150, 0, 8 + #statLabels * 22)
-	val.Size = UDim2.new(0, 136, 0, 16)
-	val.ZIndex = 3
-	statLabels[#statLabels + 1] = { cap = cap, val = val }
-	return val
-end
+local avgLabel = makeLabel(statsRow, "avg --", 11, DIM)
+avgLabel.Position = UDim2.new(0.5, 0, 0, 0)
+avgLabel.Size = UDim2.new(0.25, 0, 1, 0)
 
-local statFrame = addStat("frame")
-local statNumZones = addStat("zones")
-local statLast = addStat("last")
-local statMin = addStat("min")
-local statMax = addStat("max")
-local statAvg = addStat("avg")
+local frameNavLabel = makeLabel(statsRow, "", 11, DIM)
+frameNavLabel.Position = UDim2.new(0.75, 0, 0, 0)
+frameNavLabel.Size = UDim2.new(0.25, 0, 1, 0)
+frameNavLabel.TextXAlignment = Enum.TextXAlignment.Right
+
+local navRow = Instance.new("Frame")
+navRow.Name = "NavRow"
+navRow.Position = UDim2.new(0, 6, 0, 82)
+navRow.Size = UDim2.new(1, -12, 0, 18)
+navRow.BackgroundTransparency = 1
+navRow.Visible = false
+navRow.Parent = panel
+
+local prevBtn = Instance.new("TextButton")
+prevBtn.Size = UDim2.new(0, 26, 1, 0)
+prevBtn.BackgroundColor3 = ROW_BG
+prevBtn.Text = "<"
+prevBtn.TextColor3 = TEXT
+prevBtn.Parent = navRow
+
+local nextBtn = Instance.new("TextButton")
+nextBtn.Position = UDim2.new(0, 30, 0, 0)
+nextBtn.Size = UDim2.new(0, 26, 1, 0)
+nextBtn.BackgroundColor3 = ROW_BG
+nextBtn.Text = ">"
+nextBtn.TextColor3 = TEXT
+nextBtn.Parent = navRow
+
+local zoneHeader = makeLabel(panel, "zones", 11, DIM)
+zoneHeader.Position = UDim2.new(0, 6, 0, 104)
+zoneHeader.Size = UDim2.new(0, 100, 0, 14)
 
 local rowObjs = {}
 for i = 1, MAX_ROWS do
 	local row = Instance.new("Frame")
-	row.Parent = rowArea
-	row.Position = UDim2.new(0, 8, 0, 26 + (i - 1) * ROW_H)
-	row.Size = UDim2.new(1, -16, 0, ROW_H - 2)
+	row.Position = UDim2.new(0, 6, 0, 120 + (i - 1) * ROW_H)
+	row.Size = UDim2.new(1, -12, 0, ROW_H - 1)
 	row.BackgroundColor3 = ROW_BG
-	row.BackgroundTransparency = 0.2
-	row.ZIndex = 3
+	row.BackgroundTransparency = 0.25
+	row.Visible = false
+	row.Parent = panel
 
 	local bar = Instance.new("Frame")
-	bar.Parent = row
 	bar.Size = UDim2.new(0, 0, 1, 0)
-	bar.BackgroundColor3 = Color3.new(0.3, 0.6, 0.3)
 	bar.BackgroundTransparency = 0.1
-	bar.ZIndex = 4
+	bar.Parent = row
 
-	local name = makeLabel(row, "", 12, TEXT)
-	name.Position = UDim2.new(0, 6, 0, 0)
-	name.Size = UDim2.new(1, -110, 1, 0)
-	name.TextXAlignment = "Left"
-	name.ZIndex = 4
+	local name = makeLabel(row, "", 11, TEXT)
+	name.Position = UDim2.new(0, 4, 0, 0)
+	name.Size = UDim2.new(1, -80, 1, 0)
 
-	local time = makeLabel(row, "", 12, DIM)
-	time.Position = UDim2.new(1, -76, 0, 0)
-	time.Size = UDim2.new(0, 70, 1, 0)
-	time.TextXAlignment = "Right"
-	time.ZIndex = 4
+	local time = makeLabel(row, "", 11, DIM)
+	time.Position = UDim2.new(1, -60, 0, 0)
+	time.Size = UDim2.new(0, 56, 1, 0)
+	time.TextXAlignment = Enum.TextXAlignment.Right
 
-	rowObjs[i] = { bar = bar, name = name, time = time }
+	rowObjs[i] = { root = row, bar = bar, name = name, time = time }
 end
 
-local selected = 1
+-- State / interaction ---------------------------------------------------
 
-local function pauseSet(on)
+local expanded = false
+local selectedFrame = 1
+
+local function setExpanded(on)
+	expanded = on
+	panel.Visible = on
+	root.Size = UDim2.new(0, TOPBAR_W, 0, TOPBAR_H + (on and (EXPANDED_H + 2) or 0))
+	expandBtn.Text = on and "^" or "v"
+	navRow.Visible = on and profiler.Paused
+end
+
+local function setPaused(on)
 	if on then
 		profiler:Pause()
 	else
 		profiler:Resume()
 	end
-	nav.Visible = on
 	pauseBtn.Text = on and "Resume" or "Pause"
+	navRow.Visible = on and expanded
 end
 
+expandBtn.MouseButton1Click:Connect(function()
+	setExpanded(not expanded)
+end)
+
+topbar.InputBegan:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseButton1 then
+		setExpanded(not expanded)
+	end
+end)
+
 pauseBtn.MouseButton1Click:Connect(function()
-	pauseSet(not profiler.Paused)
+	setPaused(not profiler.Paused)
 end)
 
 prevBtn.MouseButton1Click:Connect(function()
-	if selected < profiler.FrameCount then
-		selected = selected + 1
+	-- Previous = older frame = larger index (1 = newest).
+	if selectedFrame < profiler.FrameCount then
+		selectedFrame = selectedFrame + 1
 	end
 end)
 
 nextBtn.MouseButton1Click:Connect(function()
-	if selected > 1 then
-		selected = selected - 1
+	if selectedFrame > 1 then
+		selectedFrame = selectedFrame - 1
 	end
 end)
 
-local function update()
-	local stats = profiler:GetFrameStats()
+-- Update loop -------------------------------------------------------------
 
-	screenGui.Enabled = stats.enabled
+local function update()
+	gui.Enabled = profiler.Enabled
+	if not gui.Enabled then
+		return
+	end
 
 	local paused = profiler.Paused
 	pauseBtn.Text = paused and "Resume" or "Pause"
-	nav.Visible = paused
+	navRow.Visible = paused and expanded
 
-	local frameMs = stats.frameMs
-	local fps = stats.fps
-	local zones = stats.zones
+	local stats = profiler:GetFrameStats()
+	local frameMs, fps, zones, history = stats.frameMs, stats.fps, stats.zones, stats.history
 
 	if paused then
 		local count = profiler.FrameCount
-		if selected < 1 then
-			selected = 1
-		end
-		if selected > math.max(count, 1) then
-			selected = math.max(count, 1)
-		end
-
-		local rec = profiler:GetFrameRecord(selected)
+		selectedFrame = math.clamp(selectedFrame, 1, math.max(count, 1))
+		local rec = profiler:GetFrameRecord(selectedFrame)
 		if rec then
-			frameMs = rec.frameMs
-			fps = rec.fps
-			zones = rec.zones
+			frameMs, fps, zones = rec.frameMs, rec.fps, rec.zones
 		end
-		frameLabel.Text = string.format("frame %d/%d", selected, count)
+		frameNavLabel.Text = string.format("#%d/%d", selectedFrame, count)
 	else
-		selected = 1
-		frameLabel.Text = "frame --/--"
+		selectedFrame = 1
+		frameNavLabel.Text = ""
 	end
 
-	-- Header / fps line.
-	if frameMs > 0 then
-		header.Text = string.format("FPS %.1f   frame %.3f ms", fps, frameMs)
-		statFrame.Text = string.format("%d ms / %.1f fps", frameMs, fps)
+	if frameMs and frameMs > 0 then
+		fpsLabel.Text = string.format("FPS %d", math.floor(fps + 0.5))
+		fpsLabel.TextColor3 = fpsColor(fps)
+		msLabel.Text = string.format("%.2f ms", frameMs)
+		statusDot.BackgroundColor3 = fpsColor(fps)
 	else
-		header.Text = "FPS --   frame --"
-		statFrame.Text = "--"
+		fpsLabel.Text = "FPS --"
+		msLabel.Text = "-- ms"
 	end
 
-	local zoneCount = 0
-	if zones then
-		for _ in ipairs(zones) do
-			zoneCount = zoneCount + 1
-		end
+	if not expanded then
+		return
 	end
-	statNumZones.Text = tostring(zoneCount)
 
-	-- Graph of frame times.
+	-- Frame time graph.
 	local graphMax = 1
-	for _, ms in ipairs(stats.history) do
-		if ms > graphMax then
-			graphMax = ms
-		end
-	end
-	barWidth = math.max(math.floor((graph.AbsoluteSize.X - 16) / GRAPH_POINTS), 1)
-	for i = 1, GRAPH_POINTS do
-		local ms = stats.history[i]
-		local h = 0
-		if ms and ms > 0 then
-			h = math.floor(math.min(ms / graphMax, 1) * (GRAPH_H - 28))
-			if h < 1 then
-				h = 1
+	if history then
+		for _, ms in ipairs(history) do
+			if ms > graphMax then
+				graphMax = ms
 			end
 		end
-		graphBars[i].Position = UDim2.new(0, 8 + (i - 1) * barWidth, 0, 24)
-		graphBars[i].AnchorPoint = Vector2.new(0, 1)
-		graphBars[i].BackgroundColor3 = ACCENT
-		graphBars[i].Size = UDim2.new(0, math.max(barWidth - 1, 1), 0, h)
+	end
+	local graphW = math.max(graph.AbsoluteSize.X - 4, GRAPH_POINTS)
+	local barW = math.max(math.floor(graphW / GRAPH_POINTS), 1)
+	for i = 1, GRAPH_POINTS do
+		local ms = history and history[i]
+		local h = 0
+		if ms and ms > 0 then
+			h = math.max(math.floor(math.min(ms / graphMax, 1) * 46), 1)
+		end
+		local bar = graphBars[i]
+		bar.Position = UDim2.new(0, 2 + (i - 1) * barW, 1, -2)
+		bar.Size = UDim2.new(0, math.max(barW - 1, 1), 0, h)
 	end
 
-	-- Min/max/avg of the history window.
-	if stats.history and #stats.history > 0 then
+	-- Min / max / avg over the visible history window.
+	if history and #history > 0 then
 		local mn, mx, sum, n = math.huge, 0, 0, 0
-		for _, ms in ipairs(stats.history) do
+		for _, ms in ipairs(history) do
 			if ms > 0 then
-				if ms < mn then
-					mn = ms
-				end
-				if ms > mx then
-					mx = ms
-				end
-				sum = sum + ms
-				n = n + 1
+				mn = math.min(mn, ms)
+				mx = math.max(mx, ms)
+				sum += ms
+				n += 1
 			end
 		end
 		if n > 0 then
-			statMin.Text = string.format("%.3f ms", mn)
-			statMax.Text = string.format("%.3f ms", mx)
-			statAvg.Text = string.format("%.3f ms", sum / n)
-			statLast.Text = string.format("%.3f ms", stats.history[1])
-		else
-			statMin.Text = "--"
-			statMax.Text = "--"
-			statAvg.Text = "--"
-			statLast.Text = "--"
+			minLabel.Text = string.format("min %.2f", mn)
+			maxLabel.Text = string.format("max %.2f", mx)
+			avgLabel.Text = string.format("avg %.2f", sum / n)
 		end
 	end
 
-	-- Zones sorted by time, rendered as bars.
-	table.sort(zones or {}, function(a, b)
-		return a.ms > b.ms
-	end)
+	-- Zones, sorted by time descending.
+	if zones then
+		table.sort(zones, function(a, b)
+			return a.ms > b.ms
+		end)
+	end
 
 	for i = 1, MAX_ROWS do
 		local row = rowObjs[i]
 		local zone = zones and zones[i]
 		if zone then
 			row.name.Text = zone.name
-			row.time.Text = string.format("%.3f ms", zone.ms)
-			row.bar.Size = UDim2.new(0, math.floor(math.min(zone.ms / math.max(frameMs, 0.001), 1) * 280), 1, 0)
+			row.time.Text = string.format("%.2f ms", zone.ms)
+			row.bar.Size =
+				UDim2.new(0, math.floor(math.min(zone.ms / math.max(frameMs, 0.001), 1) * (TOPBAR_W - 20)), 1, 0)
 			row.bar.BackgroundColor3 = colorFromRGB(zone.color)
-			row.Visible = true
+			row.root.Visible = true
 		else
-			row.name.Text = ""
-			row.time.Text = ""
-			row.bar.Size = UDim2.new(0, 0, 1, 0)
-			row.Visible = false
+			row.root.Visible = false
 		end
 	end
 end
 
-while true do
-	task.wait()
-	update()
-end
+RunService.Heartbeat:Connect(update)
