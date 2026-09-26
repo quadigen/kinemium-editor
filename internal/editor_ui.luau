@@ -3552,7 +3552,7 @@ function UI.dropdown(parent, value, position, size, chevronIcon, options)
 				Position = UDim2.fromOffset(menuX, menuY),
 				Size = UDim2.fromOffset(menuWidth, menuHeight),
 				BackgroundColor3 = options.menuColor or colors.panelRaised,
-				BackgroundTransparency = options.BackgroundTransparency or 0,
+				BackgroundTransparency = 0.5,
 				BorderSizePixel = 0,
 				CanvasPosition = Vector2.new(0, 0),
 				CanvasSize = UDim2.new(1, 0, 0, #items * rowHeight),
@@ -3566,6 +3566,15 @@ function UI.dropdown(parent, value, position, size, chevronIcon, options)
 				ClipsDescendants = true,
 			}, UI.root())
 			UI.corner(menu, options.radius or UI.tokens.radius.sm)
+
+			if options.backdrop then
+				UI.create("UIBackdrop", {
+					Enabled = true,
+					BlurRadius = options.backdropBlur or 18,
+					TintColor3 = options.backdropColor or colors.panelRaised,
+					TintTransparency = options.backdropTransparency or 0.85,
+				}, menu)
+			end
 
 			menu.Name = "DropdownMenu"
 			menu.ZIndex = options.menuZIndex or 100000
