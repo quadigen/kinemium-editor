@@ -67,9 +67,8 @@ end
 
 local gui = Instance.new("ScreenGui")
 gui.Name = "ProfilerTopbar"
-gui.ResetOnSpawn = false
 gui.IgnoreGuiInset = true
-gui.Enabled = profiler.Enabled
+gui.Enabled = true
 gui.Parent = game:GetService("StarterGui")
 
 local root = Instance.new("Frame")
