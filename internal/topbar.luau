@@ -511,7 +511,7 @@ for _, category in ipairs(engineCategories) do
 			border = false,
 			showSearch = false,
 			radius = buttonRadius(),
-			menuWidth = width,
+			menuWidth = 180,
 			menuColor = initialColors.surface,
 			borderColor = initialColors.border,
 			menuPosition = function()
