@@ -497,7 +497,7 @@ for _, category in ipairs(engineCategories) do
 				setExpanded(false)
 			end,
 
-			BackgroundTransparency = 1,
+			BackgroundTransparency = 0.5,
 			itemBgTransparency = 1,
 			backdropTransparency = 1,
 			backdrop = true,

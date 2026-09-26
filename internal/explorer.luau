@@ -848,9 +848,6 @@ openContextMenu = function(instance, screenPoint)
 		contextMenu = controller
 	end
 
-	-- SetItems, not options.items: the dropdown snapshots `options.items` into a
-	-- local at construction time, so reassigning the options table afterwards
-	-- would leave the menu permanently empty.
 	contextMenu:SetItems({
 		{ label = "Rename", value = "rename", icon = "builtin://icons/pencil.svg" },
 		{ label = "Duplicate", value = "duplicate", icon = "builtin://icons/Plus.svg" },
