@@ -1551,11 +1551,6 @@ local function probeInstanceAlive(gui)
 	return gui:IsDescendantOf(gui)
 end
 
--- Destroy() detaches an Instance from the VM: reading a property, calling a
--- method or walking its children raises from that point on. A button record
--- that still points at a destroyed Instance would therefore abort the next
--- rebuild, so every registry lookup has to treat "cannot be inspected" as
--- "gone" instead of touching the Instance.
 function UI.isAlive(gui)
 	if gui == nil then
 		return false
@@ -1564,10 +1559,6 @@ function UI.isAlive(gui)
 	return pcall(probeInstanceAlive, gui)
 end
 
--- Drops every button record that belongs to `container`, to one of its
--- descendants or to an Instance that no longer exists. Call this before
--- destroying a container so the shared registry never keeps destroyed
--- Instances around.
 function UI.forgetButtons(container)
 	if container == nil then
 		return
@@ -3690,9 +3681,7 @@ function UI.dropdown(parent, value, position, size, chevronIcon, options)
 						currentValue = itemValue
 
 						if not options.keepLabel then
-
 							label.Text = tostring(options.format and options.format(itemValue) or itemText)
-
 						end
 
 						closeActiveDropdown()
@@ -3771,9 +3760,7 @@ function UI.dropdown(parent, value, position, size, chevronIcon, options)
 		currentValue = newValue
 
 		if not options.keepLabel then
-
 			label.Text = tostring(options.format and options.format(newValue) or newValue or "")
-
 		end
 
 		if not silent and options.onChanged then
