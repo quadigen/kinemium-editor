@@ -3280,8 +3280,6 @@ function UI.dropdown(parent, value, position, size, chevronIcon, options)
 			local menuWidth = options.menuWidth or 140
 			local menuHeight = visibleRows * rowHeight
 
-			-- Context menus pass showSearch = false to drop the built-in filter
-			-- field; the list then occupies the full menu height.
 			local showSearch = options.showSearch ~= false
 			local searchHeight = showSearch and 34 or 0
 
@@ -3467,70 +3465,6 @@ function UI.dropdown(parent, value, position, size, chevronIcon, options)
 					closeOnOutsideClick = options.closeOnOutsideClick ~= false,
 				}
 				return
-				--[[
-				local menu = UI.create("ScrollingFrame", {
-					Position = fixedMenuPosition,
-					Size = UDim2.fromOffset(menuWidth, menuHeight),
-					BackgroundColor3 = options.menuColor or colors.panelRaised,
-					BackgroundTransparency = 0,
-					BorderSizePixel = 0,
-					CanvasPosition = Vector2.new(0, 0),
-					CanvasSize = UDim2.new(1, 0, 0, #items * rowHeight),
-					ScrollingEnabled = #items > visibleRows,
-					ScrollBarThickness = 5,
-					ScrollBarImageColor3 = colors.subtext,
-					ScrollBarImageTransparency = 0.4,
-					ScrollBarAutoHide = true,
-					ScrollBarFadeDelay = 0.45,
-					ScrollBarFadeSpeed = 12,
-					ClipsDescendants = true,
-				}, UI.RootOverlay())
-				UI.corner(menu, options.radius or UI.tokens.radius.sm)
-				menu.Name = "DropdownMenu"
-				menu.ZIndex = options.menuZIndex or 100000
-
-				shared.activeDropdown = {
-					button = button,
-					menu = menu,
-					controller = controller,
-				}
-
-				for index, item in ipairs(items) do
-					local itemValue = item
-					local itemText = tostring(item)
-					local itemIcon
-					if type(item) == "table" then
-						itemValue = item.value or item[1]
-						itemText = tostring(item.label or item.text or item.name or itemValue or "")
-						itemIcon = item.icon
-					end
-					local row = UI.button(
-						menu,
-						itemText,
-						UDim2.fromOffset(0, (index - 1) * rowHeight),
-						UDim2.new(1, 0, 0, rowHeight),
-						function()
-							currentValue = itemValue
-							label.Text = tostring(options.format and options.format(itemValue) or itemText)
-							closeActiveDropdown()
-							if options.onChanged then options.onChanged(itemValue, index) end
-						end,
-						{
-							color = colors.panelRaised,
-							hoverColor = colors.hover,
-							pressedColor = colors.pressed,
-							textColor = colors.subtext,
-							textSize = options.textSize or UI.tokens.type.small,
-							radius = 0,
-							border = false,
-							paddingX = UI.tokens.space.md,
-							icon = itemIcon,
-							iconSize = options.iconSize or 14,
-						}
-					)
-				end
-				return
-				]]
 			end
 			local absolutePosition = button.AbsolutePosition
 			local absoluteSize = button.AbsoluteSize

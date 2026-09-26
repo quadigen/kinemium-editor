@@ -496,6 +496,8 @@ for _, category in ipairs(engineCategories) do
 
 				setExpanded(false)
 			end,
+			BackgroundTransparency = 0.6,
+			backdrop = true,
 
 			color = initialColors.panel,
 			hoverColor = initialColors.raised,
@@ -504,7 +506,8 @@ for _, category in ipairs(engineCategories) do
 			textSize = tokens.type.small,
 			textY = 3,
 			paddingX = 8,
-			border = false,
+			border = true,
+			showSearch = false,
 			radius = buttonRadius(),
 			menuWidth = 180,
 			menuColor = initialColors.surface,
