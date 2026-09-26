@@ -1,5 +1,5 @@
-if (IsServer or IsClient) and not IsPlaytest then
-	return
+if (IsServer or IsClient) or not IsPlaytest then
+	return nil
 end
 
 local UI = require("@internal/editor_ui")
@@ -106,4 +106,3 @@ renderer.Pool.new("2d", function()
 		rebuild(history)
 	end
 end)
-

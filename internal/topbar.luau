@@ -1,5 +1,5 @@
-if (IsServer or IsClient) and not IsPlaytest then
-	return
+if (IsServer or IsClient) or not IsPlaytest then
+	return nil
 end
 
 local UI = require("@internal/editor_ui")
@@ -471,13 +471,8 @@ for _, category in ipairs(engineCategories) do
 		end
 	end
 
-	local button, label, record = UI.dropdown(
-		headerSurface,
-		categoryName,
-		UDim2.fromOffset(headerX, 4),
-		UDim2.fromOffset(width, 24),
-		nil,
-		{
+	local button, label, record =
+		UI.dropdown(headerSurface, categoryName, UDim2.fromOffset(headerX, 4), UDim2.fromOffset(width, 24), nil, {
 			items = items,
 
 			format = function()
@@ -514,13 +509,15 @@ for _, category in ipairs(engineCategories) do
 			menuColor = initialColors.surface,
 			borderColor = initialColors.border,
 			menuPosition = function()
-				return UDim2.fromOffset(button.AbsolutePosition.X, button.AbsolutePosition.Y + button.AbsoluteSize.Y + 2)
+				return UDim2.fromOffset(
+					button.AbsolutePosition.X,
+					button.AbsolutePosition.Y + button.AbsoluteSize.Y + 2
+				)
 			end,
 			itemHeight = 28,
 			maxVisibleItems = 8,
 			chevronSize = 8,
-		}
-	)
+		})
 
 	button.Name = categoryName .. "Menu"
 

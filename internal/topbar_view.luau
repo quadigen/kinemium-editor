@@ -1,7 +1,6 @@
-if (IsServer or IsClient) and not IsPlaytest then
+if (IsServer or IsClient) or not IsPlaytest then
 	return nil
 end
-
 return {
 	name = "View",
 	buttons = {

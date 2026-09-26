@@ -1,11 +1,9 @@
-if (IsServer or IsClient) and not IsPlaytest then
+if (IsServer or IsClient) or not IsPlaytest then
 	return nil
 end
 
 local PlaytestService = game:GetService("PlaytestService")
 
--- Inside a playtest there is nothing left to start, so the Play button is
--- dropped and Stop remains the only useful action.
 local buttons = {}
 
 if not IsPlaytest then

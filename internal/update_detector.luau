@@ -1,3 +1,6 @@
+if (IsServer or IsClient) or not IsPlaytest then
+	return nil
+end
 local UpdateService = game:GetService("UpdateService")
 local RunService = game:GetService("RunService")
 local UI = require("@internal/editor_ui")
