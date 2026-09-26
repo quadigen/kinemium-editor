@@ -5,17 +5,19 @@ return {
 	name = "File",
 	buttons = {
 		{
-			name = "New Project",
-			icon = "Plus.svg",
+			name = "Project Settings",
 			route = "new_project",
 		},
 		{
-			name = "Open Project",
-			icon = "FolderOpen.svg",
+			name = "Import Object",
 			route = "open_project",
 		},
 		{
 			name = "Save",
+			route = "save_project",
+		},
+		{
+			name = "Save to File",
 			route = "save_project",
 		},
 		{

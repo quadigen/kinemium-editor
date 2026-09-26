@@ -508,10 +508,10 @@ for _, category in ipairs(engineCategories) do
 			textSize = tokens.type.small,
 			textY = 3,
 			paddingX = 8,
-			border = true,
+			border = false,
 			showSearch = false,
 			radius = buttonRadius(),
-			menuWidth = 180,
+			menuWidth = width,
 			menuColor = initialColors.surface,
 			borderColor = initialColors.border,
 			menuPosition = function()
