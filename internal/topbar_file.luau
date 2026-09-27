@@ -5,6 +5,18 @@ end
 local export_service = game:GetService("ExportService")
 local dialog = game:GetService("DialogService")
 
+local function parent(sourceDataModel)
+	for _, sourceService in sourceDataModel:GetChildren() do
+		local currentService = game:FindFirstChild(sourceService.Name)
+
+		if currentService then
+			for _, child in sourceService:GetChildren() do
+				child.Parent = currentService
+			end
+		end
+	end
+end
+
 return {
 	name = "File",
 	buttons = {
@@ -18,7 +30,7 @@ return {
 				local file = dialog:PickFile()
 				if file then
 					local imported = export_service:ImportFile(file)
-					print(imported)
+					parent(imported)
 				end
 			end,
 		},
