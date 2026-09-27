@@ -1,6 +1,10 @@
 if (IsServer or IsClient) or IsPlaytest then
 	return nil
 end
+
+local export_service = game:GetService("ExportService")
+local dialog = game:GetService("Dialog")
+
 return {
 	name = "File",
 	buttons = {
@@ -10,7 +14,12 @@ return {
 		},
 		{
 			name = "Import Object",
-			route = "open_project",
+			callback = function()
+				local file = dialog:PickFile()
+				if file then
+					export_service:ImportFile(file)
+				end
+			end,
 		},
 		{
 			name = "Save",

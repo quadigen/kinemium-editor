@@ -71,7 +71,6 @@ local engineCategories = {
 
 local toolbarCategories = {
 	homeCategory,
-	fileCategory,
 	modelCategory,
 	testCategory,
 	viewCategory,

@@ -4302,6 +4302,36 @@ function UI.tooltip(target, text, options)
 
 	local colors = UI.tokens.color
 
+	shared.tooltips = shared.tooltips or {}
+
+	-- One tooltip per target: calling again refreshes the existing tooltip
+	-- instead of stacking another frame and connection set on the overlay.
+	local existing = shared.tooltips[target]
+	if existing then
+		existing:SetText(text)
+		return existing
+	end
+
+	-- Discarded controllers used to leak: every tooltip registers four
+	-- connections and a frame on the overlay, and callers that drop the return
+	-- value could never destroy them. A single janitor owns the lifecycle now:
+	-- any tooltip whose target dies is destroyed on the next heartbeat.
+	if not shared.tooltipJanitor then
+		shared.tooltipJanitor = RunService.Heartbeat:Connect(function()
+			local registry = shared.tooltips
+			if registry == nil then
+				return
+			end
+
+			for tooltipTarget, tooltipController in pairs(registry) do
+				if not UI.isAlive(tooltipTarget) then
+					tooltipController:Destroy()
+					registry[tooltipTarget] = nil
+				end
+			end
+		end)
+	end
+
 	local hoverDelay = options.hoverDelay or 0.4
 
 	local fadeSpeed = options.fadeSpeed or 14
@@ -4575,6 +4605,10 @@ function UI.tooltip(target, text, options)
 
 		state.destroyed = true
 
+		if shared.tooltips and shared.tooltips[target] == controller then
+			shared.tooltips[target] = nil
+		end
+
 		enterConnection:Disconnect()
 
 		leaveConnection:Disconnect()
@@ -4591,6 +4625,8 @@ function UI.tooltip(target, text, options)
 	controller.label = label
 
 	controller.target = target
+
+	shared.tooltips[target] = controller
 
 	return controller
 end
