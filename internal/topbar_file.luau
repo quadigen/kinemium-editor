@@ -11,12 +11,22 @@ local function parent(sourceDataModel)
 
 		if currentService then
 			for _, child in sourceService:GetChildren() do
-				child.Parent = currentService
+				local exists = false
+
+				for _, existingChild in currentService:GetChildren() do
+					if child == existingChild then
+						exists = true
+						break
+					end
+				end
+
+				if not exists then
+					child.Parent = currentService
+				end
 			end
 		end
 	end
 end
-
 return {
 	name = "File",
 	buttons = {
