@@ -4,10 +4,7 @@ end
 local UI = require("@internal/editor_ui")
 
 local Project = game.Project
-local Marketplace = game.PluginMarketplace
 local Dialog = game.DialogService
-
-local colors = UI.colors
 local tokens = UI.tokens
 
 return function(page, windowControls, gui)

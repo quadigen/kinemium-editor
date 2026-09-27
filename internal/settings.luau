@@ -32,27 +32,6 @@ local function animate(duration, callback, finished)
 	return connection
 end
 
-local function animatePosition(object, from, to, duration)
-	object.Position = from
-
-	return animate(duration or 0.16, function(alpha)
-		object.Position = UDim2.new(
-			from.X.Scale + (to.X.Scale - from.X.Scale) * alpha,
-			from.X.Offset + (to.X.Offset - from.X.Offset) * alpha,
-			from.Y.Scale + (to.Y.Scale - from.Y.Scale) * alpha,
-			from.Y.Offset + (to.Y.Offset - from.Y.Offset) * alpha
-		)
-	end)
-end
-
-local function animateTransparency(object, from, to, duration)
-	object.BackgroundTransparency = from
-
-	return animate(duration or 0.16, function(alpha)
-		object.BackgroundTransparency = from + (to - from) * alpha
-	end)
-end
-
 return function(page, windowControls, gui)
 	local SIDEBAR_WIDTH = 210
 	local OUTER_PADDING = 12

@@ -1,23 +1,29 @@
 if (IsServer or IsClient) or IsPlaytest then
 	return nil
 end
+
+local Selection = game:GetService("Selection")
+
 return {
 	name = "Model",
 	buttons = {
 		{
 			name = "Part",
 			icon = "Part.svg",
-			route = "insert_part",
+			callback = function()
+				local part = Instance.new("Part")
+				part.Parent = game.Workspace
+				Selection:Set({ part })
+			end,
 		},
 		{
 			name = "MeshPart",
 			icon = "MeshPart.svg",
-			route = "insert_mesh_part",
-		},
-		{
-			name = "Material",
-			icon = "Texture.svg",
-			route = "insert_material",
+			callback = function()
+				local part = Instance.new("MeshPart")
+				part.Parent = game.Workspace
+				Selection:Set({ part })
+			end,
 		},
 	},
 }

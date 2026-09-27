@@ -36,8 +36,6 @@ local function formatTimestamp(value)
 		return "00:00:00"
 	end
 
-	-- The engine drops the `os` library (DateTime replaces it) and hands log
-	-- entries a unix timestamp in seconds, so the clock is derived here.
 	local seconds = math.floor(stamp % 60)
 	local minutes = math.floor((stamp / 60) % 60)
 	local hours = math.floor((stamp / 3600) % 24)
