@@ -14,7 +14,7 @@ local function parent(sourceDataModel)
 				local exists = false
 
 				for _, existingChild in currentService:GetChildren() do
-					if child == existingChild then
+					if child.Name == existingChild.Name then
 						exists = true
 						break
 					end
