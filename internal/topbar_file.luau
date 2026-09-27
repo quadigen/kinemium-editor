@@ -17,7 +17,8 @@ return {
 			callback = function()
 				local file = dialog:PickFile()
 				if file then
-					export_service:ImportFile(file)
+					local imported = export_service:ImportFile(file)
+					print(imported)
 				end
 			end,
 		},
