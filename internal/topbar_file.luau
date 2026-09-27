@@ -3,7 +3,7 @@ if (IsServer or IsClient) or IsPlaytest then
 end
 
 local export_service = game:GetService("ExportService")
-local dialog = game:GetService("Dialog")
+local dialog = game:GetService("DialogService")
 
 return {
 	name = "File",
