@@ -2,7 +2,7 @@ if (IsServer or IsClient) or IsPlaytest then
 	return nil
 end
 local viewport = require("@internal/viewport")
-local UI = require("./editor_ui")
+local UI = require("@internal/editor_ui")
 local tokens = UI.tokens
 return {
 	name = "Home",
