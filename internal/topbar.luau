@@ -339,6 +339,14 @@ rebuildFlyout = function()
 			UI.separator(flyout, UDim2.fromOffset(x + 4, 10), UDim2.fromOffset(1, FLYOUT_HEIGHT - 20), colors.border)
 
 			x += 13
+		elseif definition.type == "custom" then
+			local element = definition.create(flyout, colors)
+
+			if element then
+				element.Name = definition.name or "CustomElement"
+			end
+
+			x += definition.width or 100
 		else
 			local item = UI.button(
 				flyout,
