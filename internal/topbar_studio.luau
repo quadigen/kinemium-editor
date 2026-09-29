@@ -41,9 +41,11 @@ local SettingsWindow, _, _, Settings_windowControls =
 SettingsWindow.Visible = false
 SettingsWindow.Parent = gui
 
-plugin_marketplace(MarketplaceWindow.pages.Marketplace, Marketplace_windowControls, gui)
-credits_page(CreditsWindow.pages.Credits, Credits_windowControls, gui)
-settings_page(SettingsWindow.pages.Settings, Settings_windowControls, gui)
+plugin_marketplace(Marketplace_windowControls.pages.Marketplace, Marketplace_windowControls, gui)
+
+credits_page(Credits_windowControls.pages.Credits, Credits_windowControls, gui)
+
+settings_page(Settings_windowControls.pages.Settings, Settings_windowControls, gui)
 
 return {
 	name = "Studio",
