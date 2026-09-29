@@ -13,32 +13,35 @@ gui.RenderOnTop = true
 gui.Parent = game.CoreGui
 
 local size = UDim2.new(0.7, 0, 0.9, 0)
+local position = UDim2.new(0.5, 0, 0.5, 0)
 
-local MarketplaceWindow, _, _, Marketplace_windowControls =
-	UI.window("Marketplace", UDim2.new(0, 15, 0, 15), size, "Marketplace", {
-		tabs = {
-			"Marketplace",
-		},
-		selectedTab = "Marketplace",
-	})
+local MarketplaceWindow, _, _, Marketplace_windowControls = UI.window("Marketplace", position, size, "Marketplace", {
+	tabs = {
+		"Marketplace",
+	},
+	selectedTab = "Marketplace",
+})
+MarketplaceWindow.AnchorPoint = Vector2.new(0.5, 0.5)
 MarketplaceWindow.Visible = false
 MarketplaceWindow.Parent = gui
 
-local CreditsWindow, _, _, Credits_windowControls = UI.window("Credits", UDim2.new(0, 15, 0, 15), size, "Credits", {
+local CreditsWindow, _, _, Credits_windowControls = UI.window("Credits", position, size, "Credits", {
 	tabs = {
 		"Credits",
 	},
 	selectedTab = "Credits",
 })
+CreditsWindow.AnchorPoint = Vector2.new(0.5, 0.5)
 CreditsWindow.Visible = false
 CreditsWindow.Parent = gui
 
-local SettingsWindow, _, _, Settings_windowControls = UI.window("Settings", UDim2.new(0, 15, 0, 15), size, "Settings", {
+local SettingsWindow, _, _, Settings_windowControls = UI.window("Settings", position, size, "Settings", {
 	tabs = {
 		"Settings",
 	},
 	selectedTab = "Settings",
 })
+SettingsWindow.AnchorPoint = Vector2.new(0.5, 0.5)
 SettingsWindow.Visible = false
 SettingsWindow.Parent = gui
 
