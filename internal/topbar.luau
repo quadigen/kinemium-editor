@@ -11,6 +11,7 @@ local modelCategory = require("@internal/topbar_model")
 local testCategory = require("@internal/topbar_test")
 local viewCategory = require("@internal/topbar_view")
 local pluginsCategory = require("@internal/topbar_plugins")
+local studioCategory = require("@internal/topbar_studio")
 
 local StudioThemeService = game:GetService("StudioThemeService")
 local theme = StudioThemeService.SelectedTheme
@@ -67,6 +68,7 @@ local engineCategories = {
 	fileCategory,
 	gameCategory,
 	projectsCategory,
+	studioCategory,
 }
 
 local toolbarCategories = {
