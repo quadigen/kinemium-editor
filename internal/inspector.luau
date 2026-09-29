@@ -388,6 +388,9 @@ local function openEnumDropdownFor(field, object, property)
 		ZIndex = 10000,
 	}, UI.root())
 
+	local backdrop = Instance.new("UIBackdrop")
+	backdrop.Parent = popup
+
 	UI.corner(popup, tokens.radius.sm)
 
 	UI.stroke(popup, tokens.color.borderStrong, 1, 0)
