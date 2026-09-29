@@ -48,7 +48,7 @@ return {
 				local layout = Instance.new("UIListLayout")
 				layout.HorizontalAlignment = Enum.HorizontalAlignment.Center
 				layout.FillDirection = Enum.FillDirection.Vertical
-				layout.Padding = UDim.new(0, 5)
+				layout.Padding = UDim.new(0, 15)
 				layout.Parent = panel
 
 				UI.input(panel, "Studs", UDim2.fromOffset(0, 0), UDim2.new(1, -10, 0, 20), {})
