@@ -2894,16 +2894,12 @@ function UI.window(name, position, size, title, options)
 
 	titleLabel.Name = "Title"
 
-	----------------------------------------------------------------
-	-- Close button
-	----------------------------------------------------------------
-
 	local closeButton = nil
 
 	if options.closable then
 		closeButton = UI.iconButton(
 			header,
-			options.closeIcon or "C:/Users/devco/Documents/canary-recode/src/engine/assets/images/icons/Close.svg",
+			options.closeIcon or "builtin://global-icons/x.svg",
 			UDim2.new(1, -27, 0, 4),
 			UDim2.fromOffset(22, 19),
 			function()
