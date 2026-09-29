@@ -56,11 +56,19 @@ return {
 				local rotation = UI.input(panel, "30°", UDim2.fromOffset(0, 0), UDim2.new(1, -10, 0, 23), {})
 
 				studInput.FocusLost:Connect(function()
-					viewport.SetSnap("handles", tonumber(studInput.Text))
+					local value = tonumber(studInput.Text)
+
+					viewport.SetSnap("handles", value)
+					studInput.Text = ""
+					studInput.PlaceholderText = `{value} Stud/s`
 				end)
 
 				rotation.FocusLost:Connect(function()
+					local value = tonumber(rotation.Text)
+
 					viewport.SetSnap("archandles", tonumber(rotation.Text))
+					studInput.Text = ""
+					studInput.PlaceholderText = `{value}°`
 				end)
 
 				return panel
