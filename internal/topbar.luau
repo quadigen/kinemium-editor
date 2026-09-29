@@ -340,13 +340,16 @@ rebuildFlyout = function()
 
 			x += 13
 		elseif definition.type == "custom" then
-			local element = definition.create(flyout, colors)
+			local width = definition.width or 100
+
+			local element =
+				definition.create(flyout, colors, UDim2.fromOffset(x, 6), UDim2.fromOffset(width, FLYOUT_HEIGHT - 12))
 
 			if element then
 				element.Name = definition.name or "CustomElement"
 			end
 
-			x += definition.width or 100
+			x += width + 3
 		else
 			local item = UI.button(
 				flyout,

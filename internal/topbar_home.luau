@@ -2,7 +2,7 @@ if (IsServer or IsClient) or IsPlaytest then
 	return nil
 end
 local viewport = require("@internal/viewport")
-local UI = require("@internal/editor_ui")
+local UI = require("./editor_ui")
 local tokens = UI.tokens
 return {
 	name = "Home",
@@ -42,25 +42,18 @@ return {
 			name = "size_configure",
 			type = "custom",
 			width = 120,
-			create = function(parent, colors)
-				local frame = UI.frame(
-					parent,
-					UDim2.fromOffset(0, 0),
-					UDim2.fromOffset(120, 50),
-					colors.surface,
-					tokens.radius.sm
-				)
+			create = function(parent, colors, position, size)
+				local panel = UI.frame(parent, position, size, colors.surface, tokens.radius.sm)
 
-				UI.label(
-					frame,
-					"Custom!",
-					UDim2.fromOffset(8, 8),
-					UDim2.new(1, -16, 0, 20),
-					tokens.type.small,
-					colors.text
-				)
+				local layout = Instance.new("UIListLayout")
+				layout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+				layout.VerticalAlignment = Enum.HorizontalAlignment.Center
+				layout.FillDirection = Enum.FillDirection.Vertical
+				layout.Parent = panel
 
-				return frame
+				UI.input(panel, "Studs", position, UDim2.new(0.95, 0.5), {})
+
+				return panel
 			end,
 		},
 	},
