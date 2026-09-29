@@ -356,9 +356,6 @@ local function openEnumDropdownFor(field, object, property)
 
 		BackgroundColor3 = tokens.color.panelRaised,
 		BackgroundTransparency = 0.5,
-		itemBgTransparency = 1,
-		backdrop = true,
-
 		BorderSizePixel = 0,
 
 		CanvasPosition = Vector2.new(0, 0),
@@ -417,7 +414,6 @@ local function openEnumDropdownFor(field, object, property)
 				pressedColor = tokens.color.pressed,
 
 				textColor = selected and tokens.color.text or tokens.color.subtext,
-
 				textSize = tokens.type.caption,
 
 				paddingX = 7,
@@ -429,6 +425,7 @@ local function openEnumDropdownFor(field, object, property)
 				border = false,
 			}
 		)
+		button.BackgroundTransparency = 1
 
 		button.ZIndex = 10001
 	end
@@ -440,7 +437,6 @@ local function openEnumDropdownFor(field, object, property)
 	}
 end
 
--- Close the floating enum menu when clicking anywhere outside it.
 UserInputService.InputBegan:Connect(function(event)
 	if not openEnumDropdown then
 		return
