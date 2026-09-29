@@ -67,8 +67,8 @@ return {
 					local value = tonumber(rotation.Text)
 
 					viewport.SetSnap("archandles", tonumber(rotation.Text))
-					studInput.Text = ""
-					studInput.PlaceholderText = `{value}°`
+					rotation.Text = ""
+					rotation.PlaceholderText = `{value}°`
 				end)
 
 				return panel
