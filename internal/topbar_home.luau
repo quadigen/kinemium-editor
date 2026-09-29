@@ -47,7 +47,6 @@ return {
 
 				local layout = Instance.new("UIListLayout")
 				layout.HorizontalAlignment = Enum.HorizontalAlignment.Center
-				layout.VerticalAlignment = Enum.HorizontalAlignment.Center
 				layout.FillDirection = Enum.FillDirection.Vertical
 				layout.Parent = panel
 
