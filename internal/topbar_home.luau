@@ -50,7 +50,7 @@ return {
 				layout.FillDirection = Enum.FillDirection.Vertical
 				layout.Parent = panel
 
-				UI.input(panel, "Studs", position, UDim2.new(0.95, 0.5), {})
+				UI.input(panel, "Studs", UDim2.fromOffset(0, 0), UDim2.new(1, -10, 0, 28), {})
 
 				return panel
 			end,
