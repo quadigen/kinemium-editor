@@ -51,8 +51,8 @@ return {
 				layout.Padding = UDim.new(0, 15)
 				layout.Parent = panel
 
-				UI.input(panel, "Studs", UDim2.fromOffset(0, 0), UDim2.new(1, -10, 0, 20), {})
-				UI.input(panel, "30°", UDim2.fromOffset(0, 0), UDim2.new(1, -10, 0, 20), {})
+				UI.input(panel, "Studs", UDim2.fromOffset(0, 0), UDim2.new(1, -10, 0, 25), {})
+				UI.input(panel, "30°", UDim2.fromOffset(0, 0), UDim2.new(1, -10, 0, 25), {})
 
 				return panel
 			end,
