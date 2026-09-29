@@ -20,6 +20,7 @@ local MarketplaceWindow, _, _, Marketplace_windowControls = UI.window("Marketpla
 		"Marketplace",
 	},
 	selectedTab = "Marketplace",
+	closable = true,
 })
 MarketplaceWindow.AnchorPoint = Vector2.new(0.5, 0.5)
 MarketplaceWindow.Visible = false
@@ -30,17 +31,20 @@ local CreditsWindow, _, _, Credits_windowControls = UI.window("Credits", positio
 		"Credits",
 	},
 	selectedTab = "Credits",
+	closable = true,
 })
 CreditsWindow.AnchorPoint = Vector2.new(0.5, 0.5)
 CreditsWindow.Visible = false
 CreditsWindow.Parent = gui
 
-local SettingsWindow, _, _, Settings_windowControls = UI.window("Settings", position, size, "Settings", {
-	tabs = {
-		"Settings",
-	},
-	selectedTab = "Settings",
-})
+local SettingsWindow, _, _, Settings_windowControls =
+	UI.window("Settings", position, UDim2.new(0, 600, 0.9, 0), "Settings", {
+		tabs = {
+			"Settings",
+		},
+		selectedTab = "Settings",
+		closable = true,
+	})
 SettingsWindow.AnchorPoint = Vector2.new(0.5, 0.5)
 SettingsWindow.Visible = false
 SettingsWindow.Parent = gui
