@@ -74,10 +74,12 @@ local toolButtons = {}
 
 local handles = Instance.new("Handles")
 handles.Name = "ViewportHandles"
+handles.Snap = 1
 handles.Parent = workspace
 
 local arcHandles = Instance.new("ArcHandles")
 arcHandles.Name = "ViewportArcHandles"
+arcHandles.Snap = 30
 arcHandles.Parent = workspace
 
 local function selectedPart()
@@ -793,6 +795,14 @@ return {
 		end
 
 		return CodeEditor.Text
+	end,
+
+	SetSnap = function(tool: "handles" | "archandles", num)
+		if tool == "handles" then
+			handles.Snap = num
+		elseif tool == "archandles" then
+			arcHandles.Snap = num
+		end
 	end,
 
 	ActivateTool = function(tool: "size" | "rotate" | "position")

@@ -4,6 +4,7 @@ end
 local viewport = require("@internal/viewport")
 local UI = require("@internal/editor_ui")
 local tokens = UI.tokens
+
 return {
 	name = "Home",
 	buttons = {
@@ -51,8 +52,16 @@ return {
 				layout.Padding = UDim.new(0, 5)
 				layout.Parent = panel
 
-				UI.input(panel, "Studs", UDim2.fromOffset(0, 0), UDim2.new(1, -10, 0, 25), {})
-				UI.input(panel, "30°", UDim2.fromOffset(0, 0), UDim2.new(1, -10, 0, 25), {})
+				local studInput = UI.input(panel, "1 Stud/s", UDim2.fromOffset(0, 0), UDim2.new(1, -10, 0, 23), {})
+				local rotation = UI.input(panel, "30°", UDim2.fromOffset(0, 0), UDim2.new(1, -10, 0, 23), {})
+
+				studInput.FocusLost:Connect(function()
+					viewport.SetSnap("handles", tonumber(studInput.Text))
+				end)
+
+				rotation.FocusLost:Connect(function()
+					viewport.SetSnap("archandles", tonumber(rotation.Text))
+				end)
 
 				return panel
 			end,
