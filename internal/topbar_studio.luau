@@ -12,7 +12,7 @@ gui.Name = "Home"
 gui.RenderOnTop = true
 gui.Parent = game.CoreGui
 
-local size = UDim2.new(0.7, 0, 0.9, 0)
+local size = UDim2.new(0, 400, 0.9, 0)
 local position = UDim2.new(0.5, 0, 0.5, 0)
 
 local MarketplaceWindow, _, _, Marketplace_windowControls = UI.window("Marketplace", position, size, "Marketplace", {
