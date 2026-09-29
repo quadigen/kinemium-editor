@@ -284,7 +284,6 @@ local function closeEnumDropdown()
 
 	if popup then
 		pcall(function()
-			-- Purge any UI.button records owned by the popup before destroying it.
 			UI.clear(popup)
 			popup:Destroy()
 		end)
@@ -356,6 +355,9 @@ local function openEnumDropdownFor(field, object, property)
 		Size = UDim2.fromOffset(math.max(fieldSize.X, 110), menuHeight),
 
 		BackgroundColor3 = tokens.color.panelRaised,
+		BackgroundTransparency = 0.5,
+		itemBgTransparency = 1,
+		backdrop = true,
 
 		BorderSizePixel = 0,
 
