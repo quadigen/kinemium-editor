@@ -9,10 +9,13 @@ local settings_page = require("@internal/settings")
 
 local gui = Instance.new("ScreenGui")
 gui.Name = "Home"
+gui.RenderOnTop = true
 gui.Parent = game.CoreGui
 
+local size = UDim2.new(0.7, 0, 0.9, 0)
+
 local MarketplaceWindow, _, _, Marketplace_windowControls =
-	UI.window("Marketplace", UDim2.new(0, 15, 0, 15), UDim2.new(1, -30, 1, -30), "Marketplace", {
+	UI.window("Marketplace", UDim2.new(0, 15, 0, 15), size, "Marketplace", {
 		tabs = {
 			"Marketplace",
 		},
@@ -21,30 +24,26 @@ local MarketplaceWindow, _, _, Marketplace_windowControls =
 MarketplaceWindow.Visible = false
 MarketplaceWindow.Parent = gui
 
-local CreditsWindow, _, _, Credits_windowControls =
-	UI.window("Credits", UDim2.new(0, 15, 0, 15), UDim2.new(1, -30, 1, -30), "Credits", {
-		tabs = {
-			"Credits",
-		},
-		selectedTab = "Credits",
-	})
+local CreditsWindow, _, _, Credits_windowControls = UI.window("Credits", UDim2.new(0, 15, 0, 15), size, "Credits", {
+	tabs = {
+		"Credits",
+	},
+	selectedTab = "Credits",
+})
 CreditsWindow.Visible = false
 CreditsWindow.Parent = gui
 
-local SettingsWindow, _, _, Settings_windowControls =
-	UI.window("Settings", UDim2.new(0, 15, 0, 15), UDim2.new(1, -30, 1, -30), "Settings", {
-		tabs = {
-			"Settings",
-		},
-		selectedTab = "Settings",
-	})
+local SettingsWindow, _, _, Settings_windowControls = UI.window("Settings", UDim2.new(0, 15, 0, 15), size, "Settings", {
+	tabs = {
+		"Settings",
+	},
+	selectedTab = "Settings",
+})
 SettingsWindow.Visible = false
 SettingsWindow.Parent = gui
 
 plugin_marketplace(Marketplace_windowControls.pages.Marketplace, Marketplace_windowControls, gui)
-
 credits_page(Credits_windowControls.pages.Credits, Credits_windowControls, gui)
-
 settings_page(Settings_windowControls.pages.Settings, Settings_windowControls, gui)
 
 return {
