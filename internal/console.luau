@@ -15,6 +15,7 @@ local function createConsole()
 	local TOOLBAR_HEIGHT = 30
 	local COMMANDBAR_HEIGHT = 30
 	local POLL_INTERVAL = 0.1
+	local ROW_INSET = 2
 
 	local KIND_COLORS = {
 		Log = colors.text,
@@ -96,18 +97,28 @@ local function createConsole()
 		{ paddingX = 4 }
 	)
 
+	local inset = UI.metrics.panelInset
+
 	local scroll = UI.create("ScrollingFrame", {
 		Name = "Log",
-		Position = UDim2.fromOffset(0, TOOLBAR_HEIGHT),
-		Size = UDim2.new(1, 0, 1, -(TOOLBAR_HEIGHT + COMMANDBAR_HEIGHT)),
-		BackgroundColor3 = tokens.color.rowOdd,
+
+		Position = UDim2.fromOffset(inset, TOOLBAR_HEIGHT),
+		Size = UDim2.new(1, -inset * 2, 1, -(TOOLBAR_HEIGHT + COMMANDBAR_HEIGHT + 6)),
+
+		BackgroundColor3 = tokens.color.surface,
+		BackgroundTransparency = 0.5,
+
 		BorderSizePixel = 0,
-		ScrollBarThickness = 6,
-		ScrollBarImageColor3 = colors.subtext,
+
+		ScrollBarThickness = 5,
+		ScrollBarImageColor3 = tokens.color.subtext,
 		ScrollBarImageTransparency = 0.4,
+
 		CanvasSize = UDim2.new(0, 0, 0, 0),
 		ClipsDescendants = true,
 	}, content)
+
+	UI.corner(scroll, tokens.radius.md)
 
 	local command = UI.input(
 		content,
@@ -147,15 +158,13 @@ local function createConsole()
 		local row = UI.button(
 			scroll,
 			"",
-			UDim2.fromOffset(1, rowCount * ROW_HEIGHT),
-			UDim2.new(1, -2, 0, ROW_HEIGHT),
-			function()
-				-- Optional: select/copy the log entry later
-			end,
+			UDim2.fromOffset(ROW_INSET, rowCount * ROW_HEIGHT),
+			UDim2.new(1, -ROW_INSET * 2, 0, ROW_HEIGHT),
+			function() end,
 			{
 				color = rowCount % 2 == 0 and tokens.color.rowEven or tokens.color.rowOdd,
 				hoverColor = colors.hover,
-				radius = 0,
+				radius = tokens.radius.sm,
 				border = false,
 			}
 		)
