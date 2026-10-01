@@ -11,7 +11,7 @@ local function createConsole()
 	local WINDOW_NAME = "Console"
 	local MAX_ENTRIES = 1000 -- matches LOG_HISTORY_LIMIT in LogService
 	local MAX_COMMAND_HISTORY = 50
-	local ROW_HEIGHT = 16
+	local ROW_HEIGHT = UI.metrics.treeRow
 	local TOOLBAR_HEIGHT = 30
 	local COMMANDBAR_HEIGHT = 30
 	local POLL_INTERVAL = 0.1
@@ -144,17 +144,37 @@ local function createConsole()
 	end
 
 	local function addRow(entry)
-		local row = UI.label(
+		local row = UI.button(
 			scroll,
-			string.format("[%s] %s", entry.time, entry.message),
-			UDim2.fromOffset(PAD, rowCount * ROW_HEIGHT),
-			UDim2.new(1, -(PAD * 2 + 8), 0, ROW_HEIGHT),
-			UI.tokens.type.small,
-			entry.color
+			"",
+			UDim2.fromOffset(1, rowCount * ROW_HEIGHT),
+			UDim2.new(1, -2, 0, ROW_HEIGHT),
+			function()
+				-- Optional: select/copy the log entry later
+			end,
+			{
+				color = rowCount % 2 == 0 and tokens.color.rowEven or tokens.color.rowOdd,
+				hoverColor = colors.hover,
+				radius = 0,
+				border = false,
+			}
 		)
 
 		row.Name = "Row"
-		row.TextXAlignment = Enum.TextXAlignment.Left
+
+		-- Log type indicator, similar to the Explorer icon.
+		UI.image(row, "builtin://icons/" .. ({
+			Log = "Output.svg",
+			Info = "Info.svg",
+			Warn = "Warning.svg",
+			Error = "Error.svg",
+		})[entry.kind], UDim2.fromOffset(6, 3), UDim2.fromOffset(14, 14))
+
+		-- Timestamp
+		UI.label(row, entry.time, UDim2.fromOffset(25, 2), UDim2.fromOffset(58, 17), tokens.type.small, colors.subtext)
+
+		-- Message
+		UI.label(row, entry.message, UDim2.fromOffset(88, 2), UDim2.new(1, -96, 0, 17), tokens.type.small, entry.color)
 
 		rowCount += 1
 		scroll.CanvasSize = UDim2.new(0, 0, 0, rowCount * ROW_HEIGHT)
