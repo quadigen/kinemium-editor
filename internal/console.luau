@@ -155,11 +155,18 @@ local function createConsole()
 	end
 
 	local function addRow(entry)
+		local lines = 1
+
+		for _ in string.gmatch(entry.message, "\n") do
+			lines += 1
+		end
+
+		local height = math.max(ROW_HEIGHT, lines * 17 + 4)
 		local row = UI.button(
 			scroll,
 			"",
 			UDim2.fromOffset(1, rowCount * ROW_HEIGHT),
-			UDim2.new(1, 0, 0, ROW_HEIGHT),
+			UDim2.new(1, 0, 0, height),
 			function() end,
 			{
 				color = rowCount % 2 == 0 and tokens.color.rowEven or tokens.color.rowOdd,
@@ -180,10 +187,17 @@ local function createConsole()
 
 		UI.label(row, entry.time, UDim2.fromOffset(25, 2), UDim2.fromOffset(58, 17), tokens.type.small, colors.subtext)
 
-		UI.label(row, entry.message, UDim2.fromOffset(88, 2), UDim2.new(1, -96, 0, 17), tokens.type.small, entry.color)
+		UI.label(
+			row,
+			entry.message,
+			UDim2.fromOffset(88, 2),
+			UDim2.new(1, -96, 0, height - 4),
+			tokens.type.small,
+			entry.color
+		)
 
-		rowCount += 1
-		scroll.CanvasSize = UDim2.new(0, 0, 0, rowCount * ROW_HEIGHT)
+		rowCount += height
+		scroll.CanvasSize = UDim2.new(0, 0, 0, rowCount)
 	end
 
 	rebuild = function()
@@ -213,11 +227,80 @@ local function createConsole()
 		return string.format("%02d:%02d:%02d", seconds // 3600, (seconds % 3600) // 60, seconds % 60)
 	end
 
+	local function formatValue(value, depth, seen)
+		depth = depth or 0
+		seen = seen or {}
+
+		if depth > 6 then
+			return "{ ... }"
+		end
+
+		local valueType = typeof(value)
+
+		if valueType == "string" then
+			return string.format("%q", value)
+		elseif valueType == "nil" then
+			return "nil"
+		elseif valueType == "boolean" or valueType == "number" then
+			return tostring(value)
+		elseif valueType ~= "table" then
+			return tostring(value)
+		end
+
+		if seen[value] then
+			return "<circular>"
+		end
+
+		seen[value] = true
+
+		local parts = {}
+		local isArray = true
+		local length = #value
+
+		for key in pairs(value) do
+			if type(key) ~= "number" or key < 1 or key > length or key % 1 ~= 0 then
+				isArray = false
+				break
+			end
+		end
+
+		if isArray then
+			for i = 1, length do
+				parts[#parts + 1] = formatValue(value[i], depth + 1, seen)
+			end
+		else
+			for key, child in pairs(value) do
+				local formattedKey
+
+				if type(key) == "string" and string.match(key, "^[%a_][%w_]*$") then
+					formattedKey = key
+				else
+					formattedKey = "[" .. formatValue(key, depth + 1, seen) .. "]"
+				end
+
+				parts[#parts + 1] = formattedKey .. " = " .. formatValue(child, depth + 1, seen)
+			end
+
+			table.sort(parts)
+		end
+
+		seen[value] = nil
+
+		if #parts == 0 then
+			return "{}"
+		end
+
+		local indent = string.rep("    ", depth)
+		local childIndent = string.rep("    ", depth + 1)
+
+		return "{\n" .. childIndent .. table.concat(parts, ",\n" .. childIndent) .. "\n" .. indent .. "}"
+	end
+
 	local function makeEntry(item)
 		local kind = KIND_COLORS[item.type] and item.type or "Log"
 
 		return {
-			message = tostring(item.message),
+			message = formatValue(item.message),
 			kind = kind,
 			color = KIND_COLORS[kind],
 			time = formatTime(item.timestamp),
@@ -299,7 +382,6 @@ local function createConsole()
 
 		executeCommand(source)
 
-		-- Keep typing without clicking again
 		pcall(function()
 			command:CaptureFocus()
 		end)
