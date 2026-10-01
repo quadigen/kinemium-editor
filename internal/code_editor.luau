@@ -5,6 +5,7 @@ end
 local UI = require("@internal/editor_ui")
 
 local TextService = game:GetService("TextService")
+local RunService = game:GetService("RunService")
 
 local tokens = UI.tokens
 
@@ -13,25 +14,16 @@ local TAB_MIN_WIDTH = 104
 local TAB_CLOSE_SIZE = 18
 local TAB_FONT = "builtin://fonts/Montserrat-Regular.ttf"
 
---
--- Suggestion popup metrics
---
-
 local SUGGEST_WIDTH = 268
 local SUGGEST_ROW_HEIGHT = 22
 local SUGGEST_MAX_ROWS = 7
 local SUGGEST_PADDING = 4
 local SUGGEST_ICON_SIZE = 12
 
--- Matches the line height the engine draws the code editor with. The popup is
--- anchored below the caret line, so it has to know how tall that line is.
 local SUGGEST_LINE_HEIGHT = 22
 
 local iconRoot = "builtin://global-icons/"
 
--- This engine has no ImageColor3, so every global icon renders white. Rows use
--- ImageTransparency to separate the selected row from the rest rather than
--- tinting the icon per kind.
 local KIND_ICONS = {
 	Keyword = "sparkle.png",
 	Local = "pencil.svg",
@@ -48,9 +40,6 @@ local KIND_ICONS = {
 	Service = "info.png",
 }
 
--- Argument names for the calls worth hinting. The engine's reflection data
--- reports a single opaque "any" parameter per method, so real argument names
--- only exist here. A call with no entry gets no hint rather than a guess.
 local SIGNATURES = {
 	["math.abs"] = { "x" },
 	["math.atan2"] = { "y", "x" },
@@ -161,21 +150,11 @@ local SIGNATURES = {
 	["tick"] = {},
 }
 
--- Lowercased index of the table above so a hint is not case sensitive.
 local SIGNATURES_LOWER = {}
 
 for key, params in pairs(SIGNATURES) do
 	SIGNATURES_LOWER[string.lower(key)] = params
 end
-
---
--- Completion sources
---
--- Keywords and standard library names come from static tables because they
--- never change. Instance members are resolved live against the DataModel,
--- which is what makes `workspace.` offer the parts that actually exist in the
--- open place rather than a generic member list.
---
 
 local KEYWORDS = {
 	{ name = "and", kind = "Keyword" },
@@ -266,18 +245,6 @@ local GLOBALS = {
 	{ name = "Vector2", kind = "Type" },
 	{ name = "Vector3", kind = "Type" },
 }
-
---
--- Members of things the DataModel cannot describe
---
--- `CFrame.new` and `math.floor` are as common as any instance member, and no
--- amount of walking the DataModel produces them: a datatype is a global
--- binding rather than a child of the game, and the standard library is not an
--- Instance at all. These are listed explicitly, which is what makes
--- `CFrame.` and `math.` complete.
---
--- Entries are "name:Kind" so the list stays readable at a glance.
---
 
 local BUILTIN_MEMBERS = {
 	CFrame = {
@@ -458,7 +425,6 @@ local BUILTIN_MEMBERS = {
 	Enum = { "GetEnumItems:Method", "FromName:Method" },
 }
 
--- The Luau standard library. Same "name:Kind" encoding as above.
 BUILTIN_MEMBERS.math = {
 	"abs:Function",
 	"acos:Function",
@@ -640,17 +606,12 @@ BUILTIN_MEMBERS.buffer = {
 	"writeu8:Function",
 }
 
--- Lowercased index of the tables above, so a member completion is not case
--- sensitive: `Cframe.` and `CFrame.` should both find CFrame, the same way
--- instance lookups are matched on exact names but candidates are matched
--- case insensitively.
 local BUILTIN_MEMBERS_LOWER = {}
 
 for key, entries in pairs(BUILTIN_MEMBERS) do
 	BUILTIN_MEMBERS_LOWER[string.lower(key)] = entries
 end
 
--- Turns a "name:Kind" entry into a candidate.
 local function parseMember(entry)
 	local separator = string.find(entry, ":", 1, true)
 
@@ -664,8 +625,6 @@ local function parseMember(entry)
 	}
 end
 
--- The members of a built-in type or standard library table, or nil when the
--- name is not one this table knows about.
 local function collectBuiltinMembers(path)
 	local entries = BUILTIN_MEMBERS[path] or BUILTIN_MEMBERS_LOWER[string.lower(path)]
 
@@ -700,15 +659,6 @@ local function kindColor(kind)
 	return KIND_COLORS[kind] or tokens.color.text
 end
 
---
--- CodeEditor
---
--- Owns the script TextBox, the tab strip, the open documents and the
--- autocomplete popup. The viewport requires this module and delegates to it:
--- the viewport owns the panel the editor sits in, the editor owns everything
--- that happens inside it.
---
-
 local CodeEditor = {}
 CodeEditor.__index = CodeEditor
 function CodeEditor.new(parent)
@@ -719,7 +669,6 @@ function CodeEditor.new(parent)
 	self.activeDocument = nil
 	self.suppressTextSync = false
 
-	-- Autocomplete state
 	self.suggestions = {}
 	self.suggestionIndex = 1
 	self.suggestPrefix = nil
@@ -761,16 +710,13 @@ function CodeEditor.new(parent)
 		AutoIndent = true,
 		ShowMinimap = true,
 		BackgroundTransparency = 0.3,
-		BackgroundColor3 = Color3.new(0, 0, 0),
-		TextColor3 = Color3.new(1, 1, 1),
+		BackgroundColor3 = tokens.color.input,
+		TextColor3 = tokens.color.text,
 	}, parent)
 
 	UI.create("SyntaxHighlighter", { Parent = editor })
 	UI.create("UIBackdrop", { Parent = editor })
 
-	-- The popup lives in its own layer so it renders above the editor and is
-	-- not clipped by the tab strip. CoreGui matches the layer the viewport
-	-- already uses for the script editor.
 	local suggestionLayer = UI.create("ScreenGui", {
 		Name = "CodeEditorSuggestions",
 		DisplayOrder = 2100,
@@ -797,14 +743,11 @@ function CodeEditor.new(parent)
 		BlurRadius = UDim.new(0, 6),
 		Offset = UDim2.fromOffset(0, 2),
 		Spread = UDim2.fromOffset(0, 1),
-		Color3 = Color3.new(0, 0, 0),
+		Color3 = tokens.color.canvas,
 		Transparency = 0.4,
 		Parent = popup,
 	})
 
-	-- The argument hint sits above the list and is its own frame so the two
-	-- can be shown and hidden independently: the hint outlives the list,
-	-- because it stays useful after a completion has been accepted.
 	local hint = UI.frame(
 		suggestionLayer,
 		UDim2.fromOffset(0, 0),
@@ -825,10 +768,6 @@ function CodeEditor.new(parent)
 	self.Hint = hint
 	self.rows = {}
 
-	-- Popup placement is animated, so the rendered position and the position
-	-- being aimed at are tracked separately. popupPlaced distinguishes the
-	-- first frame after showing, which snaps rather than sliding in from
-	-- wherever the popup was last left.
 	self.popupPosition = Vector2.new(0, 0)
 	self.popupTarget = Vector2.new(0, 0)
 	self.hintPosition = Vector2.new(0, 0)
@@ -844,8 +783,6 @@ function CodeEditor.new(parent)
 	return self
 end
 
--- Frame-rate independent approach towards a target, matching the smoothing
--- the shared tooltip uses so the two feel like the same editor.
 local POPUP_LERP_SPEED = 26
 
 local function approach(current, target, delta)
@@ -854,15 +791,17 @@ local function approach(current, target, delta)
 	return current + (target - current) * weight
 end
 
--- Drives the popup and hint placement. Registered on the same phase the
--- viewport uses so both run in the same frame.
 function CodeEditor:registerRenderStep()
-	renderer.Pool.new("2d", function(delta)
-		self:update(delta or 1 / 60)
+	self.heartbeat = RunService.Heartbeat:Connect(function(dt)
+		self:update(dt or 1 / 60)
 	end)
 end
 
 function CodeEditor:update(delta)
+	if type(delta) ~= "number" then
+		delta = 1 / 60
+	end
+
 	if not UI.isAlive(self.Popup) or not UI.isAlive(self.Hint) then
 		return
 	end
@@ -874,8 +813,6 @@ function CodeEditor:update(delta)
 		return
 	end
 
-	-- The caret moves every time the user types, so the target is recomputed
-	-- each frame rather than only when a keystroke arrives.
 	self:updateTargets()
 
 	if popupVisible then
@@ -889,8 +826,7 @@ function CodeEditor:update(delta)
 			self.popupPlaced = true
 		end
 
-		self.Popup.Position =
-			UDim2.fromOffset(math.floor(self.popupPosition.X), math.floor(self.popupPosition.Y))
+		self.Popup.Position = UDim2.fromOffset(math.floor(self.popupPosition.X), math.floor(self.popupPosition.Y))
 	end
 
 	if hintVisible then
@@ -904,14 +840,9 @@ function CodeEditor:update(delta)
 			self.hintPlaced = true
 		end
 
-		self.Hint.Position =
-			UDim2.fromOffset(math.floor(self.hintPosition.X), math.floor(self.hintPosition.Y))
+		self.Hint.Position = UDim2.fromOffset(math.floor(self.hintPosition.X), math.floor(self.hintPosition.Y))
 	end
 end
-
---
--- Document helpers
---
 
 function CodeEditor:isScriptInstance(instance)
 	return instance ~= nil and (instance:IsA("Script") or instance:IsA("ModuleScript") or instance:IsA("LocalScript"))
@@ -938,9 +869,6 @@ end
 function CodeEditor:hasDocument()
 	return self.activeDocument ~= nil
 end
---
--- Tab strip
---
 
 function CodeEditor:rebuildTabs()
 	UI.clear(self.TabStrip)
@@ -1011,10 +939,6 @@ function CodeEditor:rebuildTabs()
 
 	UI.frame(self.TabStrip, UDim2.new(0, 0, 1, -1), UDim2.new(1, 0, 0, 1), tokens.color.border)
 end
-
---
--- Document lifecycle
---
 
 function CodeEditor:loadDocument(document)
 	self.activeDocument = document
@@ -1158,13 +1082,7 @@ function CodeEditor:updateVisibility()
 		self:dismissSuggestions()
 	end
 end
---
--- Autocomplete: candidate collection
---
 
--- Splits a dotted path into its segments, and reports whether the path ends
--- in a dot. A trailing dot is an explicit "members of" request, which is
--- different from a partially typed member name.
 local function splitPath(path)
 	local segments = {}
 	local current = ""
@@ -1189,9 +1107,6 @@ local function splitPath(path)
 	return segments, ends_with_dot
 end
 
--- The roots a script reaches the DataModel through. They are globals rather
--- than children of the game, so `game` and `workspace` have to be recognised
--- explicitly or `game.` would list nothing.
 local function resolveRoot(name)
 	if name == "game" then
 		return game
@@ -1204,8 +1119,6 @@ local function resolveRoot(name)
 	return nil
 end
 
--- Resolves the first `upto` segments against the DataModel, returning the
--- Instance they name or nil when any step is missing.
 local function resolveInstance(segments, upto)
 	if upto <= 0 then
 		return nil
@@ -1234,9 +1147,6 @@ local function resolveInstance(segments, upto)
 	return root
 end
 
--- Resolves as much of a path as the DataModel knows about, so `workspace.Part`
--- still resolves `workspace` when no child is named `Part`. The segment that
--- failed to resolve is the member being typed.
 local function resolveLongestPrefix(segments)
 	local instance = nil
 	local resolved = 0
@@ -1255,9 +1165,6 @@ local function resolveLongestPrefix(segments)
 	return instance, resolved
 end
 
--- Reflection reports the members of any class the engine knows about, which
--- covers properties, methods and events for an instance we can resolve but
--- whose members are not its children.
 local function collectReflectionMembers(instance)
 	local results = {}
 
@@ -1291,9 +1198,6 @@ local function collectReflectionMembers(instance)
 	return results
 end
 
--- Identifiers already present in the buffer. Completing a name the script
--- itself defines is usually the most useful thing an editor can offer, and it
--- costs one pattern pass over the source.
 local function collectDocumentWords(source)
 	local words = {}
 	local seen = {}
@@ -1312,8 +1216,6 @@ local function collectDocumentWords(source)
 	return words
 end
 
--- Ranks a candidate against what the user typed. Lower is better; nil means
--- no match at all.
 local function scoreMatch(name, prefix)
 	if prefix == "" then
 		return 1
@@ -1330,8 +1232,6 @@ local function scoreMatch(name, prefix)
 		return 1
 	end
 
-	-- Subsequence match (`gws` matching `GetWorkspace`) is what makes
-	-- abbreviated queries useful against long member names.
 	local index = 1
 
 	for position = 1, #lowered do
@@ -1354,9 +1254,6 @@ local function scoreMatch(name, prefix)
 	return nil
 end
 
--- Returns the signature for a callee, or nil when the call is not one this
--- table describes. Matching is exact first and case insensitive second, so
--- `Cframe.new` finds the `CFrame.new` entry.
 local function resolveSignature(callee)
 	if SIGNATURES[callee] ~= nil then
 		return SIGNATURES[callee]
@@ -1365,13 +1262,6 @@ local function resolveSignature(callee)
 	return SIGNATURES_LOWER[string.lower(callee)]
 end
 
--- Finds the call the caret is sitting inside: the innermost unclosed `(`
--- before it, the callee written before that paren, and how many top level
--- commas have already been passed (which argument the caret is on).
---
--- Brackets are tracked together so an argument list inside a table constructor
--- is not mistaken for a call. A string literal before the caret can hide a
--- paren from this scan, which is the one case it does not handle.
 local function callContextAt(text, cursor)
 	local head = string.sub(text, 1, math.max(cursor - 1, 0))
 
@@ -1385,7 +1275,6 @@ local function callContextAt(text, cursor)
 			depth += 1
 		elseif character == "[" or character == "{" then
 			if depth == 0 then
-				-- The caret is inside a table or index expression, not a call.
 				return nil
 			end
 
@@ -1441,9 +1330,6 @@ local function callContextAt(text, cursor)
 	return callee, index
 end
 
--- Children and reflected members of an instance, which is what a member
--- completion offers. Children come first and carry their class name as the
--- detail: in a real place those are what a script is reaching for.
 local function collectInstanceMembers(instance)
 	local members = {}
 
@@ -1462,8 +1348,6 @@ local function collectInstanceMembers(instance)
 	return members
 end
 
--- The language vocabulary plus the words already present in the buffer, which
--- is what a non-member completion offers.
 local function collectVocabulary(source)
 	local candidates = {}
 
@@ -1482,13 +1366,6 @@ local function collectVocabulary(source)
 	return candidates
 end
 
--- Chooses the candidate source for the path under the cursor.
---
--- The receiver is everything in the path except the segment being typed: for
--- `workspace.Pa` that is `workspace`, and for `workspace.` it is the whole
--- path. A completion with a receiver is a member completion, and completes
--- against either the Instance the receiver names or, for a datatype or
--- standard library the DataModel cannot describe, its listed members.
 function CodeEditor:collectCandidates(segments, ends_with_dot)
 	local receiver = {}
 
@@ -1508,8 +1385,6 @@ function CodeEditor:collectCandidates(segments, ends_with_dot)
 				return members
 			end
 		else
-			-- A datatype (CFrame) or a standard library table (math) is not
-			-- reachable through the DataModel at all.
 			local members = collectBuiltinMembers(table.concat(receiver, "."))
 
 			if members ~= nil then
@@ -1522,9 +1397,6 @@ function CodeEditor:collectCandidates(segments, ends_with_dot)
 
 	return collectVocabulary(source)
 end
---
--- Autocomplete: popup
---
 
 function CodeEditor:dismissSuggestions()
 	self.suggestions = {}
@@ -1540,12 +1412,6 @@ function CodeEditor:dismissSuggestions()
 	self:dismissArgumentHint()
 end
 
--- Refreshes both autocomplete surfaces.
---
--- The argument hint is refreshed on every path out of the list, including the
--- ones that dismiss it. Keeping it inside the list refresh would mean typing
--- the opening paren of a call, which matches no candidates, switched the hint
--- off at exactly the moment it becomes useful.
 function CodeEditor:refreshSuggestions()
 	self:updateSuggestionList()
 
@@ -1569,9 +1435,6 @@ function CodeEditor:updateSuggestionList()
 
 	local segments, ends_with_dot = splitPath(path)
 
-	-- The prefix is the part of the member being typed. A trailing dot means
-	-- nothing has been typed yet and everything the target offers is fair
-	-- game, which is why the list is unfiltered in that case.
 	local prefix = ends_with_dot and "" or (segments[#segments] or "")
 
 	if prefix == "" and not ends_with_dot then
@@ -1612,19 +1475,11 @@ function CodeEditor:updateSuggestionList()
 	self.suggestRange = self:completionRange(word, segments, ends_with_dot)
 	self.suggestionIndex = 1
 
-	-- A new list starts at the top; carrying the old scroll over would open
-	-- the list scrolled past the first match.
 	self.suggestionScroll = 0
 
 	self:renderSuggestions()
 end
 
--- The range a completion replaces. The box reports the whole dotted path, but
--- a suggestion names only the final member, so only the last segment is
--- replaced: accepting `Part` for `workspace.Pa` must leave `workspace.` alone.
---
--- After a trailing dot nothing has been typed, so the range is empty and the
--- completion is inserted at the caret instead of replacing anything.
 function CodeEditor:completionRange(word, segments, ends_with_dot)
 	if ends_with_dot then
 		return { start = word.finish, finish = word.finish }
@@ -1643,9 +1498,6 @@ function CodeEditor:visibleRowCount()
 	return math.min(#self.suggestions, SUGGEST_MAX_ROWS)
 end
 
--- Keeps the selected row inside the window. Without this, arrowing past the
--- seventh row would move the selection while the list stayed put, leaving the
--- user pressing Enter on a suggestion they could not see.
 function CodeEditor:scrollToSelection()
 	local total = #self.suggestions
 	local visible = self:visibleRowCount()
@@ -1672,9 +1524,6 @@ function CodeEditor:moveSuggestion(delta)
 	self:renderSuggestions()
 end
 
--- Computes where the popup and the hint want to sit, without moving them.
--- The render step eases both towards these every frame, which is what makes
--- the popup follow the caret smoothly instead of snapping after each keystroke.
 function CodeEditor:updateTargets()
 	local anchor = self.TextBox.CaretScreenPosition or Vector2.new(0, 0)
 	local camera = workspace.CurrentCamera
@@ -1683,22 +1532,15 @@ function CodeEditor:updateTargets()
 	local popupHeight = self.popupSize.Y
 	local hintVisible = self.Hint.Visible
 
-	-- The hint stacks directly above the list when both are up, so the two
-	-- read as one block, and sits above the caret line when the list is closed.
 	local stack = hintVisible and (self.hintHeight + 4) or 0
 
 	local y = anchor.Y + SUGGEST_LINE_HEIGHT
 
 	if y + popupHeight > screen.Y - 8 then
-		-- Flip above the caret when the list would run off the bottom.
 		y = math.max(8, anchor.Y - popupHeight - 4 - stack)
 	end
 
-	local x = math.clamp(
-		anchor.X,
-		8,
-		math.max(8, screen.X - SUGGEST_WIDTH - 8)
-	)
+	local x = math.clamp(anchor.X, 8, math.max(8, screen.X - SUGGEST_WIDTH - 8))
 
 	self.popupTarget = Vector2.new(x, y)
 
@@ -1707,11 +1549,6 @@ function CodeEditor:updateTargets()
 	self.hintTarget = Vector2.new(x, math.max(8, hintY))
 end
 
--- Renders the argument hint for the call the caret is inside, or hides it.
---
--- The hint is the parameter list with the parameter the caret is on pulled
--- out in front, which is what makes `math.clamp(` tell you that the argument
--- after the comma is `min` rather than making you count commas.
 function CodeEditor:renderArgumentHint()
 	local context = callContextAt(self.TextBox.Text, self.TextBox.CursorPosition)
 
@@ -1728,7 +1565,6 @@ function CodeEditor:renderArgumentHint()
 		return
 	end
 
-	-- Past the end of a fixed parameter list there is no argument to be on.
 	local current = params[index + 1]
 
 	if #params > 0 and params[#params] ~= "..." and current == nil then
@@ -1742,7 +1578,7 @@ function CodeEditor:renderArgumentHint()
 
 	UI.clear(self.Hint)
 
-	local padding = math.floor((SUGGEST_PADDING) / 2)
+	local padding = math.floor(SUGGEST_PADDING / 2)
 
 	if current ~= nil then
 		UI.label(
@@ -1797,7 +1633,6 @@ function CodeEditor:renderSuggestions()
 	self.popupSize = Vector2.new(SUGGEST_WIDTH, height)
 
 	if not self.Popup.Visible then
-		-- The first frame after showing snaps to the caret; later moves lerp.
 		self.popupPlaced = false
 	end
 
@@ -1817,10 +1652,7 @@ function CodeEditor:renderSuggestions()
 		local row = UI.button(
 			self.Popup,
 			"",
-			UDim2.fromOffset(
-				SUGGEST_PADDING,
-				SUGGEST_PADDING + offset * SUGGEST_ROW_HEIGHT
-			),
+			UDim2.fromOffset(SUGGEST_PADDING, SUGGEST_PADDING + offset * SUGGEST_ROW_HEIGHT),
 			UDim2.new(1, -SUGGEST_PADDING * 2, 0, SUGGEST_ROW_HEIGHT),
 			function()
 				self:acceptSuggestion(index)
@@ -1840,8 +1672,6 @@ function CodeEditor:renderSuggestions()
 			UDim2.fromOffset(SUGGEST_ICON_SIZE, SUGGEST_ICON_SIZE)
 		)
 
-		-- There is no ImageColor3 in this engine, so the selected row is
-		-- separated by the icon's opacity instead of its colour.
 		icon.ImageTransparency = isSelected and 0 or 0.45
 
 		UI.label(
@@ -1865,8 +1695,6 @@ function CodeEditor:renderSuggestions()
 		table.insert(self.rows, row)
 	end
 
-	-- A thin thumb shows where the selection sits when the list is longer than
-	-- the window, which is the only cue that the list scrolls at all.
 	local total = #self.suggestions
 
 	if total > count then
@@ -1892,14 +1720,9 @@ function CodeEditor:acceptSuggestion(index)
 		return
 	end
 
-	-- Everything needed is captured before dismissing, since dismissing clears
-	-- the state this method still needs.
 	local name = suggestion.name
 	local insert = name
 
-	-- A call is completed with its opening paren, and the caret lands between
-	-- the parens so the next thing typed is the first argument. The hint then
-	-- names that argument as it is typed.
 	local callable = suggestion.kind == "Method" or suggestion.kind == "Function"
 
 	if callable then
@@ -1910,9 +1733,6 @@ function CodeEditor:acceptSuggestion(index)
 
 	self.applyingSuggestion = true
 
-	-- The range is replaced wholesale with the full suggestion name. The box
-	-- performs the swap as a single undoable edit, so accepting a completion
-	-- costs one undo step exactly like typing the word by hand.
 	self.TextBox:ReplaceRange(range.start, range.finish, insert)
 
 	if callable then
@@ -1926,10 +1746,6 @@ function CodeEditor:acceptSuggestion(index)
 	self:renderArgumentHint()
 end
 
---
--- Wiring
---
-
 function CodeEditor:wireEditor()
 	self.TextBox.TextChanged:Connect(function()
 		if self.suppressTextSync then
@@ -1942,10 +1758,6 @@ function CodeEditor:wireEditor()
 			self:commitDocument(self.activeDocument)
 		end
 
-		-- Re-query on every keystroke so the list tracks the word being typed.
-		-- Applying a suggestion drives TextChanged itself and that edit is
-		-- already decided, so only the hint is refreshed for it: accepting a
-		-- call inserts its paren, which is exactly what turns the hint on.
 		if self.applyingSuggestion then
 			self:renderArgumentHint()
 		else
@@ -1954,8 +1766,6 @@ function CodeEditor:wireEditor()
 	end)
 
 	self.TextBox.FocusLost:Connect(function()
-		-- Clicking a popup row blurs the editor before the row handles the
-		-- click, so dismissal waits a frame to let that click land.
 		task.defer(function()
 			if not self.TextBox:IsFocused() then
 				self:dismissSuggestions()
@@ -1963,15 +1773,9 @@ function CodeEditor:wireEditor()
 		end)
 	end)
 
-	-- KeyDown fires before the box acts on a key, which is what lets the popup
-	-- claim the navigation and accept keys. Setting KeyHandled tells the box
-	-- to skip its own handling of that same key.
 	self.TextBox.KeyDown:Connect(function(input)
 		local keyCode = input and input.KeyCode
 
-		-- The list claims the navigation and accept keys so the box does not
-		-- also act on them. Escape is handled whenever either surface is up,
-		-- because the hint can be showing with no list.
 		if keyCode == Enum.KeyCode.Escape then
 			if #self.suggestions > 0 or self.Hint.Visible then
 				self:dismissSuggestions()
@@ -1991,9 +1795,7 @@ function CodeEditor:wireEditor()
 		elseif keyCode == Enum.KeyCode.Down then
 			self:moveSuggestion(1)
 			self.TextBox.KeyHandled = true
-		elseif keyCode == Enum.KeyCode.Return
-			or keyCode == Enum.KeyCode.Tab
-			or keyCode == Enum.KeyCode.KeypadEnter then
+		elseif keyCode == Enum.KeyCode.Return or keyCode == Enum.KeyCode.Tab or keyCode == Enum.KeyCode.KeypadEnter then
 			self:acceptSuggestion()
 			self.TextBox.KeyHandled = true
 		end
