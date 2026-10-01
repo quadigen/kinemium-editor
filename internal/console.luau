@@ -281,7 +281,7 @@ local function executeCommand(source)
 
 	if not fn then
 		local compileError
-		fn, compileError = loadstring(source)
+		fn, compileError = ScriptContext:Run(source, "Console")
 
 		if not fn then
 			LogService:Error(tostring(compileError))
