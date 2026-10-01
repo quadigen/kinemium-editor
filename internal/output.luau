@@ -11,5 +11,5 @@ local tokens = UI.tokens
 local console = require("@internal/console")
 
 local panel = console.createConsole()
-panel.Position = theme.OutputCoordinates.Position
-panel.Size = theme.OutputCoordinates.Size
+panel.window.Position = theme.OutputCoordinates.Position
+panel.window.Size = theme.OutputCoordinates.Size
