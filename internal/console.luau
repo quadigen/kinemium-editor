@@ -1,7 +1,3 @@
-if not IsPlaytest then
-	return
-end
-
 -- @internal/editor_ui
 local UI = require("@internal/editor_ui")
 
