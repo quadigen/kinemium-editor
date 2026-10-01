@@ -14,6 +14,7 @@ local panel = console.createConsole()
 local output = theme.OutputCoordinates
 panel.window.Position = UDim2.fromOffset(output.Position.X.Offset, output.Position.Y.Offset)
 panel.window.Size = UDim2.fromOffset(output.Size.X.Offset, output.Size.Y.Offset)
+panel.window.AnchorPoint = Vector2.new(0, 0)
 
 renderer.Pool.new("2d", function()
 	panel.window.Size = theme.OutputCoordinates.Size
