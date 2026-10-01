@@ -22,5 +22,6 @@ renderer.Pool.new("2d", function()
 	panel.window.AnchorPoint = Vector2.new(0, 0)
 	panel.window.Position = output.Position
 	panel.window.Size = output.Size
+	panel.gui.RenderOnTop = true
 	panel.gui.Parent = game.CoreGui
 end)
