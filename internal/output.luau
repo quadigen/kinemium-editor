@@ -15,6 +15,8 @@ local output = theme.OutputCoordinates
 panel.window.AnchorPoint = Vector2.new(0, 0)
 panel.window.Position = output.Position
 panel.window.Size = output.Size
+panel.window.Parent = UI.root()
+panel.gui:Destroy()
 
 renderer.Pool.new("2d", function()
 	local output = theme.OutputCoordinates
@@ -22,6 +24,4 @@ renderer.Pool.new("2d", function()
 	panel.window.AnchorPoint = Vector2.new(0, 0)
 	panel.window.Position = output.Position
 	panel.window.Size = output.Size
-	panel.gui.RenderOnTop = true
-	panel.gui.Parent = game.CoreGui
 end)
