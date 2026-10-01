@@ -5,12 +5,17 @@ local RunService = game:GetService("RunService")
 
 local colors = UI.tokens.color
 
+----------------------------------------------------------------
+-- Config
+----------------------------------------------------------------
+
 local WINDOW_NAME = "Console"
 local MAX_ENTRIES = 1000 -- matches LOG_HISTORY_LIMIT in LogService
 local ROW_HEIGHT = 16
 local TOOLBAR_HEIGHT = 30
 local POLL_INTERVAL = 0.1
 
+-- History entry `type` strings written by LogService
 local KIND_COLORS = {
 	Log = colors.text,
 	Info = Color3.fromRGB(110, 170, 255),
@@ -25,9 +30,17 @@ local searchQuery = ""
 local entries = {} -- { message, kind, color, time }
 local lastSeenCount = 0
 
+----------------------------------------------------------------
+-- Window (UI.window)
+----------------------------------------------------------------
+
 local panel, content = UI.window(WINDOW_NAME, UDim2.fromOffset(40, 80), UDim2.fromOffset(720, 360), "Console", {
 	closable = true,
 })
+
+----------------------------------------------------------------
+-- Toolbar
+----------------------------------------------------------------
 
 local BUTTON_WIDTH, BUTTON_GAP, PAD = 52, 4, 6
 local buttonCount = #filterOrder + 1 -- filters + Clear
@@ -72,6 +85,10 @@ UI.button(content, "Clear", buttonX(buttonCount), UDim2.fromOffset(BUTTON_WIDTH,
 	lastSeenCount = LogService.MessageCount
 	rebuild()
 end, { paddingX = 4 })
+
+----------------------------------------------------------------
+-- Log area
+----------------------------------------------------------------
 
 local scroll = UI.create("ScrollingFrame", {
 	Name = "Log",
@@ -138,6 +155,22 @@ rebuild = function()
 	scrollToBottom()
 end
 
+-- `os` isn't exposed in this environment, so format unix seconds (UTC) by hand.
+local function formatTime(timestamp)
+	-- Prefer DateTime (local time) when the environment provides it.
+	local ok, text = pcall(function()
+		return DateTime.fromUnixTimestamp(timestamp):FormatLocalTime("HH:mm:ss", "en-us")
+	end)
+
+	if ok and type(text) == "string" then
+		return text
+	end
+
+	local seconds = math.floor(tonumber(timestamp) or 0) % 86400
+
+	return string.format("%02d:%02d:%02d", seconds // 3600, (seconds % 3600) // 60, seconds % 60)
+end
+
 local function makeEntry(item)
 	local kind = KIND_COLORS[item.type] and item.type or "Log"
 
@@ -145,9 +178,16 @@ local function makeEntry(item)
 		message = tostring(item.message),
 		kind = kind,
 		color = KIND_COLORS[kind],
-		time = os.date("%H:%M:%S", item.timestamp),
+		time = formatTime(item.timestamp),
 	}
 end
+
+----------------------------------------------------------------
+-- Polling
+-- LogService has no event, so watch MessageCount and only pull history
+-- when it changes. History is trimmed from the front at 1000 entries, so
+-- the number of new messages comes from the counter, not from indices.
+----------------------------------------------------------------
 
 local function poll()
 	local count = LogService.MessageCount
