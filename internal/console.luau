@@ -162,19 +162,27 @@ local function createConsole()
 		end
 
 		local height = math.max(ROW_HEIGHT, lines * 17 + 4)
-		local row = UI.button(
-			scroll,
-			"",
-			UDim2.fromOffset(1, rowCount * ROW_HEIGHT),
-			UDim2.new(1, 0, 0, height),
-			function() end,
-			{
-				color = rowCount % 2 == 0 and tokens.color.rowEven or tokens.color.rowOdd,
-				hoverColor = colors.hover,
-				radius = 0,
-				border = false,
-			}
-		)
+		local y = 0
+
+		if rowCount > 0 then
+			local previousRows = scroll:GetChildren()
+
+			for i = #previousRows, 1, -1 do
+				local previous = previousRows[i]
+
+				if previous.Name == "Row" then
+					y = previous.Position.Y.Offset + previous.Size.Y.Offset
+					break
+				end
+			end
+		end
+
+		local row = UI.button(scroll, "", UDim2.fromOffset(1, y), UDim2.new(1, 0, 0, height), function() end, {
+			color = rowCount % 2 == 0 and tokens.color.rowEven or tokens.color.rowOdd,
+			hoverColor = colors.hover,
+			radius = 0,
+			border = false,
+		})
 
 		row.Name = "Row"
 
@@ -196,8 +204,16 @@ local function createConsole()
 			entry.color
 		)
 
-		rowCount += height
-		scroll.CanvasSize = UDim2.new(0, 0, 0, rowCount)
+		rowCount += 1
+
+		local canvasHeight = 0
+		for _, child in ipairs(scroll:GetChildren()) do
+			if child.Name == "Row" then
+				canvasHeight = math.max(canvasHeight, child.Position.Y.Offset + child.Size.Y.Offset)
+			end
+		end
+
+		scroll.CanvasSize = UDim2.fromOffset(0, canvasHeight)
 	end
 
 	rebuild = function()
@@ -238,7 +254,7 @@ local function createConsole()
 		local valueType = typeof(value)
 
 		if valueType == "string" then
-			return string.format("%q", value)
+			return value
 		elseif valueType == "nil" then
 			return "nil"
 		elseif valueType == "boolean" or valueType == "number" then
