@@ -200,7 +200,6 @@ local function createConsole()
 	end
 
 	local function formatTime(timestamp)
-		-- Prefer DateTime (local time) when the environment provides it.
 		local ok, text = pcall(function()
 			return DateTime.fromUnixTimestamp(timestamp):FormatLocalTime("HH:mm:ss", "en-us")
 		end)
@@ -232,7 +231,6 @@ local function createConsole()
 			return
 		end
 
-		-- Counter went backwards: someone called LogService:Clear()
 		if count < lastSeenCount then
 			table.clear(entries)
 			lastSeenCount = 0
@@ -289,7 +287,6 @@ local function createConsole()
 			return
 		end
 
-		-- Don't stack identical consecutive entries in the command history
 		if commandHistory[#commandHistory] ~= source then
 			table.insert(commandHistory, source)
 
@@ -314,8 +311,6 @@ local function createConsole()
 		end
 	end)
 
-	-- Up/Down arrows cycle through previous commands (skipped if UserInputService
-	-- isn't available in this environment).
 	do
 		local ok, UserInputService = pcall(function()
 			return game:GetService("UserInputService")
@@ -337,10 +332,6 @@ local function createConsole()
 			end)
 		end
 	end
-
-	----------------------------------------------------------------
-	-- Wiring
-	----------------------------------------------------------------
 
 	local elapsed = 0
 
