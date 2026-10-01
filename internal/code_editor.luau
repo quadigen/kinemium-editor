@@ -10,7 +10,6 @@ local RunService = game:GetService("RunService")
 local tokens = UI.tokens
 
 local TAB_STRIP_HEIGHT = 26
-local STATUS_HEIGHT = 20
 local FIND_WIDTH = 300
 local FIND_HEIGHT = 28
 local TAB_MIN_WIDTH = 104
@@ -1013,7 +1012,7 @@ function CodeEditor.new(parent)
 
 	local editor = UI.create("TextBox", {
 		Name = "CodeEditor",
-		Size = UDim2.new(1, 0, 1, -(TAB_STRIP_HEIGHT + STATUS_HEIGHT)),
+		Size = UDim2.new(1, 0, 1, -TAB_STRIP_HEIGHT),
 		Position = UDim2.fromOffset(0, TAB_STRIP_HEIGHT),
 		CodeEditor = true,
 		Visible = false,
@@ -1078,59 +1077,6 @@ function CodeEditor.new(parent)
 	self.Popup = popup
 	self.Hint = hint
 	self.rows = {}
-
-	local statusBar = UI.frame(
-		parent,
-		UDim2.new(0, 0, 1, -STATUS_HEIGHT),
-		UDim2.new(1, 0, 0, STATUS_HEIGHT),
-		tokens.color.panel,
-		0
-	)
-
-	statusBar.Name = "StatusBar"
-
-	self.statusLabel = UI.label(
-		statusBar,
-		"Ln 1, Col 1",
-		UDim2.fromOffset(8, 2),
-		UDim2.fromOffset(180, 16),
-		tokens.type.caption,
-		tokens.color.subtext
-	)
-
-	self.statusButtons = {}
-	self.statusOrder = { "wrap", "minimap", "suggest" }
-	self.statusLabels = { wrap = "Wrap", minimap = "Map", suggest = "Sense" }
-
-	local toggleWidth = 48
-	local toggleX = 0
-
-	for index = #self.statusOrder, 1, -1 do
-		local id = self.statusOrder[index]
-		toggleX = toggleX + toggleWidth
-
-		local button, _, record = UI.button(
-			statusBar,
-			self.statusLabels[id],
-			UDim2.new(1, -toggleX, 0, 2),
-			UDim2.fromOffset(toggleWidth - 4, STATUS_HEIGHT - 4),
-			function()
-				self:toggle(id)
-			end,
-			{
-				color = tokens.color.panel,
-				hoverColor = tokens.color.hover,
-				textColor = tokens.color.muted,
-				textSize = tokens.type.caption,
-				textY = 2,
-				radius = tokens.radius.xs,
-				border = false,
-				paddingX = 6,
-			}
-		)
-
-		self.statusButtons[id] = { gui = button, record = record }
-	end
 
 	local find = UI.frame(
 		suggestionLayer,
@@ -1215,17 +1161,12 @@ function CodeEditor.new(parent)
 		self.findButtons[id] = { gui = button, label = label, record = record, text = findText[id] }
 	end
 
-	self.StatusBar = statusBar
 	self.Find = find
 	self.findVisible = false
 	self.findMatches = {}
 	self.findIndex = 0
 	self.findCaseSensitive = false
 	self.findWholeWord = false
-	self.statusCache = nil
-	self.statusSignature = nil
-	self.statusStates = {}
-	self.suggestionsEnabled = true
 
 	self.popupPosition = Vector2.new(0, 0)
 	self.popupTarget = Vector2.new(0, 0)
@@ -1260,8 +1201,6 @@ function CodeEditor:update(delta)
 	if type(delta) ~= "number" then
 		delta = 1 / 60
 	end
-
-	self:refreshStatus()
 
 	if self.findVisible then
 		self:placeFindWidget()
@@ -2073,12 +2012,6 @@ function CodeEditor:dismissSuggestions()
 end
 
 function CodeEditor:refreshSuggestions()
-	if not self.suggestionsEnabled then
-		self:dismissSuggestions()
-
-		return
-	end
-
 	self:updateSuggestionList()
 
 	self:renderArgumentHint()
@@ -2523,22 +2456,6 @@ local function modifierHeld()
 		or isModifierDown(Enum.KeyCode.RightSuper)
 end
 
-function CodeEditor:toggle(id)
-	if id == "wrap" then
-		self.TextBox.WordWrap = not self.TextBox.WordWrap
-	elseif id == "minimap" then
-		self.TextBox.ShowMinimap = not self.TextBox.ShowMinimap
-	elseif id == "suggest" then
-		self.suggestionsEnabled = not self.suggestionsEnabled
-
-		if not self.suggestionsEnabled then
-			self:dismissSuggestions()
-		end
-	end
-
-	self:refreshStatus()
-end
-
 function CodeEditor:isWordCharacter(char)
 	return char ~= nil and char:match("[%a_0-9]") ~= nil
 end
@@ -2732,82 +2649,6 @@ function CodeEditor:markFindToggle(id, on)
 	paintToggle(self.findButtons[id], on)
 end
 
-function CodeEditor:refreshStatus()
-	local box = self.TextBox
-
-	if not UI.isAlive(box) or not UI.isAlive(self.statusLabel) then
-		return
-	end
-
-	local cursor = box.CursorPosition
-	local anchor = box.SelectionStart
-	local tab = box.TabSize
-
-	local signature = ('%d:%d:%d:%d:%d'):format(
-		cursor,
-		anchor,
-		box.WordWrap == true and 1 or 0,
-		box.ShowMinimap == true and 1 or 0,
-		self.suggestionsEnabled == true and 1 or 0
-	)
-
-	if signature == self.statusSignature then
-		return
-	end
-
-	self.statusSignature = signature
-
-	self.statusStates = {
-		wrap = box.WordWrap,
-		minimap = box.ShowMinimap,
-		suggest = self.suggestionsEnabled,
-	}
-
-	for id, entry in self.statusButtons do
-		paintToggle(entry, self.statusStates[id])
-	end
-
-	local selection = 0
-
-	if anchor ~= cursor then
-		selection = math.abs(cursor - anchor)
-	end
-
-	local line = 1
-	local consumed = 0
-	local head = math.min(cursor, #box.Text)
-	local searchFrom = 1
-
-	while true do
-		local newline = box.Text:find("\n", searchFrom, true)
-
-		if not newline or newline > head then
-			break
-		end
-
-		line = line + 1
-		consumed = newline
-		searchFrom = newline + 1
-	end
-
-	local column = head - consumed + 1
-
-	local text
-
-	if selection > 0 then
-		text = ('Ln %d, Col %d  (%d selected)'):format(line, column, selection)
-	else
-		text = ('Ln %d, Col %d'):format(line, column)
-	end
-
-	text = ('%s    Spaces: %d    Luau'):format(text, math.max(tab, 1))
-
-	if text ~= self.statusCache then
-		self.statusCache = text
-		self.statusLabel.Text = text
-	end
-end
-
 function CodeEditor:wireEditor()
 	self.TextBox.TextChanged:Connect(function()
 		if self.suppressTextSync then
@@ -2825,8 +2666,6 @@ function CodeEditor:wireEditor()
 		else
 			self:refreshSuggestions()
 		end
-
-		self:refreshStatus()
 
 		if self.findVisible then
 			self:scanFindMatches()
