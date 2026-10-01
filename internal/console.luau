@@ -6,6 +6,7 @@ if IsServer then
 end
 local UI = require("@internal/editor_ui")
 
+local ScriptContext = game:GetService("ScriptContext")
 local LogService = game:GetService("LogService")
 local RunService = game:GetService("RunService")
 
@@ -17,8 +18,10 @@ local colors = UI.tokens.color
 
 local WINDOW_NAME = "Console"
 local MAX_ENTRIES = 1000 -- matches LOG_HISTORY_LIMIT in LogService
+local MAX_COMMAND_HISTORY = 50
 local ROW_HEIGHT = 16
 local TOOLBAR_HEIGHT = 30
+local COMMANDBAR_HEIGHT = 30
 local POLL_INTERVAL = 0.1
 
 -- History entry `type` strings written by LogService
@@ -36,9 +39,8 @@ local searchQuery = ""
 local entries = {} -- { message, kind, color, time }
 local lastSeenCount = 0
 
-----------------------------------------------------------------
--- Window (UI.window)
-----------------------------------------------------------------
+local commandHistory = {}
+local historyIndex = 0
 
 local gui = Instance.new("ScreenGui")
 gui.Name = "Console"
@@ -100,10 +102,14 @@ UI.button(content, "Clear", buttonX(buttonCount), UDim2.fromOffset(BUTTON_WIDTH,
 	rebuild()
 end, { paddingX = 4 })
 
+----------------------------------------------------------------
+-- Log area (between toolbar and command line)
+----------------------------------------------------------------
+
 local scroll = UI.create("ScrollingFrame", {
 	Name = "Log",
 	Position = UDim2.fromOffset(0, TOOLBAR_HEIGHT),
-	Size = UDim2.new(1, 0, 1, -TOOLBAR_HEIGHT),
+	Size = UDim2.new(1, 0, 1, -(TOOLBAR_HEIGHT + COMMANDBAR_HEIGHT)),
 	BackgroundColor3 = colors.input,
 	BorderSizePixel = 0,
 	ScrollBarThickness = 6,
@@ -112,6 +118,22 @@ local scroll = UI.create("ScrollingFrame", {
 	CanvasSize = UDim2.new(0, 0, 0, 0),
 	ClipsDescendants = true,
 }, content)
+
+----------------------------------------------------------------
+-- Command line
+----------------------------------------------------------------
+
+local command = UI.input(
+	content,
+	"Run a command...",
+	UDim2.new(0, PAD, 1, -(COMMANDBAR_HEIGHT - 3)),
+	UDim2.new(1, -PAD * 2, 0, UI.metrics.inputHeight),
+	{
+		textSize = UI.tokens.type.small,
+		maxLength = 1000,
+		focusColor = colors.accent,
+	}
+)
 
 local rowCount = 0
 
@@ -245,6 +267,101 @@ local function poll()
 		scrollToBottom()
 	end
 end
+
+local function executeCommand(source)
+	LogService:Log("> " .. source)
+
+	if loadstring == nil then
+		LogService:Error("loadstring is not available in this environment")
+		return
+	end
+
+	local fn = loadstring("return " .. source)
+	local isExpression = fn ~= nil
+
+	if not fn then
+		local compileError
+		fn, compileError = loadstring(source)
+
+		if not fn then
+			LogService:Error(tostring(compileError))
+			return
+		end
+	end
+
+	local ok, result = pcall(fn)
+
+	if not ok then
+		LogService:Error(tostring(result))
+	elseif isExpression and result ~= nil then
+		LogService:Log(tostring(result))
+	end
+end
+
+local function submitCommand()
+	local source = command.Text
+
+	-- trim whitespace
+	source = string.match(source, "^%s*(.-)%s*$") or ""
+
+	command.Text = ""
+
+	if source == "" then
+		return
+	end
+
+	-- Don't stack identical consecutive entries in the command history
+	if commandHistory[#commandHistory] ~= source then
+		table.insert(commandHistory, source)
+
+		if #commandHistory > MAX_COMMAND_HISTORY then
+			table.remove(commandHistory, 1)
+		end
+	end
+
+	historyIndex = #commandHistory + 1
+
+	executeCommand(source)
+
+	-- Keep typing without clicking again
+	pcall(function()
+		command:CaptureFocus()
+	end)
+end
+
+command.FocusLost:Connect(function(enterPressed)
+	if enterPressed then
+		submitCommand()
+	end
+end)
+
+-- Up/Down arrows cycle through previous commands (skipped if UserInputService
+-- isn't available in this environment).
+do
+	local ok, UserInputService = pcall(function()
+		return game:GetService("UserInputService")
+	end)
+
+	if ok and UserInputService then
+		UserInputService.InputBegan:Connect(function(input)
+			if not command:IsFocused() or #commandHistory == 0 then
+				return
+			end
+
+			if input.KeyCode == Enum.KeyCode.Up then
+				historyIndex = math.max(1, historyIndex - 1)
+				command.Text = commandHistory[historyIndex] or ""
+			elseif input.KeyCode == Enum.KeyCode.Down then
+				historyIndex = math.min(#commandHistory + 1, historyIndex + 1)
+				command.Text = commandHistory[historyIndex] or ""
+			end
+		end)
+	end
+end
+
+----------------------------------------------------------------
+-- Wiring
+----------------------------------------------------------------
 
 local elapsed = 0
 
