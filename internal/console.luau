@@ -433,6 +433,9 @@ local function createConsole()
 	local elapsed = 0
 
 	RunService.Heartbeat:Connect(function(dt)
+		if panel == nil then
+			return
+		end
 		if not panel.Visible then
 			return
 		end
