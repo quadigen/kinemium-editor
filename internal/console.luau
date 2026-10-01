@@ -34,10 +34,16 @@ local lastSeenCount = 0
 -- Window (UI.window)
 ----------------------------------------------------------------
 
-local panel, content = UI.window(WINDOW_NAME, UDim2.fromOffset(40, 80), UDim2.fromOffset(720, 360), "Console", {
+local gui = Instance.new("ScreenGui")
+gui.Name = "Console"
+gui.ResetOnSpawn = false
+gui.Parent = game.StarterGui
+
+local panel, content = UI.window(WINDOW_NAME, UDim2.fromOffset(0.5, 0.5), UDim2.fromOffset(0.5, 0.4), "Console", {
 	closable = true,
 })
-panel.Parent = game.CoreGui
+panel.AnchorPoint = Vector2.new(0.5, 0.5)
+panel.Parent = gui
 
 ----------------------------------------------------------------
 -- Toolbar
@@ -86,10 +92,6 @@ UI.button(content, "Clear", buttonX(buttonCount), UDim2.fromOffset(BUTTON_WIDTH,
 	lastSeenCount = LogService.MessageCount
 	rebuild()
 end, { paddingX = 4 })
-
-----------------------------------------------------------------
--- Log area
-----------------------------------------------------------------
 
 local scroll = UI.create("ScrollingFrame", {
 	Name = "Log",
