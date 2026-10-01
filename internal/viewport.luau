@@ -3,6 +3,7 @@ if (IsServer or IsClient) or IsPlaytest then
 end
 
 local UI = require("@internal/editor_ui")
+local CodeEditor = require("@internal/code_editor")
 
 local StudioThemeService = game:GetService("StudioThemeService")
 local theme = StudioThemeService.SelectedTheme
@@ -280,286 +281,11 @@ breadcrumb.Name = "ViewportBreadcrumb"
 breadcrumb.Visible = renderer.Dimension == "3D"
 breadcrumb.ClipsDescendants = true
 
-local TAB_STRIP_HEIGHT = 26
-local TAB_MIN_WIDTH = 104
-local TAB_CLOSE_SIZE = 18
-local TAB_FONT = "builtin://fonts/Montserrat-Regular.ttf"
 
-local CodeEditor = Instance.new("TextBox")
-CodeEditor.Name = "CodeEditor"
-CodeEditor.Size = UDim2.new(1, 0, 1, -TAB_STRIP_HEIGHT)
-CodeEditor.Position = UDim2.fromOffset(0, TAB_STRIP_HEIGHT)
-CodeEditor.CodeEditor = true
-CodeEditor.Visible = false
-CodeEditor.Active = true
-CodeEditor.AutoIndent = true
-CodeEditor.ShowMinimap = true
-CodeEditor.BackgroundTransparency = 0.3
-CodeEditor.BackgroundColor3 = Color3.new(0, 0, 0)
-CodeEditor.TextColor3 = Color3.new(1, 1, 1)
-CodeEditor.Parent = scriptRoot
+-- The script editor (TextBox, tab strip, autocomplete) lives in its own module
+-- so the viewport only owns the viewport.
+local editor = CodeEditor.new(scriptRoot)
 
-local LuauSyntaxHighlighter = Instance.new("SyntaxHighlighter")
-LuauSyntaxHighlighter.Parent = CodeEditor
-
-local backDrop = Instance.new("UIBackdrop")
-backDrop.Parent = CodeEditor
-
-local tabStrip = UI.create("ScrollingFrame", {
-	Name = "ScriptTabs",
-	Position = UDim2.fromOffset(0, 0),
-	Size = UDim2.new(1, 0, 0, TAB_STRIP_HEIGHT),
-	BackgroundColor3 = tokens.color.panel,
-	BackgroundTransparency = 0,
-	BorderSizePixel = 0,
-	CanvasSize = UDim2.new(),
-	ScrollingEnabled = true,
-	ScrollingDirection = Enum.ScrollingDirection.X,
-	ScrollBarThickness = 4,
-	ScrollBarImageColor3 = tokens.color.subtext,
-	ScrollBarImageTransparency = 0.4,
-	ScrollBarAutoHide = true,
-	ScrollBarFadeDelay = 0.45,
-	ScrollBarFadeSpeed = 12,
-	ScrollBarMinimumHandleSize = 24,
-	ClipsDescendants = true,
-	Active = true,
-	InputSink = true,
-	Visible = false,
-}, scriptRoot)
-
-local documents = {}
-local documentByInstance = {}
-local activeDocument = nil
-local suppressTextSync = false
-
-local focusDocument
-local closeDocument
-
-local function isScriptInstance(instance)
-	return instance ~= nil and (instance:IsA("Script") or instance:IsA("ModuleScript") or instance:IsA("LocalScript"))
-end
-
-local function tabWidthFor(name)
-	local textSize = TextService:GetTextSize(name, tokens.type.small, TAB_FONT, Vector2.new(10000, 10000))
-
-	return math.max(TAB_MIN_WIDTH, math.ceil(textSize.X) + 52)
-end
-
-local function commitDocument(document)
-	local instance = document.instance
-
-	if instance == nil or not UI.isAlive(instance) then
-		return
-	end
-
-	pcall(function()
-		instance.Source = document.source
-	end)
-end
-
-local function updateEditorVisibility()
-	local hasDocument = activeDocument ~= nil
-
-	scriptRoot.Visible = hasDocument
-	tabStrip.Visible = #documents > 0
-	CodeEditor.Visible = hasDocument
-	toolbar.Visible = not hasDocument
-	breadcrumb.Visible = not hasDocument and renderer.Dimension == "3D"
-
-	if hasDocument then
-		CodeEditor.Size = UDim2.new(1, 0, 1, -TAB_STRIP_HEIGHT)
-		CodeEditor.Position = UDim2.fromOffset(0, TAB_STRIP_HEIGHT)
-	end
-end
-
-local function rebuildTabs()
-	UI.clear(tabStrip)
-
-	local x = 0
-
-	for _, document in ipairs(documents) do
-		local isActive = document == activeDocument
-		local background = isActive and tokens.color.surfaceAlt or tokens.color.panel
-
-		local width = tabWidthFor(document.name)
-
-		local tab, _, record = UI.button(
-			tabStrip,
-			"",
-			UDim2.fromOffset(x, 0),
-			UDim2.fromOffset(width, TAB_STRIP_HEIGHT),
-			function()
-				focusDocument(document)
-			end,
-			{
-				color = background,
-				hoverColor = tokens.color.hover,
-				textColor = tokens.color.subtext,
-				radius = 0,
-				border = false,
-			}
-		)
-
-		document.tab = tab
-		document.tabRecord = record
-		document.tabWidth = width
-
-		document.tabLabel = UI.label(
-			tab,
-			document.name,
-			UDim2.fromOffset(10, 6),
-			UDim2.new(1, -TAB_CLOSE_SIZE - 16, 0, 14),
-			tokens.type.small,
-			isActive and tokens.color.text or tokens.color.subtext
-		)
-
-		UI.iconButton(
-			tab,
-			"builtin://global-icons/x.svg",
-			UDim2.new(1, -TAB_CLOSE_SIZE - 4, 0.5, -math.floor(TAB_CLOSE_SIZE / 2)),
-			UDim2.fromOffset(TAB_CLOSE_SIZE, TAB_CLOSE_SIZE),
-			function()
-				closeDocument(document)
-			end,
-			{
-				color = background,
-				hoverColor = tokens.color.error,
-				radius = 0,
-				border = false,
-				iconSize = 10,
-			}
-		)
-
-		if isActive then
-			UI.frame(tab, UDim2.new(0, 0, 1, -2), UDim2.new(1, 0, 0, 2), tokens.color.accent, 0)
-		end
-
-		x += width
-	end
-
-	tabStrip.CanvasSize = UDim2.fromOffset(x, 0)
-
-	UI.frame(tabStrip, UDim2.new(0, 0, 1, -1), UDim2.new(1, 0, 0, 1), tokens.color.border)
-end
-
-local function loadDocument(document)
-	activeDocument = document
-
-	suppressTextSync = true
-	CodeEditor.Text = document.source
-	suppressTextSync = false
-
-	rebuildTabs()
-	updateEditorVisibility()
-end
-
-focusDocument = function(document)
-	if document == nil or document == activeDocument then
-		return
-	end
-
-	if activeDocument ~= nil then
-		activeDocument.source = CodeEditor.Text
-
-		commitDocument(activeDocument)
-	end
-
-	loadDocument(document)
-end
-
-closeDocument = function(document)
-	if document == nil then
-		return
-	end
-
-	local index = table.find(documents, document)
-
-	if index == nil then
-		return
-	end
-
-	local wasActive = document == activeDocument
-
-	if wasActive then
-		document.source = CodeEditor.Text
-	end
-
-	commitDocument(document)
-
-	if document.instance ~= nil then
-		documentByInstance[document.instance] = nil
-	end
-
-	table.remove(documents, index)
-
-	if wasActive then
-		activeDocument = nil
-
-		local neighbour = documents[index] or documents[index - 1]
-
-		if neighbour ~= nil then
-			loadDocument(neighbour)
-		else
-			suppressTextSync = true
-			CodeEditor.Text = ""
-			suppressTextSync = false
-
-			rebuildTabs()
-			updateEditorVisibility()
-		end
-	end
-end
-
-local function openScript(instance)
-	if not isScriptInstance(instance) then
-		return
-	end
-
-	local document = documentByInstance[instance]
-
-	if document == nil then
-		local source = ""
-		local ok, value = pcall(function()
-			return instance.Source
-		end)
-
-		if ok and type(value) == "string" then
-			source = value
-		end
-
-		document = {
-			instance = instance,
-			name = instance.Name,
-			source = source,
-		}
-
-		table.insert(documents, document)
-		documentByInstance[instance] = document
-	end
-
-	focusDocument(document)
-end
-
-local function closeAllScripts()
-	local snapshot = table.clone(documents)
-
-	for _, document in ipairs(snapshot) do
-		closeDocument(document)
-	end
-end
-
-CodeEditor.TextChanged:Connect(function()
-	if suppressTextSync or activeDocument == nil then
-		return
-	end
-
-	activeDocument.source = CodeEditor.Text
-
-	commitDocument(activeDocument)
-end)
-
-updateEditorVisibility()
 
 local function rebuildBreadcrumb(path)
 	UI.clear(breadcrumb)
@@ -679,11 +405,11 @@ renderer.Pool.new("2d", function()
 		rebuildBreadcrumb(path)
 	end
 
-	if #documents > 0 or toolbar.Visible then
+	if editor:OpenScriptCount() > 0 or toolbar.Visible then
 		local relabelled = false
 		local doomed = nil
 
-		for _, document in ipairs(documents) do
+		for _, document in ipairs(editor.documents) do
 			local instance = document.instance
 
 			if instance == nil or not UI.isAlive(instance) then
@@ -696,14 +422,22 @@ renderer.Pool.new("2d", function()
 		end
 
 		for _, document in ipairs(doomed or {}) do
-			closeDocument(document)
+			editor:closeDocument(document)
 		end
 
 		if relabelled then
-			rebuildTabs()
+			editor:rebuildTabs()
 		end
 
-		updateEditorVisibility()
+		-- The viewport toolbar and breadcrumb give way to the editor whenever
+		-- a script is open, which is state the editor module owns.
+		local hasDocument = editor:hasDocument()
+
+		scriptRoot.Visible = hasDocument
+		toolbar.Visible = not hasDocument
+		breadcrumb.Visible = not hasDocument and renderer.Dimension == "3D"
+
+		editor:updateVisibility()
 	end
 end)
 
@@ -767,34 +501,36 @@ renderer.Pool.new("2da", function()
 end)
 
 return {
-	OpenScript = openScript,
-
-	CloseScript = function(instance)
-		closeDocument(documentByInstance[instance])
+	-- Script editing is delegated wholesale to the code editor module; the
+	-- viewport only forwards the calls other panels make.
+	OpenScript = function(instance)
+		editor:OpenScript(instance)
 	end,
 
-	CloseAllScripts = closeAllScripts,
+	CloseScript = function(instance)
+		editor:CloseScript(instance)
+	end,
+
+	CloseAllScripts = function()
+		editor:CloseAllScripts()
+	end,
 
 	IsScriptOpen = function(instance)
-		return documentByInstance[instance] ~= nil
+		return editor:IsScriptOpen(instance)
 	end,
 
 	OpenScriptCount = function()
-		return #documents
+		return editor:OpenScriptCount()
 	end,
 
 	ActiveScript = function()
-		return activeDocument and activeDocument.instance or nil
+		return editor:ActiveScript()
 	end,
 
-	CodeEditor = CodeEditor,
+	CodeEditor = editor.TextBox,
 
 	GetSource = function()
-		if activeDocument ~= nil then
-			return activeDocument.source
-		end
-
-		return CodeEditor.Text
+		return editor:GetSource()
 	end,
 
 	SetSnap = function(tool: "handles" | "archandles", num)
