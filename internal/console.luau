@@ -162,18 +162,15 @@ local function createConsole()
 
 		row.Name = "Row"
 
-		-- Log type indicator, similar to the Explorer icon.
-		UI.image(row, "builtin://icons/" .. ({
+		UI.image(row, "builtin://global-icons/" .. ({
 			Log = "Output.svg",
 			Info = "Info.svg",
 			Warn = "Warning.svg",
 			Error = "Error.svg",
 		})[entry.kind], UDim2.fromOffset(6, 3), UDim2.fromOffset(14, 14))
 
-		-- Timestamp
 		UI.label(row, entry.time, UDim2.fromOffset(25, 2), UDim2.fromOffset(58, 17), tokens.type.small, colors.subtext)
 
-		-- Message
 		UI.label(row, entry.message, UDim2.fromOffset(88, 2), UDim2.new(1, -96, 0, 17), tokens.type.small, entry.color)
 
 		rowCount += 1
