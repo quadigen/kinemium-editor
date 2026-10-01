@@ -21,10 +21,152 @@ local SUGGEST_WIDTH = 268
 local SUGGEST_ROW_HEIGHT = 22
 local SUGGEST_MAX_ROWS = 7
 local SUGGEST_PADDING = 4
+local SUGGEST_ICON_SIZE = 12
 
 -- Matches the line height the engine draws the code editor with. The popup is
 -- anchored below the caret line, so it has to know how tall that line is.
 local SUGGEST_LINE_HEIGHT = 22
+
+local iconRoot = "builtin://global-icons/"
+
+-- This engine has no ImageColor3, so every global icon renders white. Rows use
+-- ImageTransparency to separate the selected row from the rest rather than
+-- tinting the icon per kind.
+local KIND_ICONS = {
+	Keyword = "sparkle.png",
+	Local = "pencil.svg",
+	Global = "folder.svg",
+	Type = "folder.svg",
+	Instance = "folder.svg",
+	Table = "grid.svg",
+	Property = "grid.svg",
+	Member = "grid.svg",
+	Value = "grid.svg",
+	Function = "api.png",
+	Method = "api.png",
+	Event = "info.png",
+	Service = "info.png",
+}
+
+-- Argument names for the calls worth hinting. The engine's reflection data
+-- reports a single opaque "any" parameter per method, so real argument names
+-- only exist here. A call with no entry gets no hint rather than a guess.
+local SIGNATURES = {
+	["math.abs"] = { "x" },
+	["math.atan2"] = { "y", "x" },
+	["math.clamp"] = { "value", "min", "max" },
+	["math.fmod"] = { "x", "y" },
+	["math.ldexp"] = { "m", "e" },
+	["math.lerp"] = { "alpha", "from", "to" },
+	["math.max"] = { "a", "b" },
+	["math.min"] = { "a", "b" },
+	["math.modf"] = { "x" },
+	["math.random"] = { "m", "n" },
+	["math.randomseed"] = { "x" },
+	["math.round"] = { "x" },
+
+	["string.byte"] = { "s", "i", "j" },
+	["string.char"] = { "..." },
+	["string.find"] = { "s", "pattern", "init", "plain" },
+	["string.format"] = { "s", "..." },
+	["string.gmatch"] = { "s", "pattern" },
+	["string.gsub"] = { "s", "pattern", "replacement", "n" },
+	["string.len"] = { "s" },
+	["string.lower"] = { "s" },
+	["string.match"] = { "s", "pattern", "init" },
+	["string.rep"] = { "s", "n", "separator" },
+	["string.reverse"] = { "s" },
+	["string.split"] = { "s", "separator" },
+	["string.sub"] = { "s", "i", "j" },
+	["string.upper"] = { "s" },
+
+	["table.concat"] = { "list", "separator", "i", "j" },
+	["table.create"] = { "count" },
+	["table.find"] = { "list", "value", "init" },
+	["table.foreach"] = { "list", "callback" },
+	["table.foreachi"] = { "list", "callback" },
+	["table.insert"] = { "list", "value" },
+	["table.move"] = { "source", "from", "to", "target", "targetFrom" },
+	["table.remove"] = { "list", "index" },
+	["table.sort"] = { "list", "comparator" },
+
+	["task.cancel"] = { "thread" },
+	["task.defer"] = { "callback", "..." },
+	["task.delay"] = { "seconds", "callback", "..." },
+	["task.spawn"] = { "callback", "..." },
+	["task.wait"] = { "seconds" },
+
+	["os.date"] = { "format", "time" },
+	["os.difftime"] = { "t2", "t1" },
+
+	["coroutine.create"] = { "f" },
+	["coroutine.resume"] = { "co", "..." },
+	["coroutine.wrap"] = { "f" },
+
+	["CFrame.new"] = { "x", "y", "z" },
+	["CFrame.lookAt"] = { "at", "look" },
+	["CFrame.fromEulerAnglesXYZ"] = { "rx", "ry", "rz" },
+	["CFrame.fromMatrix"] = { "pos", "vX", "vY", "vZ" },
+	["CFrame.fromOrientation"] = { "rx", "ry", "rz" },
+
+	["Vector2.new"] = { "x", "y" },
+	["Vector2.Lerp"] = { "alpha", "self", "other" },
+	["Vector2.Dot"] = { "a", "b" },
+	["Vector2.Cross"] = { "a", "b" },
+
+	["Vector3.new"] = { "x", "y", "z" },
+	["Vector3.Lerp"] = { "alpha", "self", "other" },
+	["Vector3.Dot"] = { "a", "b" },
+	["Vector3.Cross"] = { "a", "b" },
+
+	["Color3.new"] = { "red", "green", "blue" },
+	["Color3.fromRGB"] = { "red", "green", "blue" },
+	["Color3.fromHSV"] = { "hue", "saturation", "value" },
+	["Color3.fromHex"] = { "hex" },
+	["Color3.Lerp"] = { "alpha", "self", "other" },
+
+	["UDim.new"] = { "scale", "offset" },
+	["UDim2.new"] = { "xScale", "xOffset", "yScale", "yOffset" },
+	["UDim2.fromScale"] = { "x", "y" },
+	["UDim2.fromOffset"] = { "x", "y" },
+	["UDim2.Lerp"] = { "alpha", "self", "other" },
+
+	["NumberRange.new"] = { "min", "max" },
+	["TweenInfo.new"] = { "time", "easingStyle", "easingDirection", "repeatCount", "reverses", "delayTime" },
+	["Random.new"] = { "seed" },
+
+	["Instance.new"] = { "className", "parent" },
+	["Instance.fromJSON"] = { "json" },
+	["Enum.FromName"] = { "enumType", "name" },
+
+	["print"] = { "..." },
+	["warn"] = { "..." },
+	["error"] = { "message", "level" },
+	["assert"] = { "value", "message" },
+	["pcall"] = { "f", "..." },
+	["type"] = { "value" },
+	["typeof"] = { "value" },
+	["select"] = { "index", "..." },
+	["setmetatable"] = { "table", "metatable" },
+	["getmetatable"] = { "object" },
+	["rawget"] = { "table", "index" },
+	["rawset"] = { "table", "index", "value" },
+	["rawequal"] = { "a", "b" },
+	["rawlen"] = { "value" },
+	["require"] = { "module" },
+	["tostring"] = { "value" },
+	["tonumber"] = { "value", "base" },
+	["next"] = { "table", "key" },
+	["waitforchild"] = { "child", "timeout" },
+	["tick"] = {},
+}
+
+-- Lowercased index of the table above so a hint is not case sensitive.
+local SIGNATURES_LOWER = {}
+
+for key, params in pairs(SIGNATURES) do
+	SIGNATURES_LOWER[string.lower(key)] = params
+end
 
 --
 -- Completion sources
@@ -582,7 +724,9 @@ function CodeEditor.new(parent)
 	self.suggestionIndex = 1
 	self.suggestPrefix = nil
 	self.suggestRange = nil
+	self.suggestionScroll = 0
 	self.applyingSuggestion = false
+	self.hintSignature = nil
 
 	local tabStrip = UI.create("ScrollingFrame", {
 		Name = "ScriptTabs",
@@ -658,15 +802,111 @@ function CodeEditor.new(parent)
 		Parent = popup,
 	})
 
+	-- The argument hint sits above the list and is its own frame so the two
+	-- can be shown and hidden independently: the hint outlives the list,
+	-- because it stays useful after a completion has been accepted.
+	local hint = UI.frame(
+		suggestionLayer,
+		UDim2.fromOffset(0, 0),
+		UDim2.fromOffset(SUGGEST_WIDTH, SUGGEST_ROW_HEIGHT + SUGGEST_PADDING),
+		tokens.color.panel,
+		tokens.radius.sm
+	)
+
+	hint.Name = "ArgumentHint"
+	hint.Visible = false
+
+	UI.stroke(hint, tokens.color.border, 1, 0)
+
 	self.TabStrip = tabStrip
 	self.TextBox = editor
 	self.SuggestionLayer = suggestionLayer
 	self.Popup = popup
+	self.Hint = hint
 	self.rows = {}
 
+	-- Popup placement is animated, so the rendered position and the position
+	-- being aimed at are tracked separately. popupPlaced distinguishes the
+	-- first frame after showing, which snaps rather than sliding in from
+	-- wherever the popup was last left.
+	self.popupPosition = Vector2.new(0, 0)
+	self.popupTarget = Vector2.new(0, 0)
+	self.hintPosition = Vector2.new(0, 0)
+	self.hintTarget = Vector2.new(0, 0)
+	self.popupPlaced = false
+	self.hintPlaced = false
+	self.popupSize = Vector2.new(SUGGEST_WIDTH, SUGGEST_ROW_HEIGHT)
+	self.hintHeight = SUGGEST_ROW_HEIGHT + SUGGEST_PADDING
+
 	self:wireEditor()
+	self:registerRenderStep()
 
 	return self
+end
+
+-- Frame-rate independent approach towards a target, matching the smoothing
+-- the shared tooltip uses so the two feel like the same editor.
+local POPUP_LERP_SPEED = 26
+
+local function approach(current, target, delta)
+	local weight = 1 - math.exp(-POPUP_LERP_SPEED * delta)
+
+	return current + (target - current) * weight
+end
+
+-- Drives the popup and hint placement. Registered on the same phase the
+-- viewport uses so both run in the same frame.
+function CodeEditor:registerRenderStep()
+	renderer.Pool.new("2d", function(delta)
+		self:update(delta or 1 / 60)
+	end)
+end
+
+function CodeEditor:update(delta)
+	if not UI.isAlive(self.Popup) or not UI.isAlive(self.Hint) then
+		return
+	end
+
+	local popupVisible = self.Popup.Visible
+	local hintVisible = self.Hint.Visible
+
+	if not popupVisible and not hintVisible then
+		return
+	end
+
+	-- The caret moves every time the user types, so the target is recomputed
+	-- each frame rather than only when a keystroke arrives.
+	self:updateTargets()
+
+	if popupVisible then
+		if self.popupPlaced then
+			self.popupPosition = Vector2.new(
+				approach(self.popupPosition.X, self.popupTarget.X, delta),
+				approach(self.popupPosition.Y, self.popupTarget.Y, delta)
+			)
+		else
+			self.popupPosition = self.popupTarget
+			self.popupPlaced = true
+		end
+
+		self.Popup.Position =
+			UDim2.fromOffset(math.floor(self.popupPosition.X), math.floor(self.popupPosition.Y))
+	end
+
+	if hintVisible then
+		if self.hintPlaced then
+			self.hintPosition = Vector2.new(
+				approach(self.hintPosition.X, self.hintTarget.X, delta),
+				approach(self.hintPosition.Y, self.hintTarget.Y, delta)
+			)
+		else
+			self.hintPosition = self.hintTarget
+			self.hintPlaced = true
+		end
+
+		self.Hint.Position =
+			UDim2.fromOffset(math.floor(self.hintPosition.X), math.floor(self.hintPosition.Y))
+	end
 end
 
 --
@@ -1114,6 +1354,93 @@ local function scoreMatch(name, prefix)
 	return nil
 end
 
+-- Returns the signature for a callee, or nil when the call is not one this
+-- table describes. Matching is exact first and case insensitive second, so
+-- `Cframe.new` finds the `CFrame.new` entry.
+local function resolveSignature(callee)
+	if SIGNATURES[callee] ~= nil then
+		return SIGNATURES[callee]
+	end
+
+	return SIGNATURES_LOWER[string.lower(callee)]
+end
+
+-- Finds the call the caret is sitting inside: the innermost unclosed `(`
+-- before it, the callee written before that paren, and how many top level
+-- commas have already been passed (which argument the caret is on).
+--
+-- Brackets are tracked together so an argument list inside a table constructor
+-- is not mistaken for a call. A string literal before the caret can hide a
+-- paren from this scan, which is the one case it does not handle.
+local function callContextAt(text, cursor)
+	local head = string.sub(text, 1, math.max(cursor - 1, 0))
+
+	local depth = 0
+	local open = nil
+
+	for index = #head, 1, -1 do
+		local character = string.sub(head, index, index)
+
+		if character == ")" or character == "]" or character == "}" then
+			depth += 1
+		elseif character == "[" or character == "{" then
+			if depth == 0 then
+				-- The caret is inside a table or index expression, not a call.
+				return nil
+			end
+
+			depth -= 1
+		elseif character == "(" then
+			if depth == 0 then
+				open = index
+				break
+			end
+
+			depth -= 1
+		end
+	end
+
+	if open == nil then
+		return nil
+	end
+
+	local finish = open - 1
+	local start = finish
+
+	while start >= 1 do
+		local character = string.sub(head, start, start)
+
+		if string.match(character, "[%w_%.]") == nil then
+			break
+		end
+
+		start -= 1
+	end
+
+	local callee = string.sub(head, start + 1, finish)
+
+	if callee == "" then
+		return nil
+	end
+
+	local index = 0
+	local nested = 0
+
+	for position = open + 1, #head do
+		local character = string.sub(head, position, position)
+
+		if character == "(" or character == "[" or character == "{" then
+			nested += 1
+		elseif character == ")" or character == "]" or character == "}" then
+			nested -= 1
+		elseif character == "," and nested == 0 then
+			index += 1
+		end
+	end
+
+	return callee, index
+end
+
 -- Children and reflected members of an instance, which is what a member
 -- completion offers. Children come first and carry their class name as the
 -- detail: in a real place those are what a script is reaching for.
@@ -1204,13 +1531,28 @@ function CodeEditor:dismissSuggestions()
 	self.suggestionIndex = 1
 	self.suggestPrefix = nil
 	self.suggestRange = nil
+	self.suggestionScroll = 0
 
 	if UI.isAlive(self.Popup) then
 		self.Popup.Visible = false
 	end
+
+	self:dismissArgumentHint()
 end
 
+-- Refreshes both autocomplete surfaces.
+--
+-- The argument hint is refreshed on every path out of the list, including the
+-- ones that dismiss it. Keeping it inside the list refresh would mean typing
+-- the opening paren of a call, which matches no candidates, switched the hint
+-- off at exactly the moment it becomes useful.
 function CodeEditor:refreshSuggestions()
+	self:updateSuggestionList()
+
+	self:renderArgumentHint()
+end
+
+function CodeEditor:updateSuggestionList()
 	local word = self.TextBox:GetWordRangeAtCursor()
 
 	if word == nil then
@@ -1270,6 +1612,10 @@ function CodeEditor:refreshSuggestions()
 	self.suggestRange = self:completionRange(word, segments, ends_with_dot)
 	self.suggestionIndex = 1
 
+	-- A new list starts at the top; carrying the old scroll over would open
+	-- the list scrolled past the first match.
+	self.suggestionScroll = 0
+
 	self:renderSuggestions()
 end
 
@@ -1293,6 +1639,26 @@ function CodeEditor:completionRange(word, segments, ends_with_dot)
 	return { start = word.start + offset, finish = word.finish }
 end
 
+function CodeEditor:visibleRowCount()
+	return math.min(#self.suggestions, SUGGEST_MAX_ROWS)
+end
+
+-- Keeps the selected row inside the window. Without this, arrowing past the
+-- seventh row would move the selection while the list stayed put, leaving the
+-- user pressing Enter on a suggestion they could not see.
+function CodeEditor:scrollToSelection()
+	local total = #self.suggestions
+	local visible = self:visibleRowCount()
+
+	if self.suggestionIndex < self.suggestionScroll + 1 then
+		self.suggestionScroll = self.suggestionIndex - 1
+	elseif self.suggestionIndex > self.suggestionScroll + visible then
+		self.suggestionScroll = self.suggestionIndex - visible
+	end
+
+	self.suggestionScroll = math.clamp(self.suggestionScroll, 0, math.max(total - visible, 0))
+end
+
 function CodeEditor:moveSuggestion(delta)
 	local count = #self.suggestions
 
@@ -1302,54 +1668,159 @@ function CodeEditor:moveSuggestion(delta)
 
 	self.suggestionIndex = ((self.suggestionIndex - 1 + delta) % count) + 1
 
+	self:scrollToSelection()
 	self:renderSuggestions()
 end
 
+-- Computes where the popup and the hint want to sit, without moving them.
+-- The render step eases both towards these every frame, which is what makes
+-- the popup follow the caret smoothly instead of snapping after each keystroke.
+function CodeEditor:updateTargets()
+	local anchor = self.TextBox.CaretScreenPosition or Vector2.new(0, 0)
+	local camera = workspace.CurrentCamera
+	local screen = camera and camera.ViewportSize or Vector2.new(1280, 720)
+
+	local popupHeight = self.popupSize.Y
+	local hintVisible = self.Hint.Visible
+
+	-- The hint stacks directly above the list when both are up, so the two
+	-- read as one block, and sits above the caret line when the list is closed.
+	local stack = hintVisible and (self.hintHeight + 4) or 0
+
+	local y = anchor.Y + SUGGEST_LINE_HEIGHT
+
+	if y + popupHeight > screen.Y - 8 then
+		-- Flip above the caret when the list would run off the bottom.
+		y = math.max(8, anchor.Y - popupHeight - 4 - stack)
+	end
+
+	local x = math.clamp(
+		anchor.X,
+		8,
+		math.max(8, screen.X - SUGGEST_WIDTH - 8)
+	)
+
+	self.popupTarget = Vector2.new(x, y)
+
+	local hintY = hintVisible and (y - self.hintHeight - 4) or math.max(8, anchor.Y - self.hintHeight - 4)
+
+	self.hintTarget = Vector2.new(x, math.max(8, hintY))
+end
+
+-- Renders the argument hint for the call the caret is inside, or hides it.
+--
+-- The hint is the parameter list with the parameter the caret is on pulled
+-- out in front, which is what makes `math.clamp(` tell you that the argument
+-- after the comma is `min` rather than making you count commas.
+function CodeEditor:renderArgumentHint()
+	local context = callContextAt(self.TextBox.Text, self.TextBox.CursorPosition)
+
+	if context == nil then
+		self:dismissArgumentHint()
+		return
+	end
+
+	local callee, index = context[1], context[2]
+	local params = resolveSignature(callee)
+
+	if params == nil then
+		self:dismissArgumentHint()
+		return
+	end
+
+	-- Past the end of a fixed parameter list there is no argument to be on.
+	local current = params[index + 1]
+
+	if #params > 0 and params[#params] ~= "..." and current == nil then
+		self:dismissArgumentHint()
+		return
+	end
+
+	self.hintHeight = SUGGEST_ROW_HEIGHT + SUGGEST_PADDING
+
+	self.Hint.Size = UDim2.fromOffset(SUGGEST_WIDTH, self.hintHeight)
+
+	UI.clear(self.Hint)
+
+	local padding = math.floor((SUGGEST_PADDING) / 2)
+
+	if current ~= nil then
+		UI.label(
+			self.Hint,
+			current,
+			UDim2.fromOffset(8, padding + 1),
+			UDim2.fromOffset(90, SUGGEST_ROW_HEIGHT - 2),
+			tokens.type.small,
+			tokens.color.accent
+		)
+	end
+
+	UI.label(
+		self.Hint,
+		callee .. "(" .. table.concat(params, ", ") .. ")",
+		UDim2.fromOffset(current and 102 or 8, padding + 1),
+		UDim2.new(1, -12, 1, -padding - 2),
+		tokens.type.caption,
+		tokens.color.subtext
+	)
+
+	self.hintSignature = callee
+
+	if not self.Hint.Visible then
+		self.hintPlaced = false
+	end
+
+	self.Hint.Visible = true
+end
+
+function CodeEditor:dismissArgumentHint()
+	self.hintSignature = nil
+
+	if UI.isAlive(self.Hint) then
+		self.Hint.Visible = false
+	end
+end
+
 function CodeEditor:renderSuggestions()
-	local count = math.min(#self.suggestions, SUGGEST_MAX_ROWS)
+	local count = self:visibleRowCount()
 
 	if count == 0 then
 		self:dismissSuggestions()
 		return
 	end
 
+	self:scrollToSelection()
+
 	local height = count * SUGGEST_ROW_HEIGHT + SUGGEST_PADDING * 2
 
 	self.Popup.Size = UDim2.fromOffset(SUGGEST_WIDTH, height)
+	self.popupSize = Vector2.new(SUGGEST_WIDTH, height)
 
-	-- The caret position is published by the code editor renderer, so the
-	-- popup anchors to where the caret was actually drawn rather than
-	-- re-deriving the gutter width and scroll offset itself.
-	local anchor = self.TextBox.CaretScreenPosition or Vector2.new(0, 0)
-	local camera = workspace.CurrentCamera
-	local screen = camera and camera.ViewportSize or Vector2.new(1280, 720)
-
-	local x = anchor.X
-	local y = anchor.Y + SUGGEST_LINE_HEIGHT
-
-	-- Flip above the caret when the list would run off the bottom edge, and
-	-- clamp horizontally so the popup never leaves the window.
-	if y + height > screen.Y - 8 then
-		y = math.max(8, anchor.Y - height - 4)
+	if not self.Popup.Visible then
+		-- The first frame after showing snaps to the caret; later moves lerp.
+		self.popupPlaced = false
 	end
 
-	x = math.clamp(x, 8, math.max(8, screen.X - SUGGEST_WIDTH - 8))
-
-	self.Popup.Position = UDim2.fromOffset(math.floor(x), math.floor(y))
 	self.Popup.Visible = true
 
 	UI.clear(self.Popup)
 
 	self.rows = {}
 
-	for index = 1, count do
+	local first = self.suggestionScroll
+
+	for offset = 0, count - 1 do
+		local index = first + offset + 1
 		local suggestion = self.suggestions[index]
 		local isSelected = index == self.suggestionIndex
 
 		local row = UI.button(
 			self.Popup,
 			"",
-			UDim2.fromOffset(SUGGEST_PADDING, SUGGEST_PADDING + (index - 1) * SUGGEST_ROW_HEIGHT),
+			UDim2.fromOffset(
+				SUGGEST_PADDING,
+				SUGGEST_PADDING + offset * SUGGEST_ROW_HEIGHT
+			),
 			UDim2.new(1, -SUGGEST_PADDING * 2, 0, SUGGEST_ROW_HEIGHT),
 			function()
 				self:acceptSuggestion(index)
@@ -1362,11 +1833,22 @@ function CodeEditor:renderSuggestions()
 			}
 		)
 
+		local icon = UI.image(
+			row,
+			iconRoot .. (KIND_ICONS[suggestion.kind] or "placeholder.png"),
+			UDim2.fromOffset(5, math.floor((SUGGEST_ROW_HEIGHT - SUGGEST_ICON_SIZE) / 2)),
+			UDim2.fromOffset(SUGGEST_ICON_SIZE, SUGGEST_ICON_SIZE)
+		)
+
+		-- There is no ImageColor3 in this engine, so the selected row is
+		-- separated by the icon's opacity instead of its colour.
+		icon.ImageTransparency = isSelected and 0 or 0.45
+
 		UI.label(
 			row,
 			suggestion.name,
-			UDim2.fromOffset(6, 3),
-			UDim2.new(1, -76, 1, -6),
+			UDim2.fromOffset(SUGGEST_ICON_SIZE + 11, 3),
+			UDim2.new(1, -76 - SUGGEST_ICON_SIZE, 1, -6),
 			tokens.type.small,
 			isSelected and tokens.color.text or kindColor(suggestion.kind)
 		)
@@ -1382,6 +1864,23 @@ function CodeEditor:renderSuggestions()
 
 		table.insert(self.rows, row)
 	end
+
+	-- A thin thumb shows where the selection sits when the list is longer than
+	-- the window, which is the only cue that the list scrolls at all.
+	local total = #self.suggestions
+
+	if total > count then
+		local track = count * SUGGEST_ROW_HEIGHT
+		local thumb = math.max(18, math.floor(track * (count / total)))
+
+		UI.frame(
+			self.Popup,
+			UDim2.new(1, -3, 0, SUGGEST_PADDING + (track - thumb) * (first / (total - count))),
+			UDim2.fromOffset(2, thumb),
+			tokens.color.subtext,
+			1
+		)
+	end
 end
 
 function CodeEditor:acceptSuggestion(index)
@@ -1393,9 +1892,19 @@ function CodeEditor:acceptSuggestion(index)
 		return
 	end
 
-	-- The range is captured before dismissing, since dismissing clears the
-	-- state this method still needs.
-	local insert = suggestion.name
+	-- Everything needed is captured before dismissing, since dismissing clears
+	-- the state this method still needs.
+	local name = suggestion.name
+	local insert = name
+
+	-- A call is completed with its opening paren, and the caret lands between
+	-- the parens so the next thing typed is the first argument. The hint then
+	-- names that argument as it is typed.
+	local callable = suggestion.kind == "Method" or suggestion.kind == "Function"
+
+	if callable then
+		insert = name .. "("
+	end
 
 	self:dismissSuggestions()
 
@@ -1406,9 +1915,15 @@ function CodeEditor:acceptSuggestion(index)
 	-- costs one undo step exactly like typing the word by hand.
 	self.TextBox:ReplaceRange(range.start, range.finish, insert)
 
+	if callable then
+		self.TextBox.CursorPosition = range.start + #insert
+	end
+
 	self.applyingSuggestion = false
 
 	self.TextBox:CaptureFocus()
+
+	self:renderArgumentHint()
 end
 
 --
@@ -1429,8 +1944,11 @@ function CodeEditor:wireEditor()
 
 		-- Re-query on every keystroke so the list tracks the word being typed.
 		-- Applying a suggestion drives TextChanged itself and that edit is
-		-- already decided, so it is skipped here.
-		if not self.applyingSuggestion then
+		-- already decided, so only the hint is refreshed for it: accepting a
+		-- call inserts its paren, which is exactly what turns the hint on.
+		if self.applyingSuggestion then
+			self:renderArgumentHint()
+		else
 			self:refreshSuggestions()
 		end
 	end)
@@ -1449,11 +1967,23 @@ function CodeEditor:wireEditor()
 	-- claim the navigation and accept keys. Setting KeyHandled tells the box
 	-- to skip its own handling of that same key.
 	self.TextBox.KeyDown:Connect(function(input)
-		if #self.suggestions == 0 then
+		local keyCode = input and input.KeyCode
+
+		-- The list claims the navigation and accept keys so the box does not
+		-- also act on them. Escape is handled whenever either surface is up,
+		-- because the hint can be showing with no list.
+		if keyCode == Enum.KeyCode.Escape then
+			if #self.suggestions > 0 or self.Hint.Visible then
+				self:dismissSuggestions()
+				self.TextBox.KeyHandled = true
+			end
+
 			return
 		end
 
-		local keyCode = input and input.KeyCode
+		if #self.suggestions == 0 then
+			return
+		end
 
 		if keyCode == Enum.KeyCode.Up then
 			self:moveSuggestion(-1)
@@ -1461,11 +1991,10 @@ function CodeEditor:wireEditor()
 		elseif keyCode == Enum.KeyCode.Down then
 			self:moveSuggestion(1)
 			self.TextBox.KeyHandled = true
-		elseif keyCode == Enum.KeyCode.Return or keyCode == Enum.KeyCode.Tab or keyCode == Enum.KeyCode.KeypadEnter then
+		elseif keyCode == Enum.KeyCode.Return
+			or keyCode == Enum.KeyCode.Tab
+			or keyCode == Enum.KeyCode.KeypadEnter then
 			self:acceptSuggestion()
-			self.TextBox.KeyHandled = true
-		elseif keyCode == Enum.KeyCode.Escape then
-			self:dismissSuggestions()
 			self.TextBox.KeyHandled = true
 		end
 	end)
