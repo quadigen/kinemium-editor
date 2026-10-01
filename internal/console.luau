@@ -271,31 +271,7 @@ end
 local function executeCommand(source)
 	LogService:Log("> " .. source)
 
-	if loadstring == nil then
-		LogService:Error("loadstring is not available in this environment")
-		return
-	end
-
-	local fn = loadstring("return " .. source)
-	local isExpression = fn ~= nil
-
-	if not fn then
-		local compileError
-		fn, compileError = ScriptContext:Run(source, "Console")
-
-		if not fn then
-			LogService:Error(tostring(compileError))
-			return
-		end
-	end
-
-	local ok, result = pcall(fn)
-
-	if not ok then
-		LogService:Error(tostring(result))
-	elseif isExpression and result ~= nil then
-		LogService:Log(tostring(result))
-	end
+	ScriptContext:Run(source, "Console")
 end
 
 local function submitCommand()
