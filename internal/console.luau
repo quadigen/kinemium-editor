@@ -36,7 +36,6 @@ local lastSeenCount = 0
 
 local gui = Instance.new("ScreenGui")
 gui.Name = "Console"
-gui.ResetOnSpawn = false
 gui.Parent = game.StarterGui
 
 local panel, content = UI.window(WINDOW_NAME, UDim2.fromOffset(0.5, 0.5), UDim2.fromOffset(0.5, 0.4), "Console", {
