@@ -125,19 +125,435 @@ local GLOBALS = {
 	{ name = "Vector3", kind = "Type" },
 }
 
+--
+-- Members of things the DataModel cannot describe
+--
+-- `CFrame.new` and `math.floor` are as common as any instance member, and no
+-- amount of walking the DataModel produces them: a datatype is a global
+-- binding rather than a child of the game, and the standard library is not an
+-- Instance at all. These are listed explicitly, which is what makes
+-- `CFrame.` and `math.` complete.
+--
+-- Entries are "name:Kind" so the list stays readable at a glance.
+--
+
+local BUILTIN_MEMBERS = {
+	CFrame = {
+		"new:Method",
+		"fromEulerAnglesXYZ:Method",
+		"fromMatrix:Method",
+		"fromOrientation:Method",
+		"fromQuaternion:Method",
+		"lookAt:Method",
+		"angles:Property",
+		"identity:Property",
+		"Axes:Property",
+		"Position:Property",
+		"RightVector:Property",
+		"UpVector:Property",
+		"LookVector:Property",
+		"X:Property",
+		"Y:Property",
+		"Z:Property",
+		"Add:Method",
+		"Sub:Method",
+		"Mul:Method",
+		"Div:Method",
+		"Cross:Method",
+		"Dot:Method",
+		"Inverse:Method",
+		"Lerp:Method",
+		"LerpCFrame:Method",
+		"GetComponents:Method",
+		"PointToObjectSpace:Method",
+		"PointToWorldSpace:Method",
+		"Rotate:Method",
+		"ToObjectSpace:Method",
+		"ToWorldSpace:Method",
+		"cf:Function",
+		"p:Function",
+		"r:Function",
+		"u:Function",
+		"look:Function",
+		"right:Function",
+		"up:Function",
+		"pos:Function",
+	},
+
+	Vector2 = {
+		"new:Method",
+		"Dot:Method",
+		"Cross:Method",
+		"Angle:Method",
+		"Lerp:Method",
+		"Abs:Method",
+		"Ceil:Method",
+		"Clamp:Method",
+		"Floor:Method",
+		"Max:Method",
+		"Min:Method",
+		"Round:Method",
+		"Sign:Method",
+		"Unit:Method",
+		"Magnitude:Property",
+		"X:Property",
+		"Y:Property",
+	},
+
+	Vector3 = {
+		"new:Method",
+		"Dot:Method",
+		"Cross:Method",
+		"Angle:Method",
+		"Lerp:Method",
+		"Abs:Method",
+		"Ceil:Method",
+		"Clamp:Method",
+		"Floor:Method",
+		"Max:Method",
+		"Min:Method",
+		"Round:Method",
+		"Sign:Method",
+		"Unit:Method",
+		"Magnitude:Property",
+		"X:Property",
+		"Y:Property",
+		"Z:Property",
+	},
+
+	Color3 = {
+		"new:Method",
+		"fromHSV:Method",
+		"fromRGB:Method",
+		"fromHex:Method",
+		"fromUint8:Method",
+		"Lerp:Method",
+		"ToHex:Method",
+		"ToHSV:Method",
+		"ToRGB:Method",
+		"ToUint8:Method",
+		"B:Property",
+		"G:Property",
+		"R:Property",
+	},
+
+	Color3uint8 = { "new:Method", "B:Property", "G:Property", "R:Property" },
+
+	UDim = { "new:Method", "Scale:Property", "Offset:Property" },
+
+	UDim2 = {
+		"new:Method",
+		"fromAxis:Method",
+		"fromOffset:Method",
+		"fromScale:Method",
+		"Lerp:Method",
+		"Scale:Property",
+		"X:Property",
+		"Y:Property",
+	},
+
+	Ray = { "new:Method", "Direction:Property", "Origin:Property" },
+
+	Rect = {
+		"new:Method",
+		"Abs:Method",
+		"Max:Property",
+		"Min:Property",
+		"Size:Property",
+		"X:Property",
+		"Y:Property",
+	},
+
+	Region3 = { "new:Method", "CFrame:Property", "Size:Property" },
+
+	Region3int16 = { "new:Method", "CFrame:Property", "Size:Property" },
+
+	NumberRange = { "new:Method", "Max:Property", "Min:Property" },
+
+	NumberSequence = { "new:Method", "Keypoint:Method", "Keypoints:Property" },
+
+	ColorSequence = { "new:Method", "Keypoint:Method", "Keypoints:Property" },
+
+	TweenInfo = {
+		"new:Method",
+		"DelayTime:Property",
+		"Duration:Property",
+		"Enum:Property",
+		"RepeatCount:Property",
+		"Reverses:Property",
+	},
+
+	BrickColor = { "new:Method", "Color:Property", "Name:Property", "Number:Property" },
+
+	Random = {
+		"new:Method",
+		"NextInteger:Method",
+		"NextNumber:Method",
+		"NextUnitVector:Method",
+	},
+
+	Instance = {
+		"new:Method",
+		"fromJSON:Method",
+		"Clone:Method",
+		"Destroy:Method",
+		"FindFirstChild:Method",
+		"FindFirstChildOfClass:Method",
+		"GetChildren:Method",
+		"GetDescendants:Method",
+		"GetFullName:Method",
+		"GetAttribute:Method",
+		"GetAttributes:Method",
+		"SetAttribute:Method",
+		"IsA:Method",
+		"IsAncestorOf:Method",
+		"IsDescendantOf:Method",
+		"ClassName:Property",
+		"Name:Property",
+		"Parent:Property",
+	},
+
+	Enum = { "GetEnumItems:Method", "FromName:Method" },
+}
+
+-- The Luau standard library. Same "name:Kind" encoding as above.
+BUILTIN_MEMBERS.math = {
+	"abs:Function",
+	"acos:Function",
+	"asin:Function",
+	"atan:Function",
+	"atan2:Function",
+	"ceil:Function",
+	"clamp:Function",
+	"cos:Function",
+	"cosh:Function",
+	"deg:Function",
+	"exp:Function",
+	"floor:Function",
+	"fmod:Function",
+	"frexp:Function",
+	"ldexp:Function",
+	"lerp:Function",
+	"log:Function",
+	"log10:Function",
+	"max:Function",
+	"min:Function",
+	"modf:Function",
+	"noise:Function",
+	"pow:Function",
+	"rad:Function",
+	"random:Function",
+	"randomseed:Function",
+	"round:Function",
+	"sign:Function",
+	"sin:Function",
+	"sinh:Function",
+	"sqrt:Function",
+	"tan:Function",
+	"tanh:Function",
+	"huge:Value",
+	"pi:Value",
+}
+
+BUILTIN_MEMBERS.string = {
+	"byte:Function",
+	"char:Function",
+	"find:Function",
+	"format:Function",
+	"gmatch:Function",
+	"gsub:Function",
+	"len:Function",
+	"lower:Function",
+	"match:Function",
+	"pack:Function",
+	"packsize:Function",
+	"rep:Function",
+	"reverse:Function",
+	"split:Function",
+	"sub:Function",
+	"unpack:Function",
+	"upper:Function",
+}
+
+BUILTIN_MEMBERS.table = {
+	"clear:Function",
+	"clone:Function",
+	"concat:Function",
+	"create:Function",
+	"find:Function",
+	"foreach:Function",
+	"foreachi:Function",
+	"freeze:Function",
+	"getn:Function",
+	"insert:Function",
+	"isarray:Function",
+	"isfrozen:Function",
+	"join:Function",
+	"maxn:Function",
+	"move:Function",
+	"pack:Function",
+	"remove:Function",
+	"sort:Function",
+	"unfreeze:Function",
+	"unpack:Function",
+}
+
+BUILTIN_MEMBERS.task = {
+	"cancel:Function",
+	"defer:Function",
+	"delay:Function",
+	"desynchronize:Function",
+	"spawn:Function",
+	"synchronize:Function",
+	"wait:Function",
+}
+
+BUILTIN_MEMBERS.os = {
+	"clock:Function",
+	"date:Function",
+	"difftime:Function",
+	"time:Function",
+}
+
+BUILTIN_MEMBERS.coroutine = {
+	"close:Function",
+	"create:Function",
+	"isyieldable:Function",
+	"resume:Function",
+	"running:Function",
+	"status:Function",
+	"wrap:Function",
+	"yield:Function",
+}
+
+BUILTIN_MEMBERS.utf8 = {
+	"char:Function",
+	"codepoint:Function",
+	"codes:Function",
+	"graphemes:Function",
+	"len:Function",
+	"nfcnormalize:Function",
+	"nfdnormalize:Function",
+	"offset:Function",
+}
+
+BUILTIN_MEMBERS.bit32 = {
+	"arshift:Function",
+	"band:Function",
+	"bnot:Function",
+	"bor:Function",
+	"btest:Function",
+	"bxor:Function",
+	"byteswap:Function",
+	"countlz:Function",
+	"countrz:Function",
+	"extract:Function",
+	"lrotate:Function",
+	"lshift:Function",
+	"replace:Function",
+	"rrotate:Function",
+	"rshift:Function",
+}
+
+BUILTIN_MEMBERS.debug = {
+	"info:Function",
+	"profilebegin:Function",
+	"profileend:Function",
+	"traceback:Function",
+}
+
+BUILTIN_MEMBERS.vector = {
+	"angle:Function",
+	"create:Function",
+	"cross:Function",
+	"dot:Function",
+	"magnitude:Function",
+	"normalize:Function",
+}
+
+BUILTIN_MEMBERS.buffer = {
+	"copy:Function",
+	"create:Function",
+	"fill:Function",
+	"fromstring:Function",
+	"len:Function",
+	"readf32:Function",
+	"readf64:Function",
+	"readi16:Function",
+	"readi32:Function",
+	"readi8:Function",
+	"readstring:Function",
+	"readu16:Function",
+	"readu32:Function",
+	"readu8:Function",
+	"tostring:Function",
+	"writef32:Function",
+	"writef64:Function",
+	"writei16:Function",
+	"writei32:Function",
+	"writei8:Function",
+	"writestring:Function",
+	"writeu16:Function",
+	"writeu32:Function",
+	"writeu8:Function",
+}
+
+-- Lowercased index of the tables above, so a member completion is not case
+-- sensitive: `Cframe.` and `CFrame.` should both find CFrame, the same way
+-- instance lookups are matched on exact names but candidates are matched
+-- case insensitively.
+local BUILTIN_MEMBERS_LOWER = {}
+
+for key, entries in pairs(BUILTIN_MEMBERS) do
+	BUILTIN_MEMBERS_LOWER[string.lower(key)] = entries
+end
+
+-- Turns a "name:Kind" entry into a candidate.
+local function parseMember(entry)
+	local separator = string.find(entry, ":", 1, true)
+
+	if separator == nil then
+		return { name = entry, kind = "Member" }
+	end
+
+	return {
+		name = string.sub(entry, 1, separator - 1),
+		kind = string.sub(entry, separator + 1),
+	}
+end
+
+-- The members of a built-in type or standard library table, or nil when the
+-- name is not one this table knows about.
+local function collectBuiltinMembers(path)
+	local entries = BUILTIN_MEMBERS[path] or BUILTIN_MEMBERS_LOWER[string.lower(path)]
+
+	if entries == nil then
+		return nil
+	end
+
+	local members = {}
+
+	for _, entry in ipairs(entries) do
+		table.insert(members, parseMember(entry))
+	end
+
+	return members
+end
+
 local KIND_COLORS = {
 	Keyword = tokens.color.accent,
 	Global = tokens.color.accent,
 	Table = tokens.color.warning,
 	Function = tokens.color.success,
+	Method = tokens.color.success,
+	Value = tokens.color.subtext,
 	Type = tokens.color.subtext,
 	Property = tokens.color.text,
-	Method = tokens.color.success,
+	Member = tokens.color.text,
 	Event = tokens.color.warning,
 	Instance = tokens.color.text,
 	Local = tokens.color.subtext,
 }
-
 local function kindColor(kind)
 	return KIND_COLORS[kind] or tokens.color.text
 end
@@ -533,6 +949,21 @@ local function splitPath(path)
 	return segments, ends_with_dot
 end
 
+-- The roots a script reaches the DataModel through. They are globals rather
+-- than children of the game, so `game` and `workspace` have to be recognised
+-- explicitly or `game.` would list nothing.
+local function resolveRoot(name)
+	if name == "game" then
+		return game
+	end
+
+	if name == "workspace" then
+		return workspace
+	end
+
+	return nil
+end
+
 -- Resolves the first `upto` segments against the DataModel, returning the
 -- Instance they name or nil when any step is missing.
 local function resolveInstance(segments, upto)
@@ -540,7 +971,11 @@ local function resolveInstance(segments, upto)
 		return nil
 	end
 
-	local root = game:FindFirstChild(segments[1])
+	local root = resolveRoot(segments[1])
+
+	if root == nil then
+		root = game:FindFirstChild(segments[1])
+	end
 
 	if root == nil then
 		return nil
@@ -720,22 +1155,40 @@ local function collectVocabulary(source)
 	return candidates
 end
 
--- Chooses the candidate source for the path under the cursor. A path whose
--- longest resolvable prefix stops short of the full path is a member
--- completion, and completes against the instance that prefix named.
+-- Chooses the candidate source for the path under the cursor.
+--
+-- The receiver is everything in the path except the segment being typed: for
+-- `workspace.Pa` that is `workspace`, and for `workspace.` it is the whole
+-- path. A completion with a receiver is a member completion, and completes
+-- against either the Instance the receiver names or, for a datatype or
+-- standard library the DataModel cannot describe, its listed members.
 function CodeEditor:collectCandidates(segments, ends_with_dot)
-	local members
+	local receiver = {}
 
-	if #segments > 0 then
-		local instance, resolved = resolveLongestPrefix(segments)
+	local count = ends_with_dot and #segments or #segments - 1
 
-		if instance ~= nil and (ends_with_dot or resolved < #segments) then
-			members = collectInstanceMembers(instance)
-		end
+	for index = 1, count do
+		receiver[index] = segments[index]
 	end
 
-	if members ~= nil and #members > 0 then
-		return members
+	if #receiver > 0 then
+		local instance, resolved = resolveLongestPrefix(receiver)
+
+		if instance ~= nil and resolved == #receiver then
+			local members = collectInstanceMembers(instance)
+
+			if #members > 0 then
+				return members
+			end
+		else
+			-- A datatype (CFrame) or a standard library table (math) is not
+			-- reachable through the DataModel at all.
+			local members = collectBuiltinMembers(table.concat(receiver, "."))
+
+			if members ~= nil then
+				return members
+			end
+		end
 	end
 
 	local source = self.activeDocument and self.activeDocument.source or self.TextBox.Text
@@ -934,35 +1387,24 @@ end
 function CodeEditor:acceptSuggestion(index)
 	local suggestion = self.suggestions[index or self.suggestionIndex]
 	local range = self.suggestRange
-	local prefix = self.suggestPrefix
 
 	if suggestion == nil or range == nil then
 		self:dismissSuggestions()
 		return
 	end
 
-	-- Everything needed is captured before dismissing, since dismissing clears
-	-- the range and prefix this method still needs.
+	-- The range is captured before dismissing, since dismissing clears the
+	-- state this method still needs.
 	local insert = suggestion.name
-
-	if prefix ~= "" and #insert > #prefix then
-		if string.sub(string.lower(insert), 1, #prefix) == string.lower(prefix) then
-			-- Only the tail the user has not typed yet is inserted, so
-			-- accepting partway through a word replaces it instead of
-			-- appending to it.
-			insert = string.sub(insert, #prefix + 1)
-		end
-	end
 
 	self:dismissSuggestions()
 
 	self.applyingSuggestion = true
 
-	-- Selecting the word and letting the box perform the swap puts the edit
-	-- into the undo history exactly like any other typed character.
-	self.TextBox.SelectionStart = range.start
-	self.TextBox.CursorPosition = range.finish
-	self.TextBox:InsertText(insert)
+	-- The range is replaced wholesale with the full suggestion name. The box
+	-- performs the swap as a single undoable edit, so accepting a completion
+	-- costs one undo step exactly like typing the word by hand.
+	self.TextBox:ReplaceRange(range.start, range.finish, insert)
 
 	self.applyingSuggestion = false
 
