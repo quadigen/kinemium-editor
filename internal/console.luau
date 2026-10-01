@@ -1,3 +1,9 @@
+if not IsPlaytest then
+	return
+end
+if IsServer then
+	return
+end
 local UI = require("@internal/editor_ui")
 
 local LogService = game:GetService("LogService")
@@ -38,9 +44,11 @@ local gui = Instance.new("ScreenGui")
 gui.Name = "Console"
 gui.Parent = game.StarterGui
 
-local panel, content = UI.window(WINDOW_NAME, UDim2.fromOffset(0.5, 0.5), UDim2.fromOffset(0.5, 0.4), "Console", {
+local panel, content = UI.window(WINDOW_NAME, UDim2.fromOffset(0, 0), UDim2.fromOffset(0, 0), "Console", {
 	closable = true,
 })
+panel.Size = UDim2.new(0.5, 0, 0.4, 0)
+panel.Position = UDim2.new(0.5, 0, 0.5, 0)
 panel.AnchorPoint = Vector2.new(0.5, 0.5)
 panel.Parent = gui
 
