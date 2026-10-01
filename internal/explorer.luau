@@ -3,6 +3,9 @@ if (IsServer or IsClient) or IsPlaytest then
 end
 local UI = require("@internal/editor_ui")
 local viewport = require("@internal/viewport")
+local export_service = game:GetService("ExportService")
+local dialog = game:GetService("DialogService")
+local util = require("@internal/util")
 
 local StudioThemeService = game:GetService("StudioThemeService")
 local theme = StudioThemeService.SelectedTheme
@@ -818,6 +821,31 @@ openContextMenu = function(instance, screenPoint)
 					if entry ~= nil then
 						beginRename(target, entry.row)
 					end
+				elseif action == "import" then
+					local file = dialog:PickFile()
+					if file then
+						local imported = export_service:ImportFile(file)
+						if imported then
+							util.parent(imported)
+						end
+					end
+				elseif action == "export" then
+					local file = dialog:PickFile()
+					if file then
+						local success = export_service:ExportToFile(file)
+						if success then
+							UI.toast("import", {
+								type = "success",
+								title = "Exported successfully!",
+								message = `Exported KINE file to {file}`,
+								details = ``,
+								detailsTitle = "",
+								backgroundTransparency = 0.4,
+								blur = true,
+								duration = 5,
+							})
+						end
+					end
 				elseif action == "duplicate" then
 					duplicateInstance(target)
 				elseif action == "delete" then
@@ -849,10 +877,12 @@ openContextMenu = function(instance, screenPoint)
 	end
 
 	contextMenu:SetItems({
-		{ label = "Rename", value = "rename", icon = "builtin://icons/pencil.svg" },
-		{ label = "Duplicate", value = "duplicate", icon = "builtin://icons/Plus.svg" },
-		{ label = "Delete", value = "delete", icon = "builtin://icons/x.svg" },
+		{ label = "Rename", value = "rename", icon = "builtin://global-icons/pencil.svg" },
+		{ label = "Duplicate", value = "duplicate", icon = "builtin://global-icons/plus.svg" },
+		{ label = "Delete", value = "delete", icon = "builtin://global-icons/x.svg" },
 		{ label = "Copy", value = "copy" },
+		{ label = "Import Object..", value = "import" },
+		{ label = "Export Object..", value = "export" },
 		{ label = "Paste", value = "paste" },
 	})
 

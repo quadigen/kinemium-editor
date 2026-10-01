@@ -5,29 +5,7 @@ end
 local export_service = game:GetService("ExportService")
 local dialog = game:GetService("DialogService")
 local UI = require("@internal/editor_ui")
-
-local function parent(sourceDataModel)
-	for _, sourceService in sourceDataModel:GetChildren() do
-		local currentService = game:FindFirstChild(sourceService.Name)
-
-		if currentService then
-			for _, child in sourceService:GetChildren() do
-				local exists = false
-
-				for _, existingChild in currentService:GetChildren() do
-					if child.Name == existingChild.Name then
-						exists = true
-						break
-					end
-				end
-
-				if not exists then
-					child.Parent = currentService
-				end
-			end
-		end
-	end
-end
+local util = require("@internal/util")
 
 return {
 	name = "File",
@@ -43,7 +21,8 @@ return {
 				if file then
 					local imported = export_service:ImportFile(file)
 					if imported then
-						parent(imported)
+						util.parent(imported)
+
 						UI.toast("creation", {
 							type = "success",
 							title = "Successfully imported!",
