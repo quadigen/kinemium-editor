@@ -5,6 +5,7 @@ local LogService = game:GetService("LogService")
 local RunService = game:GetService("RunService")
 
 local colors = UI.tokens.color
+local tokens = UI.tokens
 
 local function createConsole()
 	local WINDOW_NAME = "Console"
@@ -99,7 +100,7 @@ local function createConsole()
 		Name = "Log",
 		Position = UDim2.fromOffset(0, TOOLBAR_HEIGHT),
 		Size = UDim2.new(1, 0, 1, -(TOOLBAR_HEIGHT + COMMANDBAR_HEIGHT)),
-		BackgroundColor3 = colors.input,
+		BackgroundColor3 = tokens.color.rowEven,
 		BorderSizePixel = 0,
 		ScrollBarThickness = 6,
 		ScrollBarImageColor3 = colors.subtext,
