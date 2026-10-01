@@ -826,13 +826,13 @@ openContextMenu = function(instance, screenPoint)
 					if file then
 						local imported = export_service:ImportFile(file)
 						if imported then
-							util.parent(imported)
+							imported.Parent = target
 						end
 					end
 				elseif action == "export" then
 					local file = dialog:PickFile()
 					if file then
-						local success = export_service:ExportToFile(file)
+						local success = export_service:Export(target, file)
 						if success then
 							UI.toast("import", {
 								type = "success",
