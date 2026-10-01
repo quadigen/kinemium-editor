@@ -42,17 +42,38 @@ local KIND_ICONS = {
 
 local SIGNATURES = {
 	["math.abs"] = { "x" },
+	["math.acos"] = { "x" },
+	["math.asin"] = { "x" },
+	["math.atan"] = { "x" },
 	["math.atan2"] = { "y", "x" },
+	["math.ceil"] = { "x" },
 	["math.clamp"] = { "value", "min", "max" },
+	["math.cos"] = { "x" },
+	["math.cosh"] = { "x" },
+	["math.deg"] = { "x" },
+	["math.exp"] = { "x" },
+	["math.floor"] = { "x" },
 	["math.fmod"] = { "x", "y" },
+	["math.frexp"] = { "x" },
 	["math.ldexp"] = { "m", "e" },
 	["math.lerp"] = { "alpha", "from", "to" },
+	["math.log"] = { "x", "base" },
+	["math.log10"] = { "x" },
 	["math.max"] = { "a", "b" },
 	["math.min"] = { "a", "b" },
 	["math.modf"] = { "x" },
+	["math.noise"] = { "x", "y", "z" },
+	["math.pow"] = { "x", "y" },
+	["math.rad"] = { "x" },
 	["math.random"] = { "m", "n" },
 	["math.randomseed"] = { "x" },
 	["math.round"] = { "x" },
+	["math.sign"] = { "x" },
+	["math.sin"] = { "x" },
+	["math.sinh"] = { "x" },
+	["math.sqrt"] = { "x" },
+	["math.tan"] = { "x" },
+	["math.tanh"] = { "x" },
 
 	["string.byte"] = { "s", "i", "j" },
 	["string.char"] = { "..." },
@@ -63,76 +84,251 @@ local SIGNATURES = {
 	["string.len"] = { "s" },
 	["string.lower"] = { "s" },
 	["string.match"] = { "s", "pattern", "init" },
+	["string.pack"] = { "..." },
+	["string.packsize"] = { "s" },
 	["string.rep"] = { "s", "n", "separator" },
 	["string.reverse"] = { "s" },
 	["string.split"] = { "s", "separator" },
 	["string.sub"] = { "s", "i", "j" },
+	["string.unpack"] = { "s", "pos" },
 	["string.upper"] = { "s" },
 
+	["table.clear"] = { "list" },
+	["table.clone"] = { "list" },
 	["table.concat"] = { "list", "separator", "i", "j" },
 	["table.create"] = { "count" },
 	["table.find"] = { "list", "value", "init" },
 	["table.foreach"] = { "list", "callback" },
 	["table.foreachi"] = { "list", "callback" },
+	["table.getn"] = { "list" },
 	["table.insert"] = { "list", "value" },
+	["table.isarray"] = { "list" },
+	["table.isfrozen"] = { "list" },
+	["table.join"] = { "..." },
+	["table.maxn"] = { "list" },
 	["table.move"] = { "source", "from", "to", "target", "targetFrom" },
+	["table.pack"] = { "..." },
 	["table.remove"] = { "list", "index" },
 	["table.sort"] = { "list", "comparator" },
+	["table.unfreeze"] = { "list" },
 
 	["task.cancel"] = { "thread" },
 	["task.defer"] = { "callback", "..." },
 	["task.delay"] = { "seconds", "callback", "..." },
+	["task.desynchronize"] = { "callback", "..." },
 	["task.spawn"] = { "callback", "..." },
+	["task.synchronize"] = { "callback", "..." },
 	["task.wait"] = { "seconds" },
 
+	["os.clock"] = {},
 	["os.date"] = { "format", "time" },
 	["os.difftime"] = { "t2", "t1" },
+	["os.time"] = { "table" },
 
+	["coroutine.close"] = { "co" },
 	["coroutine.create"] = { "f" },
+	["coroutine.isyieldable"] = {},
 	["coroutine.resume"] = { "co", "..." },
+	["coroutine.running"] = {},
+	["coroutine.status"] = { "co" },
 	["coroutine.wrap"] = { "f" },
+	["coroutine.yield"] = { "..." },
 
-	["CFrame.new"] = { "x", "y", "z" },
-	["CFrame.lookAt"] = { "at", "look" },
-	["CFrame.fromEulerAnglesXYZ"] = { "rx", "ry", "rz" },
-	["CFrame.fromMatrix"] = { "pos", "vX", "vY", "vZ" },
-	["CFrame.fromOrientation"] = { "rx", "ry", "rz" },
+	["utf8.char"] = { "..." },
+	["utf8.codepoint"] = { "s", "i", "j" },
+	["utf8.codes"] = { "s" },
+	["utf8.graphemes"] = { "s" },
+	["utf8.len"] = { "s", "i", "j" },
+	["utf8.nfcnormalize"] = { "s" },
+	["utf8.nfdnormalize"] = { "s" },
+	["utf8.offset"] = { "s", "n", "i" },
+
+	["bit32.arshift"] = { "x", "disp" },
+	["bit32.band"] = { "x", "y" },
+	["bit32.bnot"] = { "x" },
+	["bit32.bor"] = { "x", "y" },
+	["bit32.btest"] = { "x", "y" },
+	["bit32.bxor"] = { "x", "y" },
+	["bit32.byteswap"] = { "x" },
+	["bit32.countlz"] = { "x" },
+	["bit32.countrz"] = { "x" },
+	["bit32.extract"] = { "x", "field", "width" },
+	["bit32.lrotate"] = { "x", "disp" },
+	["bit32.lshift"] = { "x", "disp" },
+	["bit32.replace"] = { "x", "v", "field", "width" },
+	["bit32.rrotate"] = { "x", "disp" },
+	["bit32.rshift"] = { "x", "disp" },
+
+	["debug.info"] = { "..." },
+	["debug.profilebegin"] = { "label" },
+	["debug.profileend"] = {},
+	["debug.traceback"] = { "message", "level" },
+
+	["vector.create"] = { "x", "y", "z" },
+	["vector.angle"] = { "a", "b" },
+	["vector.cross"] = { "a", "b" },
+	["vector.dot"] = { "a", "b" },
+	["vector.magnitude"] = { "v" },
+	["vector.normalize"] = { "v" },
+
+	["buffer.create"] = { "size" },
+	["buffer.copy"] = { "target", "source", "targetStart", "sourceStart", "count" },
+	["buffer.fill"] = { "buffer", "value", "start", "count" },
+	["buffer.fromstring"] = { "s" },
+	["buffer.len"] = { "buffer" },
+	["buffer.readf32"] = { "buffer", "offset" },
+	["buffer.readi32"] = { "buffer", "offset" },
+	["buffer.readi8"] = { "buffer", "offset" },
+	["buffer.readstring"] = { "buffer", "offset", "count" },
+	["buffer.readu8"] = { "buffer", "offset" },
+	["buffer.tostring"] = { "buffer" },
+	["buffer.writef32"] = { "buffer", "offset", "value" },
+	["buffer.writei32"] = { "buffer", "offset", "value" },
+	["buffer.writei8"] = { "buffer", "offset", "value" },
+	["buffer.writestring"] = { "buffer", "offset", "value", "count" },
+	["buffer.writeu8"] = { "buffer", "offset", "value" },
 
 	["Vector2.new"] = { "x", "y" },
-	["Vector2.Lerp"] = { "alpha", "self", "other" },
-	["Vector2.Dot"] = { "a", "b" },
+	["Vector2.Unit"] = { "self" },
 	["Vector2.Cross"] = { "a", "b" },
+	["Vector2.Dot"] = { "a", "b" },
+	["Vector2.FuzzyEq"] = { "other", "epsilon" },
+	["Vector2.Lerp"] = { "alpha", "other" },
 
 	["Vector3.new"] = { "x", "y", "z" },
-	["Vector3.Lerp"] = { "alpha", "self", "other" },
-	["Vector3.Dot"] = { "a", "b" },
+	["Vector3.FromNormalId"] = { "normalId" },
+	["Vector3.FromAxis"] = { "axis" },
+	["Vector3.Unit"] = { "self" },
+	["Vector3.Abs"] = { "self" },
+	["Vector3.Ceil"] = { "self" },
+	["Vector3.Floor"] = { "self" },
+	["Vector3.Sign"] = { "self" },
 	["Vector3.Cross"] = { "a", "b" },
+	["Vector3.Angle"] = { "other" },
+	["Vector3.Dot"] = { "a", "b" },
+	["Vector3.FuzzyEq"] = { "other", "epsilon" },
+	["Vector3.Lerp"] = { "alpha", "other" },
+	["Vector3.Max"] = { "other" },
+	["Vector3.Min"] = { "other" },
+
+	["Vector2int16.new"] = { "x", "y" },
+	["Vector3int16.new"] = { "x", "y", "z" },
 
 	["Color3.new"] = { "red", "green", "blue" },
 	["Color3.fromRGB"] = { "red", "green", "blue" },
 	["Color3.fromHSV"] = { "hue", "saturation", "value" },
 	["Color3.fromHex"] = { "hex" },
-	["Color3.Lerp"] = { "alpha", "self", "other" },
+	["Color3.Lerp"] = { "alpha", "other" },
+	["Color3.ToHSV"] = { "self" },
+	["Color3.ToHex"] = { "self" },
+	["Color3.ToRGB"] = { "self" },
+
+	["CFrame.new"] = { "x", "y", "z" },
+	["CFrame.Angles"] = { "rx", "ry", "rz" },
+	["CFrame.fromEulerAnglesXYZ"] = { "rx", "ry", "rz" },
+	["CFrame.fromEulerAnglesYXZ"] = { "ry", "rx", "rz" },
+	["CFrame.fromOrientation"] = { "rx", "ry", "rz" },
+	["CFrame.fromAxisAngle"] = { "axis", "angle" },
+	["CFrame.lookAt"] = { "at", "look" },
+	["CFrame.lookAlong"] = { "at", "dir" },
+	["CFrame.fromMatrix"] = { "pos", "vX", "vY", "vZ" },
+	["CFrame.Lerp"] = { "alpha", "other" },
+	["CFrame.ToWorldSpace"] = { "other" },
+	["CFrame.ToObjectSpace"] = { "other" },
+	["CFrame.PointToWorldSpace"] = { "otherPoint" },
+	["CFrame.PointToObjectSpace"] = { "otherPoint" },
+	["CFrame.VectorToWorldSpace"] = { "otherVector" },
+	["CFrame.VectorToObjectSpace"] = { "otherVector" },
+	["CFrame.Orthonormalize"] = { "self" },
+	["CFrame.AngleBetween"] = { "other" },
+	["CFrame.FuzzyEq"] = { "other", "epsilon" },
+	["CFrame.ToEulerAnglesXYZ"] = { "self" },
+	["CFrame.ToEulerAnglesYXZ"] = { "self" },
+	["CFrame.ToOrientation"] = { "self" },
+	["CFrame.ToAxisAngle"] = { "self" },
+
+	["Quaternion.new"] = { "x", "y", "z", "w" },
+	["Quaternion.fromAxisAngle"] = { "axis", "angle" },
+	["Quaternion.Unit"] = { "self" },
+	["Quaternion.Conjugate"] = { "self" },
+	["Quaternion.Inverse"] = { "self" },
+	["Quaternion.Dot"] = { "a", "b" },
+	["Quaternion.Lerp"] = { "alpha", "other" },
+	["Quaternion.Slerp"] = { "alpha", "other" },
+	["Quaternion.ToAxisAngle"] = { "self" },
+
+	["Axes.new"] = { "x", "y", "z" },
 
 	["UDim.new"] = { "scale", "offset" },
+	["UDim.Lerp"] = { "alpha", "other" },
+	["UDim.FuzzyEq"] = { "other", "epsilon" },
+
 	["UDim2.new"] = { "xScale", "xOffset", "yScale", "yOffset" },
 	["UDim2.fromScale"] = { "x", "y" },
 	["UDim2.fromOffset"] = { "x", "y" },
-	["UDim2.Lerp"] = { "alpha", "self", "other" },
+	["UDim2.Lerp"] = { "alpha", "other" },
+	["UDim2.FuzzyEq"] = { "other", "epsilon" },
+
+	["Ray.new"] = { "origin", "direction" },
+	["Ray.Unit"] = { "self" },
+	["Ray.ClosestPoint"] = { "point" },
+	["Ray.Distance"] = { "point" },
+
+	["Rect.new"] = { "x", "y", "width", "height" },
+
+	["Region3.new"] = { "cframe", "size" },
+	["Region3.ExpandToGrid"] = { "step" },
+	["Region3int16.new"] = { "cframe", "size" },
 
 	["NumberRange.new"] = { "min", "max" },
+
+	["NumberSequence.new"] = { "keypoints" },
+	["NumberSequence.Keypoint"] = { "time", "value", "envelope" },
+
+	["ColorSequence.new"] = { "keypoints" },
+	["ColorSequence.Keypoint"] = { "time", "color" },
+
 	["TweenInfo.new"] = { "time", "easingStyle", "easingDirection", "repeatCount", "reverses", "delayTime" },
+
+	["BrickColor.new"] = { "value" },
+
 	["Random.new"] = { "seed" },
+	["Random.NextInteger"] = { "min", "max" },
+	["Random.NextNumber"] = { "min", "max" },
+	["Random.NextUnitVector"] = {},
+	["Random.Shuffle"] = { "list" },
+	["Random.Clone"] = { "self" },
+
+	["DateTime.now"] = {},
+	["DateTime.fromUnixTimestamp"] = { "seconds" },
+	["DateTime.fromUnixTimestampMillis"] = { "milliseconds" },
+
+	["PhysicalProperties.new"] = { "density", "friction", "elasticity", "frictionWeight", "elasticityWeight" },
+	["OverlapParams.AddToFilter"] = { "instance" },
 
 	["Instance.new"] = { "className", "parent" },
 	["Instance.fromJSON"] = { "json" },
-	["Enum.FromName"] = { "enumType", "name" },
+	["Instance.Clone"] = { "self" },
+	["Instance.Destroy"] = { "self" },
+	["Instance.FindFirstChild"] = { "name", "recursive" },
+	["Instance.FindFirstChildOfClass"] = { "className", "recursive" },
+	["Instance.GetChildren"] = { "self" },
+	["Instance.GetDescendants"] = { "self" },
+	["Instance.GetFullName"] = { "self" },
+	["Instance.GetAttribute"] = { "attribute" },
+	["Instance.GetAttributes"] = { "self" },
+	["Instance.SetAttribute"] = { "attribute", "value" },
+	["Instance.IsA"] = { "className" },
+	["Instance.IsAncestorOf"] = { "instance" },
+	["Instance.IsDescendantOf"] = { "instance" },
+	["Instance.GetService"] = { "className" },
 
 	["print"] = { "..." },
 	["warn"] = { "..." },
 	["error"] = { "message", "level" },
 	["assert"] = { "value", "message" },
 	["pcall"] = { "f", "..." },
+	["xpcall"] = { "f", "handler" },
 	["type"] = { "value" },
 	["typeof"] = { "value" },
 	["select"] = { "index", "..." },
@@ -146,10 +342,14 @@ local SIGNATURES = {
 	["tostring"] = { "value" },
 	["tonumber"] = { "value", "base" },
 	["next"] = { "table", "key" },
+	["unpack"] = { "table", "i", "j" },
+	["pairs"] = { "table" },
+	["ipairs"] = { "table" },
 	["waitforchild"] = { "child", "timeout" },
 	["tick"] = {},
+	["delay"] = { "seconds", "callback", "..." },
+	["spawn"] = { "callback", "..." },
 }
-
 local SIGNATURES_LOWER = {}
 
 for key, params in pairs(SIGNATURES) do
@@ -227,178 +427,287 @@ local GLOBALS = {
 	{ name = "wait", kind = "Function" },
 	{ name = "waitforchild", kind = "Function" },
 	{ name = "BrickColor", kind = "Type" },
+	{ name = "Axes", kind = "Type" },
 	{ name = "CFrame", kind = "Type" },
 	{ name = "Color3", kind = "Type" },
-	{ name = "Color3uint8", kind = "Type" },
 	{ name = "ColorSequence", kind = "Type" },
+	{ name = "DateTime", kind = "Type" },
 	{ name = "Enum", kind = "Type" },
+	{ name = "Faces", kind = "Type" },
+	{ name = "Font", kind = "Type" },
 	{ name = "Instance", kind = "Type" },
 	{ name = "NumberRange", kind = "Type" },
 	{ name = "NumberSequence", kind = "Type" },
+	{ name = "OverlapParams", kind = "Type" },
+	{ name = "PathWaypoint", kind = "Type" },
+	{ name = "PhysicalProperties", kind = "Type" },
+	{ name = "Quaternion", kind = "Type" },
 	{ name = "Random", kind = "Type" },
 	{ name = "Ray", kind = "Type" },
 	{ name = "Rect", kind = "Type" },
 	{ name = "Region3", kind = "Type" },
+	{ name = "Region3int16", kind = "Type" },
 	{ name = "TweenInfo", kind = "Type" },
 	{ name = "UDim", kind = "Type" },
 	{ name = "UDim2", kind = "Type" },
+	{ name = "UniqueId", kind = "Type" },
 	{ name = "Vector2", kind = "Type" },
+	{ name = "Vector2int16", kind = "Type" },
 	{ name = "Vector3", kind = "Type" },
+	{ name = "Vector3int16", kind = "Type" },
 }
 
 local BUILTIN_MEMBERS = {
-	CFrame = {
-		"new:Method",
-		"fromEulerAnglesXYZ:Method",
-		"fromMatrix:Method",
-		"fromOrientation:Method",
-		"fromQuaternion:Method",
-		"lookAt:Method",
-		"angles:Property",
-		"identity:Property",
-		"Axes:Property",
-		"Position:Property",
-		"RightVector:Property",
-		"UpVector:Property",
-		"LookVector:Property",
-		"X:Property",
-		"Y:Property",
-		"Z:Property",
-		"Add:Method",
-		"Sub:Method",
-		"Mul:Method",
-		"Div:Method",
-		"Cross:Method",
-		"Dot:Method",
-		"Inverse:Method",
-		"Lerp:Method",
-		"LerpCFrame:Method",
-		"GetComponents:Method",
-		"PointToObjectSpace:Method",
-		"PointToWorldSpace:Method",
-		"Rotate:Method",
-		"ToObjectSpace:Method",
-		"ToWorldSpace:Method",
-		"cf:Function",
-		"p:Function",
-		"r:Function",
-		"u:Function",
-		"look:Function",
-		"right:Function",
-		"up:Function",
-		"pos:Function",
-	},
-
 	Vector2 = {
 		"new:Method",
-		"Dot:Method",
-		"Cross:Method",
-		"Angle:Method",
-		"Lerp:Method",
-		"Abs:Method",
-		"Ceil:Method",
-		"Clamp:Method",
-		"Floor:Method",
-		"Max:Method",
-		"Min:Method",
-		"Round:Method",
-		"Sign:Method",
-		"Unit:Method",
-		"Magnitude:Property",
 		"X:Property",
 		"Y:Property",
+		"Magnitude:Property",
+		"Unit:Method",
+		"Cross:Method",
+		"Dot:Method",
+		"FuzzyEq:Method",
+		"Lerp:Method",
 	},
 
 	Vector3 = {
 		"new:Method",
-		"Dot:Method",
-		"Cross:Method",
-		"Angle:Method",
-		"Lerp:Method",
+		"FromNormalId:Method",
+		"FromAxis:Method",
+		"x:Property",
+		"X:Property",
+		"y:Property",
+		"Y:Property",
+		"z:Property",
+		"Z:Property",
+		"Magnitude:Property",
+		"Unit:Method",
 		"Abs:Method",
 		"Ceil:Method",
-		"Clamp:Method",
 		"Floor:Method",
+		"Sign:Method",
+		"Cross:Method",
+		"Angle:Method",
+		"Dot:Method",
+		"FuzzyEq:Method",
+		"Lerp:Method",
 		"Max:Method",
 		"Min:Method",
-		"Round:Method",
-		"Sign:Method",
-		"Unit:Method",
-		"Magnitude:Property",
-		"X:Property",
-		"Y:Property",
-		"Z:Property",
 	},
+
+	Vector2int16 = { "new:Method", "X:Property", "Y:Property" },
+
+	Vector3int16 = { "new:Method", "X:Property", "Y:Property", "Z:Property" },
 
 	Color3 = {
 		"new:Method",
-		"fromHSV:Method",
 		"fromRGB:Method",
+		"fromHSV:Method",
 		"fromHex:Method",
-		"fromUint8:Method",
-		"Lerp:Method",
-		"ToHex:Method",
-		"ToHSV:Method",
-		"ToRGB:Method",
-		"ToUint8:Method",
-		"B:Property",
-		"G:Property",
 		"R:Property",
+		"G:Property",
+		"B:Property",
+		"Lerp:Method",
+		"ToHSV:Method",
+		"ToHex:Method",
+		"ToRGB:Method",
 	},
 
-	Color3uint8 = { "new:Method", "B:Property", "G:Property", "R:Property" },
+	CFrame = {
+		"new:Method",
+		"Angles:Method",
+		"fromEulerAnglesXYZ:Method",
+		"fromEulerAnglesYXZ:Method",
+		"fromOrientation:Method",
+		"fromAxisAngle:Method",
+		"lookAt:Method",
+		"lookAlong:Method",
+		"fromMatrix:Method",
+		"Position:Property",
+		"p:Property",
+		"Rotation:Property",
+		"RightVector:Property",
+		"XVector:Property",
+		"UpVector:Property",
+		"YVector:Property",
+		"LookVector:Property",
+		"ZVector:Property",
+		"X:Property",
+		"Y:Property",
+		"Z:Property",
+		"Inverse:Method",
+		"Lerp:Method",
+		"ToWorldSpace:Method",
+		"ToObjectSpace:Method",
+		"PointToWorldSpace:Method",
+		"PointToObjectSpace:Method",
+		"VectorToWorldSpace:Method",
+		"VectorToObjectSpace:Method",
+		"Orthonormalize:Method",
+		"GetComponents:Method",
+		"components:Method",
+		"ToEulerAnglesXYZ:Method",
+		"ToEulerAnglesYXZ:Method",
+		"ToOrientation:Method",
+		"ToAxisAngle:Method",
+		"FuzzyEq:Method",
+		"AngleBetween:Method",
+	},
 
-	UDim = { "new:Method", "Scale:Property", "Offset:Property" },
+	Quaternion = {
+		"new:Method",
+		"fromAxisAngle:Method",
+		"X:Property",
+		"Y:Property",
+		"Z:Property",
+		"W:Property",
+		"Magnitude:Property",
+		"Unit:Method",
+		"Conjugate:Method",
+		"Inverse:Method",
+		"Dot:Method",
+		"Lerp:Method",
+		"Slerp:Method",
+		"ToAxisAngle:Method",
+	},
+
+	Axes = { "new:Method", "X:Property", "Y:Property", "Z:Property" },
+
+	UDim = {
+		"new:Method",
+		"Scale:Property",
+		"Offset:Property",
+		"Lerp:Method",
+		"FuzzyEq:Method",
+	},
 
 	UDim2 = {
 		"new:Method",
-		"fromAxis:Method",
-		"fromOffset:Method",
 		"fromScale:Method",
-		"Lerp:Method",
-		"Scale:Property",
+		"fromOffset:Method",
 		"X:Property",
 		"Y:Property",
+		"XScale:Property",
+		"XOffset:Property",
+		"YScale:Property",
+		"YOffset:Property",
+		"Width:Property",
+		"Height:Property",
+		"Lerp:Method",
+		"FuzzyEq:Method",
 	},
 
-	Ray = { "new:Method", "Direction:Property", "Origin:Property" },
+	Ray = {
+		"new:Method",
+		"Origin:Property",
+		"Direction:Property",
+		"Unit:Method",
+		"ClosestPoint:Method",
+		"Distance:Method",
+	},
 
 	Rect = {
 		"new:Method",
-		"Abs:Method",
-		"Max:Property",
 		"Min:Property",
-		"Size:Property",
-		"X:Property",
-		"Y:Property",
+		"Max:Property",
+		"Width:Property",
+		"Height:Property",
 	},
 
-	Region3 = { "new:Method", "CFrame:Property", "Size:Property" },
+	Region3 = {
+		"new:Method",
+		"Min:Property",
+		"Max:Property",
+		"Size:Property",
+		"CFrame:Property",
+		"ExpandToGrid:Method",
+	},
 
-	Region3int16 = { "new:Method", "CFrame:Property", "Size:Property" },
+	Region3int16 = {
+		"new:Method",
+		"Min:Property",
+		"Max:Property",
+		"Size:Property",
+		"CFrame:Property",
+	},
 
-	NumberRange = { "new:Method", "Max:Property", "Min:Property" },
+	NumberRange = { "new:Method", "Min:Property", "Max:Property" },
 
-	NumberSequence = { "new:Method", "Keypoint:Method", "Keypoints:Property" },
+	NumberSequence = {
+		"new:Method",
+		"Keypoint:Method",
+		"Time:Property",
+		"Value:Property",
+		"Envelope:Property",
+		"Keypoints:Property",
+	},
 
-	ColorSequence = { "new:Method", "Keypoint:Method", "Keypoints:Property" },
+	ColorSequence = {
+		"new:Method",
+		"Keypoint:Method",
+		"Time:Property",
+		"Value:Property",
+		"Keypoints:Property",
+	},
 
 	TweenInfo = {
 		"new:Method",
-		"DelayTime:Property",
-		"Duration:Property",
-		"Enum:Property",
+		"Time:Property",
+		"EasingStyle:Property",
+		"EasingDirection:Property",
 		"RepeatCount:Property",
 		"Reverses:Property",
+		"DelayTime:Property",
 	},
 
-	BrickColor = { "new:Method", "Color:Property", "Name:Property", "Number:Property" },
+	BrickColor = {
+		"new:Method",
+		"Number:Property",
+		"Name:Property",
+		"Color:Property",
+	},
 
 	Random = {
 		"new:Method",
 		"NextInteger:Method",
 		"NextNumber:Method",
 		"NextUnitVector:Method",
+		"Shuffle:Method",
+		"Clone:Method",
+	},
+
+	DateTime = {
+		"now:Method",
+		"fromUnixTimestamp:Method",
+		"fromUnixTimestampMillis:Method",
+	},
+
+	PhysicalProperties = {
+		"new:Method",
+		"Density:Property",
+		"Friction:Property",
+		"Elasticity:Property",
+		"FrictionWeight:Property",
+		"ElasticityWeight:Property",
+	},
+
+	OverlapParams = {
+		"FilterDescendantsInstances:Property",
+		"ExcludeInstances:Property",
+		"IncludeInstances:Property",
+		"FilterType:Property",
+		"MaxParts:Property",
+		"CollisionGroup:Property",
+		"Tolerance:Property",
+		"RespectCanCollide:Property",
+		"BruteForceAllSlow:Property",
+		"AddToFilter:Method",
+	},
+
+	PathWaypoint = {
+		"Position:Property",
+		"Action:Property",
+		"Label:Property",
 	},
 
 	Instance = {
@@ -422,9 +731,8 @@ local BUILTIN_MEMBERS = {
 		"Parent:Property",
 	},
 
-	Enum = { "GetEnumItems:Method", "FromName:Method" },
+	Enum = { "GetEnumItems:Method" },
 }
-
 BUILTIN_MEMBERS.math = {
 	"abs:Function",
 	"acos:Function",
@@ -1119,12 +1427,33 @@ local function resolveRoot(name)
 	return nil
 end
 
-local function resolveInstance(segments, upto)
+local function resolveInstance(segments, upto, aliases)
 	if upto <= 0 then
 		return nil
 	end
 
 	local root = resolveRoot(segments[1])
+
+	if root == nil and aliases ~= nil then
+		local service = aliases[segments[1]]
+
+		if service ~= nil then
+			root = resolveRoot(service)
+
+			if root == nil then
+
+				local ok, resolved = pcall(function()
+					return game:GetService(service)
+				end)
+
+				if ok then
+					root = resolved
+				else
+					root = game:FindFirstChild(service)
+				end
+			end
+		end
+	end
 
 	if root == nil then
 		root = game:FindFirstChild(segments[1])
@@ -1147,12 +1476,12 @@ local function resolveInstance(segments, upto)
 	return root
 end
 
-local function resolveLongestPrefix(segments)
+local function resolveLongestPrefix(segments, aliases)
 	local instance = nil
 	local resolved = 0
 
 	for index = 1, #segments do
-		local candidate = resolveInstance(segments, index)
+		local candidate = resolveInstance(segments, index, aliases)
 
 		if candidate == nil then
 			break
@@ -1255,11 +1584,163 @@ local function scoreMatch(name, prefix)
 end
 
 local function resolveSignature(callee)
+	if callee == nil then
+		return nil
+	end
+
 	if SIGNATURES[callee] ~= nil then
 		return SIGNATURES[callee]
 	end
 
 	return SIGNATURES_LOWER[string.lower(callee)]
+end
+
+local function isGetServiceCall(callee)
+	if callee == nil then
+		return false
+	end
+
+	return string.lower(callee) == "getservice" or string.find(callee, "%.getservice$") ~= nil
+end
+
+local enumTypeCache = nil
+local enumItemCache = {}
+
+local function enumTypeCandidates()
+	if enumTypeCache == nil then
+		enumTypeCache = {}
+
+		local ok = pcall(function()
+			for name, enumType in pairs(Enum) do
+				if type(name) == "string" and enumType ~= nil then
+					local count = 0
+
+					pcall(function()
+						count = #enumType:GetEnumItems()
+					end)
+
+					table.insert(enumTypeCache, {
+						name = name,
+						kind = "Type",
+						detail = count > 0 and (count .. " items") or "Enum",
+					})
+				end
+			end
+		end)
+
+		if not ok then
+			enumTypeCache = {}
+		end
+
+		table.sort(enumTypeCache, function(a, b)
+			return a.name < b.name
+		end)
+	end
+
+	return enumTypeCache
+end
+
+local function enumItemCandidates(enumName)
+	if enumItemCache[enumName] ~= nil then
+		return enumItemCache[enumName]
+	end
+
+	local members = {}
+
+	pcall(function()
+		local enumType = Enum[enumName]
+
+		if enumType == nil then
+			return
+		end
+
+		for _, item in ipairs(enumType:GetEnumItems()) do
+			local name = item.Name
+
+			if type(name) == "string" then
+				table.insert(members, {
+					name = name,
+					kind = "Value",
+					detail = tostring(item.Value),
+				})
+			end
+		end
+	end)
+
+	enumItemCache[enumName] = members
+
+	return members
+end
+
+local function collectEnumMembers(receiver)
+	if #receiver < 1 or #receiver > 2 then
+		return nil
+	end
+
+	if string.lower(receiver[1]) ~= "enum" then
+		return nil
+	end
+
+	if #receiver == 1 then
+		return enumTypeCandidates()
+	end
+
+	local members = enumItemCandidates(receiver[2])
+
+	if #members > 0 then
+		return members
+	end
+
+	return enumTypeCandidates()
+end
+
+local function serviceNames()
+	local names = {}
+
+	for _, child in ipairs(game:GetChildren()) do
+		table.insert(names, child.Name)
+	end
+
+	table.sort(names)
+
+	return names
+end
+
+local function serviceCandidates()
+	local candidates = {}
+
+	for _, name in ipairs(serviceNames()) do
+		table.insert(candidates, {
+			name = name,
+			kind = "Service",
+			detail = "Service",
+		})
+	end
+
+	return candidates
+end
+
+local function collectServiceAliases(source, services)
+	local aliases = {}
+
+	for name, service in string.gmatch(
+		source,
+		"local%s+([%a_][%w_]*)%s*=%s*[%a_][%w_]*[%.:]GetService%s*%(%s*[\"']([^\"']+)[\"']"
+	) do
+		aliases[name] = service
+	end
+
+	for name, target in string.gmatch(source, "local%s+([%a_][%w_]*)%s*=%s*([%a_][%w_]*)%s") do
+		if aliases[name] == nil then
+			if target == "game" or target == "workspace" then
+				aliases[name] = target
+			elseif services[target] then
+				aliases[name] = target
+			end
+		end
+	end
+
+	return aliases
 end
 
 local function callContextAt(text, cursor)
@@ -1327,7 +1808,7 @@ local function callContextAt(text, cursor)
 		end
 	end
 
-	return callee, index
+	return callee, index, open
 end
 
 local function collectInstanceMembers(instance)
@@ -1366,7 +1847,7 @@ local function collectVocabulary(source)
 	return candidates
 end
 
-function CodeEditor:collectCandidates(segments, ends_with_dot)
+function CodeEditor:collectCandidates(segments, ends_with_dot, aliases)
 	local receiver = {}
 
 	local count = ends_with_dot and #segments or #segments - 1
@@ -1376,7 +1857,13 @@ function CodeEditor:collectCandidates(segments, ends_with_dot)
 	end
 
 	if #receiver > 0 then
-		local instance, resolved = resolveLongestPrefix(receiver)
+		local enum = collectEnumMembers(receiver)
+
+		if enum ~= nil and #enum > 0 then
+			return enum
+		end
+
+		local instance, resolved = resolveLongestPrefix(receiver, aliases)
 
 		if instance ~= nil and resolved == #receiver then
 			local members = collectInstanceMembers(instance)
@@ -1393,9 +1880,25 @@ function CodeEditor:collectCandidates(segments, ends_with_dot)
 		end
 	end
 
-	local source = self.activeDocument and self.activeDocument.source or self.TextBox.Text
+	return collectVocabulary(self:activeSource())
+end
 
-	return collectVocabulary(source)
+function CodeEditor:activeSource()
+	if self.activeDocument ~= nil then
+		return self.activeDocument.source
+	end
+
+	return self.TextBox.Text
+end
+
+function CodeEditor:serviceSet()
+	local set = {}
+
+	for _, name in ipairs(serviceNames()) do
+		set[name] = true
+	end
+
+	return set
 end
 
 function CodeEditor:dismissSuggestions()
@@ -1419,6 +1922,16 @@ function CodeEditor:refreshSuggestions()
 end
 
 function CodeEditor:updateSuggestionList()
+	local source = self:activeSource()
+	local aliases = collectServiceAliases(source, self:serviceSet())
+
+	local service = self:serviceArgumentAt()
+
+	if service ~= nil then
+		self:showServiceList(service.prefix, service.start, service.finish)
+		return
+	end
+
 	local word = self.TextBox:GetWordRangeAtCursor()
 
 	if word == nil then
@@ -1444,7 +1957,7 @@ function CodeEditor:updateSuggestionList()
 
 	local ranked = {}
 
-	for _, candidate in ipairs(self:collectCandidates(segments, ends_with_dot)) do
+	for _, candidate in ipairs(self:collectCandidates(segments, ends_with_dot, aliases)) do
 		local score = scoreMatch(candidate.name, prefix)
 
 		if score ~= nil then
@@ -1453,10 +1966,15 @@ function CodeEditor:updateSuggestionList()
 				kind = candidate.kind,
 				detail = candidate.detail,
 				score = score,
+				quote = false,
 			})
 		end
 	end
 
+	self:showRanked(ranked, prefix, self:completionRange(word, segments, ends_with_dot))
+end
+
+function CodeEditor:showRanked(ranked, prefix, range)
 	if #ranked == 0 then
 		self:dismissSuggestions()
 		return
@@ -1472,12 +1990,48 @@ function CodeEditor:updateSuggestionList()
 
 	self.suggestions = ranked
 	self.suggestPrefix = prefix
-	self.suggestRange = self:completionRange(word, segments, ends_with_dot)
+	self.suggestRange = range
 	self.suggestionIndex = 1
-
 	self.suggestionScroll = 0
 
 	self:renderSuggestions()
+end
+
+function CodeEditor:serviceArgumentAt()
+	local callee, _, open = callContextAt(self.TextBox.Text, self.TextBox.CursorPosition)
+
+	if not isGetServiceCall(callee) then
+		return nil
+	end
+
+	local cursor = self.TextBox.CursorPosition
+	local argumentStart = open + 1
+
+	return {
+		prefix = string.sub(self.TextBox.Text, argumentStart, cursor - 1),
+		start = argumentStart,
+		finish = cursor,
+	}
+end
+
+function CodeEditor:showServiceList(prefix, start, finish)
+	local ranked = {}
+
+	for _, candidate in ipairs(serviceCandidates()) do
+		local score = scoreMatch(candidate.name, prefix)
+
+		if score ~= nil then
+			table.insert(ranked, {
+				name = candidate.name,
+				kind = candidate.kind,
+				detail = candidate.detail,
+				score = score,
+				quote = true,
+			})
+		end
+	end
+
+	self:showRanked(ranked, prefix, { start = start, finish = finish })
 end
 
 function CodeEditor:completionRange(word, segments, ends_with_dot)
@@ -1550,14 +2104,13 @@ function CodeEditor:updateTargets()
 end
 
 function CodeEditor:renderArgumentHint()
-	local context = callContextAt(self.TextBox.Text, self.TextBox.CursorPosition)
+	local callee, index = callContextAt(self.TextBox.Text, self.TextBox.CursorPosition)
 
-	if context == nil then
+	if callee == nil then
 		self:dismissArgumentHint()
 		return
 	end
 
-	local callee, index = context[1], context[2]
 	local params = resolveSignature(callee)
 
 	if params == nil then
@@ -1720,13 +2273,12 @@ function CodeEditor:acceptSuggestion(index)
 		return
 	end
 
-	local name = suggestion.name
-	local insert = name
+	local insert = suggestion.quote and ('"' .. suggestion.name .. '"') or suggestion.name
 
 	local callable = suggestion.kind == "Method" or suggestion.kind == "Function"
 
 	if callable then
-		insert = name .. "("
+		insert = insert .. "("
 	end
 
 	self:dismissSuggestions()
