@@ -11,5 +11,6 @@ local tokens = UI.tokens
 local console = require("@internal/console")
 
 local panel = console.createConsole()
-panel.window.Position = UDim2.fromOffset(theme.OutputCoordinates.Position.X, theme.OutputCoordinates.Position.Y)
-panel.window.Size = UDim2.fromOffset(theme.OutputCoordinates.Size.X, theme.OutputCoordinates.Size.Y)
+local output = theme.OutputCoordinates
+panel.window.Position = UDim2.fromOffset(output.Position.X.Offset, output.Position.Y.Offset)
+panel.window.Size = UDim2.fromOffset(output.Size.X.Offset, output.Size.Y.Offset)
