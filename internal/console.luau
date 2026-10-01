@@ -344,6 +344,7 @@ local function createConsole()
 
 	return {
 		window = panel,
+		gui = gui,
 		toggle = function()
 			UI.toggleWindow(WINDOW_NAME)
 		end,
