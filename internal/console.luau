@@ -37,6 +37,7 @@ local lastSeenCount = 0
 local panel, content = UI.window(WINDOW_NAME, UDim2.fromOffset(40, 80), UDim2.fromOffset(720, 360), "Console", {
 	closable = true,
 })
+panel.Parent = game.CoreGui
 
 ----------------------------------------------------------------
 -- Toolbar
