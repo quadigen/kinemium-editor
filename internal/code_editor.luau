@@ -10,6 +10,9 @@ local RunService = game:GetService("RunService")
 local tokens = UI.tokens
 
 local TAB_STRIP_HEIGHT = 26
+local STATUS_HEIGHT = 20
+local FIND_WIDTH = 300
+local FIND_HEIGHT = 28
 local TAB_MIN_WIDTH = 104
 local TAB_CLOSE_SIZE = 18
 local TAB_FONT = "builtin://fonts/Montserrat-Regular.ttf"
@@ -1010,7 +1013,7 @@ function CodeEditor.new(parent)
 
 	local editor = UI.create("TextBox", {
 		Name = "CodeEditor",
-		Size = UDim2.new(1, 0, 1, -TAB_STRIP_HEIGHT),
+		Size = UDim2.new(1, 0, 1, -(TAB_STRIP_HEIGHT + STATUS_HEIGHT)),
 		Position = UDim2.fromOffset(0, TAB_STRIP_HEIGHT),
 		CodeEditor = true,
 		Visible = false,
@@ -1076,6 +1079,154 @@ function CodeEditor.new(parent)
 	self.Hint = hint
 	self.rows = {}
 
+	local statusBar = UI.frame(
+		parent,
+		UDim2.new(0, 0, 1, -STATUS_HEIGHT),
+		UDim2.new(1, 0, 0, STATUS_HEIGHT),
+		tokens.color.panel,
+		0
+	)
+
+	statusBar.Name = "StatusBar"
+
+	self.statusLabel = UI.label(
+		statusBar,
+		"Ln 1, Col 1",
+		UDim2.fromOffset(8, 2),
+		UDim2.fromOffset(180, 16),
+		tokens.type.caption,
+		tokens.color.subtext
+	)
+
+	self.statusButtons = {}
+	self.statusOrder = { "wrap", "minimap", "suggest" }
+	self.statusLabels = { wrap = "Wrap", minimap = "Map", suggest = "Sense" }
+
+	local toggleWidth = 48
+	local toggleX = 0
+
+	for index = #self.statusOrder, 1, -1 do
+		local id = self.statusOrder[index]
+		toggleX = toggleX + toggleWidth
+
+		local button, _, record = UI.button(
+			statusBar,
+			self.statusLabels[id],
+			UDim2.new(1, -toggleX, 0, 2),
+			UDim2.fromOffset(toggleWidth - 4, STATUS_HEIGHT - 4),
+			function()
+				self:toggle(id)
+			end,
+			{
+				color = tokens.color.panel,
+				hoverColor = tokens.color.hover,
+				textColor = tokens.color.muted,
+				textSize = tokens.type.caption,
+				textY = 2,
+				radius = tokens.radius.xs,
+				border = false,
+				paddingX = 6,
+			}
+		)
+
+		self.statusButtons[id] = { gui = button, record = record }
+	end
+
+	local find = UI.frame(
+		suggestionLayer,
+		UDim2.fromOffset(0, 0),
+		UDim2.fromOffset(FIND_WIDTH, FIND_HEIGHT),
+		tokens.color.panel,
+		tokens.radius.sm
+	)
+
+	find.Name = "FindWidget"
+	find.Visible = false
+	find.Active = true
+	find.ClipsDescendants = true
+
+	UI.stroke(find, tokens.color.border, 1, 0)
+
+	self.findInput = UI.create("TextBox", {
+		Name = "FindInput",
+		Size = UDim2.new(1, -152, 0, FIND_HEIGHT - 8),
+		Position = UDim2.fromOffset(4, 4),
+		BackgroundColor3 = tokens.color.input,
+		BorderSizePixel = 0,
+		Text = "",
+		PlaceholderText = "Find",
+		TextSize = tokens.type.small,
+		TextColor3 = tokens.color.text,
+		PlaceholderColor3 = tokens.color.muted,
+		ClearTextOnFocus = false,
+	}, find)
+
+	self.findCount = UI.label(
+		find,
+		"No results",
+		UDim2.new(1, -148, 0, 8),
+		UDim2.fromOffset(100, 12),
+		tokens.type.caption,
+		tokens.color.muted
+	)
+
+	self.findButtons = {}
+
+	local findOrder = { "prev", "next", "case", "word", "close" }
+	local findIcons = {
+		prev = "builtin://global-icons/chevron-up.svg",
+		next = "builtin://global-icons/chevron-down.svg",
+	}
+	local findText = { case = "Aa", word = "ab", close = "x" }
+
+	local findX = FIND_WIDTH - 8
+
+	for index = #findOrder, 1, -1 do
+		local id = findOrder[index]
+		findX = findX - 24
+
+		local callback = function()
+			self:findAction(id)
+		end
+
+		local button, label, record
+
+		if findIcons[id] then
+			button, record = UI.iconButton(find, findIcons[id], UDim2.fromOffset(findX, 4), UDim2.fromOffset(22, 20), callback, {
+				color = tokens.color.panel,
+				hoverColor = tokens.color.hover,
+				radius = tokens.radius.xs,
+				border = false,
+				iconSize = 12,
+			})
+		else
+			button, label, record = UI.button(find, findText[id], UDim2.fromOffset(findX, 4), UDim2.fromOffset(22, 20), callback, {
+				color = tokens.color.panel,
+				hoverColor = tokens.color.hover,
+				textColor = tokens.color.muted,
+				textSize = tokens.type.caption,
+				textY = 3,
+				radius = tokens.radius.xs,
+				border = false,
+				paddingX = 3,
+			})
+		end
+
+		self.findButtons[id] = { gui = button, label = label, record = record, text = findText[id] }
+	end
+
+	self.StatusBar = statusBar
+	self.Find = find
+	self.findVisible = false
+	self.findMatches = {}
+	self.findIndex = 0
+	self.findCaseSensitive = false
+	self.findWholeWord = false
+	self.statusCache = nil
+	self.statusSignature = nil
+	self.statusStates = {}
+	self.suggestionsEnabled = true
+
 	self.popupPosition = Vector2.new(0, 0)
 	self.popupTarget = Vector2.new(0, 0)
 	self.hintPosition = Vector2.new(0, 0)
@@ -1108,6 +1259,12 @@ end
 function CodeEditor:update(delta)
 	if type(delta) ~= "number" then
 		delta = 1 / 60
+	end
+
+	self:refreshStatus()
+
+	if self.findVisible then
+		self:placeFindWidget()
 	end
 
 	if not UI.isAlive(self.Popup) or not UI.isAlive(self.Hint) then
@@ -1916,6 +2073,12 @@ function CodeEditor:dismissSuggestions()
 end
 
 function CodeEditor:refreshSuggestions()
+	if not self.suggestionsEnabled then
+		self:dismissSuggestions()
+
+		return
+	end
+
 	self:updateSuggestionList()
 
 	self:renderArgumentHint()
@@ -2298,6 +2461,353 @@ function CodeEditor:acceptSuggestion(index)
 	self:renderArgumentHint()
 end
 
+local function paintToggle(entry, active)
+	if not entry or not UI.isAlive(entry.gui) then
+		return
+	end
+
+	local color = tokens.color.panel
+
+	if active then
+		color = tokens.color.selection
+	end
+
+	if entry.record then
+		entry.record.color = color
+	end
+
+	entry.gui.BackgroundColor3 = color
+end
+
+local MAGIC_CHARACTERS = {
+	["^"] = true,
+	["$"] = true,
+	["("] = true,
+	[")"] = true,
+	["%"] = true,
+	["."] = true,
+	["["] = true,
+	["]"] = true,
+	["*"] = true,
+	["+"] = true,
+	["-"] = true,
+	["?"] = true,
+}
+
+local function escapePattern(text)
+	local buffer = {}
+
+	for index = 1, #text do
+		local character = text:sub(index, index)
+
+		if MAGIC_CHARACTERS[character] then
+			table.insert(buffer, "%")
+		end
+
+		table.insert(buffer, character)
+	end
+
+	return table.concat(buffer)
+end
+
+local function isModifierDown(code)
+	local service = game:GetService("UserInputService")
+
+	return service and service:IsKeyDown(code) == true
+end
+
+local function modifierHeld()
+	return isModifierDown(Enum.KeyCode.LeftControl)
+		or isModifierDown(Enum.KeyCode.RightControl)
+		or isModifierDown(Enum.KeyCode.LeftSuper)
+		or isModifierDown(Enum.KeyCode.RightSuper)
+end
+
+function CodeEditor:toggle(id)
+	if id == "wrap" then
+		self.TextBox.WordWrap = not self.TextBox.WordWrap
+	elseif id == "minimap" then
+		self.TextBox.ShowMinimap = not self.TextBox.ShowMinimap
+	elseif id == "suggest" then
+		self.suggestionsEnabled = not self.suggestionsEnabled
+
+		if not self.suggestionsEnabled then
+			self:dismissSuggestions()
+		end
+	end
+
+	self:refreshStatus()
+end
+
+function CodeEditor:isWordCharacter(char)
+	return char ~= nil and char:match("[%a_0-9]") ~= nil
+end
+
+function CodeEditor:scanFindMatches()
+	local query = self.findInput.Text
+	self.findMatches = {}
+
+	if query == "" then
+		self.findIndex = 0
+
+		return
+	end
+
+	local text = self.TextBox.Text
+	local haystack = text
+	local needle = query
+
+	if not self.findCaseSensitive then
+		haystack = string.lower(haystack)
+		needle = string.lower(needle)
+	end
+
+	local cursor = 1
+	local pattern = escapePattern(needle)
+
+	while cursor <= #haystack do
+		local start, finish = string.find(haystack, pattern, cursor)
+
+		if not start then
+			break
+		end
+
+		local boundary = true
+
+		if self.findWholeWord then
+			local before = haystack:sub(start - 1, start - 1)
+			local after = haystack:sub(finish + 1, finish + 1)
+
+			boundary = not self:isWordCharacter(before) and not self:isWordCharacter(after)
+		end
+
+		if boundary then
+			table.insert(self.findMatches, { start, finish })
+		end
+
+		cursor = finish + 1
+	end
+
+	self.findIndex = 0
+end
+
+function CodeEditor:stepFindMatch(direction)
+	local total = #self.findMatches
+
+	if total == 0 then
+		return
+	end
+
+	self.findIndex = (self.findIndex - 1 + direction) % total + 1
+end
+
+function CodeEditor:selectFindMatch()
+	local match = self.findMatches[self.findIndex]
+
+	if not match then
+		return
+	end
+
+	self.TextBox.SelectionStart = match[1]
+	self.TextBox.SelectionEnd = match[2]
+end
+
+function CodeEditor:updateFindCount()
+	local total = #self.findMatches
+
+	if total == 0 then
+		self.findCount.Text = "No results"
+
+		return
+	end
+
+	local index = self.findIndex
+
+	if index == 0 then
+		index = 1
+	end
+
+	self.findCount.Text = ('%d of %d'):format(index, total)
+end
+
+function CodeEditor:runFind(direction)
+	self:scanFindMatches()
+
+	local total = #self.findMatches
+
+	if total == 0 then
+		self:updateFindCount()
+
+		return
+	end
+
+	local cursor = self.TextBox.CursorPosition
+	self.findIndex = 1
+
+	for index, match in self.findMatches do
+		if cursor >= match[1] and cursor <= match[2] then
+			self.findIndex = index
+
+			break
+		end
+	end
+
+	if direction and direction ~= 0 then
+		self:stepFindMatch(direction)
+	end
+
+	self:updateFindCount()
+	self:selectFindMatch()
+end
+
+function CodeEditor:openFind()
+	if self.findVisible then
+		self:closeFind()
+
+		return
+	end
+
+	local box = self.TextBox
+	local selected = box.Text:sub(math.min(box.SelectionStart, box.SelectionEnd) + 1, math.max(box.SelectionStart, box.SelectionEnd))
+
+	if selected ~= "" and not selected:find("\n") then
+		self.findInput.Text = selected
+	elseif #self.findInput.Text > 200 then
+		self.findInput.Text = ""
+	end
+
+	self.findVisible = true
+	self.Find.Visible = true
+	self:placeFindWidget()
+	self.findInput:CaptureFocus()
+	self.findInput.SelectAll()
+	self:runFind(0)
+end
+
+function CodeEditor:placeFindWidget()
+	if not self.findVisible or not UI.isAlive(self.Find) then
+		return
+	end
+
+	local camera = workspace.CurrentCamera
+	local screen = camera and camera.ViewportSize or Vector2.new(1280, 720)
+
+	self.Find.Position = UDim2.fromOffset(
+		math.max(8, screen.X - FIND_WIDTH - 16),
+		math.max(8, TAB_STRIP_HEIGHT + 12)
+	)
+end
+
+function CodeEditor:closeFind()
+	self.findVisible = false
+	self.Find.Visible = false
+	self.findMatches = {}
+	self.findIndex = 0
+	self.TextBox:CaptureFocus()
+end
+
+function CodeEditor:findAction(id)
+	if id == "close" then
+		self:closeFind()
+
+		return
+	end
+
+	if id == "case" then
+		self.findCaseSensitive = not self.findCaseSensitive
+		self:markFindToggle("case", self.findCaseSensitive)
+	elseif id == "word" then
+		self.findWholeWord = not self.findWholeWord
+		self:markFindToggle("word", self.findWholeWord)
+	else
+		self:runFind(id == "prev" and -1 or 1)
+
+		return
+	end
+
+	self:runFind(1)
+end
+
+function CodeEditor:markFindToggle(id, on)
+	paintToggle(self.findButtons[id], on)
+end
+
+function CodeEditor:refreshStatus()
+	local box = self.TextBox
+
+	if not UI.isAlive(box) or not UI.isAlive(self.statusLabel) then
+		return
+	end
+
+	local cursor = box.CursorPosition
+	local anchor = box.SelectionStart
+	local tab = box.TabSize
+
+	local signature = ('%d:%d:%d:%d:%d'):format(
+		cursor,
+		anchor,
+		box.WordWrap == true and 1 or 0,
+		box.ShowMinimap == true and 1 or 0,
+		self.suggestionsEnabled == true and 1 or 0
+	)
+
+	if signature == self.statusSignature then
+		return
+	end
+
+	self.statusSignature = signature
+
+	self.statusStates = {
+		wrap = box.WordWrap,
+		minimap = box.ShowMinimap,
+		suggest = self.suggestionsEnabled,
+	}
+
+	for id, entry in self.statusButtons do
+		paintToggle(entry, self.statusStates[id])
+	end
+
+	local selection = 0
+
+	if anchor ~= cursor then
+		selection = math.abs(cursor - anchor)
+	end
+
+	local line = 1
+	local consumed = 0
+	local head = math.min(cursor, #box.Text)
+	local searchFrom = 1
+
+	while true do
+		local newline = box.Text:find("\n", searchFrom, true)
+
+		if not newline or newline > head then
+			break
+		end
+
+		line = line + 1
+		consumed = newline
+		searchFrom = newline + 1
+	end
+
+	local column = head - consumed + 1
+
+	local text
+
+	if selection > 0 then
+		text = ('Ln %d, Col %d  (%d selected)'):format(line, column, selection)
+	else
+		text = ('Ln %d, Col %d'):format(line, column)
+	end
+
+	text = ('%s    Spaces: %d    Luau'):format(text, math.max(tab, 1))
+
+	if text ~= self.statusCache then
+		self.statusCache = text
+		self.statusLabel.Text = text
+	end
+end
+
 function CodeEditor:wireEditor()
 	self.TextBox.TextChanged:Connect(function()
 		if self.suppressTextSync then
@@ -2315,6 +2825,29 @@ function CodeEditor:wireEditor()
 		else
 			self:refreshSuggestions()
 		end
+
+		self:refreshStatus()
+
+		if self.findVisible then
+			self:scanFindMatches()
+			self:updateFindCount()
+		end
+	end)
+
+	self.findInput.TextChanged:Connect(function()
+		self:runFind(1)
+	end)
+
+	self.findInput.KeyDown:Connect(function(input)
+		local keyCode = input and input.KeyCode
+
+		if keyCode == Enum.KeyCode.Escape then
+			self:closeFind()
+			self.findInput.KeyHandled = true
+		elseif keyCode == Enum.KeyCode.Return or keyCode == Enum.KeyCode.KeypadEnter then
+			self:runFind(isModifierDown(Enum.KeyCode.LeftShift) and -1 or 1)
+			self.findInput.KeyHandled = true
+		end
 	end)
 
 	self.TextBox.FocusLost:Connect(function()
@@ -2328,12 +2861,40 @@ function CodeEditor:wireEditor()
 	self.TextBox.KeyDown:Connect(function(input)
 		local keyCode = input and input.KeyCode
 
+		if keyCode == Enum.KeyCode.F then
+			if modifierHeld() then
+				self:openFind()
+				self.TextBox.KeyHandled = true
+			end
+
+			return
+		end
+
+		if keyCode == Enum.KeyCode.F3 then
+			if self.findVisible then
+				self:runFind(isModifierDown(Enum.KeyCode.LeftShift) and -1 or 1)
+			end
+
+			return
+		end
+
 		if keyCode == Enum.KeyCode.Escape then
+			if self.findVisible then
+				self:closeFind()
+				self.TextBox.KeyHandled = true
+
+				return
+			end
+
 			if #self.suggestions > 0 or self.Hint.Visible then
 				self:dismissSuggestions()
 				self.TextBox.KeyHandled = true
 			end
 
+			return
+		end
+
+		if self.findVisible then
 			return
 		end
 
