@@ -158,13 +158,13 @@ local function createConsole()
 		local row = UI.button(
 			scroll,
 			"",
-			UDim2.fromOffset(ROW_INSET, rowCount * ROW_HEIGHT),
-			UDim2.new(1, -ROW_INSET * 2, 0, ROW_HEIGHT),
+			UDim2.fromOffset(1, rowCount * ROW_HEIGHT),
+			UDim2.new(1, 0, 0, ROW_HEIGHT),
 			function() end,
 			{
 				color = rowCount % 2 == 0 and tokens.color.rowEven or tokens.color.rowOdd,
 				hoverColor = colors.hover,
-				radius = tokens.radius.sm,
+				radius = 0,
 				border = false,
 			}
 		)
