@@ -9,6 +9,28 @@ return {
 	name = "Home",
 	buttons = {
 		{
+			name = "Paste",
+			icon = "clipboard.svg",
+			callback = function()
+				viewport.ActivateTool("size")
+			end,
+		},
+		{
+			name = "clipboard_actions",
+			type = "custom",
+			width = 120,
+			create = function(parent, colors, position, size)
+				UI.buttonList(parent, position, size, {
+					{ name = "Cut", icon = "scissors.svg", callback = function() end },
+					{ name = "Copy", icon = "copy.svg", callback = function() end },
+					{ name = "Paste Into", icon = "clipboard.svg", callback = function() end },
+				})
+			end,
+		},
+		{
+			type = "separator",
+		},
+		{
 			name = "Select",
 			icon = "Cursor.svg",
 			callback = function()
