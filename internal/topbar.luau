@@ -393,7 +393,7 @@ rebuildFlyout = function()
 				)
 			end
 
-			UI.label(
+			local label = UI.label(
 				item,
 				definition.name,
 				UDim2.fromOffset(4, 35),
@@ -401,6 +401,8 @@ rebuildFlyout = function()
 				tokens.type.caption,
 				colors.subtext
 			)
+			label.TextXAlignment = Enum.TextXAlignment.Center
+			label.TextYAlignment = Enum.TextYAlignment.Top
 
 			x += 55
 		end
