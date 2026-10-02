@@ -12,7 +12,7 @@ local function createConsole()
 	local MAX_ENTRIES = 1000 -- matches LOG_HISTORY_LIMIT in LogService
 	local MAX_COMMAND_HISTORY = 50
 	local ROW_HEIGHT = UI.metrics.treeRow
-	local TOOLBAR_HEIGHT = 62
+	local TOOLBAR_HEIGHT = 30
 	local COMMANDBAR_HEIGHT = 30
 	local POLL_INTERVAL = 0.1
 
@@ -54,16 +54,124 @@ local function createConsole()
 	panel.Parent = gui
 
 	local BUTTON_WIDTH, PAD = 52, 6
+	local FILTER_SIZE = UI.metrics.buttonHeight
+	local FILTER_ICON = "builtin://global-icons/filter.svg" -- swap if your icon set names it differently
 
 	local search = UI.input(
 		content,
 		"Search...",
 		UDim2.fromOffset(PAD, 4),
-		UDim2.new(1, -(BUTTON_WIDTH + PAD * 3), 0, UI.metrics.inputHeight),
+		UDim2.new(1, -(BUTTON_WIDTH + FILTER_SIZE + PAD * 4), 0, UI.metrics.inputHeight),
 		{ textSize = UI.tokens.type.small }
 	)
 
 	local rebuild -- forward declaration
+
+	local filterButton, filterRecord
+	local filterMenu = nil
+
+	local function closeFilterMenu()
+		if not filterMenu then
+			return
+		end
+
+		UI.forgetButtons(filterMenu.popup)
+
+		filterMenu.backdrop:Destroy()
+		filterMenu.popup:Destroy()
+		filterMenu = nil
+	end
+
+	local function updateFilterButton()
+		UI.setButtonState(filterRecord, activeFilter ~= "All" and "selected" or nil)
+	end
+
+	local function openFilterMenu()
+		if filterMenu then
+			closeFilterMenu()
+			return
+		end
+
+		local overlay = UI.RootOverlay()
+
+		local width = 110
+		local menuPad = 8
+		local rowGap = 4
+		local rowHeight = UI.metrics.propertyRow
+		local height = menuPad * 2 + #filterItems * rowHeight + (#filterItems - 1) * rowGap
+
+		-- Invisible full-screen catcher: any click outside the popup closes it
+		local backdrop = UI.create("TextButton", {
+			Name = "FilterBackdrop",
+			Text = "",
+			Position = UDim2.fromOffset(0, 0),
+			Size = UDim2.fromScale(1, 1),
+			BackgroundTransparency = 1,
+			BorderSizePixel = 0,
+			AutoButtonColor = false,
+			Active = true,
+			InputSink = true,
+			ZIndex = 99999,
+		}, overlay)
+
+		backdrop.MouseButton1Click:Connect(closeFilterMenu)
+
+		-- Right-align the popup under the filter button, clamped to the screen
+		local buttonPosition = filterButton.AbsolutePosition
+		local buttonSize = filterButton.AbsoluteSize
+		local screen = overlay.AbsoluteSize
+
+		local x = math.clamp(buttonPosition.X + buttonSize.X - width, 4, math.max(4, screen.X - width - 4))
+		local y = math.clamp(buttonPosition.Y + buttonSize.Y + 2, 4, math.max(4, screen.Y - height - 4))
+
+		local popup = UI.frame(
+			overlay,
+			UDim2.fromOffset(x, y),
+			UDim2.fromOffset(width, height),
+			colors.panelRaised,
+			tokens.radius.sm
+		)
+
+		popup.Name = "FilterMenu"
+		popup.ZIndex = 100000
+
+		UI.stroke(popup, colors.borderStrong, 1, 0)
+
+		UI.radioGroup(
+			popup,
+			UDim2.fromOffset(menuPad, menuPad),
+			UDim2.fromOffset(width - menuPad * 2, height - menuPad * 2),
+			filterItems,
+			activeFilter,
+			function(selected)
+				activeFilter = selected
+				updateFilterButton()
+				rebuild()
+				closeFilterMenu()
+			end,
+			{ gap = rowGap }
+		)
+
+		-- Keep everything inside the popup above the backdrop
+		for _, descendant in ipairs(popup:GetDescendants()) do
+			if descendant:IsA("GuiObject") then
+				descendant.ZIndex = 100001
+			end
+		end
+
+		filterMenu = { backdrop = backdrop, popup = popup }
+	end
+
+	filterButton, filterRecord = UI.iconButton(
+		content,
+		FILTER_ICON,
+		UDim2.new(1, -(PAD * 2 + BUTTON_WIDTH + FILTER_SIZE), 0, 4),
+		UDim2.fromOffset(FILTER_SIZE, UI.metrics.buttonHeight),
+		openFilterMenu,
+		{ iconSize = 14 }
+	)
+
+	UI.tooltip(filterButton, "Filter logs", { placement = "below" })
 
 	UI.button(
 		content,
@@ -76,19 +184,6 @@ local function createConsole()
 			rebuild()
 		end,
 		{ paddingX = 4 }
-	)
-
-	UI.radioGroup(
-		content,
-		UDim2.fromOffset(PAD + 2, 35),
-		UDim2.new(1, -PAD * 2, 0, UI.metrics.propertyRow),
-		filterItems,
-		activeFilter,
-		function(selected)
-			activeFilter = selected
-			rebuild()
-		end,
-		{ direction = "horizontal", gap = 10 }
 	)
 
 	local inset = UI.metrics.panelInset
