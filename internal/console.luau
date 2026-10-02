@@ -12,7 +12,7 @@ local function createConsole()
 	local MAX_ENTRIES = 1000 -- matches LOG_HISTORY_LIMIT in LogService
 	local MAX_COMMAND_HISTORY = 50
 	local ROW_HEIGHT = UI.metrics.treeRow
-	local TOOLBAR_HEIGHT = 30
+	local TOOLBAR_HEIGHT = 62
 	local COMMANDBAR_HEIGHT = 30
 	local POLL_INTERVAL = 0.1
 
@@ -23,7 +23,15 @@ local function createConsole()
 		Error = colors.error,
 	}
 
-	local filters = { Log = true, Info = true, Warn = true, Error = true }
+	local filterItems = {
+		{ value = "All", text = "All" },
+		{ value = "Log", text = "Log" },
+		{ value = "Info", text = "Info" },
+		{ value = "Warn", text = "Warn" },
+		{ value = "Error", text = "Error" },
+	}
+
+	local activeFilter = "All"
 	local filterOrder = { "Log", "Info", "Warn", "Error" }
 
 	local searchQuery = ""
@@ -45,43 +53,43 @@ local function createConsole()
 	panel.AnchorPoint = Vector2.new(0.5, 0.5)
 	panel.Parent = gui
 
-	local BUTTON_WIDTH, BUTTON_GAP, PAD = 52, 4, 6
-	local buttonCount = #filterOrder + 1 -- filters + Clear
-	local buttonsWidth = buttonCount * BUTTON_WIDTH + (buttonCount - 1) * BUTTON_GAP
+	local BUTTON_WIDTH, PAD = 52, 6
 
 	local search = UI.input(
 		content,
 		"Search...",
 		UDim2.fromOffset(PAD, 4),
-		UDim2.new(1, -(buttonsWidth + PAD * 3), 0, UI.metrics.inputHeight),
+		UDim2.new(1, -(BUTTON_WIDTH + PAD * 3), 0, UI.metrics.inputHeight),
 		{ textSize = UI.tokens.type.small }
 	)
 
 	local rebuild -- forward declaration
 
-	local function buttonX(index) -- index 1 = leftmost of the right-aligned group
-		local fromRight = buttonCount - index
-		return UDim2.new(1, -(PAD + BUTTON_WIDTH + fromRight * (BUTTON_WIDTH + BUTTON_GAP)), 0, 4)
-	end
+	UI.button(
+		content,
+		"Clear",
+		UDim2.new(1, -(PAD + BUTTON_WIDTH), 0, 4),
+		UDim2.fromOffset(BUTTON_WIDTH, UI.metrics.buttonHeight),
+		function()
+			table.clear(entries)
+			lastSeenCount = LogService.MessageCount
+			rebuild()
+		end,
+		{ paddingX = 4 }
+	)
 
-	for index, kind in ipairs(filterOrder) do
-		local record
-		local _, _, created = UI.button(
-			content,
-			kind,
-			buttonX(index),
-			UDim2.fromOffset(BUTTON_WIDTH, UI.metrics.buttonHeight),
-			function()
-				filters[kind] = not filters[kind]
-				UI.setButtonState(record, filters[kind] and "selected" or nil)
-				rebuild()
-			end,
-			{ paddingX = 4 }
-		)
-
-		record = created
-		UI.setButtonState(record, "selected")
-	end
+	UI.radioGroup(
+		content,
+		UDim2.fromOffset(PAD + 2, 35),
+		UDim2.new(1, -PAD * 2, 0, UI.metrics.propertyRow),
+		filterItems,
+		activeFilter,
+		function(selected)
+			activeFilter = selected
+			rebuild()
+		end,
+		{ direction = "horizontal", gap = 10 }
+	)
 
 	UI.button(
 		content,
@@ -134,7 +142,7 @@ local function createConsole()
 	local rowCount = 0
 
 	local function passes(entry)
-		if not filters[entry.kind] then
+		if activeFilter ~= "All" and entry.kind ~= activeFilter then
 			return false
 		end
 
