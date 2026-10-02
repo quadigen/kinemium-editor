@@ -116,10 +116,14 @@ local function createConsole()
 
 		backdrop.MouseButton1Click:Connect(closeFilterMenu)
 
-		-- Right-align the popup under the filter button, clamped to the screen
 		local buttonPosition = filterButton.AbsolutePosition
 		local buttonSize = filterButton.AbsoluteSize
-		local screen = overlay.AbsoluteSize
+
+		if not buttonPosition or not buttonSize then
+			return
+		end
+
+		local screen = overlay.AbsoluteSize or Vector2.new(1920, 1080)
 
 		local x = math.clamp(buttonPosition.X + buttonSize.X - width, 4, math.max(4, screen.X - width - 4))
 		local y = math.clamp(buttonPosition.Y + buttonSize.Y + 2, 4, math.max(4, screen.Y - height - 4))
