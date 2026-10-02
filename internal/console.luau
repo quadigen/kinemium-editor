@@ -470,7 +470,7 @@ local function createConsole()
 end
 
 if IsPlaytest then
-	createConsole()
+	return
 end
 
 return {
