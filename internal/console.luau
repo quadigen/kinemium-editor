@@ -91,19 +91,6 @@ local function createConsole()
 		{ direction = "horizontal", gap = 10 }
 	)
 
-	UI.button(
-		content,
-		"Clear",
-		buttonX(buttonCount),
-		UDim2.fromOffset(BUTTON_WIDTH, UI.metrics.buttonHeight),
-		function()
-			table.clear(entries)
-			lastSeenCount = LogService.MessageCount
-			rebuild()
-		end,
-		{ paddingX = 4 }
-	)
-
 	local inset = UI.metrics.panelInset
 
 	local scroll = UI.create("ScrollingFrame", {
