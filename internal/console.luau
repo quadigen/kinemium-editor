@@ -32,7 +32,6 @@ local function createConsole()
 	}
 
 	local activeFilter = "All"
-	local filterOrder = { "Log", "Info", "Warn", "Error" }
 
 	local searchQuery = ""
 	local entries = {} -- { message, kind, color, time }
@@ -55,7 +54,7 @@ local function createConsole()
 
 	local BUTTON_WIDTH, PAD = 52, 6
 	local FILTER_SIZE = UI.metrics.buttonHeight
-	local FILTER_ICON = "builtin://global-icons/filter.svg" -- swap if your icon set names it differently
+	local FILTER_ICON = "builtin://global-icons/filter.svg"
 
 	local search = UI.input(
 		content,

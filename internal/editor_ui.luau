@@ -1054,10 +1054,6 @@ function UI.prompt(options)
 		end
 	end
 
-	----------------------------------------------------------------
-	-- Dragging
-	----------------------------------------------------------------
-
 	if header and draggable then
 		local dragging = false
 
@@ -1762,10 +1758,6 @@ function UI.toast(text, options)
 		}, frame)
 	end
 
-	----------------------------------------------------------------
-	-- Title
-	----------------------------------------------------------------
-
 	local titleLabel = UI.label(
 		frame,
 		title,
@@ -1781,10 +1773,6 @@ function UI.toast(text, options)
 	titleLabel.TextTransparency = 1
 
 	titleLabel.ZIndex = zIndex + 2
-
-	----------------------------------------------------------------
-	-- Summary / timer body
-	----------------------------------------------------------------
 
 	local summaryButton = UI.create("TextButton", {
 		Name = "Summary",
@@ -1831,10 +1819,6 @@ function UI.toast(text, options)
 
 		ZIndex = zIndex + 3,
 	}, summaryButton)
-
-	----------------------------------------------------------------
-	-- Details
-	----------------------------------------------------------------
 
 	local detailsFrame = UI.create("Frame", {
 		Name = "Details",
@@ -1949,10 +1933,6 @@ function UI.toast(text, options)
 	progress.ZIndex = zIndex + 5
 	progress.BackgroundTransparency = 1
 
-	----------------------------------------------------------------
-	-- Controller state
-	----------------------------------------------------------------
-
 	local state = {
 		alpha = 0,
 
@@ -1979,10 +1959,6 @@ function UI.toast(text, options)
 
 	table.insert(shared.toasts, 1, record)
 
-	----------------------------------------------------------------
-	-- Stack positioning
-	----------------------------------------------------------------
-
 	local function reflowToasts()
 		local y = margin
 
@@ -2006,10 +1982,6 @@ function UI.toast(text, options)
 
 		reflowToasts()
 	end
-
-	----------------------------------------------------------------
-	-- Summary text
-	----------------------------------------------------------------
 
 	local function updateSummary()
 		if duration <= 0 then
@@ -2229,16 +2201,8 @@ function UI.toast(text, options)
 		options.buildDetails(detailsFrame, controller)
 	end
 
-	----------------------------------------------------------------
-	-- Initial state
-	----------------------------------------------------------------
-
 	updateSummary()
 	reflowToasts()
-
-	----------------------------------------------------------------
-	-- Animation
-	----------------------------------------------------------------
 
 	heartbeatConnection = RunService.Heartbeat:Connect(function(dt)
 		if state.destroyed then
@@ -2249,10 +2213,6 @@ function UI.toast(text, options)
 
 			return
 		end
-
-		--------------------------------------------------------
-		-- Timer
-		--------------------------------------------------------
 
 		if not state.closing and not state.timerStopped and duration > 0 then
 			state.elapsed += dt
@@ -2266,10 +2226,6 @@ function UI.toast(text, options)
 
 		updateSummary()
 
-		--------------------------------------------------------
-		-- Progress
-		--------------------------------------------------------
-
 		local progressAlpha = 0
 
 		if duration > 0 then
@@ -2277,10 +2233,6 @@ function UI.toast(text, options)
 		end
 
 		progress.Size = UDim2.new(progressAlpha, 0, 1, 0)
-
-		--------------------------------------------------------
-		-- Position / fade
-		--------------------------------------------------------
 
 		local targetAlpha = state.closing and 0 or 1
 
@@ -2299,10 +2251,6 @@ function UI.toast(text, options)
 		local slide = (1 - state.alpha) * -slideDistance
 
 		frame.Position = UDim2.new(0.5, 0, 0, state.y + slide)
-
-		--------------------------------------------------------
-		-- Fade properties
-		--------------------------------------------------------
 
 		frame.BackgroundTransparency = 1 - state.alpha * (1 - backgroundTransparency)
 
@@ -2329,10 +2277,6 @@ function UI.toast(text, options)
 
 			shadow.Transparency = 1 - state.alpha * (1 - wantedShadowTransparency)
 		end
-
-		--------------------------------------------------------
-		-- Finished closing
-		--------------------------------------------------------
 
 		if state.closing and state.alpha <= 0.001 then
 			if heartbeatConnection then
@@ -2856,10 +2800,6 @@ function UI.window(name, position, size, title, options)
 		options.borderTransparency or 0.35
 	)
 
-	----------------------------------------------------------------
-	-- Header
-	----------------------------------------------------------------
-
 	local header = UI.frame(
 		panel,
 		UDim2.fromOffset(0, 0),
@@ -2922,10 +2862,6 @@ function UI.window(name, position, size, title, options)
 
 	UI.frame(header, UDim2.new(0, 8, 1, -1), UDim2.new(1, -16, 0, 1), colors.border)
 
-	----------------------------------------------------------------
-	-- Tabs
-	----------------------------------------------------------------
-
 	local tabBar = nil
 	local tabButtons = {}
 	local pages = {}
@@ -2945,10 +2881,6 @@ function UI.window(name, position, size, title, options)
 		UI.frame(tabBar, UDim2.new(0, 0, 1, -1), UDim2.new(1, 0, 0, 1), colors.border)
 	end
 
-	----------------------------------------------------------------
-	-- Content root
-	----------------------------------------------------------------
-
 	local contentY = headerHeight + tabHeight
 
 	local content = UI.frame(
@@ -2962,10 +2894,6 @@ function UI.window(name, position, size, title, options)
 	content.ClipsDescendants = true
 
 	UI.frame(content, UDim2.fromOffset(0, 0), UDim2.new(1, 0, 0, 1), colors.border)
-
-	----------------------------------------------------------------
-	-- Tab controller
-	----------------------------------------------------------------
 
 	local controller = {}
 
@@ -3042,10 +2970,6 @@ function UI.window(name, position, size, title, options)
 		return pages[tabName]
 	end
 
-	----------------------------------------------------------------
-	-- Create tab pages/buttons
-	----------------------------------------------------------------
-
 	if hasTabs then
 		local x = tabPadding
 
@@ -3110,10 +3034,6 @@ function UI.window(name, position, size, title, options)
 
 		controller.selectTab(initialTab)
 	end
-
-	----------------------------------------------------------------
-	-- Window clip
-	----------------------------------------------------------------
 
 	local clip = UI.frame(panel, UDim2.fromOffset(0, 0), UDim2.new(1, 0, 1, 0), colors.panel, radius)
 
@@ -4552,18 +4472,12 @@ function UI.tooltip(target, text, options)
 
 	shared.tooltips = shared.tooltips or {}
 
-	-- One tooltip per target: calling again refreshes the existing tooltip
-	-- instead of stacking another frame and connection set on the overlay.
 	local existing = shared.tooltips[target]
 	if existing then
 		existing:SetText(text)
 		return existing
 	end
 
-	-- Discarded controllers used to leak: every tooltip registers four
-	-- connections and a frame on the overlay, and callers that drop the return
-	-- value could never destroy them. A single janitor owns the lifecycle now:
-	-- any tooltip whose target dies is destroyed on the next heartbeat.
 	if not shared.tooltipJanitor then
 		shared.tooltipJanitor = RunService.Heartbeat:Connect(function()
 			local registry = shared.tooltips
@@ -4869,9 +4783,7 @@ function UI.tooltip(target, text, options)
 	end
 
 	controller.frame = tooltip
-
 	controller.label = label
-
 	controller.target = target
 
 	shared.tooltips[target] = controller
