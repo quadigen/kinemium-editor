@@ -4470,14 +4470,32 @@ function UI.buttonList(parent, position, size, buttons, options)
 
 	local colors = UI.tokens.color
 	local horizontal = options.direction == "horizontal"
-	local rowHeight = options.rowHeight or 22
-	local gap = options.gap or 0
-	local iconSize = options.iconSize or 14
 	local iconPrefix = options.iconPrefix or "builtin://global-icons/"
-	local textSize = options.textSize or UI.tokens.type.small
-	local paddingX = options.paddingX or 6
-	local iconGap = options.iconGap or 6
-	local separatorSpace = options.separatorSpace or 7
+
+	local BASE =
+		{ rowHeight = 22, gap = 0, iconSize = 14, textSize = 12, paddingX = 6, iconGap = 6, separatorSpace = 7 }
+
+	local scale = options.scale or 1
+	local rowHeight, gap, iconSize, textSize, paddingX, iconGap, separatorSpace, charWidth
+
+	local function applyScale(newScale)
+		scale = math.max(newScale or 1, 0.1)
+
+		local function s(value)
+			return math.max(1, math.floor(value * scale + 0.5))
+		end
+
+		rowHeight = options.rowHeight or s(BASE.rowHeight)
+		gap = options.gap or math.floor(BASE.gap * scale + 0.5)
+		iconSize = options.iconSize or s(BASE.iconSize)
+		textSize = options.textSize or math.clamp(s(BASE.textSize), 6, 100)
+		paddingX = options.paddingX or s(BASE.paddingX)
+		iconGap = options.iconGap or s(BASE.iconGap)
+		separatorSpace = options.separatorSpace or s(BASE.separatorSpace)
+		charWidth = options.charWidth or (textSize * 0.58)
+	end
+
+	applyScale(scale)
 	local hoverColor = options.hoverColor or colors.hover
 	local selectedColor = options.selectedColor or colors.selection
 	local textColor = options.textColor or colors.text
@@ -4497,7 +4515,7 @@ function UI.buttonList(parent, position, size, buttons, options)
 			return config.width
 		end
 		local text = tostring(config.text or config.label or config.name or "")
-		local width = #text * 7 + paddingX * 2
+		local width = math.ceil(#text * charWidth) + paddingX * 2
 		if config.icon then
 			width += iconSize + iconGap
 		end
@@ -4505,13 +4523,17 @@ function UI.buttonList(parent, position, size, buttons, options)
 	end
 
 	-- Auto width (vertical) = widest row
-	local autoWidth = 0
-	for _, config in ipairs(buttons or {}) do
-		if (config.type or "button") == "button" then
-			autoWidth = math.max(autoWidth, rowWidth(config))
+	local function computeAutoWidth(list)
+		local widest = 0
+		for _, config in ipairs(list or {}) do
+			if (config.type or "button") == "button" then
+				widest = math.max(widest, rowWidth(config))
+			end
 		end
+		return options.width or widest
 	end
-	autoWidth = options.width or autoWidth
+
+	local autoWidth = computeAutoWidth(buttons)
 
 	local autoSize = size == nil
 
@@ -4644,6 +4666,7 @@ function UI.buttonList(parent, position, size, buttons, options)
 				button.LayoutOrder = index
 				button.BackgroundTransparency = 1
 
+				-- Icon on the left, vertically centered
 				local labelX = paddingX
 				if icon then
 					UI.image(
@@ -4726,6 +4749,26 @@ function UI.buttonList(parent, position, size, buttons, options)
 		return true
 	end
 
+	function controller:SetScale(newScale)
+		applyScale(newScale)
+
+		layout.Padding = UDim.new(0, gap)
+
+		if autoSize then
+			if horizontal then
+				container.Size = UDim2.fromOffset(0, rowHeight)
+			else
+				container.Size = UDim2.fromOffset(computeAutoWidth(self.buttonConfigs), 0)
+			end
+		end
+
+		build()
+	end
+
+	function controller:GetScale()
+		return scale
+	end
+
 	function controller:SetText(name, text)
 		local item = self.items[name]
 		if item then
@@ -4735,6 +4778,11 @@ function UI.buttonList(parent, position, size, buttons, options)
 
 	function controller:SetButtons(newButtons)
 		self.buttonConfigs = newButtons or {}
+
+		if autoSize and not horizontal then
+			container.Size = UDim2.fromOffset(computeAutoWidth(self.buttonConfigs), 0)
+		end
+
 		build()
 	end
 

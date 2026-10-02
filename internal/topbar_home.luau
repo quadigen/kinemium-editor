@@ -21,10 +21,10 @@ return {
 			width = 120,
 			create = function(parent, colors, position, size)
 				UI.buttonList(parent, position, size, {
-					{ name = "Cut", icon = "scissors.svg", callback = function() end },
+					{ name = "Cut", icon = "cut.svg", callback = function() end },
 					{ name = "Copy", icon = "copy.svg", callback = function() end },
 					{ name = "Paste Into", icon = "clipboard.svg", callback = function() end },
-				})
+				}, { scale = 0.8 })
 			end,
 		},
 		{
