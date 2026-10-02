@@ -4666,7 +4666,6 @@ function UI.buttonList(parent, position, size, buttons, options)
 				button.LayoutOrder = index
 				button.BackgroundTransparency = 1
 
-				-- Icon on the left, vertically centered
 				local labelX = paddingX
 				if icon then
 					UI.image(

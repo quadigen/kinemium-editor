@@ -18,12 +18,12 @@ return {
 		{
 			name = "clipboard_actions",
 			type = "custom",
-			width = 120,
+			width = 80,
 			create = function(parent, colors, position, size)
 				UI.buttonList(parent, position, size, {
 					{ name = "Cut", icon = "cut.svg", callback = function() end },
 					{ name = "Copy", icon = "copy.svg", callback = function() end },
-					{ name = "Paste Into", icon = "clipboard.svg", callback = function() end },
+					{ name = "Paste Into", icon = "paste_clipboard.svg", callback = function() end },
 				}, { scale = 0.8 })
 			end,
 		},
