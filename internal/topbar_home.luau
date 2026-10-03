@@ -35,12 +35,14 @@ return {
 			type = "custom",
 			width = 208,
 			create = function(parent, colors, position, size)
+				local selectedTool = "select"
 				local buttons = {
 					{
 						name = "Select",
 						icon = "Cursor.svg",
 						callback = function()
 							viewport.ActivateTool("select")
+							selectedTool = "select"
 						end,
 					},
 					{
@@ -48,6 +50,7 @@ return {
 						icon = "Move.svg",
 						callback = function()
 							viewport.ActivateTool("position")
+							selectedTool = "position"
 						end,
 					},
 					{
@@ -55,6 +58,7 @@ return {
 						icon = "Rotate.svg",
 						callback = function()
 							viewport.ActivateTool("rotate")
+							selectedTool = "rotate"
 						end,
 					},
 					{
@@ -62,6 +66,7 @@ return {
 						icon = "Size.svg",
 						callback = function()
 							viewport.ActivateTool("size")
+							selectedTool = "size"
 						end,
 					},
 				}
@@ -75,13 +80,22 @@ return {
 				layout.Parent = container
 
 				for _, button in pairs(buttons) do
-					UI.TopbarButton(container, button, {
+					local new = UI.TopbarButton(container, button, {
 						position = UDim2.fromOffset(0, 0),
 						size = UDim2.new(0, 52, 1, 0),
 						colors = colors,
 						radius = tokens.radius.sm,
-						onClick = button.callback,
 					})
+
+					new.MouseButton1Click:Connect(function()
+						for _, otherButton in pairs(container:GetChildren()) do
+							if otherButton:IsA("TextButton") then
+								otherButton.BackgroundColor3 = colors.surface
+							end
+						end
+
+						new.BackgroundColor3 = colors.accent
+					end)
 				end
 			end,
 		},
