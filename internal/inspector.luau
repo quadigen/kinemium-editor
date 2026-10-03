@@ -1196,6 +1196,8 @@ local function createCategoryBubble(parent, object, category, group, y)
 	local bubbleHeight = CATEGORY_HEADER_HEIGHT
 
 	if not isCollapsed then
+		bubbleHeight += 1 -- separator
+
 		for _, property in ipairs(group) do
 			bubbleHeight += propertyEditorHeight(property)
 		end
@@ -1209,10 +1211,15 @@ local function createCategoryBubble(parent, object, category, group, y)
 	})
 
 	bubble.Name = category .. "Category"
-
 	bubble.ClipsDescendants = true
 
 	UI.stroke(bubble, tokens.color.border, 1, 0)
+
+	local layout = Instance.new("UIListLayout")
+	layout.FillDirection = Enum.FillDirection.Vertical
+	layout.SortOrder = Enum.SortOrder.LayoutOrder
+	layout.Padding = UDim.new(0, 0)
+	layout.Parent = bubble
 
 	local header = UI.button(
 		bubble,
@@ -1231,11 +1238,13 @@ local function createCategoryBubble(parent, object, category, group, y)
 			textColor = tokens.color.text,
 			textY = 4,
 			paddingX = 27,
+			radius = 0,
 			border = false,
 		}
 	)
 
 	header.Name = "Header"
+	header.LayoutOrder = 1
 
 	UI.image(
 		header,
@@ -1257,19 +1266,19 @@ local function createCategoryBubble(parent, object, category, group, y)
 		return bubbleHeight
 	end
 
-	UI.separator(bubble, UDim2.fromOffset(0, CATEGORY_HEADER_HEIGHT), UDim2.new(1, 0, 0, 1), tokens.color.border)
+	local separator = UI.separator(bubble, UDim2.fromOffset(0, 0), UDim2.new(1, 0, 0, 1), tokens.color.border)
 
-	local rowY = CATEGORY_HEADER_HEIGHT + 1
+	separator.LayoutOrder = 2
 
 	for index, property in ipairs(group) do
 		local propertyHeight = propertyEditorHeight(property)
 
 		local rowColor = index % 2 == 0 and tokens.color.rowEven or tokens.color.rowOdd
 
-		local row =
-			UI.frame(bubble, UDim2.fromOffset(PROPERTY_SIDE_INSET, rowY), UDim2.new(1, 10, 0, propertyHeight), rowColor)
+		local row = UI.frame(bubble, UDim2.fromOffset(0, 0), UDim2.new(1, 0, 0, propertyHeight), rowColor)
 
 		row.Name = property.name
+		row.LayoutOrder = 2 + index
 
 		UI.label(
 			row,
@@ -1288,9 +1297,15 @@ local function createCategoryBubble(parent, object, category, group, y)
 		)
 
 		renderPropertyAdapter(row, object, property)
-
-		rowY += propertyHeight
 	end
+
+	-- Bottom padding
+	local spacer =
+		UI.frame(bubble, UDim2.fromOffset(0, 0), UDim2.new(1, 0, 0, CATEGORY_PADDING_BOTTOM), tokens.color.panel)
+
+	spacer.Name = "Padding"
+	spacer.BackgroundTransparency = 1
+	spacer.LayoutOrder = 1000
 
 	return bubbleHeight
 end
