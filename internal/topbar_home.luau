@@ -96,5 +96,16 @@ return {
 				return panel
 			end,
 		},
+		{
+			type = "separator",
+		},
+		{
+			name = "Terrain Editor",
+			icon = "Terrain.svg",
+			callback = function() end,
+		},
+		{
+			type = "separator",
+		},
 	},
 }
