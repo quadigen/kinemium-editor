@@ -148,7 +148,8 @@ return {
 			type = "separator",
 		},
 		{
-			name = "Terrain Editor",
+			name = [[Terrain
+Editor]],
 			icon = "Terrain.svg",
 			callback = function() end,
 		},

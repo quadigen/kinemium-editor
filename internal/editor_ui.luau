@@ -2771,6 +2771,10 @@ function UI.window(name, position, size, title, options)
 	local colors = UI.tokens.color
 	local radius = options.radius or UI.tokens.radius.md
 	local headerHeight = options.headerHeight or UI.metrics.windowHeader
+	local draggable = options.draggable ~= false
+	local gripSize = 22
+	local gripOffset = 6
+	local titleX = draggable and (gripOffset + gripSize + 4) or 10
 
 	local tabs = options.tabs or {}
 	local hasTabs = #tabs > 0
@@ -2831,8 +2835,8 @@ function UI.window(name, position, size, title, options)
 	local titleLabel = UI.label(
 		header,
 		title or name,
-		UDim2.fromOffset(10, 4),
-		UDim2.new(1, options.closable and -44 or -20, 0, headerHeight - 7),
+		UDim2.fromOffset(titleX, 4),
+		UDim2.new(1, (options.closable and -44 or -20) - (titleX - 10), 0, headerHeight - 7),
 		options.titleSize or UI.tokens.type.body,
 		options.titleColor or colors.text
 	)
@@ -2863,6 +2867,93 @@ function UI.window(name, position, size, title, options)
 				border = false,
 			}
 		)
+	end
+
+	local dragHandle = nil
+
+	if draggable then
+		dragHandle = UI.iconButton(
+			header,
+			options.gripIcon or "builtin://global-icons/grip.svg",
+			UDim2.fromOffset(gripOffset, 4),
+			UDim2.fromOffset(gripSize, 19),
+			function() end, -- no click action; dragging is handled below
+			{
+				color = options.headerColor or colors.panelRaised,
+				hoverColor = colors.hover,
+				pressedColor = colors.pressed,
+				iconSize = 11,
+				radius = UI.tokens.radius.sm,
+				border = false,
+			}
+		)
+
+		dragHandle.Name = "DragHandle"
+
+		local UserInputService = game:GetService("UserInputService")
+
+		local dragging = false
+		local dragStart = nil
+		local startPos = nil
+
+		local function isPointer(input)
+			return input.UserInputType == Enum.UserInputType.MouseButton1
+				or input.UserInputType == Enum.UserInputType.Touch
+		end
+
+		local function isMove(input)
+			return input.UserInputType == Enum.UserInputType.MouseMovement
+				or input.UserInputType == Enum.UserInputType.Touch
+		end
+
+		local connections = {}
+
+		table.insert(
+			connections,
+			dragHandle.InputBegan:Connect(function(input)
+				if isPointer(input) then
+					dragging = true
+					dragStart = input.Position
+					startPos = panel.Position
+					panel.ZIndex = panel.ZIndex + 1
+				end
+			end)
+		)
+
+		table.insert(
+			connections,
+			UserInputService.InputChanged:Connect(function(input)
+				if not dragging or not isMove(input) then
+					return
+				end
+
+				local delta = input.Position - dragStart
+				local newX = startPos.X.Offset + delta.X
+				local newY = startPos.Y.Offset + delta.Y
+
+				local rootSize = UI.root().AbsoluteSize
+				local panelSize = panel.AbsoluteSize
+				newX = math.clamp(newX, 0, math.max(0, rootSize.X - panelSize.X))
+				newY = math.clamp(newY, 0, math.max(0, rootSize.Y - headerHeight))
+
+				panel.Position = UDim2.new(startPos.X.Scale, newX, startPos.Y.Scale, newY)
+			end)
+		)
+
+		table.insert(
+			connections,
+			UserInputService.InputEnded:Connect(function(input)
+				if isPointer(input) then
+					dragging = false
+				end
+			end)
+		)
+
+		panel.Destroying:Connect(function()
+			for _, c in ipairs(connections) do
+				c:Disconnect()
+			end
+		end)
 	end
 
 	UI.frame(header, UDim2.new(0, 8, 1, -1), UDim2.new(1, -16, 0, 1), colors.border)
@@ -3053,6 +3144,7 @@ function UI.window(name, position, size, title, options)
 		{
 			title = titleLabel,
 			closeButton = closeButton,
+			dragHandle = dragHandle,
 			border = border,
 			clip = clip,
 

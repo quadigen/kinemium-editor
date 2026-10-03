@@ -20,7 +20,7 @@ local root = UI.RootOverlay()
 
 local tokens = UI.tokens
 
-local FLYOUT_HEIGHT = 80
+local FLYOUT_HEIGHT = 70
 local FLYOUT_GAP = 5
 local FLYOUT_BOTTOM_PADDING = 5
 
@@ -355,7 +355,7 @@ rebuildFlyout = function()
 		else
 			UI.TopbarButton(flyout, definition, {
 				position = UDim2.fromOffset(x, 6),
-				size = UDim2.fromOffset(52, FLYOUT_HEIGHT - 12),
+				size = UDim2.fromOffset(definition.width or 52, FLYOUT_HEIGHT - 12),
 				colors = colors,
 				radius = buttonRadius(),
 				onClick = safeAction(function(item)
