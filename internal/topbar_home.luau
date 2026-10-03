@@ -106,7 +106,7 @@ return {
 		{
 			name = "size_configure",
 			type = "custom",
-			width = 120,
+			width = 130,
 			create = function(parent, colors, position, size)
 				local panel = UI.frame(parent, position, size, colors.surface, tokens.radius.sm)
 
@@ -123,7 +123,7 @@ return {
 				local studLayout = Instance.new("UIListLayout")
 				studLayout.FillDirection = Enum.FillDirection.Horizontal
 				studLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
-				studLayout.Padding = UDim.new(0, 5)
+				studLayout.Padding = UDim.new(0, 2)
 				studLayout.Parent = studContainer
 
 				local stud_frame, stud_checkbox = UI.checkbox(
@@ -147,7 +147,7 @@ return {
 				local rotationLayout = Instance.new("UIListLayout")
 				rotationLayout.FillDirection = Enum.FillDirection.Horizontal
 				rotationLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
-				rotationLayout.Padding = UDim.new(0, 5)
+				rotationLayout.Padding = UDim.new(0, 2)
 				rotationLayout.Parent = rotationContainer
 
 				local rotation_frame, rotation_checkbox = UI.checkbox(
