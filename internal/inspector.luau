@@ -138,17 +138,67 @@ local activeEditors = {}
 local lastSignature = ""
 local signatureClock = 0
 
--- How often the property signature is re-evaluated. Every rebuild is a full
--- teardown of the property rows, so a fast-changing object would otherwise
--- rebuild the panel every single frame.
 local SIGNATURE_INTERVAL = 6
 local rebuilding = false
 
 local BUBBLE_GAP = 7
 local CATEGORY_HEADER_HEIGHT = 26
-local CATEGORY_PADDING_BOTTOM = 5
 local PROPERTY_HEIGHT = UI.metrics.propertyRow
-local PROPERTY_SIDE_INSET = 4
+
+local TweenService = game:GetService("TweenService")
+
+local TOGGLE_INFO = TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+
+local outerLayout = UI.create("UIListLayout", {
+	SortOrder = Enum.SortOrder.LayoutOrder,
+	Padding = UDim.new(0, BUBBLE_GAP),
+}, list)
+
+local animations = {} -- category -> { bubble, target, full, tween }
+local heights = {} -- category -> height before the last rebuild
+local canvasTween
+local lastObject
+
+local function targetCanvasHeight()
+	local total, count = 0, 0
+
+	for _, anim in pairs(animations) do
+		total += anim.target
+		count += 1
+	end
+
+	total += math.max(count - 1, 0) * BUBBLE_GAP
+
+	return math.max(total + inset, list.AbsoluteSize.Y)
+end
+
+local function setCanvas(animated)
+	local goal = UDim2.new(1, 0, 0, targetCanvasHeight())
+
+	if canvasTween then
+		canvasTween:Cancel()
+		canvasTween = nil
+	end
+
+	if animated then
+		canvasTween = TweenService:Create(list, TOGGLE_INFO, { CanvasSize = goal })
+		canvasTween:Play()
+	else
+		list.CanvasSize = goal
+	end
+end
+
+local function animateBubble(anim)
+	if anim.tween then
+		anim.tween:Cancel()
+	end
+
+	anim.tween = TweenService:Create(anim.bubble, TOGGLE_INFO, {
+		Size = UDim2.new(1, 0, 0, anim.target),
+	})
+
+	anim.tween:Play()
+end
 
 local function selectedObject()
 	local selected = Selection:Get()
@@ -1188,27 +1238,26 @@ local function renderPropertyAdapter(row, object, property)
 	return adapter.render(row, object, property)
 end
 
-local function createCategoryBubble(parent, object, category, group, y)
+local function createCategoryBubble(parent, object, category, group, order)
 	local isCollapsed = collapsed[category] == true
 
-	local propertyCount = #group
+	local fullHeight = CATEGORY_HEADER_HEIGHT + 1 -- header + separator
 
-	local bubbleHeight = CATEGORY_HEADER_HEIGHT
-
-	if not isCollapsed then
-		bubbleHeight += 1 -- separator
-
-		for _, property in ipairs(group) do
-			bubbleHeight += propertyEditorHeight(property)
-		end
+	for _, property in ipairs(group) do
+		fullHeight += propertyEditorHeight(property)
 	end
 
-	local bubble = UI.group(parent, UDim2.fromOffset(0, y), UDim2.new(1, 0, 0, bubbleHeight), {
+	local targetHeight = isCollapsed and CATEGORY_HEADER_HEIGHT or fullHeight
+
+	local startHeight = heights[category] or targetHeight
+
+	local bubble = UI.group(parent, UDim2.fromOffset(0, 0), UDim2.new(1, 0, 0, startHeight), {
 		color = tokens.color.panel,
 		radius = tokens.radius.md,
 	})
 
 	bubble.Name = category .. "Category"
+	bubble.LayoutOrder = order
 	bubble.ClipsDescendants = true
 
 	UI.stroke(bubble, tokens.color.border, 1, 0)
@@ -1219,6 +1268,12 @@ local function createCategoryBubble(parent, object, category, group, y)
 	layout.Padding = UDim.new(0, 0)
 	layout.Parent = bubble
 
+	local anim = { bubble = bubble, target = targetHeight, full = fullHeight }
+
+	animations[category] = anim
+
+	local arrow
+
 	local header = UI.button(
 		bubble,
 		category,
@@ -1227,7 +1282,13 @@ local function createCategoryBubble(parent, object, category, group, y)
 		function()
 			collapsed[category] = not collapsed[category]
 
-			lastSignature = ""
+			local nowCollapsed = collapsed[category] == true
+
+			anim.target = nowCollapsed and CATEGORY_HEADER_HEIGHT or anim.full
+			arrow.Image = "builtin://icons/" .. (nowCollapsed and "ArrowRight.svg" or "ArrowDown.svg")
+
+			animateBubble(anim)
+			setCanvas(true)
 		end,
 		{
 			color = tokens.color.panelRaised,
@@ -1244,7 +1305,7 @@ local function createCategoryBubble(parent, object, category, group, y)
 	header.Name = "Header"
 	header.LayoutOrder = 1
 
-	UI.image(
+	arrow = UI.image(
 		header,
 		"builtin://icons/" .. (isCollapsed and "ArrowRight.svg" or "ArrowDown.svg"),
 		UDim2.fromOffset(9, math.floor((CATEGORY_HEADER_HEIGHT - 11) / 2)),
@@ -1253,16 +1314,12 @@ local function createCategoryBubble(parent, object, category, group, y)
 
 	UI.label(
 		header,
-		tostring(propertyCount),
+		tostring(#group),
 		UDim2.new(1, -38, 0, 4),
 		UDim2.fromOffset(28, 17),
 		tokens.type.caption,
 		tokens.color.muted
 	)
-
-	if isCollapsed then
-		return bubbleHeight
-	end
 
 	local separator = UI.separator(bubble, UDim2.fromOffset(0, 0), UDim2.new(1, 0, 0, 1), tokens.color.border)
 
@@ -1297,7 +1354,9 @@ local function createCategoryBubble(parent, object, category, group, y)
 		renderPropertyAdapter(row, object, property)
 	end
 
-	return bubbleHeight
+	if startHeight ~= targetHeight then
+		animateBubble(anim)
+	end
 end
 
 local function setListCanvasHeight(height)
@@ -1328,11 +1387,32 @@ local function rebuild()
 
 	local oldCanvasPosition = list.CanvasPosition
 
+	-- Remember where each bubble was, then stop its tween
+	for category, anim in pairs(animations) do
+		heights[category] = anim.bubble.Size.Y.Offset
+
+		if anim.tween then
+			anim.tween:Cancel()
+		end
+	end
+
+	if canvasTween then
+		canvasTween:Cancel()
+		canvasTween = nil
+	end
+
+	animations = {}
 	activeEditors = {}
 
-	UI.clear(list)
+	UI.clear(list, { [outerLayout] = true })
 
 	local object = selectedObject()
+
+	-- A different selection shouldn't animate from the previous object's heights
+	if object ~= lastObject then
+		heights = {}
+		lastObject = object
+	end
 
 	if not object then
 		createEmptyMessage("Select an object to inspect.")
@@ -1390,21 +1470,25 @@ local function rebuild()
 		return aOrder < bOrder
 	end)
 
-	local y = 1
-
-	for _, category in ipairs(groupNames) do
+	for order, category in ipairs(groupNames) do
 		local group = grouped[category]
 
 		table.sort(group, function(a, b)
 			return a.name < b.name
 		end)
 
-		local height = createCategoryBubble(list, object, category, group, y)
-
-		y += height + BUBBLE_GAP
+		createCategoryBubble(list, object, category, group, order)
 	end
 
-	setListCanvasHeight(y + inset)
+	local animating = false
+
+	for _, anim in pairs(animations) do
+		if anim.tween then
+			animating = true
+		end
+	end
+
+	setCanvas(animating)
 
 	list.CanvasPosition = oldCanvasPosition
 
@@ -1414,8 +1498,6 @@ end
 Selection.SelectionChanged:Connect(function()
 	lastSignature = ""
 
-	-- A new selection must repaint immediately; do not make the user wait out
-	-- the sampling interval to see the object they just clicked.
 	signatureClock = SIGNATURE_INTERVAL
 end)
 
