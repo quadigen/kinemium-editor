@@ -3719,7 +3719,6 @@ function UI.checkbox(parent, text, position, checked, callback, options)
 	)
 
 	mark.Name = "Mark"
-	mark.ImageColor3 = options.markColor or colors.text
 	mark.Visible = value
 
 	local textLabel = UI.label(
