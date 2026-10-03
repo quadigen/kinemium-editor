@@ -3,6 +3,7 @@ if (IsServer or IsClient) or IsPlaytest then
 end
 
 local RunService = game:GetService("RunService")
+local Selection = game:GetService("Selection")
 local UserInputService = game:GetService("UserInputService")
 local Mouse: Mouse = UserInputService:GetMouse()
 
@@ -21,5 +22,18 @@ RunService.RenderStepped:Connect(function()
 		highlight.Adornee = target
 	else
 		highlight.Adornee = nil
+	end
+end)
+
+UserInputService.InputBegan:Connect(function(input, processed)
+	if processed then
+		return
+	end
+
+	if input.UserInputType == Enum.UserInputType.MouseButton1 then
+		local target = Mouse.Target
+		if target then
+			Selection:Set({ target })
+		end
 	end
 end)
