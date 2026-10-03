@@ -84,6 +84,7 @@ return {
 						position = UDim2.fromOffset(0, 0),
 						size = UDim2.new(0, 52, 1, 0),
 						colors = colors,
+						hoveringEnabled = false,
 						radius = tokens.radius.sm,
 					})
 

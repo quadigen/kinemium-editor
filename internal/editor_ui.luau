@@ -2316,15 +2316,17 @@ UI.pointInside = pointInside
 
 local closeActiveDropdown
 
-local function wireNativeButton(button, record)
+local function wireNativeButton(button, record, enableHovering)
 	button.MouseEnter:Connect(function()
-		if record.enabled then
+		if record.enabled and enableHovering then
 			button.BackgroundColor3 = record.hoverColor
 		end
 	end)
 
 	button.MouseLeave:Connect(function()
-		button.BackgroundColor3 = record.color
+		if enableHovering then
+			button.BackgroundColor3 = record.color
+		end
 	end)
 
 	button.MouseButton1Down:Connect(function()
@@ -2458,7 +2460,7 @@ function UI.button(parent, text, position, size, callback, options)
 
 	table.insert(shared.buttons, record)
 
-	wireNativeButton(button, record)
+	wireNativeButton(button, record, (options.hoveringEnabled and options.hoveringEnabled ~= false) or true)
 
 	if options.selected then
 		UI.setButtonState(record, "selected")
@@ -4486,6 +4488,7 @@ function UI.TopbarButton(parent, definition, options)
 		hoverColor = colors.raised,
 		pressedColor = colors.input,
 		radius = radius,
+		hoveringEnabled = options.hoveringEnabled ~= false,
 		border = false,
 	})
 
