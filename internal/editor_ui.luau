@@ -2324,7 +2324,6 @@ local function wireNativeButton(button, record, enableHovering)
 	end)
 
 	button.MouseLeave:Connect(function()
-		print(enableHovering)
 		if enableHovering then
 			button.BackgroundColor3 = record.color
 		end
@@ -4489,7 +4488,7 @@ function UI.TopbarButton(parent, definition, options)
 		hoverColor = colors.raised,
 		pressedColor = colors.input,
 		radius = radius,
-		hoveringEnabled = options.hoveringEnabled ~= false,
+		hoveringEnabled = options.hoveringEnabled,
 		border = false,
 	})
 
