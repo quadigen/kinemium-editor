@@ -2772,7 +2772,7 @@ function UI.window(name, position, size, title, options)
 	local radius = options.radius or UI.tokens.radius.md
 	local headerHeight = options.headerHeight or UI.metrics.windowHeader
 	local draggable = options.draggable ~= false
-	local gripSize = 22
+	local gripSize = 10
 	local gripOffset = 6
 	local titleX = draggable and (gripOffset + gripSize + 4) or 10
 
@@ -2877,7 +2877,7 @@ function UI.window(name, position, size, title, options)
 			options.gripIcon or "builtin://global-icons/grip.svg",
 			UDim2.fromOffset(gripOffset, 4),
 			UDim2.fromOffset(gripSize, 19),
-			function() end, -- no click action; dragging is handled below
+			function() end,
 			{
 				color = options.headerColor or colors.panelRaised,
 				hoverColor = colors.hover,
@@ -2893,16 +2893,11 @@ function UI.window(name, position, size, title, options)
 		local UserInputService = game:GetService("UserInputService")
 
 		local dragging = false
-		local dragStart = nil
+		local dragStartX, dragStartY = 0, 0
 		local startPos = nil
 
 		local function isPointer(input)
 			return input.UserInputType == Enum.UserInputType.MouseButton1
-				or input.UserInputType == Enum.UserInputType.Touch
-		end
-
-		local function isMove(input)
-			return input.UserInputType == Enum.UserInputType.MouseMovement
 				or input.UserInputType == Enum.UserInputType.Touch
 		end
 
@@ -2911,30 +2906,43 @@ function UI.window(name, position, size, title, options)
 		table.insert(
 			connections,
 			dragHandle.InputBegan:Connect(function(input)
-				if isPointer(input) then
-					dragging = true
-					dragStart = input.Position
-					startPos = panel.Position
-					panel.ZIndex = panel.ZIndex + 1
+				if not isPointer(input) then
+					return
 				end
+
+				local mouse = UserInputService:GetMouseLocation()
+
+				dragging = true
+				dragStartX, dragStartY = mouse.X, mouse.Y
+				startPos = panel.Position
 			end)
 		)
 
 		table.insert(
 			connections,
 			UserInputService.InputChanged:Connect(function(input)
-				if not dragging or not isMove(input) then
+				if not dragging or not startPos then
 					return
 				end
 
-				local delta = input.Position - dragStart
-				local newX = startPos.X.Offset + delta.X
-				local newY = startPos.Y.Offset + delta.Y
+				if input.UserInputType ~= Enum.UserInputType.MouseMovement then
+					return
+				end
 
-				local rootSize = UI.root().AbsoluteSize
+				local mouse = UserInputService:GetMouseLocation()
+
+				local newX = startPos.X.Offset + (mouse.X - dragStartX)
+				local newY = startPos.Y.Offset + (mouse.Y - dragStartY)
+
+				-- clamp only if the engine exposes sizes
+				local root = UI.root()
+				local rootSize = root and root.AbsoluteSize
 				local panelSize = panel.AbsoluteSize
-				newX = math.clamp(newX, 0, math.max(0, rootSize.X - panelSize.X))
-				newY = math.clamp(newY, 0, math.max(0, rootSize.Y - headerHeight))
+
+				if rootSize and panelSize then
+					newX = math.clamp(newX, 0, math.max(0, rootSize.X - panelSize.X))
+					newY = math.clamp(newY, 0, math.max(0, rootSize.Y - headerHeight))
+				end
 
 				panel.Position = UDim2.new(startPos.X.Scale, newX, startPos.Y.Scale, newY)
 			end)
@@ -2943,8 +2951,12 @@ function UI.window(name, position, size, title, options)
 		table.insert(
 			connections,
 			UserInputService.InputEnded:Connect(function(input)
-				if isPointer(input) then
+				if
+					input.UserInputType == Enum.UserInputType.MouseButton1
+					or input.UserInputType == Enum.UserInputType.Touch
+				then
 					dragging = false
+					startPos = nil
 				end
 			end)
 		)
