@@ -14,7 +14,6 @@ local function createConsole()
 	local MAX_COMMAND_HISTORY = 50
 	local ROW_HEIGHT = UI.metrics.treeRow
 	local TOOLBAR_HEIGHT = 30
-	local COMMANDBAR_HEIGHT = 30
 	local POLL_INTERVAL = 0.1
 
 	local KIND_COLORS = {
@@ -198,14 +197,19 @@ local function createConsole()
 	local RUN_WIDTH = 44
 	local COMMAND_GAP = 4
 	local COMMAND_BUTTONS_WIDTH = RUN_WIDTH + COMMAND_BUTTON + COMMAND_GAP * 2
-	local COMMANDBAR_EXPANDED_MIN = 140
-	local COMMANDBAR_EXPANDED_RATIO = 0.45
+
+	local COMMAND_LINE_HEIGHT = 18
+	local COMMANDBAR_EXPANDED_LINES = 5
+	local COMMANDBAR_MAX_RATIO = 0.4
+
+	-- Collapsed hugs a single line of code instead of the old fixed 30px.
+	local COMMANDBAR_COLLAPSED = UI.metrics.inputHeight + EDITOR_PAD * 2
 
 	local EXPAND_ICON = "builtin://global-icons/chevron-down.svg"
 	local COLLAPSE_ICON = "builtin://global-icons/chevron-up.svg"
 
 	local commandExpanded = false
-	local commandHeight = COMMANDBAR_HEIGHT
+	local commandHeight = COMMANDBAR_COLLAPSED
 
 	local scroll = UI.create("ScrollingFrame", {
 		Name = "Log",
@@ -255,14 +259,20 @@ local function createConsole()
 	UI.corner(command, tokens.radius.sm)
 	UI.stroke(command, tokens.color.border, 1, 0)
 
+	-- The expanded height is content-driven rather than a ratio: it grows with
+	-- the panel but stays anchored to a handful of code lines so a tall console
+	-- does not swallow the log.
 	local function commandBarHeight()
 		if not commandExpanded then
-			return COMMANDBAR_HEIGHT
+			return COMMANDBAR_COLLAPSED
 		end
 
 		local available = content.AbsoluteSize.Y or 0
 
-		return math.max(COMMANDBAR_EXPANDED_MIN, math.floor(available * COMMANDBAR_EXPANDED_RATIO))
+		local byLines = UI.metrics.inputHeight + COMMAND_LINE_HEIGHT * COMMANDBAR_EXPANDED_LINES
+		local byPanel = math.floor(available * COMMANDBAR_MAX_RATIO)
+
+		return math.max(COMMANDBAR_COLLAPSED, math.min(byLines, byPanel))
 	end
 
 	local function applyCommandLayout()
