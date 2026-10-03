@@ -1267,13 +1267,8 @@ local function createCategoryBubble(parent, object, category, group, y)
 
 		local rowColor = index % 2 == 0 and tokens.color.rowEven or tokens.color.rowOdd
 
-		local row = UI.frame(
-			bubble,
-			UDim2.fromOffset(PROPERTY_SIDE_INSET, rowY),
-			UDim2.new(1, -PROPERTY_SIDE_INSET * 2, 0, propertyHeight),
-			rowColor,
-			tokens.radius.xs
-		)
+		local row =
+			UI.frame(bubble, UDim2.fromOffset(PROPERTY_SIDE_INSET, rowY), UDim2.new(1, 0, 0, propertyHeight), rowColor)
 
 		row.Name = property.name
 
@@ -1430,10 +1425,6 @@ renderer.Pool.new("2d", function()
 
 	local object = selectedObject()
 
-	-- Building this signature reads and string-formats every tracked property.
-	-- For objects that change properties continuously that differs every single
-	-- frame, and each difference was forcing a full rebuild of every row. Sample
-	-- it a few times a second instead: values still track, cheaply.
 	signatureClock += 1
 
 	if signatureClock < SIGNATURE_INTERVAL then

@@ -2,6 +2,7 @@ if (IsServer or IsClient) or IsPlaytest then
 	return nil
 end
 
+--[[
 local RunService = game:GetService("RunService")
 local Selection = game:GetService("Selection")
 local UserInputService = game:GetService("UserInputService")
@@ -37,3 +38,4 @@ UserInputService.InputBegan:Connect(function(input, processed)
 		end
 	end
 end)
+--]]
