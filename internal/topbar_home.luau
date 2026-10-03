@@ -116,8 +116,53 @@ return {
 				layout.Padding = UDim.new(0, 5)
 				layout.Parent = panel
 
-				local studInput = UI.input(panel, "1 Stud/s", UDim2.fromOffset(0, 0), UDim2.new(1, -10, 0, 15), {})
-				local rotation = UI.input(panel, "30°", UDim2.fromOffset(0, 0), UDim2.new(1, -10, 0, 15), {})
+				-- studs
+				local studContainer =
+					UI.frame(panel, UDim2.fromOffset(0, 0), UDim2.new(1, -10, 0, 15), colors.surface, tokens.radius.sm)
+
+				local studLayout = Instance.new("UIListLayout")
+				studLayout.FillDirection = Enum.FillDirection.Horizontal
+				studLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+				studLayout.Padding = UDim.new(0, 5)
+				studLayout.Parent = studContainer
+
+				local stud_frame, stud_checkbox = UI.checkbox(
+					studContainer,
+					nil,
+					UDim2.fromOffset(8, 8),
+					true,
+					function(value)
+						print(value)
+					end
+				)
+				stud_frame.Size = UDim2.new(0, 15, 0, 15)
+				stud_frame.LayoutOrder = -10
+
+				local studInput = UI.input(studContainer, "1 Stud/s", UDim2.fromOffset(0, 0), UDim2.new(1, 0, 1, 0), {})
+
+				-- rotation
+				local rotationContainer =
+					UI.frame(panel, UDim2.fromOffset(0, 0), UDim2.new(1, -10, 0, 15), colors.surface, tokens.radius.sm)
+
+				local rotationLayout = Instance.new("UIListLayout")
+				rotationLayout.FillDirection = Enum.FillDirection.Horizontal
+				rotationLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+				rotationLayout.Padding = UDim.new(0, 5)
+				rotationLayout.Parent = rotationContainer
+
+				local rotation_frame, rotation_checkbox = UI.checkbox(
+					rotationContainer,
+					nil,
+					UDim2.fromOffset(8, 8),
+					true,
+					function(value)
+						print(value)
+					end
+				)
+				rotation_frame.Size = UDim2.new(0, 15, 0, 15)
+				rotation_frame.LayoutOrder = -10
+
+				local rotation = UI.input(rotationContainer, "30°", UDim2.fromOffset(0, 0), UDim2.new(1, 0, 1, 0), {})
 
 				studInput.FocusLost:Connect(function()
 					local value = tonumber(studInput.Text)
@@ -135,12 +180,6 @@ return {
 					rotation.PlaceholderText = `{value}°`
 				end)
 
-				local frame, checkbox = UI.checkbox(panel, "Snapping", UDim2.fromOffset(8, 8), true, function(value)
-					print(value)
-				end)
-				frame.Size = UDim2.new(1, -10, 0, 15)
-				frame.LayoutOrder = 10
-
 				return panel
 			end,
 		},
@@ -148,8 +187,8 @@ return {
 			type = "separator",
 		},
 		{
-			name = [[Terrain
-Editor]],
+			name = [[Terrain Editor]],
+			width = 80,
 			icon = "Terrain.svg",
 			callback = function() end,
 		},
