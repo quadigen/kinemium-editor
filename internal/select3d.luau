@@ -7,7 +7,7 @@ local UserInputService = game:GetService("UserInputService")
 local Mouse: Mouse = UserInputService:GetMouse()
 
 local editor_ui = require("@internal/editor_ui")
-local accent = editor_ui.tokens.accent
+local accent = editor_ui.tokens.color.accent
 
 local highlight = Instance.new("Highlight")
 highlight.Name = "SelectionHighlight"
