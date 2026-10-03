@@ -116,8 +116,8 @@ return {
 				layout.Padding = UDim.new(0, 5)
 				layout.Parent = panel
 
-				local studInput = UI.input(panel, "1 Stud/s", UDim2.fromOffset(0, 0), UDim2.new(1, -10, 0, 23), {})
-				local rotation = UI.input(panel, "30°", UDim2.fromOffset(0, 0), UDim2.new(1, -10, 0, 23), {})
+				local studInput = UI.input(panel, "1 Stud/s", UDim2.fromOffset(0, 0), UDim2.new(1, -10, 0, 15), {})
+				local rotation = UI.input(panel, "30°", UDim2.fromOffset(0, 0), UDim2.new(1, -10, 0, 15), {})
 
 				studInput.FocusLost:Connect(function()
 					local value = tonumber(studInput.Text)
@@ -134,6 +134,16 @@ return {
 					rotation.Text = ""
 					rotation.PlaceholderText = `{value}°`
 				end)
+
+				local frame, checkbox = UI.checkbox(
+					parent,
+					"Enable Snapping",
+					UDim2.fromOffset(8, 8),
+					true,
+					function(value)
+						print(value)
+					end
+				)
 
 				return panel
 			end,
