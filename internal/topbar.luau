@@ -369,7 +369,7 @@ rebuildFlyout = function()
 				end),
 			})
 
-			x += 55
+			x += (definition.width or 52) + 3
 		end
 	end
 end
