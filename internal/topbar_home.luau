@@ -31,31 +31,58 @@ return {
 			type = "separator",
 		},
 		{
-			name = "Select",
-			icon = "Cursor.svg",
-			callback = function()
-				viewport.ActivateTool("select")
-			end,
-		},
-		{
-			name = "Move",
-			icon = "Move.svg",
-			callback = function()
-				viewport.ActivateTool("position")
-			end,
-		},
-		{
-			name = "Rotate",
-			icon = "Rotate.svg",
-			callback = function()
-				viewport.ActivateTool("rotate")
-			end,
-		},
-		{
-			name = "Scale",
-			icon = "Size.svg",
-			callback = function()
-				viewport.ActivateTool("size")
+			name = "3d_actions",
+			type = "custom",
+			width = 80,
+			create = function(parent, colors, position, size)
+				local buttons = {
+					{
+						name = "Select",
+						icon = "Cursor.svg",
+						callback = function()
+							viewport.ActivateTool("select")
+						end,
+					},
+					{
+						name = "Move",
+						icon = "Move.svg",
+						callback = function()
+							viewport.ActivateTool("position")
+						end,
+					},
+					{
+						name = "Rotate",
+						icon = "Rotate.svg",
+						callback = function()
+							viewport.ActivateTool("rotate")
+						end,
+					},
+					{
+						name = "Scale",
+						icon = "Size.svg",
+						callback = function()
+							viewport.ActivateTool("size")
+						end,
+					},
+				}
+
+				local container = UI.frame(parent, position, size, colors.surface, tokens.radius.sm)
+				local layout = Instance.new("UIListLayout")
+				layout.FillDirection = Enum.FillDirection.Horizontal
+				layout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+				layout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+				layout.Padding = UDim.new(0, 5)
+				layout.Parent = container
+
+				for _, button in pairs(buttons) do
+					UI.TopbarButton(container, button, {
+						position = UDim2.fromOffset(0, 0),
+						size = UDim2.new(0, 52, 1, 0),
+						colors = colors,
+						radius = tokens.radius.sm,
+						onClick = button.callback,
+					})
+				end
 			end,
 		},
 		{

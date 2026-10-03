@@ -4465,6 +4465,63 @@ function UI.RootOverlay()
 	return root
 end
 
+function UI.TopbarButton(parent, definition, options)
+	options = options or {}
+
+	local tokens = UI.tokens
+	local colors = options.colors
+		or {
+			surface = tokens.color.surface,
+			raised = tokens.color.panelRaised,
+			input = tokens.color.input,
+			subtext = tokens.color.subtext,
+		}
+	local radius = options.radius or tokens.radius.sm
+	local size = options.size or UDim2.fromOffset(52, 58)
+	local position = options.position or UDim2.fromOffset(0, 0)
+	local onClick = options.onClick
+
+	local item = UI.button(parent, "", position, size, function() end, {
+		color = colors.surface,
+		hoverColor = colors.raised,
+		pressedColor = colors.input,
+		radius = radius,
+		border = false,
+	})
+
+	item.Name = definition.name .. "Tool"
+
+	if definition.icon then
+		local iconSize = options.iconSize or 22
+
+		UI.image(
+			item,
+			"builtin://icons/" .. definition.icon,
+			UDim2.new(0.5, -math.floor(iconSize / 2), 0, 7),
+			UDim2.fromOffset(iconSize, iconSize)
+		)
+	end
+
+	local label = UI.label(
+		item,
+		definition.name,
+		UDim2.fromOffset(4, 35),
+		UDim2.new(1, -8, 0, 16),
+		tokens.type.caption,
+		colors.subtext
+	)
+	label.TextXAlignment = Enum.TextXAlignment.Center
+	label.TextYAlignment = Enum.TextYAlignment.Top
+
+	if onClick then
+		item.MouseButton1Click:Connect(function()
+			onClick(item, definition)
+		end)
+	end
+
+	return item, label
+end
+
 function UI.buttonList(parent, position, size, buttons, options)
 	options = options or {}
 

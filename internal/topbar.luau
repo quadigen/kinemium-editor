@@ -353,56 +353,21 @@ rebuildFlyout = function()
 
 			x += width + 3
 		else
-			local item = UI.button(
-				flyout,
-				"",
-				UDim2.fromOffset(x, 6),
-				UDim2.fromOffset(52, FLYOUT_HEIGHT - 12),
-				safeAction(function()
+			UI.TopbarButton(flyout, definition, {
+				position = UDim2.fromOffset(x, 6),
+				size = UDim2.fromOffset(52, FLYOUT_HEIGHT - 12),
+				colors = colors,
+				radius = buttonRadius(),
+				onClick = safeAction(function(item)
 					fireRoute(definition.route)
 
 					if definition.callback then
-						definition.callback()
+						definition.callback(item)
 					end
 
 					setExpanded(false)
 				end),
-				{
-					color = colors.surface,
-
-					hoverColor = colors.raised,
-
-					pressedColor = colors.input,
-
-					radius = buttonRadius(),
-
-					border = false,
-				}
-			)
-
-			item.Name = definition.name .. "Tool"
-
-			if definition.icon then
-				local iconSize = 22
-
-				UI.image(
-					item,
-					"builtin://icons/" .. definition.icon,
-					UDim2.new(0.5, -math.floor(iconSize / 2), 0, 7),
-					UDim2.fromOffset(iconSize, iconSize)
-				)
-			end
-
-			local itemLabel = UI.label(
-				item,
-				definition.name,
-				UDim2.fromOffset(4, 35),
-				UDim2.new(1, -8, 0, 16),
-				tokens.type.caption,
-				colors.subtext
-			)
-			itemLabel.TextXAlignment = Enum.TextXAlignment.Center
-			itemLabel.TextYAlignment = Enum.TextYAlignment.Top
+			})
 
 			x += 55
 		end
