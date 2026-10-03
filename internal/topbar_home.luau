@@ -108,7 +108,7 @@ return {
 			type = "custom",
 			width = 130,
 			create = function(parent, colors, position, size)
-				local newPos = UDim2.new(position.X.Scale, position.X.Offset, position.Y.Scale, position.Y.Offset + 10)
+				local newPos = UDim2.new(position.X.Scale, position.X.Offset, position.Y.Scale, position.Y.Offset + 3)
 				local panel = UI.frame(parent, newPos, size, colors.surface, tokens.radius.sm)
 
 				local layout = Instance.new("UIListLayout")
