@@ -1,4 +1,5 @@
 local UI = require("@internal/editor_ui")
+local CodeEditor = require("@internal/code_editor")
 
 local ScriptContext = game:GetService("ScriptContext")
 local LogService = game:GetService("LogService")
@@ -191,11 +192,26 @@ local function createConsole()
 
 	local inset = UI.metrics.panelInset
 
+	local COMMAND_PAD = 5
+	local EDITOR_PAD = 3
+	local COMMAND_BUTTON = UI.metrics.buttonHeight
+	local RUN_WIDTH = 44
+	local COMMAND_GAP = 4
+	local COMMAND_BUTTONS_WIDTH = RUN_WIDTH + COMMAND_BUTTON + COMMAND_GAP * 2
+	local COMMANDBAR_EXPANDED_MIN = 140
+	local COMMANDBAR_EXPANDED_RATIO = 0.45
+
+	local EXPAND_ICON = "builtin://global-icons/chevron-down.svg"
+	local COLLAPSE_ICON = "builtin://global-icons/chevron-up.svg"
+
+	local commandExpanded = false
+	local commandHeight = COMMANDBAR_HEIGHT
+
 	local scroll = UI.create("ScrollingFrame", {
 		Name = "Log",
 
 		Position = UDim2.fromOffset(inset, TOOLBAR_HEIGHT),
-		Size = UDim2.new(1, -inset * 2, 1, -(TOOLBAR_HEIGHT + COMMANDBAR_HEIGHT + 6)),
+		Size = UDim2.new(1, -inset * 2, 1, -(TOOLBAR_HEIGHT + commandHeight + 6)),
 
 		BackgroundColor3 = tokens.color.surface,
 		BackgroundTransparency = 0.5,
@@ -212,17 +228,104 @@ local function createConsole()
 
 	UI.corner(scroll, tokens.radius.md)
 
-	local command = UI.input(
-		content,
-		"Run a command...",
-		UDim2.new(0, PAD, 1, -(COMMANDBAR_HEIGHT - 3)),
-		UDim2.new(1, -PAD * 2, 0, UI.metrics.inputHeight),
+	-- The command bar hosts the shared code editor in embedded mode so the
+	-- console gets syntax highlighting, autocomplete and multi-line input
+	-- without the script tab strip.
+	local commandBar = UI.create("Frame", {
+		Name = "CommandBar",
+		BackgroundTransparency = 1,
+		BorderSizePixel = 0,
+		ClipsDescendants = true,
+	}, content)
+
+	local submitCommand -- forward declaration
+
+	local commandEditor = CodeEditor.new(commandBar, {
+		embedded = true,
+		placeholder = "Run a command...  (Ctrl+Enter to run)",
+		backgroundTransparency = 0,
+		showMinimap = false,
+		onSubmit = function()
+			submitCommand()
+		end,
+	})
+
+	local command = commandEditor.TextBox
+
+	UI.corner(command, tokens.radius.sm)
+	UI.stroke(command, tokens.color.border, 1, 0)
+
+	local function commandBarHeight()
+		if not commandExpanded then
+			return COMMANDBAR_HEIGHT
+		end
+
+		local available = content.AbsoluteSize.Y or 0
+
+		return math.max(COMMANDBAR_EXPANDED_MIN, math.floor(available * COMMANDBAR_EXPANDED_RATIO))
+	end
+
+	local function applyCommandLayout()
+		commandHeight = commandBarHeight()
+
+		commandBar.Position = UDim2.new(0, COMMAND_PAD, 1, -commandHeight)
+		commandBar.Size = UDim2.new(1, -COMMAND_PAD * 2, 0, commandHeight)
+
+		command.Position = UDim2.fromOffset(EDITOR_PAD, EDITOR_PAD)
+		command.Size = UDim2.new(1, -(EDITOR_PAD * 2 + COMMAND_BUTTONS_WIDTH), 1, -EDITOR_PAD * 2)
+
+		-- The minimap only earns its space once the buffer is tall enough to
+		-- scroll; ShowMinimap is a studio-only property, so guard the write.
+		pcall(function()
+			command.ShowMinimap = commandExpanded
+		end)
+
+		scroll.Size = UDim2.new(1, -inset * 2, 1, -(TOOLBAR_HEIGHT + commandHeight + 6))
+	end
+
+	local expandIcon = nil
+
+	local function toggleCommandBar()
+		commandExpanded = not commandExpanded
+
+		if UI.isAlive(expandIcon) then
+			expandIcon.Image = commandExpanded and COLLAPSE_ICON or EXPAND_ICON
+		end
+
+		applyCommandLayout()
+	end
+
+	local runButton = UI.button(
+		commandBar,
+		"Run",
+		UDim2.new(1, -(COMMAND_PAD + COMMAND_BUTTON + COMMAND_GAP * 2), 1, -(COMMAND_PAD + COMMAND_BUTTON)),
+		UDim2.fromOffset(RUN_WIDTH, COMMAND_BUTTON),
+		function()
+			submitCommand()
+		end,
 		{
-			textSize = UI.tokens.type.small,
-			maxLength = 1000,
-			focusColor = colors.accent,
+			paddingX = 4,
+			color = tokens.color.panelRaised,
+			textColor = tokens.color.accent,
 		}
 	)
+
+	UI.tooltip(runButton, "Run the command buffer (Ctrl+Enter)", { placement = "left" })
+
+	local expandButton
+
+	expandButton, _, expandIcon = UI.iconButton(
+		commandBar,
+		EXPAND_ICON,
+		UDim2.new(1, -(COMMAND_PAD + COMMAND_BUTTON), 1, -(COMMAND_PAD + COMMAND_BUTTON)),
+		UDim2.fromOffset(COMMAND_BUTTON, COMMAND_BUTTON),
+		toggleCommandBar,
+		{ iconSize = 12 }
+	)
+
+	UI.tooltip(expandButton, "Expand the command input", { placement = "left" })
+
+	applyCommandLayout()
 
 	local rowCount = 0
 
@@ -462,17 +565,21 @@ local function createConsole()
 	end
 
 	local function executeCommand(source)
-		LogService:Log("> " .. source)
+		-- Echo each line with its own prompt marker so multi-line buffers stay
+		-- readable in the log.
+		local echoed = string.gsub(source, "\n", "\n> ")
+
+		LogService:Log("> " .. echoed)
 
 		ScriptContext:Run(source, "Console")
 	end
 
-	local function submitCommand()
-		local source = command.Text
+	submitCommand = function()
+		local source = commandEditor:GetSource()
 
 		source = string.match(source, "^%s*(.-)%s*$") or ""
 
-		command.Text = ""
+		commandEditor:setSource("")
 
 		if source == "" then
 			return
@@ -495,12 +602,6 @@ local function createConsole()
 		end)
 	end
 
-	command.FocusLost:Connect(function(enterPressed)
-		if enterPressed then
-			submitCommand()
-		end
-	end)
-
 	do
 		local ok, UserInputService = pcall(function()
 			return game:GetService("UserInputService")
@@ -512,18 +613,28 @@ local function createConsole()
 					return
 				end
 
+				-- The editor owns plain Up/Down for caret movement and
+				-- suggestion navigation, so history rides the modifier.
+				local control = UserInputService:IsKeyDown(Enum.KeyCode.LeftControl)
+					or UserInputService:IsKeyDown(Enum.KeyCode.RightControl)
+
+				if not control then
+					return
+				end
+
 				if input.KeyCode == Enum.KeyCode.Up then
 					historyIndex = math.max(1, historyIndex - 1)
-					command.Text = commandHistory[historyIndex] or ""
+					commandEditor:setSource(commandHistory[historyIndex] or "")
 				elseif input.KeyCode == Enum.KeyCode.Down then
 					historyIndex = math.min(#commandHistory + 1, historyIndex + 1)
-					command.Text = commandHistory[historyIndex] or ""
+					commandEditor:setSource(commandHistory[historyIndex] or "")
 				end
 			end)
 		end
 	end
 
 	local elapsed = 0
+	local lastContentHeight = content.AbsoluteSize.Y
 
 	RunService.Heartbeat:Connect(function(dt)
 		if panel == nil then
@@ -531,6 +642,18 @@ local function createConsole()
 		end
 		if not panel.Visible then
 			return
+		end
+
+		-- The expanded command bar is sized against the panel, so it has to
+		-- follow the console being resized (dimension switches, docking).
+		local contentHeight = content.AbsoluteSize.Y
+
+		if contentHeight ~= lastContentHeight then
+			lastContentHeight = contentHeight
+
+			if commandExpanded then
+				applyCommandLayout()
+			end
 		end
 
 		elapsed += dt
