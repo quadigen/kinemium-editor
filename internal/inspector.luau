@@ -641,37 +641,29 @@ registerAdapter("boolean", {
 			return readonlyField(row, value and "true" or "false")
 		end
 
-		local checkbox = UI.button(
+		local container, controller
+
+		container, controller = UI.checkbox(
 			row,
-			value and "x" or "",
-			UDim2.new(0.45, 7, 0, 3),
-			UDim2.fromOffset(16, 16),
-			function()
-				setProperty(object, property.name, not value)
+			value and "Enabled" or "Disabled",
+			UDim2.new(0.45, 7, 0, 0),
+			value,
+			function(newValue)
+				controller.label.Text = newValue and "Enabled" or "Disabled"
+
+				setProperty(object, property.name, newValue)
 			end,
 			{
-				color = value and tokens.color.selection or tokens.color.input,
-
-				hoverColor = value and tokens.color.selectionHover or tokens.color.hover,
-
+				size = UDim2.new(0.55, -13, 0, UI.metrics.propertyRow),
+				boxSize = 16,
+				markSize = 10,
 				radius = tokens.radius.xs,
-				paddingX = 4,
-				textY = 0,
 				textSize = tokens.type.caption,
-				textColor = tokens.color.text,
+				textColor = colors.subtext,
 			}
 		)
 
-		UI.label(
-			row,
-			value and "Enabled" or "Disabled",
-			UDim2.new(0.45, 30, 0, 3),
-			UDim2.new(0.55, -36, 0, 16),
-			tokens.type.caption,
-			colors.subtext
-		)
-
-		return checkbox
+		return container
 	end,
 })
 
