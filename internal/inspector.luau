@@ -1201,8 +1201,6 @@ local function createCategoryBubble(parent, object, category, group, y)
 		for _, property in ipairs(group) do
 			bubbleHeight += propertyEditorHeight(property)
 		end
-
-		bubbleHeight += CATEGORY_PADDING_BOTTOM
 	end
 
 	local bubble = UI.group(parent, UDim2.fromOffset(0, y), UDim2.new(1, 0, 0, bubbleHeight), {
@@ -1298,14 +1296,6 @@ local function createCategoryBubble(parent, object, category, group, y)
 
 		renderPropertyAdapter(row, object, property)
 	end
-
-	-- Bottom padding
-	local spacer =
-		UI.frame(bubble, UDim2.fromOffset(0, 0), UDim2.new(1, 0, 0, CATEGORY_PADDING_BOTTOM), tokens.color.panel)
-
-	spacer.Name = "Padding"
-	spacer.BackgroundTransparency = 1
-	spacer.LayoutOrder = 1000
 
 	return bubbleHeight
 end
