@@ -4866,6 +4866,7 @@ function UI.buttonList(parent, position, size, buttons, options)
 				label.Position = UDim2.fromOffset(labelX, 0)
 				label.Size = UDim2.new(1, -(labelX + paddingX), 1, 0)
 				label.TextXAlignment = Enum.TextXAlignment.Left
+				label.TextYAlignment = Enum.TextYAlignment.Center
 
 				local item = {
 					id = id,
