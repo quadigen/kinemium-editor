@@ -1231,7 +1231,6 @@ local function createCategoryBubble(parent, object, category, group, y)
 			textColor = tokens.color.text,
 			textY = 4,
 			paddingX = 27,
-			radius = tokens.radius.md,
 			border = false,
 		}
 	)
@@ -1268,7 +1267,7 @@ local function createCategoryBubble(parent, object, category, group, y)
 		local rowColor = index % 2 == 0 and tokens.color.rowEven or tokens.color.rowOdd
 
 		local row =
-			UI.frame(bubble, UDim2.fromOffset(PROPERTY_SIDE_INSET, rowY), UDim2.new(1, 0, 0, propertyHeight), rowColor)
+			UI.frame(bubble, UDim2.fromOffset(PROPERTY_SIDE_INSET, rowY), UDim2.new(1, 10, 0, propertyHeight), rowColor)
 
 		row.Name = property.name
 
