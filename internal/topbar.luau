@@ -20,7 +20,7 @@ local root = UI.RootOverlay()
 
 local tokens = UI.tokens
 
-local FLYOUT_HEIGHT = 70
+local FLYOUT_HEIGHT = 80
 local FLYOUT_GAP = 5
 local FLYOUT_BOTTOM_PADDING = 5
 

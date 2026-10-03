@@ -3654,6 +3654,10 @@ function UI.checkbox(parent, text, position, checked, callback, options)
 
 	local value = checked == true
 
+	local boxSize = options.boxSize or 18
+	local markSize = options.markSize or 12
+	local markIcon = options.markIcon or "builtin://global-icons/check.svg"
+
 	local container = UI.frame(
 		parent,
 		position or UDim2.fromOffset(0, 0),
@@ -3664,57 +3668,70 @@ function UI.checkbox(parent, text, position, checked, callback, options)
 	container.BackgroundTransparency = 1
 
 	local box
-
 	local mark
-
 	local record
 
 	local function redraw()
-		box.BackgroundColor3 = value and colors.accent or options.color or colors.input
+		local base = value and colors.accent or options.color or colors.input
 
-		mark.Text = value and "✓" or ""
+		record.color = base
+		record.defaultColor = base
+
+		box.BackgroundColor3 = base
+
+		mark.Visible = value
 	end
 
-	box, _, record = UI.button(container, "", UDim2.fromOffset(0, 2), UDim2.fromOffset(18, 18), function()
-		value = not value
-
-		redraw()
-
-		if callback then
-			callback(value)
-		end
-	end, {
-
-		color = colors.input,
-
-		hoverColor = colors.hover,
-
-		pressedColor = colors.pressed,
-
-		radius = options.radius or UI.tokens.radius.xs,
-
-		borderColor = colors.border,
-
-		paddingX = 0,
-	})
-
-	mark = UI.label(
-		box,
+	box, _, record = UI.button(
+		container,
 		"",
-		UDim2.fromOffset(0, -1),
-		UDim2.new(1, 0, 1, 0),
-		options.markSize or 13,
-		options.markColor or colors.text
+		UDim2.fromOffset(0, math.floor((UI.metrics.propertyRow - boxSize) / 2)),
+		UDim2.fromOffset(boxSize, boxSize),
+		function()
+			value = not value
+
+			redraw()
+
+			if callback then
+				callback(value)
+			end
+		end,
+		{
+			color = colors.input,
+
+			hoverColor = colors.hover,
+
+			pressedColor = colors.pressed,
+
+			radius = options.radius or UI.tokens.radius.xs,
+
+			borderColor = colors.border,
+
+			paddingX = 0,
+		}
 	)
+
+	mark = UI.image(
+		box,
+		markIcon,
+		UDim2.new(0.5, -math.floor(markSize / 2), 0.5, -math.floor(markSize / 2)),
+		UDim2.fromOffset(markSize, markSize)
+	)
+
+	mark.Name = "Mark"
+	mark.ImageColor3 = options.markColor or colors.text
+	mark.Visible = value
 
 	local textLabel = UI.label(
 		container,
 		text,
-		UDim2.fromOffset(25, 1),
-		UDim2.new(1, -25, 1, -1),
+		UDim2.fromOffset(boxSize + 7, 1),
+		UDim2.new(1, -(boxSize + 7), 1, -1),
 		options.textSize or UI.tokens.type.small,
 		options.textColor or colors.text
 	)
+
+	textLabel.TextXAlignment = Enum.TextXAlignment.Left
 
 	local controller = {}
 
@@ -3735,6 +3752,8 @@ function UI.checkbox(parent, text, position, checked, callback, options)
 	controller.frame = container
 
 	controller.box = box
+
+	controller.mark = mark
 
 	controller.label = textLabel
 
