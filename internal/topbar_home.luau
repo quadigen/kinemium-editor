@@ -77,7 +77,7 @@ return {
 				for _, button in pairs(buttons) do
 					UI.TopbarButton(container, button, {
 						position = UDim2.fromOffset(0, 0),
-						size = UDim2.new(0, 52, 1, 0),
+						size = UDim2.new(0, 208, 1, 0),
 						colors = colors,
 						radius = tokens.radius.sm,
 						onClick = button.callback,
