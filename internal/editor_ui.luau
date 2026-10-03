@@ -3834,6 +3834,7 @@ function UI.checkbox(parent, text, position, checked, callback, options)
 		options.textColor or colors.text
 	)
 
+	textLabel.TextYAlignment = Enum.TextYAlignment.Center
 	textLabel.TextXAlignment = Enum.TextXAlignment.Left
 
 	local controller = {}

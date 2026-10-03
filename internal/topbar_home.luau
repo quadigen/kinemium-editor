@@ -118,7 +118,7 @@ return {
 
 				-- studs
 				local studContainer =
-					UI.frame(panel, UDim2.fromOffset(0, 0), UDim2.new(1, -10, 0, 22), colors.surface, tokens.radius.sm)
+					UI.frame(panel, UDim2.fromOffset(0, 0), UDim2.new(1, -20, 0, 22), colors.surface, tokens.radius.sm)
 
 				local studLayout = Instance.new("UIListLayout")
 				studLayout.FillDirection = Enum.FillDirection.Horizontal
@@ -142,7 +142,7 @@ return {
 
 				-- rotation
 				local rotationContainer =
-					UI.frame(panel, UDim2.fromOffset(0, 0), UDim2.new(1, -10, 0, 22), colors.surface, tokens.radius.sm)
+					UI.frame(panel, UDim2.fromOffset(0, 0), UDim2.new(1, -20, 0, 22), colors.surface, tokens.radius.sm)
 
 				local rotationLayout = Instance.new("UIListLayout")
 				rotationLayout.FillDirection = Enum.FillDirection.Horizontal
