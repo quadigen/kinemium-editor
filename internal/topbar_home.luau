@@ -136,7 +136,7 @@ return {
 				end)
 
 				local frame, checkbox = UI.checkbox(
-					parent,
+					panel,
 					"Enable Snapping",
 					UDim2.fromOffset(8, 8),
 					true,
