@@ -118,7 +118,7 @@ return {
 
 				-- studs
 				local studContainer =
-					UI.frame(panel, UDim2.fromOffset(0, 0), UDim2.new(1, -10, 0, 15), colors.surface, tokens.radius.sm)
+					UI.frame(panel, UDim2.fromOffset(0, 0), UDim2.new(1, -10, 0, 22), colors.surface, tokens.radius.sm)
 
 				local studLayout = Instance.new("UIListLayout")
 				studLayout.FillDirection = Enum.FillDirection.Horizontal
@@ -135,14 +135,14 @@ return {
 						print(value)
 					end
 				)
-				stud_frame.Size = UDim2.new(0, 15, 0, 15)
+				stud_frame.Size = UDim2.new(0, 22, 0, 22)
 				stud_frame.LayoutOrder = -10
 
 				local studInput = UI.input(studContainer, "1 Stud/s", UDim2.fromOffset(0, 0), UDim2.new(1, 0, 1, 0), {})
 
 				-- rotation
 				local rotationContainer =
-					UI.frame(panel, UDim2.fromOffset(0, 0), UDim2.new(1, -10, 0, 15), colors.surface, tokens.radius.sm)
+					UI.frame(panel, UDim2.fromOffset(0, 0), UDim2.new(1, -10, 0, 22), colors.surface, tokens.radius.sm)
 
 				local rotationLayout = Instance.new("UIListLayout")
 				rotationLayout.FillDirection = Enum.FillDirection.Horizontal
@@ -159,7 +159,7 @@ return {
 						print(value)
 					end
 				)
-				rotation_frame.Size = UDim2.new(0, 15, 0, 15)
+				rotation_frame.Size = UDim2.new(0, 22, 0, 22)
 				rotation_frame.LayoutOrder = -10
 
 				local rotation = UI.input(rotationContainer, "30°", UDim2.fromOffset(0, 0), UDim2.new(1, 0, 1, 0), {})
