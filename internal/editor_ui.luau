@@ -2340,13 +2340,16 @@ local function wireNativeButton(button, record, enableHovering)
 	button.MouseButton1Up:Connect(function(x, y)
 		if not record.enabled then
 			button.BackgroundColor3 = record.color
-
 			return
 		end
 
 		local point = Vector2.new(x, y)
 
-		button.BackgroundColor3 = pointInside(button, point) and record.hoverColor or record.color
+		if enableHovering and pointInside(button, point) then
+			button.BackgroundColor3 = record.hoverColor
+		else
+			button.BackgroundColor3 = record.color
+		end
 	end)
 
 	button.MouseButton1Click:Connect(function()
@@ -2460,7 +2463,7 @@ function UI.button(parent, text, position, size, callback, options)
 
 	table.insert(shared.buttons, record)
 
-	wireNativeButton(button, record, (options.hoveringEnabled and options.hoveringEnabled ~= false) or true)
+	wireNativeButton(button, record, options.hoveringEnabled ~= false)
 
 	if options.selected then
 		UI.setButtonState(record, "selected")
