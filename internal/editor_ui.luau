@@ -2324,6 +2324,7 @@ local function wireNativeButton(button, record, enableHovering)
 	end)
 
 	button.MouseLeave:Connect(function()
+		print(enableHovering)
 		if enableHovering then
 			button.BackgroundColor3 = record.color
 		end
