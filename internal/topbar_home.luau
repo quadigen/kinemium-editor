@@ -135,15 +135,11 @@ return {
 					rotation.PlaceholderText = `{value}°`
 				end)
 
-				local frame, checkbox = UI.checkbox(
-					panel,
-					"Enable Snapping",
-					UDim2.fromOffset(8, 8),
-					true,
-					function(value)
-						print(value)
-					end
-				)
+				local frame, checkbox = UI.checkbox(panel, "Snapping", UDim2.fromOffset(8, 8), true, function(value)
+					print(value)
+				end)
+				frame.Size = UDim2.new(1, -10, 0, 15)
+				frame.LayoutOrder = 10
 
 				return panel
 			end,
