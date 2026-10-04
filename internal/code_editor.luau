@@ -971,17 +971,8 @@ end
 
 local CodeEditor = {}
 CodeEditor.__index = CodeEditor
-function CodeEditor.new(parent, options)
-	options = options or {}
-
+function CodeEditor.new(parent)
 	local self = setmetatable({}, CodeEditor)
-
-	-- Embedded editors are standalone scratch buffers: they own no documents,
-	-- never show a tab strip, and are driven by the host through onSubmit
-	-- instead of by opening scripts.
-	self.embedded = options.embedded == true
-	self.onSubmit = options.onSubmit
-	self.tabStripHeight = self.embedded and 0 or TAB_STRIP_HEIGHT
 
 	self.documents = {}
 	self.documentByInstance = {}
@@ -999,7 +990,7 @@ function CodeEditor.new(parent, options)
 	local tabStrip = UI.create("ScrollingFrame", {
 		Name = "ScriptTabs",
 		Position = UDim2.fromOffset(0, 0),
-		Size = UDim2.new(1, 0, 0, self.tabStripHeight),
+		Size = UDim2.new(1, 0, 0, TAB_STRIP_HEIGHT),
 		BackgroundColor3 = tokens.color.panel,
 		BackgroundTransparency = 0,
 		BorderSizePixel = 0,
@@ -1021,22 +1012,16 @@ function CodeEditor.new(parent, options)
 
 	local editor = UI.create("TextBox", {
 		Name = "CodeEditor",
-		Size = UDim2.new(1, 0, 1, -self.tabStripHeight),
-		Position = UDim2.fromOffset(0, self.tabStripHeight),
+		Size = UDim2.new(1, 0, 1, -TAB_STRIP_HEIGHT),
+		Position = UDim2.fromOffset(0, TAB_STRIP_HEIGHT),
 		CodeEditor = true,
-		Visible = self.embedded,
+		Visible = false,
 		Active = true,
 		AutoIndent = true,
-		ShowMinimap = options.showMinimap ~= false,
-		BackgroundTransparency = options.backgroundTransparency or 0.3,
-		BackgroundColor3 = options.backgroundColor or tokens.color.input,
-		TextColor3 = options.textColor or tokens.color.text,
-		PlaceholderText = tostring(options.placeholder or ""),
-		PlaceholderColor3 = options.placeholderColor or tokens.color.muted,
-		CaretColor3 = tokens.color.accent,
-		SelectionColor3 = tokens.color.selection,
-		SelectionTransparency = 0.65,
-		ClearTextOnFocus = false,
+		ShowMinimap = true,
+		BackgroundTransparency = 0.3,
+		BackgroundColor3 = tokens.color.input,
+		TextColor3 = tokens.color.text,
 	}, parent)
 
 	UI.create("SyntaxHighlighter", { Parent = editor })
@@ -1290,10 +1275,6 @@ function CodeEditor:hasDocument()
 end
 
 function CodeEditor:rebuildTabs()
-	if self.embedded then
-		return
-	end
-
 	UI.clear(self.TabStrip)
 
 	local x = 0
@@ -1497,28 +1478,7 @@ function CodeEditor:GetSource()
 	return self.TextBox.Text
 end
 
-function CodeEditor:setSource(source)
-	self.suppressTextSync = true
-	self.TextBox.Text = source or ""
-	self.suppressTextSync = false
-
-	self:dismissSuggestions()
-end
-
-function CodeEditor:submit()
-	if type(self.onSubmit) == "function" then
-		self.onSubmit(self:GetSource())
-	end
-end
-
 function CodeEditor:updateVisibility()
-	if self.embedded then
-		self.TextBox.Visible = true
-		self.TabStrip.Visible = false
-
-		return
-	end
-
 	self.TextBox.Visible = self:hasDocument()
 	self.TabStrip.Visible = #self.documents > 0
 
@@ -2739,16 +2699,6 @@ function CodeEditor:wireEditor()
 
 	self.TextBox.KeyDown:Connect(function(input)
 		local keyCode = input and input.KeyCode
-
-		-- Embedded editors accept multi-line input, so a bare Enter stays a
-		-- newline and running the buffer moves to Ctrl+Enter (Cmd+Enter).
-		if self.embedded and (keyCode == Enum.KeyCode.Return or keyCode == Enum.KeyCode.KeypadEnter) and modifierHeld() then
-			self.TextBox.KeyHandled = true
-
-			self:submit()
-
-			return
-		end
 
 		if keyCode == Enum.KeyCode.F then
 			if modifierHeld() then
