@@ -1311,6 +1311,10 @@ renderer.Pool.new("2d", function()
 		end
 	end
 
+	if docker.IsVisible == false then
+		IsDockingMode = false
+	end
+
 	local selected = selectedObject()
 
 	local hash = treeHash(game) .. "#" .. (selected and selected:GetFullName() or "")
