@@ -351,9 +351,6 @@ local function isRoot(instance)
 	return instance ~= nil and instance:IsA("DataModel")
 end
 
--- Services and the DataModel root cannot be renamed, deleted, duplicated or
--- moved. They can, however, still be drop targets: a Part may be parented into
--- Lighting, it just may not be parented *from* there.
 local function isProtected(instance)
 	if instance == nil then
 		return true
@@ -1116,13 +1113,9 @@ UserInputService.InputBegan:Connect(function(input: InputObject, gameProcessed: 
 		return
 	end
 
-	-- Keystrokes aimed at a field (search, rename box, script editor) belong to
-	-- that field, not to the tree.
 	local typing = UserInputService:GetFocusedTextBox() ~= nil
 
 	if input.UserInputType == Enum.UserInputType.MouseButton2 then
-		-- A right-click outside the tree dismisses the context menu, since the
-		-- shared outside-click handling only listens for the left button.
 		if not mouseInList() then
 			closeContextMenu()
 		end
@@ -1131,8 +1124,6 @@ UserInputService.InputBegan:Connect(function(input: InputObject, gameProcessed: 
 	end
 
 	if input.UserInputType == Enum.UserInputType.MouseButton1 then
-		-- A left-click that did not land on a row (the row handler opens and
-		-- dismisses its own menu) still dismisses the menu and any rename.
 		if not mouseInList() then
 			closeContextMenu()
 			commitRename()
@@ -1310,6 +1301,10 @@ rebuild()
 renderer.Pool.new("2d", function()
 	panel.Size = theme.ExplorerCoordinates.Size
 	panel.Position = theme.ExplorerCoordinates.Position
+
+	if panel:GetAttribute("Dragging") then
+		print("dragged")
+	end
 
 	local selected = selectedObject()
 

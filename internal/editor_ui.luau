@@ -2915,6 +2915,8 @@ function UI.window(name, position, size, title, options)
 				dragging = true
 				dragStartX, dragStartY = mouse.X, mouse.Y
 				startPos = panel.Position
+
+				panel:SetAttribute("Dragging", true)
 			end)
 		)
 
@@ -2957,6 +2959,8 @@ function UI.window(name, position, size, title, options)
 				then
 					dragging = false
 					startPos = nil
+
+					panel:SetAttribute("Dragging", false)
 				end
 			end)
 		)
