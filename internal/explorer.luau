@@ -1305,14 +1305,11 @@ docker.HiddenSignal:Connect(function()
 end)
 
 renderer.Pool.new("2d", function()
-	if not panel:GetAttribute("Dragging") then
+	local dragging = docker.Update(panel, "Explorer")
+
+	if not dragging then
 		panel.Size = theme.ExplorerCoordinates.Size
 		panel.Position = theme.ExplorerCoordinates.Position
-
-		if not IsDockingMode then
-			IsDockingMode = true
-			docker.Show("Explorer")
-		end
 	end
 
 	local selected = selectedObject()

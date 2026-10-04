@@ -27,8 +27,11 @@ local ANCHORS = {
 	{ name = "BottomRight", col = 2, row = 2 },
 }
 
+local HiddenSignal = Signal.new()
+
 local overlay = Instance.new("ScreenGui")
 overlay.RenderOnTop = true
+overlay.IgnoreGuiInset = true
 overlay.Name = "DockingOverlay"
 overlay.Parent = game.CoreGui
 
@@ -38,40 +41,13 @@ container.Visible = false
 
 local Dock = {}
 local pendingWindow: string? = nil
+local dragMode = false
+local hovered = nil
+local targets = {}
 
-function Dock.Hide()
-	container.Visible = false
-	pendingWindow = nil
-end
-
-local function dockTo(anchor: string, fullSpan: boolean)
-	local windowName = pendingWindow
-	if not windowName then
-		return
-	end
-
-	local ok, err = pcall(function()
-		ThemeService:DockWindow(windowName, anchor, fullSpan)
-	end)
-
-	if not ok then
-		warn("[Docking] DockWindow failed:", err)
-	end
-
-	Dock.Hide()
-end
-
-local backdrop = UI.button(container, "", UDim2.fromOffset(0, 0), UDim2.fromScale(1, 1), function()
-	Dock.Hide()
-end, {
-	color = Color3.new(0, 0, 0),
-	hoverColor = Color3.new(0, 0, 0),
-	pressedColor = Color3.new(0, 0, 0),
-	bgTransparency = 0.6,
-	border = false,
-	radius = 0,
-})
-backdrop.ZIndex = 1
+local dim = UI.frame(container, UDim2.fromOffset(0, 0), UDim2.fromScale(1, 1), Color3.new(0, 0, 0), 0)
+dim.BackgroundTransparency = 0.6
+dim.ZIndex = 1
 
 local preview = UI.frame(container, UDim2.fromOffset(0, 0), UDim2.fromScale(1 / 3, 1 / 3), DOCK_BLUE, radius)
 preview.BackgroundTransparency = 0.75
@@ -94,6 +70,50 @@ end
 local function hidePreview()
 	preview.Visible = false
 end
+
+function Dock.Hide()
+	local wasVisible = container.Visible
+
+	container.Visible = false
+	pendingWindow = nil
+	dragMode = false
+	hovered = nil
+	hidePreview()
+
+	if wasVisible then
+		HiddenSignal:Fire()
+	end
+end
+
+local function dockTo(anchor: string, fullSpan: boolean)
+	local windowName = pendingWindow
+	if not windowName then
+		Dock.Hide()
+		return
+	end
+
+	local ok, err = pcall(function()
+		ThemeService:DockWindow(windowName, anchor, fullSpan)
+	end)
+
+	if not ok then
+		warn("[Docking] DockWindow failed:", err)
+	end
+
+	Dock.Hide()
+end
+
+local backdrop = UI.button(container, "", UDim2.fromOffset(0, 0), UDim2.fromScale(1, 1), function()
+	Dock.Hide()
+end, {
+	color = Color3.new(0, 0, 0),
+	hoverColor = Color3.new(0, 0, 0),
+	pressedColor = Color3.new(0, 0, 0),
+	bgTransparency = 1,
+	border = false,
+	radius = 0,
+})
+backdrop.ZIndex = 1
 
 local function buildMiniGrid(parent: GuiObject, activeCol: number, activeRow: number)
 	local cell, gap = 8, 2
@@ -144,10 +164,14 @@ for _, anchor in ANCHORS do
 
 	buildMiniGrid(button, anchor.col, anchor.row)
 
-	button.MouseEnter:Connect(function()
+	local function onHover()
 		showPreview(anchor.col, anchor.row)
-	end)
+	end
+
+	button.MouseEnter:Connect(onHover)
 	button.MouseLeave:Connect(hidePreview)
+
+	table.insert(targets, { button = button, anchor = anchor.name, fullSpan = false, preview = onHover })
 end
 
 local function makeBarButton(text: string, top: boolean, anchorName: string)
@@ -173,34 +197,114 @@ local function makeBarButton(text: string, top: boolean, anchorName: string)
 	button.ZIndex = 3
 	UI.stroke(button, WHITE, 2)
 
-	button.MouseEnter:Connect(function()
+	local function onHover()
 		showBarPreview(top)
-	end)
+	end
+
+	button.MouseEnter:Connect(onHover)
 	button.MouseLeave:Connect(hidePreview)
+
+	table.insert(targets, { button = button, anchor = anchorName, fullSpan = true, preview = onHover })
 end
 
 makeBarButton("Full-width top bar", true, "TopCenter")
 makeBarButton("Full-width bottom bar", false, "BottomCenter")
-
-local HiddenSignal = Signal.new()
 
 local title = UI.label(container, "", UDim2.new(0.5, 0, 0, 56), UDim2.fromOffset(420, 20), UI.tokens.type.body, WHITE)
 title.AnchorPoint = Vector2.new(0.5, 0)
 title.TextXAlignment = Enum.TextXAlignment.Center
 title.ZIndex = 3
 
+local function updateHover()
+	local mouse = UserInputService:GetMouseLocation()
+	local found = nil
+
+	for _, target in targets do
+		local position = target.button.AbsolutePosition
+		local size = target.button.AbsoluteSize
+
+		if
+			mouse.X >= position.X
+			and mouse.X <= position.X + size.X
+			and mouse.Y >= position.Y
+			and mouse.Y <= position.Y + size.Y
+		then
+			found = target
+			break
+		end
+	end
+
+	if found ~= hovered then
+		hovered = found
+
+		if found then
+			found.preview()
+		else
+			hidePreview()
+		end
+	end
+end
+
 UserInputService.InputBegan:Connect(function(input, processed)
 	if container.Visible and input.KeyCode == Enum.KeyCode.Escape then
 		Dock.Hide()
-		HiddenSignal:Fire()
 	end
 end)
 
 function Dock.Show(windowName: string)
 	pendingWindow = windowName
+	dragMode = false
+	hovered = nil
+	backdrop.Visible = true
 	title.Text = `Dock {windowName}  (Esc to cancel)`
 	hidePreview()
 	container.Visible = true
+end
+
+function Dock.BeginDrag(windowName: string)
+	pendingWindow = windowName
+	dragMode = true
+	hovered = nil
+	backdrop.Visible = false
+	title.Text = `Drop {windowName} on a position  (Esc to cancel)`
+	hidePreview()
+	container.Visible = true
+end
+
+function Dock.EndDrag()
+	if not container.Visible or not dragMode then
+		return
+	end
+
+	updateHover()
+
+	local target = hovered
+	if target then
+		dockTo(target.anchor, target.fullSpan)
+	else
+		Dock.Hide()
+	end
+end
+
+local wasDragging = {}
+
+function Dock.Update(panel: GuiObject, windowName: string): boolean
+	local dragging = panel:GetAttribute("Dragging") == true
+	local was = wasDragging[panel] == true
+
+	if dragging and not was then
+		Dock.BeginDrag(windowName)
+	elseif was and not dragging then
+		Dock.EndDrag()
+	end
+
+	wasDragging[panel] = dragging
+
+	if dragging and container.Visible and dragMode then
+		updateHover()
+	end
+
+	return dragging
 end
 
 function Dock.IsVisible(): boolean
