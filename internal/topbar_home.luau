@@ -1,9 +1,19 @@
+local Selection = game:GetService("Selection")
 if (IsServer or IsClient) or IsPlaytest then
 	return nil
 end
 local viewport = require("@internal/viewport")
 local UI = require("@internal/editor_ui")
 local tokens = UI.tokens
+
+local function selectedPart()
+	local selected = Selection:Get()
+	local object = selected and selected[1]
+	if object and (object:IsA("Part") or object:IsA("MeshPart") or object:IsA("Model")) then
+		return object
+	end
+	return nil
+end
 
 return {
 	name = "Home",
@@ -195,6 +205,34 @@ return {
 		},
 		{
 			type = "separator",
+		},
+		{
+			name = "model_actions",
+			type = "custom",
+			width = 80,
+			create = function(parent, colors, position, size)
+				UI.buttonList(parent, position, size, {
+					{
+						name = "Anchor",
+						icon = "cut.svg",
+						callback = function()
+							local selected = selectedPart()
+							if selected then
+								if selected:IsA("Model") then
+									for _, part in pairs(selected:GetDescendants()) do
+										if part:IsA("BasePart") then
+											part.Anchored = true
+										end
+									end
+								else
+									selected.Anchored = true
+								end
+							end
+						end,
+					},
+					{ name = "Weld Eachother", icon = "copy.svg", callback = function() end },
+				}, { scale = 0.8 })
+			end,
 		},
 	},
 }
