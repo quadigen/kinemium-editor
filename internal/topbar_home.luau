@@ -230,7 +230,7 @@ return {
 							end
 						end,
 					},
-					{ name = "Weld Eachother", icon = "copy.svg", callback = function() end },
+					{ name = "Weld", icon = "copy.svg", callback = function() end },
 				}, { scale = 0.8 })
 			end,
 		},
