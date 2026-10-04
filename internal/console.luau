@@ -10,7 +10,7 @@ local tokens = UI.tokens
 
 local function createConsole()
 	local WINDOW_NAME = "Console"
-	local MAX_ENTRIES = 1000 -- matches LOG_HISTORY_LIMIT in LogService
+	local MAX_ENTRIES = 1000
 	local MAX_COMMAND_HISTORY = 50
 	local ROW_HEIGHT = UI.metrics.treeRow
 	local TOOLBAR_HEIGHT = 30
@@ -199,11 +199,10 @@ local function createConsole()
 	local COMMAND_BUTTONS_WIDTH = RUN_WIDTH + COMMAND_BUTTON + COMMAND_GAP * 2
 
 	local COMMAND_LINE_HEIGHT = 18
-	local COMMANDBAR_EXPANDED_LINES = 5
+	local COMMANDBAR_EXPANDED_LINES = 10
 	local COMMANDBAR_MAX_RATIO = 0.4
 
-	-- Collapsed hugs a single line of code instead of the old fixed 30px.
-	local COMMANDBAR_COLLAPSED = UI.metrics.inputHeight + EDITOR_PAD * 2
+	local COMMANDBAR_COLLAPSED = 10
 
 	local EXPAND_ICON = "builtin://global-icons/chevron-down.svg"
 	local COLLAPSE_ICON = "builtin://global-icons/chevron-up.svg"
@@ -232,9 +231,6 @@ local function createConsole()
 
 	UI.corner(scroll, tokens.radius.md)
 
-	-- The command bar hosts the shared code editor in embedded mode so the
-	-- console gets syntax highlighting, autocomplete and multi-line input
-	-- without the script tab strip.
 	local commandBar = UI.create("Frame", {
 		Name = "CommandBar",
 		BackgroundTransparency = 1,
@@ -259,9 +255,6 @@ local function createConsole()
 	UI.corner(command, tokens.radius.sm)
 	UI.stroke(command, tokens.color.border, 1, 0)
 
-	-- The expanded height is content-driven rather than a ratio: it grows with
-	-- the panel but stays anchored to a handful of code lines so a tall console
-	-- does not swallow the log.
 	local function commandBarHeight()
 		if not commandExpanded then
 			return COMMANDBAR_COLLAPSED
@@ -284,8 +277,6 @@ local function createConsole()
 		command.Position = UDim2.fromOffset(EDITOR_PAD, EDITOR_PAD)
 		command.Size = UDim2.new(1, -(EDITOR_PAD * 2 + COMMAND_BUTTONS_WIDTH), 1, -EDITOR_PAD * 2)
 
-		-- The minimap only earns its space once the buffer is tall enough to
-		-- scroll; ShowMinimap is a studio-only property, so guard the write.
 		pcall(function()
 			command.ShowMinimap = commandExpanded
 		end)
