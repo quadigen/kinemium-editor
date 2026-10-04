@@ -21,7 +21,7 @@ panel.gui:Destroy()
 
 renderer.Pool.new("2d", function()
 	local output = theme.OutputCoordinates
-	local dragging = docker.Update(panel, "Output")
+	local dragging = docker.Update(panel.window, "Output")
 
 	if not dragging then
 		panel.window.AnchorPoint = Vector2.new(0, 0)
