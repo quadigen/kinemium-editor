@@ -4,6 +4,7 @@ end
 
 local UI = require("@internal/editor_ui")
 local CodeEditor = require("@internal/code_editor")
+local docker = require("@internal/docker")
 
 local StudioThemeService = game:GetService("StudioThemeService")
 local theme = StudioThemeService.SelectedTheme
@@ -281,11 +282,7 @@ breadcrumb.Name = "ViewportBreadcrumb"
 breadcrumb.Visible = renderer.Dimension == "3D"
 breadcrumb.ClipsDescendants = true
 
-
--- The script editor (TextBox, tab strip, autocomplete) lives in its own module
--- so the viewport only owns the viewport.
 local editor = CodeEditor.new(scriptRoot)
-
 
 local function rebuildBreadcrumb(path)
 	UI.clear(breadcrumb)
@@ -429,8 +426,6 @@ renderer.Pool.new("2d", function()
 			editor:rebuildTabs()
 		end
 
-		-- The viewport toolbar and breadcrumb give way to the editor whenever
-		-- a script is open, which is state the editor module owns.
 		local hasDocument = editor:hasDocument()
 
 		scriptRoot.Visible = hasDocument
@@ -447,6 +442,13 @@ local lastWidth = -1
 local lastHeight = -1
 
 renderer.Pool.new("2da", function()
+	local dragging = docker.Update(panel, "Viewport")
+
+	if not dragging then
+		panel.Position = theme.ViewportCoordinates.Position
+		panel.Size = theme.ViewportCoordinates.Size
+	end
+
 	local absolutePosition = viewportRoot.AbsolutePosition
 	local absoluteSize = viewportRoot.AbsoluteSize
 
@@ -501,8 +503,7 @@ renderer.Pool.new("2da", function()
 end)
 
 return {
-	-- Script editing is delegated wholesale to the code editor module; the
-	-- viewport only forwards the calls other panels make.
+
 	OpenScript = function(instance)
 		editor:OpenScript(instance)
 	end,

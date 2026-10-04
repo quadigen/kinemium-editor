@@ -7,7 +7,6 @@ local export_service = game:GetService("ExportService")
 local dialog = game:GetService("DialogService")
 local util = require("@internal/util")
 local docker = require("@internal/docker")
-local IsDockingMode = false
 
 local StudioThemeService = game:GetService("StudioThemeService")
 local theme = StudioThemeService.SelectedTheme

@@ -8,6 +8,7 @@ local StudioThemeService = game:GetService("StudioThemeService")
 local theme = StudioThemeService.SelectedTheme
 local Selection = game:GetService("Selection")
 local UserInputService = game:GetService("UserInputService")
+local docker = require("@internal/docker")
 
 local colors = UI.colors
 local tokens = UI.tokens
@@ -1502,9 +1503,12 @@ Selection.SelectionChanged:Connect(function()
 end)
 
 renderer.Pool.new("2d", function()
-	panel.Size = theme.InspectorCoordinates.Size
+	local dragging = docker.Update(panel, "Inspector")
 
-	panel.Position = theme.InspectorCoordinates.Position
+	if not dragging then
+		panel.Position = theme.InspectorCoordinates.Position
+		panel.Size = theme.InspectorCoordinates.Size
+	end
 
 	updateEditors()
 	updateEnumDropdownPosition()

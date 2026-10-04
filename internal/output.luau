@@ -9,6 +9,7 @@ local LogService = game:GetService("LogService")
 local colors = UI.colors
 local tokens = UI.tokens
 local console = require("@internal/console")
+local docker = require("@internal/docker")
 
 local panel = console.createConsole()
 local output = theme.OutputCoordinates
@@ -20,8 +21,11 @@ panel.gui:Destroy()
 
 renderer.Pool.new("2d", function()
 	local output = theme.OutputCoordinates
+	local dragging = docker.Update(panel, "Output")
 
-	panel.window.AnchorPoint = Vector2.new(0, 0)
-	panel.window.Position = output.Position
-	panel.window.Size = output.Size
+	if not dragging then
+		panel.window.AnchorPoint = Vector2.new(0, 0)
+		panel.window.Position = output.Position
+		panel.window.Size = output.Size
+	end
 end)
