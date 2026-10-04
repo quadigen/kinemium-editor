@@ -1299,11 +1299,9 @@ end)
 rebuild()
 
 renderer.Pool.new("2d", function()
-	panel.Size = theme.ExplorerCoordinates.Size
-	panel.Position = theme.ExplorerCoordinates.Position
-
-	if panel:GetAttribute("Dragging") then
-		print("dragged")
+	if not panel:GetAttribute("Dragging") then
+		panel.Size = theme.ExplorerCoordinates.Size
+		panel.Position = theme.ExplorerCoordinates.Position
 	end
 
 	local selected = selectedObject()
