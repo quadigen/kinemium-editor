@@ -87,7 +87,7 @@ arcHandles.Parent = workspace
 local function selectedPart()
 	local selected = Selection:Get()
 	local object = selected and selected[1]
-	if object and (object:IsA("Part") or object:IsA("MeshPart")) then
+	if object and (object:IsA("Part") or object:IsA("MeshPart") or object:IsA("Model")) then
 		return object
 	end
 	return nil
