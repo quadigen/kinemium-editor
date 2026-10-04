@@ -1307,7 +1307,7 @@ renderer.Pool.new("2d", function()
 
 		if not IsDockingMode then
 			IsDockingMode = true
-			docker.Dock(panel, "Explorer")
+			docker.Show("Explorer")
 		end
 	end
 
