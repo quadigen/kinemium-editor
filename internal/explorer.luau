@@ -1300,6 +1300,10 @@ end)
 
 rebuild()
 
+docker.HiddenSignal:Connect(function()
+	IsDockingMode = false
+end)
+
 renderer.Pool.new("2d", function()
 	if not panel:GetAttribute("Dragging") then
 		panel.Size = theme.ExplorerCoordinates.Size
@@ -1309,10 +1313,6 @@ renderer.Pool.new("2d", function()
 			IsDockingMode = true
 			docker.Show("Explorer")
 		end
-	end
-
-	if docker.IsVisible == false then
-		IsDockingMode = false
 	end
 
 	local selected = selectedObject()

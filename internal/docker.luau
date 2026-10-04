@@ -182,6 +182,8 @@ end
 makeBarButton("Full-width top bar", true, "TopCenter")
 makeBarButton("Full-width bottom bar", false, "BottomCenter")
 
+local HiddenSignal = Signal.new()
+
 local title = UI.label(container, "", UDim2.new(0.5, 0, 0, 56), UDim2.fromOffset(420, 20), UI.tokens.type.body, WHITE)
 title.AnchorPoint = Vector2.new(0.5, 0)
 title.TextXAlignment = Enum.TextXAlignment.Center
@@ -190,6 +192,7 @@ title.ZIndex = 3
 UserInputService.InputBegan:Connect(function(input, processed)
 	if container.Visible and input.KeyCode == Enum.KeyCode.Escape then
 		Dock.Hide()
+		HiddenSignal:Fire()
 	end
 end)
 
@@ -203,5 +206,7 @@ end
 function Dock.IsVisible(): boolean
 	return container.Visible
 end
+
+Dock.HiddenSignal = HiddenSignal
 
 return Dock
