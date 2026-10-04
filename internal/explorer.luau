@@ -107,6 +107,8 @@ for _, classInfo in ipairs(ReflectionService:GetClasses()) do
 	end
 end
 
+game:GetService("StudioThemeService"):DockWindow("Explorer", "Left")
+
 table.sort(classItems, function(a, b)
 	return a.label < b.label
 end)

@@ -26,6 +26,7 @@ local function createConsole()
 	local filterItems = {
 		{ value = "All", text = "All" },
 		{ value = "Log", text = "Log" },
+		{ value = "Log", text = "Kinemium" },
 		{ value = "Info", text = "Info" },
 		{ value = "Warn", text = "Warn" },
 		{ value = "Error", text = "Error" },
