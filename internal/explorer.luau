@@ -6,6 +6,8 @@ local viewport = require("@internal/viewport")
 local export_service = game:GetService("ExportService")
 local dialog = game:GetService("DialogService")
 local util = require("@internal/util")
+local docker = require("@internal/docker")
+local IsDockingMode = false
 
 local StudioThemeService = game:GetService("StudioThemeService")
 local theme = StudioThemeService.SelectedTheme
@@ -1302,6 +1304,11 @@ renderer.Pool.new("2d", function()
 	if not panel:GetAttribute("Dragging") then
 		panel.Size = theme.ExplorerCoordinates.Size
 		panel.Position = theme.ExplorerCoordinates.Position
+
+		if not IsDockingMode then
+			IsDockingMode = true
+			docker.Dock(panel, "Explorer")
+		end
 	end
 
 	local selected = selectedObject()
