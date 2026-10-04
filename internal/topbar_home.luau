@@ -213,7 +213,7 @@ return {
 			create = function(parent, colors, position, size)
 				UI.buttonList(parent, position, size, {
 					{
-						name = "Anchor",
+						name = "Toggle Anchor",
 						icon = "cut.svg",
 						callback = function()
 							local selected = selectedPart()
@@ -221,11 +221,11 @@ return {
 								if selected:IsA("Model") then
 									for _, part in pairs(selected:GetDescendants()) do
 										if part:IsA("BasePart") then
-											part.Anchored = true
+											part.Anchored = not part.Anchored
 										end
 									end
 								else
-									selected.Anchored = true
+									selected.Anchored = not selected.Anchored
 								end
 							end
 						end,
