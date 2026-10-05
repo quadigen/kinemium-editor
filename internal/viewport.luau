@@ -124,8 +124,14 @@ layout.VerticalAlignment = Enum.VerticalAlignment.Center
 layout.Padding = UDim.new(0, 4)
 layout.Parent = playGroup
 
+local startSinglePlayer = false
+
 UI.iconButton(playGroup, iconRoot .. "Play.svg", UDim2.fromOffset(1, 1), UDim2.fromOffset(28, 21), function()
-	PlaytestService:Start()
+	if startSinglePlayer then
+		PlaytestService:StartSinglePlayer()
+	else
+		PlaytestService:Start()
+	end
 end, {
 	color = tokens.color.surfaceAlt,
 	radius = tokens.radius.xs,
@@ -193,9 +199,13 @@ local _, headless_client = UI.checkbox(frame, "Headless Client", UDim2.fromOffse
 	print(value)
 end)
 
-local _, is_singleplayer = UI.checkbox(frame, "Is Singleplayer", UDim2.fromOffset(8, 8), false, function(value)
-	print(value)
-end)
+if PlaytestService["StartSinglePlayer"] then
+	print("Method StartSinglePlayer exists!")
+
+	local _, is_singleplayer = UI.checkbox(frame, "Is Singleplayer", UDim2.fromOffset(8, 8), false, function(value)
+		startSinglePlayer = true
+	end)
+end
 
 local toolbar = UI.group(
 	viewportOverlay,
