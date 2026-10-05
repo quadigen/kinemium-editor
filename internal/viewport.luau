@@ -170,7 +170,6 @@ local frame = UI.card(rootOverlay, UDim2.fromOffset(0, 0), UDim2.fromOffset(190,
 })
 
 frame.Name = "PlaytestSettings"
-frame.AutomaticSize = Enum.AutomaticSize.Y
 frame.Visible = true
 
 local padding = Instance.new("UIPadding")
