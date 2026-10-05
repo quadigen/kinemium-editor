@@ -166,6 +166,7 @@ local settingsBtn = UI.iconButton(
 local frame = Instance.new("Frame")
 frame.Position =
 	UDim2.fromOffset(settingsBtn.AbsolutePosition.X, settingsBtn.AbsolutePosition.Y + settingsBtn.AbsoluteSize.Y)
+frame.AnchorPoint = Vector2.new(0.5, 1)
 frame.Parent = rootOverlay
 
 local toolbar = UI.group(
