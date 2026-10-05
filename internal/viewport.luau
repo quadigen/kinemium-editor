@@ -166,7 +166,7 @@ local settingsBtn = UI.iconButton(
 local frame = Instance.new("Frame")
 frame.Position =
 	UDim2.fromOffset(settingsBtn.AbsolutePosition.X, settingsBtn.AbsolutePosition.Y + settingsBtn.AbsoluteSize.Y)
-frame.AnchorPoint = Vector2.new(0.5, 0)
+frame.AnchorPoint = Vector2.new(0.5, -0.02)
 frame.BackgroundTransparency = 0.5
 frame.BackgroundColor3 = colors.input
 frame.Parent = rootOverlay
@@ -176,10 +176,14 @@ UI.backdrop(frame)
 
 local settings_layout = Instance.new("UIListLayout")
 settings_layout.FillDirection = Enum.FillDirection.Vertical
-settings_layout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+settings_layout.HorizontalAlignment = Enum.HorizontalAlignment.Left
 settings_layout.VerticalAlignment = Enum.VerticalAlignment.Top
 settings_layout.Padding = UDim.new(0, 4)
 settings_layout.Parent = frame
+
+local c, checkbox = UI.checkbox(frame, "Headless Server", UDim2.fromOffset(8, 8), false, function(value)
+	print(value)
+end)
 
 local toolbar = UI.group(
 	viewportOverlay,
@@ -496,10 +500,8 @@ renderer.Pool.new("2da", function()
 		panel.Size = theme.ViewportCoordinates.Size
 	end
 
-	frame.Position = UDim2.fromOffset(
-		settingsBtn.AbsolutePosition.X + 3,
-		(settingsBtn.AbsolutePosition.Y + settingsBtn.AbsoluteSize.Y)
-	)
+	frame.Position =
+		UDim2.fromOffset(settingsBtn.AbsolutePosition.X, settingsBtn.AbsolutePosition.Y + settingsBtn.AbsoluteSize.Y)
 
 	local absolutePosition = viewportRoot.AbsolutePosition
 	local absoluteSize = viewportRoot.AbsoluteSize
