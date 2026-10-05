@@ -117,12 +117,12 @@ playGroup.AnchorPoint = Vector2.new(0.5, 0.5)
 playGroup.Position = UDim2.new(0.5, 0, 0.5, 0)
 playGroup.Size = UDim2.new(1, 0, 1, 0)
 
-local layout = UI.create("UIListLayout", playGroup, {
-	FillDirection = Enum.FillDirection.Horizontal,
-	HorizontalAlignment = Enum.HorizontalAlignment.Center,
-	VerticalAlignment = Enum.VerticalAlignment.Center,
-	Padding = UDim.new(0, 2),
-})
+local layout = Instance.new("UIListLayout")
+layout.FillDirection = Enum.FillDirection.Horizontal
+layout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+layout.VerticalAlignment = Enum.VerticalAlignment.Center
+layout.Padding = UDim.new(0, 4)
+layout.Parent = playGroup
 
 UI.iconButton(playGroup, iconRoot .. "Play.svg", UDim2.fromOffset(1, 1), UDim2.fromOffset(28, 21), function()
 	PlaytestService:Start()
