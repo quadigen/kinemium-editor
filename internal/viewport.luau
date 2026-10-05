@@ -163,28 +163,133 @@ local settingsBtn = UI.iconButton(
 )
 
 -- playtest settings
-local frame = Instance.new("Frame")
-frame.Position =
-	UDim2.fromOffset(settingsBtn.AbsolutePosition.X, settingsBtn.AbsolutePosition.Y + settingsBtn.AbsoluteSize.Y)
-frame.AnchorPoint = Vector2.new(0.5, -0.02)
-frame.BackgroundTransparency = 0.5
+local frame = UI.card(rootOverlay, UDim2.fromOffset(0, 0), UDim2.fromOffset(190, 0), {
+	color = tokens.color.panelRaised,
+	radius = tokens.radius.sm,
+	border = true,
+})
+
 frame.Name = "PlaytestSettings"
-frame.BackgroundColor3 = colors.input
-frame.Parent = rootOverlay
+frame.AutomaticSize = Enum.AutomaticSize.Y
+frame.Visible = true
 
-UI.corner(frame, tokens.radius.sm)
-UI.backdrop(frame)
+local padding = Instance.new("UIPadding")
+padding.PaddingTop = UDim.new(0, 8)
+padding.PaddingBottom = UDim.new(0, 8)
+padding.PaddingLeft = UDim.new(0, 8)
+padding.PaddingRight = UDim.new(0, 8)
+padding.Parent = frame
 
-local settings_layout = Instance.new("UIListLayout")
-settings_layout.FillDirection = Enum.FillDirection.Vertical
-settings_layout.HorizontalAlignment = Enum.HorizontalAlignment.Left
-settings_layout.VerticalAlignment = Enum.VerticalAlignment.Top
-settings_layout.Padding = UDim.new(0, 4)
-settings_layout.Parent = frame
+local settingsLayout = Instance.new("UIListLayout")
+settingsLayout.FillDirection = Enum.FillDirection.Vertical
+settingsLayout.Padding = UDim.new(0, 6)
+settingsLayout.SortOrder = Enum.SortOrder.LayoutOrder
+settingsLayout.Parent = frame
 
-local c, checkbox = UI.checkbox(frame, "Headless Server", UDim2.fromOffset(8, 8), false, function(value)
-	print(value)
+UI.label(
+	frame,
+	"Playtest Settings",
+	UDim2.fromOffset(0, 0),
+	UDim2.new(1, 0, 0, 20),
+	tokens.type.title,
+	tokens.color.text
+)
+
+UI.sectionHeader(frame, "Mode", UDim2.fromOffset(0, 0), UDim2.new(1, 0, 0, 23), {
+	transparent = true,
+	separator = false,
+	textSize = tokens.type.caption,
+	textColor = tokens.color.muted,
+})
+
+local modeDropdown = UI.dropdown(
+	frame,
+	"Client + Server",
+	UDim2.fromOffset(0, 0),
+	UDim2.new(1, 0, 0, 24),
+	iconRoot .. "ChevronDown.svg",
+	{
+		items = {
+			"Singleplayer",
+			"Client + Server",
+			"Server Only",
+			"Client Only",
+		},
+
+		onChanged = function(value)
+			--updatePlaytestMode(value)
+		end,
+	}
+)
+
+UI.sectionHeader(frame, "Server", UDim2.fromOffset(0, 0), UDim2.new(1, 0, 0, 23), {
+	transparent = true,
+	separator = false,
+	textSize = tokens.type.caption,
+	textColor = tokens.color.muted,
+})
+
+local serverSettings = UI.group(frame, UDim2.fromOffset(0, 0), UDim2.new(1, 0, 0, 52), {
+	color = tokens.color.surfaceAlt,
+	radius = tokens.radius.xs,
+})
+
+local _, headlessServer = UI.switch(serverSettings, UDim2.fromOffset(0, 7), true, function(value)
+	print("Headless Server:", value)
 end)
+
+UI.label(serverSettings, "Headless Server", UDim2.fromOffset(44, 6), UDim2.new(1, -44, 0, 20))
+
+local serverPort = UI.input(serverSettings, "Port", UDim2.fromOffset(44, 28), UDim2.new(1, -52, 0, 20), {
+	text = "1238",
+	maxLength = 5,
+})
+
+UI.sectionHeader(frame, "Client", UDim2.fromOffset(0, 0), UDim2.new(1, 0, 0, 23), {
+	transparent = true,
+	separator = false,
+	textSize = tokens.type.caption,
+	textColor = tokens.color.muted,
+})
+
+local clientSettings = UI.group(frame, UDim2.fromOffset(0, 0), UDim2.new(1, 0, 0, 52), {
+	color = tokens.color.surfaceAlt,
+	radius = tokens.radius.xs,
+})
+
+local _, headlessClient = UI.switch(clientSettings, UDim2.fromOffset(0, 7), false, function(value)
+	print("Headless Client:", value)
+end)
+
+UI.label(clientSettings, "Headless Client", UDim2.fromOffset(44, 6), UDim2.new(1, -44, 0, 20))
+
+UI.label(
+	clientSettings,
+	"Client Count",
+	UDim2.fromOffset(44, 29),
+	UDim2.fromOffset(75, 18),
+	tokens.type.small,
+	tokens.color.subtext
+)
+
+local clientCount = UI.input(clientSettings, "", UDim2.new(1, -48, 0, 27), UDim2.fromOffset(40, 20), {
+	text = "1",
+	maxLength = 2,
+})
+
+local function updatePlaytestMode(mode)
+	local showServer = mode == "Client + Server" or mode == "Server Only"
+	local showClient = mode == "Singleplayer" or mode == "Client + Server" or mode == "Client Only"
+
+	if mode == "Singleplayer" then
+		showServer = false
+	end
+
+	serverSettings.Visible = showServer
+	clientSettings.Visible = showClient
+end
+
+updatePlaytestMode("Client + Server")
 
 local toolbar = UI.group(
 	viewportOverlay,
