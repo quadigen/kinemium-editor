@@ -109,9 +109,19 @@ local function updateGizmos()
 	end
 end
 
-local playGroup = UI.group(header, UDim2.new(0.5, -30, 0, 2), UDim2.fromOffset(60, 23), {
+local playGroup = UI.group(header, UDim2.new(1, 0, 1, 0), UDim2.fromOffset(0, 0), {
 	color = tokens.color.surfaceAlt,
 	radius = tokens.radius.sm,
+})
+playGroup.AnchorPoint = Vector2.new(0.5, 0.5)
+playGroup.Position = UDim2.new(0.5, 0, 0.5, 0)
+playGroup.Size = UDim2.new(1, 0, 1, 0)
+
+local layout = UI.create("UIListLayout", playGroup, {
+	FillDirection = Enum.FillDirection.Horizontal,
+	HorizontalAlignment = Enum.HorizontalAlignment.Center,
+	VerticalAlignment = Enum.VerticalAlignment.Center,
+	Padding = UDim.new(0, 2),
 })
 
 UI.iconButton(playGroup, iconRoot .. "Play.svg", UDim2.fromOffset(1, 1), UDim2.fromOffset(28, 21), function()
@@ -133,6 +143,24 @@ end, {
 	border = false,
 	iconSize = 14,
 })
+
+UI.separator(playGroup, UDim2.fromOffset(59, 3), UDim2.fromOffset(1, 17))
+
+UI.iconButton(
+	playGroup,
+	iconRoot .. "PlaytestSettings.svg",
+	UDim2.fromOffset(60, 1),
+	UDim2.fromOffset(28, 21),
+	function()
+		print("hello world")
+	end,
+	{
+		color = tokens.color.surfaceAlt,
+		radius = tokens.radius.xs,
+		border = false,
+		iconSize = 14,
+	}
+)
 
 local toolbar = UI.group(
 	viewportOverlay,
