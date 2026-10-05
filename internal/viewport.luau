@@ -146,9 +146,9 @@ end, {
 
 UI.separator(playGroup, UDim2.fromOffset(59, 3), UDim2.fromOffset(1, 17))
 
-UI.iconButton(
+local settingsBtn = UI.iconButton(
 	playGroup,
-	iconRoot .. "PlaytestSettings.svg",
+	iconRoot .. "Settings.svg",
 	UDim2.fromOffset(60, 1),
 	UDim2.fromOffset(28, 21),
 	function()
@@ -161,6 +161,12 @@ UI.iconButton(
 		iconSize = 14,
 	}
 )
+
+-- playtest settings
+local frame = Instance.new("Frame")
+frame.Position =
+	UDim2.fromOffset(settingsBtn.AbsolutePosition.X, settingsBtn.AbsolutePosition.Y + settingsBtn.AbsoluteSize.Y)
+frame.Parent = rootOverlay
 
 local toolbar = UI.group(
 	viewportOverlay,
