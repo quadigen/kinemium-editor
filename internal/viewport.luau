@@ -168,6 +168,7 @@ frame.Position =
 	UDim2.fromOffset(settingsBtn.AbsolutePosition.X, settingsBtn.AbsolutePosition.Y + settingsBtn.AbsoluteSize.Y)
 frame.AnchorPoint = Vector2.new(0.5, -0.02)
 frame.BackgroundTransparency = 0.5
+frame.Name = "PlaytestSettings"
 frame.BackgroundColor3 = colors.input
 frame.Parent = rootOverlay
 
