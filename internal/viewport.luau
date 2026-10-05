@@ -483,6 +483,9 @@ renderer.Pool.new("2da", function()
 		panel.Size = theme.ViewportCoordinates.Size
 	end
 
+	frame.Position =
+		UDim2.fromOffset(settingsBtn.AbsolutePosition.X, settingsBtn.AbsolutePosition.Y + settingsBtn.AbsoluteSize.Y)
+
 	local absolutePosition = viewportRoot.AbsolutePosition
 	local absoluteSize = viewportRoot.AbsoluteSize
 
