@@ -166,8 +166,19 @@ local settingsBtn = UI.iconButton(
 local frame = Instance.new("Frame")
 frame.Position =
 	UDim2.fromOffset(settingsBtn.AbsolutePosition.X, settingsBtn.AbsolutePosition.Y + settingsBtn.AbsoluteSize.Y)
-frame.AnchorPoint = Vector2.new(0.5, 1)
+frame.AnchorPoint = Vector2.new(0.5, 0)
+frame.BackgroundTransparency = 0.5
 frame.Parent = rootOverlay
+
+UI.corner(frame, tokens.radius.sm)
+UI.backdrop(frame)
+
+local settings_layout = Instance.new("UIListLayout")
+settings_layout.FillDirection = Enum.FillDirection.Vertical
+settings_layout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+settings_layout.VerticalAlignment = Enum.VerticalAlignment.Top
+settings_layout.Padding = UDim.new(0, 4)
+settings_layout.Parent = frame
 
 local toolbar = UI.group(
 	viewportOverlay,
@@ -484,8 +495,10 @@ renderer.Pool.new("2da", function()
 		panel.Size = theme.ViewportCoordinates.Size
 	end
 
-	frame.Position =
-		UDim2.fromOffset(settingsBtn.AbsolutePosition.X, settingsBtn.AbsolutePosition.Y + settingsBtn.AbsoluteSize.Y)
+	frame.Position = UDim2.fromOffset(
+		settingsBtn.AbsolutePosition.X,
+		(settingsBtn.AbsolutePosition.Y + settingsBtn.AbsoluteSize.Y) + 3
+	)
 
 	local absolutePosition = viewportRoot.AbsolutePosition
 	local absoluteSize = viewportRoot.AbsoluteSize

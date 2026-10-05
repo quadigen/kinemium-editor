@@ -248,6 +248,10 @@ function UI.corner(parent, radius)
 	return UI.create("UICorner", { CornerRadius = UDim.new(0, radius or UI.tokens.radius.sm) }, parent)
 end
 
+function UI.backdrop(parent, radius)
+	return UI.create("UIBackdrop", {}, parent)
+end
+
 function UI.stroke(parent, color, thickness, transparency)
 	return UI.create("UIStroke", {
 
