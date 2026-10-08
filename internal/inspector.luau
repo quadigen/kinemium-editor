@@ -614,12 +614,18 @@ local function parseInteger(text)
 	return value
 end
 
+local function clean(text)
+	text = string.gsub(text, [[\]], "/")
+	text = string.gsub(text, [["]], "")
+	return text
+end
+
 local function watchValueField(field, object, propertyName, parser)
 	watchEditor(field, function()
 		local value = parser(field.Text)
 
 		if value ~= nil then
-			setProperty(object, propertyName, value)
+			setProperty(object, propertyName, clean(value))
 		end
 	end)
 end

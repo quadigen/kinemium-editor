@@ -191,9 +191,15 @@ settings_layout.PaddingTop = UDim.new(0, 8)
 settings_layout.Padding = UDim.new(0, 4)
 settings_layout.Parent = frame
 
-local _, headless_server_checkbox = UI.checkbox(frame, "Headless Server", UDim2.fromOffset(8, 8), false, function(value)
-	print(value)
-end)
+local _, headless_server_checkbox_playtest_settings = UI.checkbox(
+	frame,
+	"Headless Server",
+	UDim2.fromOffset(8, 8),
+	false,
+	function(value)
+		print(value)
+	end
+)
 
 local _, headless_client = UI.checkbox(frame, "Headless Client", UDim2.fromOffset(8, 8), false, function(value)
 	print(value)
