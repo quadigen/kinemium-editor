@@ -47,7 +47,26 @@ local function createConsole()
 
 	local panel, content = UI.window(WINDOW_NAME, UDim2.fromOffset(0, 0), UDim2.fromOffset(0, 0), "Console", {
 		closable = true,
+
+		tabs = {
+			"Profiler",
+		},
 	})
+	local profilerContent = panel.pages.Profiler
+
+	local frame, graph = UI.graph(profilerContent, UDim2.fromOffset(0, 0), UDim2.new(1, 0, 1, 0), {
+		title = "Stock Prices",
+		xLabel = "Days",
+		yLabel = "Price",
+		series = {
+			{ name = "Stock 1", values = { 1, 2, 3 } },
+		},
+	})
+
+	graph:Push("Stock 1", 432, 100) -- scrolling/live plot, keeps the last 100 points
+	graph:SetRange(0, 100, nil, nil) -- fix x, auto y
+	graph:AutoFit()
+
 	panel.Size = UDim2.new(0.4, 0, 0.7, 0)
 	panel.Position = UDim2.new(0.5, 0, 0.5, 0)
 	panel.AnchorPoint = Vector2.new(0.5, 0.5)
