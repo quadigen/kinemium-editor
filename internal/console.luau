@@ -45,14 +45,17 @@ local function createConsole()
 	gui.Name = "Console"
 	gui.Parent = game.StarterGui
 
-	local panel, content, _, pages = UI.window(WINDOW_NAME, UDim2.fromOffset(0, 0), UDim2.fromOffset(0, 0), "Console", {
+	local panel, _, _, pages = UI.window(WINDOW_NAME, UDim2.fromOffset(0, 0), UDim2.fromOffset(0, 0), "Console", {
 		closable = true,
 
 		tabs = {
 			"Profiler",
+			"Output",
 		},
+		selectedTab = "Output",
 	})
 	local profilerContent = pages.pages.Profiler
+	local content = pages.pages.Output
 
 	local frame, graph = UI.graph(profilerContent, UDim2.fromOffset(0, 0), UDim2.new(1, 0, 1, 0), {
 		title = "Stock Prices",
