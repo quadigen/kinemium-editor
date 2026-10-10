@@ -260,8 +260,6 @@ return function(content)
 			ProfilerService.TrackingEnabled and "ON" or "OFF"
 		)
 
-		trackingButton:FindFirstChildWhichIsA("TextLabel")
-
 		UI.setButtonState(trackingRecord, ProfilerService.TrackingEnabled and "accent" or "normal")
 
 		local top = {}
