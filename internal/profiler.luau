@@ -8,13 +8,19 @@ local REFRESH_INTERVAL = 0.5
 local MAX_ROWS = 100
 local GRAPH_POINTS = 60
 
-return function(content)
+return function(gui)
 	local alive = true
 	local elapsed = 0
 	local sampleCount = 0
 	local sortBy = "CpuMs"
 	local ascending = false
 	local rows = {}
+
+	local content = Instance.new("ScrollingFrame")
+	content.Size = UDim2.new(1, 0, 1, 0)
+	content.BackgroundTransparency = 1
+	content.AutomaticCanvasSize = Enum.AutomaticSize.Y
+	content.Parent = gui
 
 	local root = UI.frame(content, UDim2.fromOffset(0, 0), UDim2.new(1, 0, 1, 0), colors.canvas)
 
