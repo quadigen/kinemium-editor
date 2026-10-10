@@ -45,7 +45,7 @@ local function createConsole()
 	gui.Name = "Console"
 	gui.Parent = game.StarterGui
 
-	local panel, content, _, pages = UI.window(WINDOW_NAME, UDim2.fromOffset(0, 0), UDim2.fromOffset(0, 0), "Console", {
+	local panel, _, content, pages = UI.window(WINDOW_NAME, UDim2.fromOffset(0, 0), UDim2.fromOffset(0, 0), "Console", {
 		closable = true,
 	})
 
