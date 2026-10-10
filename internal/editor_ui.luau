@@ -152,6 +152,8 @@ UI.tokens = {
 	type = { caption = 11, small = 12, body = 13, title = 14 },
 }
 
+local colors = UI.tokens.color
+
 local function findContainingWindow(gui)
 	local current = gui
 
