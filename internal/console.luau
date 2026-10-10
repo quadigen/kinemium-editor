@@ -47,12 +47,6 @@ local function createConsole()
 
 	local panel, content, _, pages = UI.window(WINDOW_NAME, UDim2.fromOffset(0, 0), UDim2.fromOffset(0, 0), "Console", {
 		closable = true,
-
-		tabs = {
-			"Profiler",
-			"Output",
-		},
-		selectedTab = "Output",
 	})
 
 	panel.Size = UDim2.new(0.4, 0, 0.7, 0)
