@@ -1,4 +1,5 @@
 local UI = require("@internal/editor_ui")
+local ProfilerUI = require("@internal/profiler")
 
 local ScriptContext = game:GetService("ScriptContext")
 local LogService = game:GetService("LogService")
@@ -9,7 +10,7 @@ local tokens = UI.tokens
 
 local function createConsole()
 	local WINDOW_NAME = "Console"
-	local MAX_ENTRIES = 1000 -- matches LOG_HISTORY_LIMIT in LogService
+	local MAX_ENTRIES = 1000
 	local MAX_COMMAND_HISTORY = 50
 	local ROW_HEIGHT = UI.metrics.treeRow
 	local TOOLBAR_HEIGHT = 30
@@ -57,18 +58,7 @@ local function createConsole()
 	local profilerContent = pages.pages.Profiler
 	local content = pages.pages.Output
 
-	local frame, graph = UI.graph(profilerContent, UDim2.fromOffset(0, 0), UDim2.new(1, 0, 1, 0), {
-		title = "Stock Prices",
-		xLabel = "Days",
-		yLabel = "Price",
-		series = {
-			{ name = "Stock 1", values = { 1, 2, 3 } },
-		},
-	})
-
-	graph:Push("Stock 1", 432, 100) -- scrolling/live plot, keeps the last 100 points
-	graph:SetRange(0, 100, nil, nil) -- fix x, auto y
-	graph:AutoFit()
+	ProfilerUI(profilerContent)
 
 	panel.Size = UDim2.new(0.4, 0, 0.7, 0)
 	panel.Position = UDim2.new(0.5, 0, 0.5, 0)
