@@ -119,7 +119,6 @@ return function(gui)
 		local label = UI.label(parent, text, position, size, 12, color or colors.text)
 
 		label.TextXAlignment = Enum.TextXAlignment.Left
-		label.TextTruncate = Enum.TextTruncate.AtEnd
 
 		return label
 	end
