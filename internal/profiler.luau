@@ -14,14 +14,18 @@ return function(content)
 	list.FillDirection = Enum.FillDirection.Vertical
 	list.Parent = section1
 
-	RunService.Heartbeat:Connect(function(a0: number)
+	while true do
 		local scripts = ProfilerService:GetScripts()
 
-		section1:ClearAllChildren()
+		for _, child in pairs(section1:GetChildren()) do
+			child:Destroy()
+		end
+
 		for _, script in pairs(scripts) do
 			UI.button(section1, script.Name, UDim2.fromOffset(12, 12), UDim2.new(1, 0, 0, 30), function()
 				print("Clicked")
 			end)
 		end
-	end)
+		task.wait(3)
+	end
 end
