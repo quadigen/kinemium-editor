@@ -1,6 +1,7 @@
 local UI = {}
 
 local StudioThemeService = game:GetService("StudioThemeService")
+local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
 local shared = { buttons = {}, root = nil, background = nil, windows = {} }
 local MIN_SPAN = 0.0005
