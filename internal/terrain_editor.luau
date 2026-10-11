@@ -82,7 +82,7 @@ gui.Name = "TerrainEditor"
 gui.RenderOnTop = true
 gui.Parent = game.CoreGui
 
-local panel, content = UI.window("Terrain", UDim2.fromOffset(40, 40), UDim2.fromOffset(320, 480), "Terrain", {
+local panel, content = UI.window("Terrain", UDim2.fromOffset(120, 120), UDim2.fromOffset(320, 480), "Terrain", {
 	closable = true,
 })
 panel.Visible = false
@@ -677,8 +677,6 @@ UserInputService.InputBegan:Connect(function(input, processed)
 	end
 end)
 
------------------------------------------------------------------- frame update
-
 RunService.RenderStepped:Connect(function()
 	local visible = panel.Visible
 
@@ -690,11 +688,14 @@ RunService.RenderStepped:Connect(function()
 	local show = cf ~= nil and cfg.showPreview and not overUI()
 
 	for shape, p in pairs(previews) do
-		local want = (show and shape == cfg.shape) and previewFolder or nil
+		local active = show and shape == cfg.shape
+		local want = active and previewFolder or game.ReplicatedStorage
 
 		if p.part.Parent ~= want then
 			p.part.Parent = want
 		end
+
+		p.highlight.Enabled = active
 	end
 
 	if not cf then
@@ -705,7 +706,6 @@ RunService.RenderStepped:Connect(function()
 	local p = previews[cfg.shape]
 
 	if cfg.shape == "Cylinder" then
-		-- Part cylinders run along X; terrain cylinders run along Y
 		p.part.Size = Vector3.new(dims.Y, dims.X, dims.Z)
 		p.part.CFrame = cf * CFrame.Angles(0, 0, math.pi / 2)
 	else
@@ -730,7 +730,6 @@ painting = false
 return {
 	Enable = function()
 		panel.Visible = true
-		painting = true
 	end,
 
 	Disable = function()
@@ -740,6 +739,8 @@ return {
 
 	Toggle = function()
 		panel.Visible = not panel.Visible
-		painting = not painting
+		if not panel.Visible then
+			painting = false
+		end
 	end,
 }
