@@ -1,4 +1,4 @@
-local terrain = workspace.Terrain
+local terrain = game:GetService("Terrain")
 local UserInputService = game:GetService("UserInputService")
 local mouse: Mouse = UserInputService:GetMouse()
 local RunService = game:GetService("RunService")
