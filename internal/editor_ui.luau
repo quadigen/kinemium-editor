@@ -1670,7 +1670,6 @@ function UI.property(parent, text, position, size, value, callback, options)
 	label.TextXAlignment = Enum.TextXAlignment.Left
 	label.TextYAlignment = Enum.TextYAlignment.Center
 
-	-- everything on the right lives inside this holder
 	local holder = UI.create("Frame", {
 		Name = "Content",
 		Position = areaPosition,
@@ -1779,7 +1778,6 @@ function UI.property(parent, text, position, size, value, callback, options)
 		return tostring(number)
 	end
 
-	-- returns ok, normalizedText
 	local function normalize(config, raw)
 		if setting(config, "numeric") then
 			local number = tonumber(raw)
@@ -1921,7 +1919,7 @@ function UI.property(parent, text, position, size, value, callback, options)
 			local ok, normalized = normalize(config, box.Text)
 
 			if not ok then
-				box.Text = field.current -- revert invalid input
+				box.Text = field.current
 				return
 			end
 
@@ -1936,7 +1934,6 @@ function UI.property(parent, text, position, size, value, callback, options)
 		end)
 	end
 
-	-- single mode keeps the old `controller.box` shortcut
 	controller.box = controller.fields[1].box
 
 	function controller:GetValue()
@@ -1972,7 +1969,6 @@ function UI.property(parent, text, position, size, value, callback, options)
 		return true
 	end
 
-	-- single: SetValue(5)    multi: SetValue({1, 2, 3})
 	function controller:SetValue(newValue, silent)
 		if not multi then
 			return self:SetField(1, newValue, silent)
@@ -2947,10 +2943,10 @@ function UI.graph(parent, position, size, options)
 		xMax = 1,
 		yMin = 0,
 		yMax = 1,
-		target = nil, -- animated view target (partial: only the axes being changed)
-		clearAfter = false, -- clear fixed bounds when the animation finishes (AutoFit)
+		target = nil,
+		clearAfter = false,
 		dirty = false,
-		cache = nil, -- full data extent, invalidated when data changes
+		cache = nil,
 		destroyed = false,
 	}
 
@@ -3030,7 +3026,6 @@ function UI.graph(parent, position, size, options)
 		}, layer)
 	end
 
-	-- Liang-Barsky: clip a segment to the plot rectangle (keeps frames small when zoomed in)
 	local function clipSegment(x1, y1, x2, y2, w, h)
 		local dx, dy = x2 - x1, y2 - y1
 		local t0, t1 = 0, 1
@@ -3066,8 +3061,6 @@ function UI.graph(parent, position, size, options)
 
 		return x1 + t0 * dx, y1 + t0 * dy, x1 + t1 * dx, y1 + t1 * dy
 	end
-
-	------------------------------------------------------------------ structure
 
 	local container = UI.frame(
 		parent,
@@ -3117,7 +3110,6 @@ function UI.graph(parent, position, size, options)
 
 	local dots = {}
 
-	-- range / box selection overlay
 	local selFrame = UI.frame(overlayLayer, UDim2.fromOffset(0, 0), UDim2.fromOffset(0, 0), colors.accent)
 	selFrame.Name = "Selection"
 	selFrame.BackgroundTransparency = 0.8
@@ -3152,8 +3144,6 @@ function UI.graph(parent, position, size, options)
 	local function invalidate()
 		state.cache = nil
 	end
-
-	------------------------------------------------------------------ bounds
 
 	local function scanExtent(x0, x1)
 		local function run(onlyVisible)
@@ -3252,8 +3242,6 @@ function UI.graph(parent, position, size, options)
 		end
 	end
 
-	------------------------------------------------------------------ legend
-
 	local redraw
 
 	local function buildLegend()
@@ -3326,8 +3314,6 @@ function UI.graph(parent, position, size, options)
 		end
 	end
 
-	------------------------------------------------------------------ draw
-
 	local function lowerBound(s, x)
 		local lo, hi = 1, #s.values + 1
 
@@ -3368,7 +3354,6 @@ function UI.graph(parent, position, size, options)
 			return ph - (y - yMin) / (yMax - yMin) * ph
 		end
 
-		-- grid + ticks
 		local yTicks = math.clamp(math.floor(ph / 40) + 1, 3, 11)
 		local yStep = niceStep(yMax - yMin, yTicks)
 		local yStart = math.ceil(yMin / yStep - 1e-9) * yStep
@@ -3426,7 +3411,6 @@ function UI.graph(parent, position, size, options)
 			value += xStep
 		end
 
-		-- titles
 		if state.title then
 			makeLabel(
 				tickLayer,
@@ -3462,7 +3446,6 @@ function UI.graph(parent, position, size, options)
 			yl.Rotation = -90
 		end
 
-		-- series (only the visible slice of the data is turned into frames)
 		for _, s in ipairs(state.series) do
 			local n = #s.values
 
@@ -3493,7 +3476,6 @@ function UI.graph(parent, position, size, options)
 						addPoint(last)
 					end
 
-					-- shaded area
 					if s.fill and #px >= 2 then
 						local colW = 2
 						local j = 1
@@ -3526,7 +3508,6 @@ function UI.graph(parent, position, size, options)
 						end
 					end
 
-					-- line
 					for k = 1, #px - 1 do
 						local ax, ay, bx, by = clipSegment(px[k], py[k], px[k + 1], py[k + 1], pw, ph)
 
@@ -3535,7 +3516,6 @@ function UI.graph(parent, position, size, options)
 						end
 					end
 
-					-- single visible point
 					if #px == 1 then
 						local dot = UI.frame(
 							seriesLayer,
@@ -3560,9 +3540,6 @@ function UI.graph(parent, position, size, options)
 		end
 	end
 
-	------------------------------------------------------------------ view math
-
-	-- keep zoom within sane limits and keep the data from leaving the view entirely
 	local function clampAxis(lo, hi, aLo, aHi)
 		local aSpan = math.max(aHi - aLo, 1e-9)
 		local minSpan = aSpan * 1e-7
@@ -3632,8 +3609,6 @@ function UI.graph(parent, position, size, options)
 		return { [axis .. "Min"] = lo, [axis .. "Max"] = hi }
 	end
 
-	------------------------------------------------------------------ hover
-
 	local function nearestIndex(s, x)
 		local n = #s.values
 
@@ -3666,7 +3641,7 @@ function UI.graph(parent, position, size, options)
 	local selecting = nil
 	local lastClick = 0
 	local connections = {}
-	local controller_AutoFit -- assigned once the controller exists
+	local controller_AutoFit
 
 	local function isShift()
 		return UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) or UserInputService:IsKeyDown(Enum.KeyCode.RightShift)
@@ -3764,8 +3739,6 @@ function UI.graph(parent, position, size, options)
 			updateHover(x)
 		end
 	end)
-
-	------------------------------------------------------------------ interaction
 
 	local function updateSelection()
 		if not selecting then
@@ -3895,7 +3868,6 @@ function UI.graph(parent, position, size, options)
 					end
 
 					if next(partial) then
-						-- when animating from auto, make sure untouched axes stay as they are
 						setTarget(partial, false)
 						hideHover()
 					end
@@ -4409,7 +4381,6 @@ function UI.flamegraph(parent, position, size, options)
 
 	local controller = { frame = container, rows = data.rows }
 
-	-- layers (creation order = draw order) ------------------------------------
 	local gridLayer = UI.create("Frame", {
 		Name = "Grid",
 		Size = UDim2.fromScale(1, 1),
@@ -4446,7 +4417,6 @@ function UI.flamegraph(parent, position, size, options)
 	)
 	emptyLabel.TextXAlignment = Enum.TextXAlignment.Center
 
-	-- view --------------------------------------------------------------------
 	local relayout
 
 	local function setView(lo, hi)
@@ -4477,7 +4447,6 @@ function UI.flamegraph(parent, position, size, options)
 		end
 	end
 
-	-- boxes -------------------------------------------------------------------
 	local function newBox(index)
 		local box = {}
 
@@ -4546,7 +4515,6 @@ function UI.flamegraph(parent, position, size, options)
 		return ticks[index]
 	end
 
-	-- layout ------------------------------------------------------------------
 	relayout = function()
 		if destroyed then
 			return
@@ -4563,7 +4531,6 @@ function UI.flamegraph(parent, position, size, options)
 		local lo, hi = viewLo * span, viewHi * span
 		local scale = width / (hi - lo)
 
-		-- ruler + grid
 		local tickCount = math.clamp(math.floor(width / 90) + 1, 3, MAX_TICKS - 2)
 		local step = niceStep(hi - lo, tickCount)
 		local value = math.ceil(lo / step - 1e-9) * step
@@ -4595,7 +4562,6 @@ function UI.flamegraph(parent, position, size, options)
 			end
 		end
 
-		-- boxes
 		local maxRows = math.max(math.floor((height - rulerHeight - 4) / rowHeight), 1)
 		local boxesUsed = 0
 
@@ -4638,7 +4604,6 @@ function UI.flamegraph(parent, position, size, options)
 		end
 	end
 
-	-- interaction -------------------------------------------------------------
 	hit.MouseButton1Down:Connect(function(x, y)
 		lastMouse = Vector2.new(x, y)
 
@@ -4728,7 +4693,6 @@ function UI.flamegraph(parent, position, size, options)
 		end)
 	end)
 
-	-- API ---------------------------------------------------------------------
 	function controller:SetData(zones)
 		local items, rows, maxEnd = analyze(zones or {})
 
@@ -5092,10 +5056,11 @@ function UI.window(name, position, size, title, options)
 	local tabs = options.tabs or {}
 	local hasTabs = #tabs > 0
 
-	local headerHeight = options.headerHeight or (hasTabs and 30 or UI.metrics.windowHeader)
+	local headerHeight = options.headerHeight or 30
 	local tabGap = options.tabGap or 2
 	local tabTop = options.tabTop or 4
 	local tabPaddingX = options.tabPaddingX or 12
+	local tabRadius = options.tabRadius or UI.tokens.radius.sm
 
 	local headerColor = options.headerColor or colors.panelRaised
 	local contentColor = options.contentColor or colors.panel
@@ -5132,30 +5097,64 @@ function UI.window(name, position, size, title, options)
 
 	UI.frame(header, UDim2.new(0, 0, 1, -radius), UDim2.new(1, 0, 0, radius), headerColor)
 
-	local accentWidth = options.accentWidth or 3
+	UI.frame(header, UDim2.new(0, 8, 1, -1), UDim2.new(1, -16, 0, 1), colors.border)
 
-	UI.frame(
-		header,
-		UDim2.fromOffset(0, 6),
-		UDim2.fromOffset(accentWidth, headerHeight - 12),
-		options.accentColor or colors.accent,
-		0
-	)
+	local tabHeight = headerHeight - tabTop
+	local titleTab = nil
+	local titleText = tostring(title or name)
 
-	local titleLabel = UI.label(
-		header,
-		title or name,
-		UDim2.fromOffset(titleX, 4),
-		UDim2.new(1, (options.closable and -44 or -20) - (titleX - 10), 0, headerHeight - 7),
-		options.titleSize or UI.tokens.type.body,
-		options.titleColor or colors.text
-	)
+	local titleLabel
 
-	titleLabel.Name = "Title"
+	if not hasTabs then
+		local function titleWidth(text)
+			return options.titleTabWidth or (#text * 7 + tabPaddingX * 2)
+		end
 
-	if hasTabs then
+		titleTab = UI.frame(
+			header,
+			UDim2.fromOffset(titleX, tabTop),
+			UDim2.fromOffset(titleWidth(titleText), tabHeight),
+			contentColor,
+			tabRadius
+		)
+
+		titleTab.Name = "TitleTab"
+
+		local fill = UI.frame(titleTab, UDim2.new(0, 0, 1, -tabRadius), UDim2.new(1, 0, 0, tabRadius), contentColor, 0)
+		fill.Name = "BottomFill"
+
+		titleLabel = UI.label(
+			titleTab,
+			titleText,
+			UDim2.fromOffset(0, 0),
+			UDim2.fromScale(1, 1),
+			options.titleSize or UI.tokens.type.small,
+			options.titleColor or colors.text
+		)
+
+		titleLabel.TextXAlignment = Enum.TextXAlignment.Center
+		titleLabel.TextYAlignment = Enum.TextYAlignment.Center
+
+		if options.tabAccentColor then
+			local accent = UI.frame(
+				titleTab,
+				UDim2.fromOffset(tabRadius + 2, 0),
+				UDim2.new(1, -(tabRadius + 2) * 2, 0, 2),
+				options.tabAccentColor,
+				1
+			)
+			accent.Name = "ActiveAccent"
+		end
+
+		titleLabel:GetPropertyChangedSignal("Text"):Connect(function()
+			titleTab.Size = UDim2.fromOffset(titleWidth(titleLabel.Text), tabHeight)
+		end)
+	else
+		titleLabel = UI.label(header, titleText, UDim2.fromOffset(titleX, 0), UDim2.fromOffset(0, 0), 12, colors.text)
 		titleLabel.Visible = false
 	end
+
+	titleLabel.Name = "Title"
 
 	local closeButton = nil
 
@@ -5285,8 +5284,6 @@ function UI.window(name, position, size, title, options)
 		end)
 	end
 
-	UI.frame(header, UDim2.new(0, 8, 1, -1), UDim2.new(1, -16, 0, 1), colors.border)
-
 	local tabButtons = {}
 	local pages = {}
 	local selectedTab = nil
@@ -5297,10 +5294,6 @@ function UI.window(name, position, size, title, options)
 
 	content.Name = "Content"
 	content.ClipsDescendants = true
-
-	if not hasTabs then
-		UI.frame(content, UDim2.fromOffset(0, 0), UDim2.new(1, 0, 0, 1), colors.border)
-	end
 
 	local controller = {}
 
@@ -5337,7 +5330,10 @@ function UI.window(name, position, size, title, options)
 			data.button.BackgroundTransparency = active and 0 or 1
 
 			data.fill.Visible = active
-			data.accent.Visible = active
+
+			if data.accent then
+				data.accent.Visible = active
+			end
 
 			data.label.TextColor3 = active and (options.activeTabTextColor or colors.text)
 				or (options.inactiveTabTextColor or colors.muted)
@@ -5378,8 +5374,6 @@ function UI.window(name, position, size, title, options)
 
 	if hasTabs then
 		local x = titleX
-		local tabHeight = headerHeight - tabTop
-		local tabRadius = options.tabRadius or UI.tokens.radius.sm
 
 		for index, tab in ipairs(tabs) do
 			local tabName = getTabName(tab)
@@ -5435,17 +5429,20 @@ function UI.window(name, position, size, title, options)
 			fill.ZIndex = button.ZIndex
 			label.ZIndex = button.ZIndex + 1
 
-			-- small accent line on top of the active tab
-			local accent = UI.frame(
-				button,
-				UDim2.fromOffset(tabRadius + 2, 0),
-				UDim2.new(1, -(tabRadius + 2) * 2, 0, 2),
-				options.tabAccentColor or colors.accent,
-				1
-			)
-			accent.Name = "ActiveAccent"
-			accent.Visible = false
-			accent.ZIndex = button.ZIndex + 1
+			local accent = nil
+
+			if options.tabAccentColor then
+				accent = UI.frame(
+					button,
+					UDim2.fromOffset(tabRadius + 2, 0),
+					UDim2.new(1, -(tabRadius + 2) * 2, 0, 2),
+					options.tabAccentColor,
+					1
+				)
+				accent.Name = "ActiveAccent"
+				accent.Visible = false
+				accent.ZIndex = button.ZIndex + 1
+			end
 
 			button.MouseEnter:Connect(function()
 				if selectedTab ~= tabName then
@@ -5492,6 +5489,7 @@ function UI.window(name, position, size, title, options)
 		header,
 		{
 			title = titleLabel,
+			titleTab = titleTab,
 			closeButton = closeButton,
 			dragHandle = dragHandle,
 			border = border,
@@ -7048,7 +7046,6 @@ function UI.buttonList(parent, position, size, buttons, options)
 		return width
 	end
 
-	-- Auto width (vertical) = widest row
 	local function computeAutoWidth(list)
 		local widest = 0
 		for _, config in ipairs(list or {}) do
