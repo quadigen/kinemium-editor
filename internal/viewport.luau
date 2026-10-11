@@ -157,9 +157,7 @@ local settingsBtn = UI.iconButton(
 	iconRoot .. "Settings.svg",
 	UDim2.fromOffset(60, 1),
 	UDim2.fromOffset(28, 21),
-	function()
-		print("hello world")
-	end,
+	function() end,
 	{
 		color = tokens.color.surfaceAlt,
 		radius = tokens.radius.xs,
@@ -177,7 +175,12 @@ frame.BackgroundTransparency = 0.5
 frame.Name = "PlaytestSettings"
 frame.Size = UDim2.new(0, 140, 0, 200)
 frame.BackgroundColor3 = colors.input
+frame.Visible = false
 frame.Parent = rootOverlay
+
+settingsBtn.MouseButton1Click:Connect(function()
+	frame.Visible = not frame.Visible
+end)
 
 UI.corner(frame, tokens.radius.sm)
 UI.backdrop(frame)
