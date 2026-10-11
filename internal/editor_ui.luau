@@ -5061,6 +5061,7 @@ function UI.window(name, position, size, title, options)
 	local tabTop = options.tabTop or 4
 	local tabPaddingX = options.tabPaddingX or 12
 	local tabRadius = options.tabRadius or UI.tokens.radius.sm
+	local tabSpeed = options.tabSpeed or 18
 
 	local headerColor = options.headerColor or colors.panelRaised
 	local contentColor = options.contentColor or colors.panel
@@ -5100,28 +5101,53 @@ function UI.window(name, position, size, title, options)
 	UI.frame(header, UDim2.new(0, 8, 1, -1), UDim2.new(1, -16, 0, 1), colors.border)
 
 	local tabHeight = headerHeight - tabTop
+	local activeTabColor = options.activeTabColor or contentColor
+	local inactiveTabColor = options.inactiveTabColor or headerColor
+	local tabHoverColor = options.tabHoverColor or colors.hover
+
+	local activeText = options.activeTabTextColor or colors.text
+	local inactiveText = options.inactiveTabTextColor or colors.muted
+
 	local titleTab = nil
 	local titleText = tostring(title or name)
 
 	local titleLabel
+
+	local indicator = nil
+
+	local function makeTabShape(parent, pos, sz, color)
+		local shape = UI.frame(parent, pos, sz, color, tabRadius)
+
+		local fill = UI.frame(shape, UDim2.new(0, 0, 1, -tabRadius), UDim2.new(1, 0, 0, tabRadius), color, 0)
+		fill.Name = "BottomFill"
+
+		if options.tabAccentColor then
+			local accent = UI.frame(
+				shape,
+				UDim2.fromOffset(tabRadius + 2, 0),
+				UDim2.new(1, -(tabRadius + 2) * 2, 0, 2),
+				options.tabAccentColor,
+				1
+			)
+			accent.Name = "ActiveAccent"
+		end
+
+		return shape
+	end
 
 	if not hasTabs then
 		local function titleWidth(text)
 			return options.titleTabWidth or (#text * 7 + tabPaddingX * 2)
 		end
 
-		titleTab = UI.frame(
+		titleTab = makeTabShape(
 			header,
 			UDim2.fromOffset(titleX, tabTop),
 			UDim2.fromOffset(titleWidth(titleText), tabHeight),
-			contentColor,
-			tabRadius
+			activeTabColor
 		)
 
 		titleTab.Name = "TitleTab"
-
-		local fill = UI.frame(titleTab, UDim2.new(0, 0, 1, -tabRadius), UDim2.new(1, 0, 0, tabRadius), contentColor, 0)
-		fill.Name = "BottomFill"
 
 		titleLabel = UI.label(
 			titleTab,
@@ -5135,23 +5161,18 @@ function UI.window(name, position, size, title, options)
 		titleLabel.TextXAlignment = Enum.TextXAlignment.Center
 		titleLabel.TextYAlignment = Enum.TextYAlignment.Center
 
-		if options.tabAccentColor then
-			local accent = UI.frame(
-				titleTab,
-				UDim2.fromOffset(tabRadius + 2, 0),
-				UDim2.new(1, -(tabRadius + 2) * 2, 0, 2),
-				options.tabAccentColor,
-				1
-			)
-			accent.Name = "ActiveAccent"
-		end
-
 		titleLabel:GetPropertyChangedSignal("Text"):Connect(function()
 			titleTab.Size = UDim2.fromOffset(titleWidth(titleLabel.Text), tabHeight)
 		end)
 	else
 		titleLabel = UI.label(header, titleText, UDim2.fromOffset(titleX, 0), UDim2.fromOffset(0, 0), 12, colors.text)
 		titleLabel.Visible = false
+
+		indicator =
+			makeTabShape(header, UDim2.fromOffset(titleX, tabTop), UDim2.fromOffset(0, tabHeight), activeTabColor)
+
+		indicator.Name = "TabIndicator"
+		indicator.Visible = false
 	end
 
 	titleLabel.Name = "Title"
@@ -5313,35 +5334,91 @@ function UI.window(name, position, size, title, options)
 		return tostring(tab)
 	end
 
-	local activeTabColor = options.activeTabColor or contentColor
-	local inactiveTabColor = options.inactiveTabColor or headerColor
-	local tabHoverColor = options.tabHoverColor or colors.hover
+	local anim = {
+		x = titleX,
+		w = 0,
+		running = false,
+		snap = false,
+	}
 
-	local function updateTabs()
+	local function wake()
+		anim.running = true
+	end
+
+	local function step(dt)
+		if not anim.running then
+			return
+		end
+
+		local moving = false
+
 		for tabName, data in pairs(tabButtons) do
 			local active = tabName == selectedTab
 
-			data.record.color = active and activeTabColor or inactiveTabColor
-			data.record.defaultColor = data.record.color
-			data.record.hoverColor = active and activeTabColor or tabHoverColor
-			data.record.defaultHoverColor = data.record.hoverColor
+			local activeTarget = active and 1 or 0
+			local hoverTarget = (data.hovered and not active) and 1 or 0
 
-			data.button.BackgroundColor3 = data.record.color
-			data.button.BackgroundTransparency = active and 0 or 1
-
-			data.fill.Visible = active
-
-			if data.accent then
-				data.accent.Visible = active
+			if anim.snap then
+				data.activeAlpha = activeTarget
+				data.hoverAlpha = hoverTarget
+			else
+				data.activeAlpha = tooltipSmoothTowards(data.activeAlpha, activeTarget, tabSpeed, dt)
+				data.hoverAlpha = tooltipSmoothTowards(data.hoverAlpha, hoverTarget, tabSpeed, dt)
 			end
 
-			data.label.TextColor3 = active and (options.activeTabTextColor or colors.text)
-				or (options.inactiveTabTextColor or colors.muted)
+			if math.abs(data.activeAlpha - activeTarget) < 0.005 then
+				data.activeAlpha = activeTarget
+			else
+				moving = true
+			end
+
+			if math.abs(data.hoverAlpha - hoverTarget) < 0.005 then
+				data.hoverAlpha = hoverTarget
+			else
+				moving = true
+			end
+
+			data.label.TextColor3 = inactiveText:Lerp(activeText, data.activeAlpha)
+			data.button.BackgroundTransparency = 1 - data.hoverAlpha
 		end
 
-		for tabName, page in pairs(pages) do
-			page.Visible = tabName == selectedTab
+		local current = selectedTab and tabButtons[selectedTab]
+
+		if current and indicator then
+			indicator.Visible = true
+
+			if anim.snap then
+				anim.x, anim.w = current.x, current.width
+			else
+				anim.x = tooltipSmoothTowards(anim.x, current.x, tabSpeed, dt)
+				anim.w = tooltipSmoothTowards(anim.w, current.width, tabSpeed, dt)
+			end
+
+			if math.abs(anim.x - current.x) < 0.25 and math.abs(anim.w - current.width) < 0.25 then
+				anim.x, anim.w = current.x, current.width
+			else
+				moving = true
+			end
+
+			indicator.Position = UDim2.fromOffset(anim.x, tabTop)
+			indicator.Size = UDim2.fromOffset(anim.w, tabHeight)
 		end
+
+		anim.snap = false
+		anim.running = moving
+	end
+
+	local heartbeat = nil
+
+	if hasTabs then
+		heartbeat = RunService.Heartbeat:Connect(step)
+
+		panel.Destroying:Connect(function()
+			if heartbeat then
+				heartbeat:Disconnect()
+				heartbeat = nil
+			end
+		end)
 	end
 
 	function controller.selectTab(tabName)
@@ -5357,7 +5434,15 @@ function UI.window(name, position, size, title, options)
 
 		selectedTab = tabName
 
-		updateTabs()
+		for pageName, page in pairs(pages) do
+			page.Visible = pageName == selectedTab
+		end
+
+		if previousTab == nil then
+			anim.snap = true
+		end
+
+		wake()
 
 		if options.onTabChanged then
 			options.onTabChanged(tabName, previousTab, pages[tabName], panel)
@@ -5407,7 +5492,7 @@ function UI.window(name, position, size, title, options)
 					color = inactiveTabColor,
 					hoverColor = tabHoverColor,
 					pressedColor = options.tabPressedColor or colors.pressed,
-					textColor = options.inactiveTabTextColor or colors.muted,
+					textColor = inactiveText,
 					textSize = options.tabTextSize or UI.tokens.type.small,
 					textY = 0,
 					radius = tabRadius,
@@ -5422,48 +5507,29 @@ function UI.window(name, position, size, title, options)
 			label.TextXAlignment = Enum.TextXAlignment.Center
 			label.TextYAlignment = Enum.TextYAlignment.Center
 
-			local fill =
-				UI.frame(button, UDim2.new(0, 0, 1, -tabRadius), UDim2.new(1, 0, 0, tabRadius), activeTabColor, 0)
-			fill.Name = "BottomFill"
-			fill.Visible = false
-			fill.ZIndex = button.ZIndex
-			label.ZIndex = button.ZIndex + 1
-
-			local accent = nil
-
-			if options.tabAccentColor then
-				accent = UI.frame(
-					button,
-					UDim2.fromOffset(tabRadius + 2, 0),
-					UDim2.new(1, -(tabRadius + 2) * 2, 0, 2),
-					options.tabAccentColor,
-					1
-				)
-				accent.Name = "ActiveAccent"
-				accent.Visible = false
-				accent.ZIndex = button.ZIndex + 1
-			end
-
-			button.MouseEnter:Connect(function()
-				if selectedTab ~= tabName then
-					button.BackgroundTransparency = 0
-				end
-			end)
-
-			button.MouseLeave:Connect(function()
-				if selectedTab ~= tabName then
-					button.BackgroundTransparency = 1
-				end
-			end)
-
-			tabButtons[tabName] = {
+			local data = {
 				button = button,
 				label = label,
 				record = record,
-				fill = fill,
-				accent = accent,
 				index = index,
+				x = x,
+				width = tabWidth,
+				activeAlpha = 0,
+				hoverAlpha = 0,
+				hovered = false,
 			}
+
+			button.MouseEnter:Connect(function()
+				data.hovered = true
+				wake()
+			end)
+
+			button.MouseLeave:Connect(function()
+				data.hovered = false
+				wake()
+			end)
+
+			tabButtons[tabName] = data
 
 			x += tabWidth + tabGap
 		end
@@ -5475,6 +5541,8 @@ function UI.window(name, position, size, title, options)
 		end
 
 		controller.selectTab(initialTab)
+
+		step(0)
 	end
 
 	local clip = UI.frame(panel, UDim2.fromOffset(0, 0), UDim2.new(1, 0, 1, 0), colors.panel, radius)
@@ -5490,6 +5558,7 @@ function UI.window(name, position, size, title, options)
 		{
 			title = titleLabel,
 			titleTab = titleTab,
+			indicator = indicator,
 			closeButton = closeButton,
 			dragHandle = dragHandle,
 			border = border,
