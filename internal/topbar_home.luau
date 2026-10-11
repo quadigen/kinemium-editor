@@ -4,6 +4,7 @@ if (IsServer or IsClient) or IsPlaytest then
 end
 local viewport = require("@internal/viewport")
 local UI = require("@internal/editor_ui")
+local terrain_editor = require("@internal/terrain_editor")
 local tokens = UI.tokens
 
 local function selectedPart()
@@ -201,7 +202,9 @@ return {
 			name = [[Terrain Editor]],
 			width = 80,
 			icon = "Terrain.svg",
-			callback = function() end,
+			callback = function()
+				terrain_editor.Toggle()
+			end,
 		},
 		{
 			type = "separator",

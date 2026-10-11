@@ -85,6 +85,7 @@ gui.Parent = game.CoreGui
 local panel, content = UI.window("Terrain", UDim2.fromOffset(40, 40), UDim2.fromOffset(320, 480), "Terrain", {
 	closable = true,
 })
+panel.Visible = false
 panel.ClipsDescendants = true
 panel.Parent = gui
 
@@ -567,6 +568,7 @@ local function makePreview(className, partShape)
 	end
 
 	local highlight = Instance.new("Highlight")
+	highlight.OutlineTransparency = 1
 	highlight.Parent = part
 
 	return { part = part, highlight = highlight }
@@ -668,9 +670,9 @@ UserInputService.InputBegan:Connect(function(input, processed)
 		scaleBrush(1.25)
 	elseif input.KeyCode == Enum.KeyCode.LeftBracket then
 		scaleBrush(0.8)
-	elseif input.KeyCode == Enum.KeyCode.Q then
+	elseif input.KeyCode == Enum.KeyCode.C then
 		rotateBrush(-15)
-	elseif input.KeyCode == Enum.KeyCode.E then
+	elseif input.KeyCode == Enum.KeyCode.V then
 		rotateBrush(15)
 	end
 end)
@@ -722,3 +724,22 @@ RunService.RenderStepped:Connect(function()
 		end
 	end
 end)
+
+painting = false
+
+return {
+	Enable = function()
+		panel.Visible = true
+		painting = true
+	end,
+
+	Disable = function()
+		panel.Visible = false
+		painting = false
+	end,
+
+	Toggle = function()
+		panel.Visible = not panel.Visible
+		painting = not painting
+	end,
+}
