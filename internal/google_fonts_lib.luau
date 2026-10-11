@@ -17,7 +17,7 @@ local panel, content = UI.window(
 )
 
 content.BackgroundTransparency = 1
-panel.Visible = false
+panel.Visible = true
 panel.BackgroundTransparency = 0.5
 panel.ClipsDescendants = true
 panel.Parent = gui
@@ -66,6 +66,7 @@ local success, result = pcall(GetAllFonts)
 if success then
 	print(`Loaded {#result} font families`)
 
+	print(result)
 	local json = HttpService:JSONEncode(result)
 	print(json)
 else
