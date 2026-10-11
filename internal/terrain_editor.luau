@@ -11,15 +11,8 @@ local colors = UI.tokens.color
 local VOXEL = 4
 local MAX_SIZE = 512
 local MAX_HISTORY = 60
--- Which side of the wedge is tall for Paint mode (+1 = +Z, -1 = -Z).
--- Flip this if painted wedges come out mirrored compared to FillWedge.
 local WEDGE_TALL_SIDE = 1
 
------------------------------------------------------------------- materials
-
------------------------------------------------------------------- materials
-
--- Hardcoded list. Display name -> Enum.Material item.
 local MATERIAL_LIST = {
 	{ "Grass", Enum.Material.Grass },
 	{ "LeafyGrass", Enum.Material.LeafyGrass },
@@ -57,8 +50,6 @@ for _, name in ipairs(materialNames) do
 	table.insert(sourceNames, name)
 end
 
------------------------------------------------------------------- state
-
 local cfg = {
 	mode = "Add", -- Add | Subtract | Paint
 	shape = "Ball", -- Ball | Block | Cylinder | Wedge
@@ -94,6 +85,7 @@ gui.Parent = game.CoreGui
 local panel, content = UI.window("Terrain", UDim2.fromOffset(40, 40), UDim2.fromOffset(320, 480), "Terrain", {
 	closable = true,
 })
+panel.ClipsDescendants = true
 panel.Parent = gui
 
 local scroller = Instance.new("ScrollingFrame")
@@ -103,6 +95,7 @@ scroller.Size = UDim2.fromScale(1, 1)
 scroller.CanvasSize = UDim2.new(0, 0, 0, 0)
 scroller.AutomaticCanvasSize = Enum.AutomaticSize.Y
 scroller.ScrollBarThickness = 5
+scroller.ClipsDescendants = true
 scroller.Parent = content
 
 local layout = Instance.new("UIListLayout")
@@ -111,7 +104,7 @@ layout.SortOrder = Enum.SortOrder.LayoutOrder
 layout.Padding = UDim.new(0, 2)
 layout.Parent = scroller
 
-local padding = Instance.new("UIPadding") -- UIListLayout has no PaddingTop/Left/etc.
+local padding = Instance.new("UIPadding")
 padding.PaddingTop = UDim.new(0, 8)
 padding.PaddingBottom = UDim.new(0, 8)
 padding.PaddingLeft = UDim.new(0, 6)
@@ -127,6 +120,7 @@ end
 
 local function section(text)
 	local header = UI.sectionHeader(scroller, text)
+	header.BackgroundTransparency = 1
 	return place(header)
 end
 
@@ -593,8 +587,6 @@ refreshPreviewStyle = function()
 end
 
 refreshPreviewStyle()
-
------------------------------------------------------------------- input
 
 local function overUI()
 	local point = Vector2.new(mouse.X, mouse.Y)
