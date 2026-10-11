@@ -32,11 +32,11 @@ layout1.PaddingLeft = UDim.new(0, 10)
 layout1.PaddingRight = UDim.new(0, 10)
 layout1.Parent = content
 
-UI.property(content, "Name", UDim2.fromOffset(0, 0), nil, "Part", function(v)
+UI.property(scroller, "Name", UDim2.fromOffset(0, 0), nil, "Part", function(v)
 	print("Name:", v)
 end)
 
-local _, tint = UI.property(content, "Tint", UDim2.fromOffset(0, 44), nil, nil, function(color)
+local _, tint = UI.property(scroller, "Tint", UDim2.fromOffset(0, 44), nil, nil, function(color)
 	print("Color picked:", color)
 end, {
 	custom = function(holder, ctrl, colors)
