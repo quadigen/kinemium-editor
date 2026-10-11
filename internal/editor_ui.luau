@@ -1636,7 +1636,7 @@ function UI.property(parent, text, position, size, value, callback, options)
 	local textSize = options.textSize or UI.tokens.type.small
 	local innerHeight = rowHeight - 2
 
-	local row = UI.frame(
+	local row: Frame = UI.frame(
 		parent,
 		position or UDim2.fromOffset(0, 0),
 		size or UDim2.new(1, 0, 0, rowHeight),
@@ -1644,6 +1644,7 @@ function UI.property(parent, text, position, size, value, callback, options)
 		options.radius or 0
 	)
 
+	row.ClipsDescendants = false
 	row.Name = options.name or "Property"
 	row.BackgroundTransparency = options.transparent and 1 or 0
 
