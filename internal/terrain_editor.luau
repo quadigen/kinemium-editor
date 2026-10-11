@@ -30,7 +30,7 @@ layout1.PaddingBottom = UDim.new(0, 10)
 layout1.PaddingTop = UDim.new(0, 10)
 layout1.PaddingLeft = UDim.new(0, 10)
 layout1.PaddingRight = UDim.new(0, 10)
-layout1.Parent = content
+layout1.Parent = scroller
 
 UI.property(scroller, "Name", UDim2.fromOffset(0, 0), nil, "Part", function(v)
 	print("Name:", v)
