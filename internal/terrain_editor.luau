@@ -120,7 +120,7 @@ end
 
 local function section(text)
 	local header = UI.sectionHeader(scroller, text)
-	header.BackgroundTransparency = 1
+	UI.corner(header, 5)
 	return place(header)
 end
 
