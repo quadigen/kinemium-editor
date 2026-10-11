@@ -75,9 +75,17 @@ layout.Parent = scroller
 local function MakeFontItem(font)
 	local frame = Instance.new("TextButton")
 	frame.Size = UDim2.new(1, 0, 0, 30)
-	frame.Text = font
+	frame.TextTransparency = 1
 	frame.BackgroundTransparency = 1
 	frame.Parent = scroller
+
+	local label = Instance.new("TextLabel")
+	label.BackgroundTransparency = 1
+	label.Size = UDim2.new(1, 0, 1, 0)
+	label.TextXAlignment = Enum.TextXAlignment.Center
+	label.TextYAlignment = Enum.TextYAlignment.Center
+	label.Text = font
+	label.Parent = frame
 end
 
 local i = 0
