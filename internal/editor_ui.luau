@@ -5084,7 +5084,6 @@ function UI.window(name, position, size, title, options)
 
 	local colors = UI.tokens.color
 	local radius = options.radius or UI.tokens.radius.md
-	local headerHeight = options.headerHeight or UI.metrics.windowHeader
 	local draggable = options.draggable ~= false
 	local gripSize = 10
 	local gripOffset = 6
@@ -5093,10 +5092,13 @@ function UI.window(name, position, size, title, options)
 	local tabs = options.tabs or {}
 	local hasTabs = #tabs > 0
 
-	local tabHeight = hasTabs and (options.tabHeight or 30) or 0
-	local tabPadding = options.tabPadding or 8
-	local tabGap = options.tabGap or 4
-	local defaultTabWidth = options.tabWidth or 100
+	local headerHeight = options.headerHeight or (hasTabs and 30 or UI.metrics.windowHeader)
+	local tabGap = options.tabGap or 2
+	local tabTop = options.tabTop or 4
+	local tabPaddingX = options.tabPaddingX or 12
+
+	local headerColor = options.headerColor or colors.panelRaised
+	local contentColor = options.contentColor or colors.panel
 
 	local panel = UI.frame(UI.root(), position, size, colors.panel, radius)
 
@@ -5123,18 +5125,12 @@ function UI.window(name, position, size, title, options)
 		options.borderTransparency or 0.35
 	)
 
-	local header = UI.frame(
-		panel,
-		UDim2.fromOffset(0, 0),
-		UDim2.new(1, 0, 0, headerHeight),
-		options.headerColor or colors.panelRaised,
-		0
-	)
+	local header = UI.frame(panel, UDim2.fromOffset(0, 0), UDim2.new(1, 0, 0, headerHeight), headerColor, 0)
 
 	header.Name = "Header"
 	header.ClipsDescendants = true
 
-	UI.frame(header, UDim2.new(0, 0, 1, -radius), UDim2.new(1, 0, 0, radius), options.headerColor or colors.panelRaised)
+	UI.frame(header, UDim2.new(0, 0, 1, -radius), UDim2.new(1, 0, 0, radius), headerColor)
 
 	local accentWidth = options.accentWidth or 3
 
@@ -5157,13 +5153,17 @@ function UI.window(name, position, size, title, options)
 
 	titleLabel.Name = "Title"
 
+	if hasTabs then
+		titleLabel.Visible = false
+	end
+
 	local closeButton = nil
 
 	if options.closable then
 		closeButton = UI.iconButton(
 			header,
 			options.closeIcon or "builtin://global-icons/x.svg",
-			UDim2.new(1, -27, 0, 4),
+			UDim2.new(1, -27, 0.5, -math.floor(19 / 2)),
 			UDim2.fromOffset(22, 19),
 			function()
 				if options.onClose then
@@ -5173,7 +5173,7 @@ function UI.window(name, position, size, title, options)
 				end
 			end,
 			{
-				color = colors.panelRaised,
+				color = headerColor,
 				hoverColor = options.closeHoverColor or colors.hover,
 				pressedColor = colors.pressed,
 				iconSize = 11,
@@ -5189,11 +5189,11 @@ function UI.window(name, position, size, title, options)
 		dragHandle = UI.iconButton(
 			header,
 			options.gripIcon or "builtin://global-icons/grip.svg",
-			UDim2.fromOffset(gripOffset, 4),
+			UDim2.new(0, gripOffset, 0.5, -math.floor(19 / 2)),
 			UDim2.fromOffset(gripSize, 19),
 			function() end,
 			{
-				color = options.headerColor or colors.panelRaised,
+				color = headerColor,
 				hoverColor = colors.hover,
 				pressedColor = colors.pressed,
 				iconSize = 11,
@@ -5250,7 +5250,6 @@ function UI.window(name, position, size, title, options)
 				local newX = startPos.X.Offset + (mouse.X - dragStartX)
 				local newY = startPos.Y.Offset + (mouse.Y - dragStartY)
 
-				-- clamp only if the engine exposes sizes
 				local root = UI.root()
 				local rootSize = root and root.AbsoluteSize
 				local panelSize = panel.AbsoluteSize
@@ -5288,38 +5287,20 @@ function UI.window(name, position, size, title, options)
 
 	UI.frame(header, UDim2.new(0, 8, 1, -1), UDim2.new(1, -16, 0, 1), colors.border)
 
-	local tabBar = nil
 	local tabButtons = {}
 	local pages = {}
 	local selectedTab = nil
 
-	if hasTabs then
-		tabBar = UI.frame(
-			panel,
-			UDim2.fromOffset(0, headerHeight),
-			UDim2.new(1, 0, 0, tabHeight),
-			options.tabBarColor or colors.panelRaised
-		)
+	local contentY = headerHeight
 
-		tabBar.Name = "TabBar"
-		tabBar.ClipsDescendants = true
-
-		UI.frame(tabBar, UDim2.new(0, 0, 1, -1), UDim2.new(1, 0, 0, 1), colors.border)
-	end
-
-	local contentY = headerHeight + tabHeight
-
-	local content = UI.frame(
-		panel,
-		UDim2.fromOffset(0, contentY),
-		UDim2.new(1, 0, 1, -contentY),
-		options.contentColor or colors.panel
-	)
+	local content = UI.frame(panel, UDim2.fromOffset(0, contentY), UDim2.new(1, 0, 1, -contentY), contentColor)
 
 	content.Name = "Content"
 	content.ClipsDescendants = true
 
-	UI.frame(content, UDim2.fromOffset(0, 0), UDim2.new(1, 0, 0, 1), colors.border)
+	if not hasTabs then
+		UI.frame(content, UDim2.fromOffset(0, 0), UDim2.new(1, 0, 0, 1), colors.border)
+	end
 
 	local controller = {}
 
@@ -5339,28 +5320,27 @@ function UI.window(name, position, size, title, options)
 		return tostring(tab)
 	end
 
+	local activeTabColor = options.activeTabColor or contentColor
+	local inactiveTabColor = options.inactiveTabColor or headerColor
+	local tabHoverColor = options.tabHoverColor or colors.hover
+
 	local function updateTabs()
 		for tabName, data in pairs(tabButtons) do
 			local active = tabName == selectedTab
 
-			if data.record then
-				if data.record.SetColor then
-					data.record:SetColor(
-						active and (options.activeTabColor or colors.surface)
-							or (options.inactiveTabColor or colors.panelRaised)
-					)
-				end
-			end
+			data.record.color = active and activeTabColor or inactiveTabColor
+			data.record.defaultColor = data.record.color
+			data.record.hoverColor = active and activeTabColor or tabHoverColor
+			data.record.defaultHoverColor = data.record.hoverColor
 
-			if data.button then
-				data.button.BackgroundColor3 = active and (options.activeTabColor or colors.surface)
-					or (options.inactiveTabColor or colors.panelRaised)
-			end
+			data.button.BackgroundColor3 = data.record.color
+			data.button.BackgroundTransparency = active and 0 or 1
 
-			if data.label then
-				data.label.TextColor3 = active and (options.activeTabTextColor or colors.text)
-					or (options.inactiveTabTextColor or colors.muted)
-			end
+			data.fill.Visible = active
+			data.accent.Visible = active
+
+			data.label.TextColor3 = active and (options.activeTabTextColor or colors.text)
+				or (options.inactiveTabTextColor or colors.muted)
 		end
 
 		for tabName, page in pairs(pages) do
@@ -5397,20 +5377,21 @@ function UI.window(name, position, size, title, options)
 	end
 
 	if hasTabs then
-		local x = tabPadding
+		local x = titleX
+		local tabHeight = headerHeight - tabTop
+		local tabRadius = options.tabRadius or UI.tokens.radius.sm
 
 		for index, tab in ipairs(tabs) do
 			local tabName = getTabName(tab)
 			local tabText = getTabText(tab)
 
-			local tabWidth = defaultTabWidth
-
+			local tabWidth = options.tabWidth
 			if type(tab) == "table" and tab.width then
 				tabWidth = tab.width
 			end
+			tabWidth = tabWidth or (#tabText * 7 + tabPaddingX * 2)
 
-			local page =
-				UI.frame(content, UDim2.fromOffset(0, 0), UDim2.new(1, 0, 1, 0), options.contentColor or colors.panel)
+			local page = UI.frame(content, UDim2.fromOffset(0, 0), UDim2.new(1, 0, 1, 0), contentColor)
 
 			page.Name = tabName
 			page.Visible = false
@@ -5418,34 +5399,72 @@ function UI.window(name, position, size, title, options)
 
 			pages[tabName] = page
 
-			local button
-			local label
-			local record
+			local button, label, record
 
 			button, label, record = UI.button(
-				tabBar,
+				header,
 				tabText,
-				UDim2.fromOffset(x, 3),
-				UDim2.fromOffset(tabWidth, tabHeight - 7),
+				UDim2.fromOffset(x, tabTop),
+				UDim2.fromOffset(tabWidth, tabHeight),
 				function()
 					controller.selectTab(tabName)
 				end,
 				{
-					color = options.inactiveTabColor or colors.panelRaised,
-					hoverColor = options.tabHoverColor or colors.hover,
+					color = inactiveTabColor,
+					hoverColor = tabHoverColor,
 					pressedColor = options.tabPressedColor or colors.pressed,
-					textColor = options.inactiveTabTextColor or colors.textDimmed,
-					radius = options.tabRadius or UI.tokens.radius.sm,
+					textColor = options.inactiveTabTextColor or colors.muted,
+					textSize = options.tabTextSize or UI.tokens.type.small,
+					textY = 0,
+					radius = tabRadius,
 					border = false,
+					paddingX = tabPaddingX,
 				}
 			)
 
 			button.Name = tabName .. "Tab"
+			button.BackgroundTransparency = 1
+
+			label.TextXAlignment = Enum.TextXAlignment.Center
+			label.TextYAlignment = Enum.TextYAlignment.Center
+
+			local fill =
+				UI.frame(button, UDim2.new(0, 0, 1, -tabRadius), UDim2.new(1, 0, 0, tabRadius), activeTabColor, 0)
+			fill.Name = "BottomFill"
+			fill.Visible = false
+			fill.ZIndex = button.ZIndex
+			label.ZIndex = button.ZIndex + 1
+
+			-- small accent line on top of the active tab
+			local accent = UI.frame(
+				button,
+				UDim2.fromOffset(tabRadius + 2, 0),
+				UDim2.new(1, -(tabRadius + 2) * 2, 0, 2),
+				options.tabAccentColor or colors.accent,
+				1
+			)
+			accent.Name = "ActiveAccent"
+			accent.Visible = false
+			accent.ZIndex = button.ZIndex + 1
+
+			button.MouseEnter:Connect(function()
+				if selectedTab ~= tabName then
+					button.BackgroundTransparency = 0
+				end
+			end)
+
+			button.MouseLeave:Connect(function()
+				if selectedTab ~= tabName then
+					button.BackgroundTransparency = 1
+				end
+			end)
 
 			tabButtons[tabName] = {
 				button = button,
 				label = label,
 				record = record,
+				fill = fill,
+				accent = accent,
 				index = index,
 			}
 
@@ -5478,7 +5497,7 @@ function UI.window(name, position, size, title, options)
 			border = border,
 			clip = clip,
 
-			tabBar = tabBar,
+			tabBar = nil,
 			tabs = tabButtons,
 			pages = pages,
 
