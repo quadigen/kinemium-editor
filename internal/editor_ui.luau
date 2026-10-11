@@ -1643,6 +1643,7 @@ function UI.property(parent, text, position, size, value, callback, options)
 		options.color or colors.panel,
 		options.radius or 0
 	)
+	row.BackgroundTransparency = 1
 
 	row.ClipsDescendants = false
 	row.Name = options.name or "Property"
@@ -5141,7 +5142,7 @@ function UI.window(name, position, size, title, options)
 		UDim2.fromOffset(0, 6),
 		UDim2.fromOffset(accentWidth, headerHeight - 12),
 		options.accentColor or colors.accent,
-		1
+		0
 	)
 
 	local titleLabel = UI.label(

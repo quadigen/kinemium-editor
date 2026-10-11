@@ -83,6 +83,7 @@ gui.Parent = game.CoreGui
 local panel, content = UI.window("Terrain", UDim2.fromOffset(120, 120), UDim2.fromOffset(320, 480), "Terrain", {
 	closable = true,
 })
+content.BackgroundTransparency = 1
 panel.Visible = false
 panel.BackgroundTransparency = 0.5
 panel.ClipsDescendants = true
@@ -220,8 +221,6 @@ local function hexToColor(text)
 
 	return nil
 end
-
------------------------------------------------------------------- brush math
 
 local function brushDims()
 	if cfg.shape == "Ball" then
