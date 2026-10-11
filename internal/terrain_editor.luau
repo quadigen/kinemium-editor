@@ -75,8 +75,6 @@ local strokeId = 0
 local painting = false
 local lastPos, lastTime = nil, 0
 
------------------------------------------------------------------- window
-
 local gui = Instance.new("ScreenGui")
 gui.Name = "TerrainEditor"
 gui.RenderOnTop = true
@@ -86,8 +84,11 @@ local panel, content = UI.window("Terrain", UDim2.fromOffset(120, 120), UDim2.fr
 	closable = true,
 })
 panel.Visible = false
+panel.BackgroundTransparency = 0.5
 panel.ClipsDescendants = true
 panel.Parent = gui
+
+UI.backdrop(panel, 5)
 
 local scroller = Instance.new("ScrollingFrame")
 scroller.BackgroundTransparency = 1
