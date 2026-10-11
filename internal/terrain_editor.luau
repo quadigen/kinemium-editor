@@ -11,6 +11,8 @@ terrain_highlight.Transparency = 0.5
 terrain_highlight.Color = Color3.new(0, 0.701961, 1)
 terrain_highlight.Parent = workspace
 
+mouse.TargetFilter = terrain_highlight
+
 RunService.RenderStepped:Connect(function(a0: number)
 	if mouse.Hit then
 		terrain_highlight.Position = mouse.Hit.Position
