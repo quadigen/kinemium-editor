@@ -581,7 +581,7 @@ end
 previews.Ball = makePreview("Part", Enum.PartType.Ball)
 previews.Block = makePreview("Part", Enum.PartType.Block)
 previews.Cylinder = makePreview("Part", Enum.PartType.Cylinder)
-previews.Wedge = makePreview("WedgePart")
+previews.Wedge = makePreview("Part", Enum.PartType.Wedge)
 
 refreshPreviewStyle = function()
 	for _, p in pairs(previews) do
