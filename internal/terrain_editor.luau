@@ -8,6 +8,7 @@ local radius = 4
 local terrain_highlight = Instance.new("Part")
 terrain_highlight.Size = Vector3.new(radius, radius, radius)
 terrain_highlight.Anchored = true
+terrain_highlight.Shape = Enum.PartType.Ball
 terrain_highlight.Transparency = 1
 terrain_highlight.Color = Color3.new(0, 0.701961, 1)
 terrain_highlight.Parent = workspace
@@ -20,7 +21,6 @@ highlight.Parent = terrain_highlight
 mouse.TargetFilter = terrain_highlight
 
 mouse.Button1Up:Connect(function()
-	print("hi")
 	local center = terrain_highlight.CFrame.Position
 	terrain:FillBall(center, radius, Enum.Material.Grass)
 end)
