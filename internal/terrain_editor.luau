@@ -23,20 +23,45 @@ scroller.BackgroundTransparency = 1
 scroller.Size = UDim2.new(1, 0, 1, 0)
 scroller.Parent = content
 
-local padding = Instance.new("UIPadding")
-padding.PaddingBottom = UDim.new(0, 5)
-padding.PaddingRight = UDim.new(0, 5)
-padding.PaddingLeft = UDim.new(0, 5)
-padding.PaddingTop = UDim.new(0, 5)
-padding.Parent = scroller
-
 local layout1 = Instance.new("UIListLayout")
 layout1.FillDirection = Enum.FillDirection.Vertical
+layout1.PaddingBottom = UDim.new(0, 10)
+layout1.PaddingTop = UDim.new(0, 10)
+layout1.PaddingLeft = UDim.new(0, 10)
+layout1.PaddingRight = UDim.new(0, 10)
 layout1.Parent = content
 
 UI.property(content, "Name", UDim2.fromOffset(0, 0), nil, "Part", function(v)
 	print("Name:", v)
 end)
+
+local _, tint = UI.property(content, "Tint", UDim2.fromOffset(0, 44), nil, nil, function(color)
+	print("Color picked:", color)
+end, {
+	custom = function(holder, ctrl, colors)
+		local current = Color3.new(1, 1, 1)
+
+		local swatch = UI.button(holder, "", UDim2.new(0, 0, 0.5, -10), UDim2.fromOffset(40, 20), function()
+			current = Color3.fromHSV(math.random(), 1, 1)
+			ctrl.custom.swatch.BackgroundColor3 = current
+			ctrl:Fire(current) -- triggers the callback above
+		end, { color = current, border = true })
+
+		return {
+			swatch = swatch,
+			GetValue = function()
+				return current
+			end,
+			SetValue = function(_, c, silent)
+				current = c
+				swatch.BackgroundColor3 = c
+				if not silent then
+					ctrl:Fire(c)
+				end
+			end,
+		}
+	end,
+})
 
 local terrain_highlight = Instance.new("Part")
 terrain_highlight.Size = Vector3.new(radius, radius, radius)
