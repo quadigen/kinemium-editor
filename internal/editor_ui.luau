@@ -253,8 +253,11 @@ function UI.corner(parent, radius)
 	return UI.create("UICorner", { CornerRadius = UDim.new(0, radius or UI.tokens.radius.sm) }, parent)
 end
 
-function UI.backdrop(parent, radius)
-	return UI.create("UIBackdrop", {}, parent)
+function UI.backdrop(parent, radius, TintColor3)
+	return UI.create("UIBackdrop", {
+		TintColor3 = TintColor3,
+		BlurRadius = radius,
+	}, parent)
 end
 
 function UI.stroke(parent, color, thickness, transparency)
@@ -1643,8 +1646,6 @@ function UI.property(parent, text, position, size, value, callback, options)
 		options.color or colors.panel,
 		options.radius or 0
 	)
-	row.BackgroundTransparency = 1
-
 	row.ClipsDescendants = false
 	row.Name = options.name or "Property"
 	row.BackgroundTransparency = options.transparent and 1 or 0

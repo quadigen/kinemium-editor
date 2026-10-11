@@ -89,7 +89,7 @@ panel.BackgroundTransparency = 0.5
 panel.ClipsDescendants = true
 panel.Parent = gui
 
-UI.backdrop(panel, 5)
+UI.backdrop(panel, 15, Color3.new(0, 0, 0))
 
 local scroller = Instance.new("ScrollingFrame")
 scroller.BackgroundTransparency = 1
@@ -130,7 +130,7 @@ end
 local function numberRow(text, value, min, max, decimals, onChanged)
 	local row, ctrl = UI.property(scroller, text, nil, nil, value, function(v)
 		onChanged(v)
-	end, { numeric = true, min = min, max = max, decimals = decimals })
+	end, { numeric = true, min = min, max = max, decimals = decimals, transparent = true })
 
 	return place(row), ctrl
 end
@@ -144,6 +144,7 @@ local function dropdownRow(text, list, initial, onChanged)
 	local row, ctrl = UI.property(scroller, text, nil, nil, initial, function(v)
 		onChanged(v)
 	end, {
+		transparent = true,
 		custom = function(holder, ctrl, c)
 			local innerHeight = UI.metrics.propertyRow - 2
 
@@ -377,8 +378,6 @@ local function applyBrush(cf)
 	end
 end
 
------------------------------------------------------------------- UI rows
-
 local rows = {}
 local radiusCtrl, heightCtrl, sizeCtrl, rotationCtrl
 
@@ -430,6 +429,7 @@ end, {
 	numeric = true,
 	min = 1,
 	max = MAX_SIZE,
+	transparent = true,
 	decimals = 1,
 	prefixColors = { colors.error, colors.success, colors.accent },
 })
@@ -487,6 +487,7 @@ do
 		cfg.previewColor = hexToColor(v) or cfg.previewColor
 		refreshPreviewStyle()
 	end, {
+		transparent = true,
 		validate = function(text)
 			local c = hexToColor(text)
 			if not c then
