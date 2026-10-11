@@ -7,6 +7,7 @@ local export_service = game:GetService("ExportService")
 local dialog = game:GetService("DialogService")
 local util = require("@internal/util")
 local docker = require("@internal/docker")
+local files = require("@internal/files")
 
 local StudioThemeService = game:GetService("StudioThemeService")
 local theme = StudioThemeService.SelectedTheme
@@ -28,6 +29,9 @@ local panel, _, _, pages =
 	})
 
 local content = pages.pages.Explorer
+local filesPage = pages.pages.Files
+
+files(filesPage)
 
 panel.Position =
 	UDim2.new(panel.Position.X.Scale, panel.Position.X.Offset, panel.Position.Y.Scale, panel.Position.Y.Offset)
