@@ -565,8 +565,6 @@ local function makePreview(className, partShape)
 	local part = Instance.new(className)
 	part.Anchored = true
 	part.CanCollide = false
-	part.CanTouch = false
-	part.CanQuery = false
 	part.CastShadow = false
 	part.Transparency = 1
 
