@@ -63,12 +63,29 @@ end
 
 local success, result = pcall(GetAllFonts)
 
+local scroller = Instance.new("ScrollingFrame")
+scroller.BackgroundTransparency = 1
+scroller.Size = UDim2.new(1, 0, 1, 0)
+scroller.Parent = content
+
+local layout = Instance.new("UIListLayout")
+layout.FillDirection = Enum.FillDirection.Horizontal
+layout.Parent = scroller
+
+local function MakeFontItem(font)
+	local frame = Instance.new("TextButton")
+	frame.Size = UDim2.new(1, 0, 0, 30)
+	frame.Text = font
+	frame.BackgroundTransparency = 1
+	frame.Parent = scroller
+end
+
 if success then
 	print(`Loaded {#result} font families`)
 
-	print(result)
-	local json = HttpService:JSONEncode(result)
-	print(json)
+	for _, family in pairs(result) do
+		MakeFontItem(family)
+	end
 else
 	warn(result)
 end
