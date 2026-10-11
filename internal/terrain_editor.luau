@@ -21,7 +21,7 @@ panel.Parent = gui
 
 local scroller = Instance.new("ScrollingFrame")
 scroller.BackgroundTransparency = 1
-scroller.Size = UDim2.new(1, 0, 1, 0)
+scroller.Size = UDim2.new(1, 0, 1, -10)
 scroller.Parent = content
 
 local layout1 = Instance.new("UIListLayout")
@@ -36,7 +36,7 @@ UI.property(scroller, "Name", UDim2.fromOffset(0, 0), nil, "Part", function(v)
 	print("Name:", v)
 end)
 
-local _, tint = UI.property(scroller, "Tint", UDim2.fromOffset(0, 44), nil, nil, function(color)
+local g, tint = UI.property(scroller, "Tint", UDim2.fromOffset(0, 44), nil, nil, function(color)
 	print("Color picked:", color)
 end, {
 	custom = function(holder, ctrl, colors)
@@ -63,6 +63,7 @@ end, {
 		}
 	end,
 })
+g.Parent = scroller
 
 local terrain_highlight = Instance.new("Part")
 terrain_highlight.Size = Vector3.new(radius, radius, radius)
