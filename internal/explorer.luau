@@ -18,8 +18,16 @@ local ReflectionService = game:GetService("ReflectionService")
 local colors = UI.colors
 local tokens = UI.tokens
 
-local panel, content =
-	UI.window("Explorer", theme.ExplorerCoordinates.Position, theme.ExplorerCoordinates.Size, "Explorer")
+local panel, _, _, pages =
+	UI.window("Explorer", theme.ExplorerCoordinates.Position, theme.ExplorerCoordinates.Size, "Explorer", {
+		tabs = {
+			"Explorer",
+			"Files",
+		},
+		selectedTab = "Explorer",
+	})
+
+local content = pages.pages.Explorer
 
 panel.Position =
 	UDim2.new(panel.Position.X.Scale, panel.Position.X.Offset, panel.Position.Y.Scale, panel.Position.Y.Offset)
