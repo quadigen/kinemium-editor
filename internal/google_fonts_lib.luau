@@ -80,10 +80,16 @@ local function MakeFontItem(font)
 	frame.Parent = scroller
 end
 
+local i = 0
+
 if success then
 	print(`Loaded {#result} font families`)
 
 	for _, family in pairs(result) do
+		if i == 100 then
+			break
+		end
+		i += 1
 		MakeFontItem(family)
 	end
 else
