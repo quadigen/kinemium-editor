@@ -17,39 +17,39 @@ local WEDGE_TALL_SIDE = 1
 
 ------------------------------------------------------------------ materials
 
-local TERRAIN_MATERIALS = {
-	"Grass",
-	"LeafyGrass",
-	"Sand",
-	"Sandstone",
-	"Rock",
-	"Basalt",
-	"Slate",
-	"Limestone",
-	"Mud",
-	"Ground",
-	"Snow",
-	"Ice",
-	"Glacier",
-	"Salt",
-	"Concrete",
-	"Pavement",
-	"Asphalt",
-	"Cobblestone",
-	"Brick",
-	"WoodPlanks",
-	"CrackedLava",
-	"Water",
+------------------------------------------------------------------ materials
+
+-- Hardcoded list. Display name -> Enum.Material item.
+local MATERIAL_LIST = {
+	{ "Grass", Enum.Material.Grass },
+	{ "LeafyGrass", Enum.Material.LeafyGrass },
+	{ "Sand", Enum.Material.Sand },
+	{ "Sandstone", Enum.Material.Sandstone },
+	{ "Rock", Enum.Material.Rock },
+	{ "Basalt", Enum.Material.Basalt },
+	{ "Slate", Enum.Material.Slate },
+	{ "Limestone", Enum.Material.Limestone },
+	{ "Mud", Enum.Material.Mud },
+	{ "Ground", Enum.Material.Ground },
+	{ "Snow", Enum.Material.Snow },
+	{ "Ice", Enum.Material.Ice },
+	{ "Glacier", Enum.Material.Glacier },
+	{ "Salt", Enum.Material.Salt },
+	{ "Concrete", Enum.Material.Concrete },
+	{ "Pavement", Enum.Material.Pavement },
+	{ "Asphalt", Enum.Material.Asphalt },
+	{ "Cobblestone", Enum.Material.Cobblestone },
+	{ "Brick", Enum.Material.Brick },
+	{ "WoodPlanks", Enum.Material.WoodPlanks },
+	{ "CrackedLava", Enum.Material.CrackedLava },
+	{ "Water", Enum.Material.Water },
 }
 
 local materialByName = {}
 local materialNames = {}
-for _, name in ipairs(TERRAIN_MATERIALS) do
-	local item = Enum.Material:FromName(name)
-	if item then
-		materialByName[name] = item
-		table.insert(materialNames, name)
-	end
+for _, entry in ipairs(MATERIAL_LIST) do
+	materialByName[entry[1]] = entry[2]
+	table.insert(materialNames, entry[1])
 end
 
 local sourceNames = { "Any" }
