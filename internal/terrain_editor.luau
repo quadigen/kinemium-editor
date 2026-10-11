@@ -70,149 +70,10 @@ local cfg = {
 	previewTransparency = 0.6,
 }
 
------------------------------------------------------------------- noise
-
-local Noise = {}
-Noise.__index = Noise
-
-function Noise.new(seed)
-	local self = setmetatable({}, Noise)
-
-	local state = math.floor(seed) % 4294967296
-	local function nextRandom()
-		state = (state * 1664525 + 1013904223) % 4294967296
-		return state / 4294967296
-	end
-
-	local perm = {}
-	for i = 0, 255 do
-		perm[i] = i
-	end
-	for i = 255, 1, -1 do
-		local j = math.floor(nextRandom() * (i + 1))
-		perm[i], perm[j] = perm[j], perm[i]
-	end
-
-	local p = {}
-	for i = 0, 511 do
-		p[i] = perm[i % 256]
-	end
-
-	self.p = p
-	return self
-end
-
-local function fade(t)
-	return t * t * t * (t * (t * 6 - 15) + 10)
-end
-
-local function lerp(a, b, t)
-	return a + (b - a) * t
-end
-
-local function grad(hash, x, y, z)
-	local h = hash % 16
-	local u = h < 8 and x or y
-	local v = h < 4 and y or ((h == 12 or h == 14) and x or z)
-	return ((h % 2 == 0) and u or -u) + ((h % 4 < 2) and v or -v)
-end
-
--- 3D improved Perlin noise, roughly -1..1
-function Noise:Get(x, y, z)
-	local p = self.p
-
-	local fx, fy, fz = math.floor(x), math.floor(y), math.floor(z)
-	local X, Y, Z = fx % 256, fy % 256, fz % 256
-
-	x, y, z = x - fx, y - fy, z - fz
-
-	local u, v, w = fade(x), fade(y), fade(z)
-
-	local A = p[X] + Y
-	local AA, AB = p[A] + Z, p[A + 1] + Z
-	local B = p[X + 1] + Y
-	local BA, BB = p[B] + Z, p[B + 1] + Z
-
-	return lerp(
-		lerp(
-			lerp(grad(p[AA], x, y, z), grad(p[BA], x - 1, y, z), u),
-			lerp(grad(p[AB], x, y - 1, z), grad(p[BB], x - 1, y - 1, z), u),
-			v
-		),
-		lerp(
-			lerp(grad(p[AA + 1], x, y, z - 1), grad(p[BA + 1], x - 1, y, z - 1), u),
-			lerp(grad(p[AB + 1], x, y - 1, z - 1), grad(p[BB + 1], x - 1, y - 1, z - 1), u),
-			v
-		),
-		w
-	)
-end
-
--- fractal noise, normalized to roughly -1..1. `layer` is a z-offset so each use is independent
-function Noise:Fbm(x, y, layer, octaves, persistence, lacunarity)
-	local sum, amp, freq, norm = 0, 1, 1, 0
-
-	for _ = 1, octaves do
-		sum += self:Get(x * freq, y * freq, layer) * amp
-		norm += amp
-		amp *= persistence
-		freq *= lacunarity
-	end
-
-	return sum / norm
-end
-
--- ridged noise, 0..1, sharp crests (good for mountain ranges)
-function Noise:Ridged(x, y, layer, octaves, persistence, lacunarity)
-	local sum, amp, freq, norm = 0, 1, 1, 0
-
-	for _ = 1, octaves do
-		local n = 1 - math.abs(self:Get(x * freq, y * freq, layer))
-		sum += n * n * amp
-		norm += amp
-		amp *= persistence
-		freq *= lacunarity
-	end
-
-	return sum / norm
-end
-
-local function smoothstep(a, b, x)
-	local t = math.clamp((x - a) / (b - a), 0, 1)
-	return t * t * (3 - 2 * t)
-end
-
 local history = {}
 local strokeId = 0
 local painting = false
 local lastPos, lastTime = nil, 0
-
-local generating = false
-local cancelRequested = false
-local lastWorld = nil
-
-local gen = {
-	seed = 1337,
-	scale = 400, -- feature size in studs
-	octaves = 5,
-	persistence = 0.5,
-	lacunarity = 2,
-	amplitude = 160, -- max height above Base Y
-	sea = 0.14, -- sea level as a fraction of amplitude
-	mountains = 0.7, -- 0 = no mountains, 1 = lots
-	cliff = 0.9, -- slope (rise/run) above which terrain turns to rock
-	baseY = 0,
-	depth = 32, -- solid ground below Base Y
-	areaX = 512,
-	areaZ = 512,
-	centerX = 0,
-	centerZ = 0,
-	biomes = true, -- off = uses the Material dropdown for the surface
-	caves = false,
-	caveSize = 0.08,
-	replace = true, -- off = only adds terrain, never removes existing
-	undoable = true,
-}
 
 local gui = Instance.new("ScreenGui")
 gui.Name = "TerrainEditor"
@@ -437,48 +298,25 @@ local function insideBrush(lp, dims)
 	return (lp.Y + h.Y) <= dims.Y * t
 end
 
-local function trimHistory()
-	local seen, count = {}, 0
-
-	for i = #history, 1, -1 do
-		local id = history[i].id
-
-		if not seen[id] then
-			seen[id] = true
-			count += 1
-
-			if count > MAX_HISTORY then
-				for _ = 1, i do
-					table.remove(history, 1)
-				end
-				break
-			end
-		end
-	end
-end
-
-local function pushRegionHistory(region)
+local function pushHistory(cf, dims)
+	local region = brushRegion(cf, dims)
 	local mats, occs = terrain:ReadVoxels(region, VOXEL)
 
 	table.insert(history, { id = strokeId, region = region, mats = mats, occs = occs })
-	trimHistory()
-end
 
-local function pushHistory(cf, dims)
-	pushRegionHistory(brushRegion(cf, dims))
+	while #history > MAX_HISTORY do
+		table.remove(history, 1)
+	end
 end
 
 local function undo()
-	if generating then
-		return
-	end
-
 	local top = history[#history]
 
 	if not top then
 		return
 	end
 
+	-- one undo reverts a whole stroke
 	while #history > 0 and history[#history].id == top.id do
 		local entry = table.remove(history)
 		terrain:WriteVoxels(entry.region, VOXEL, entry.mats, entry.occs)
@@ -536,269 +374,6 @@ local function applyBrush(cf)
 	else
 		terrain:FillWedge(cf, dims, material)
 	end
-end
-
------------------------------------------------------------------- generator
-
-local statusLabel, progressCtrl
-
-local function setStatus(text)
-	if statusLabel then
-		statusLabel.Text = text
-	end
-end
-
-local Mat = Enum.Material
-
--- returns surface material, subsurface material
-local function pickBiome(h, slope, temp, moist)
-	local above = h - gen.sea
-
-	-- shore + sea floor
-	if above < 0.012 then
-		if above > -0.05 then
-			return Mat.Sand, Mat.Sand
-		end
-		return Mat.Mud, Mat.Rock
-	end
-
-	-- cliffs
-	if slope > gen.cliff then
-		return (h > 0.6) and Mat.Slate or Mat.Rock, Mat.Rock
-	end
-
-	-- high altitude
-	local snowline = 0.7 + (temp - 0.5) * 0.2
-
-	if h > snowline + 0.12 and temp < 0.45 then
-		return Mat.Glacier, Mat.Rock
-	elseif h > snowline then
-		return Mat.Snow, Mat.Rock
-	elseif h > 0.55 then
-		return (moist > 0.5) and Mat.Slate or Mat.Rock, Mat.Rock
-	end
-
-	-- climate biomes
-	if temp < 0.3 then
-		if moist > 0.4 then
-			return Mat.Snow, Mat.Ground -- taiga / snowfield
-		end
-		return Mat.Ground, Mat.Rock -- tundra
-	elseif temp > 0.68 then
-		if moist < 0.35 then
-			return Mat.Sand, Mat.Sandstone -- desert
-		elseif moist < 0.6 then
-			return Mat.Ground, Mat.Mud -- savanna
-		end
-		return Mat.LeafyGrass, Mat.Mud -- jungle
-	end
-
-	if moist > 0.75 and above < 0.08 then
-		return Mat.Mud, Mat.Mud -- swamp
-	elseif moist > 0.55 then
-		return Mat.LeafyGrass, Mat.Ground -- forest
-	end
-
-	return Mat.Grass, Mat.Ground -- plains
-end
-
-local function runGeneration()
-	local noise = Noise.new(gen.seed)
-
-	local inv = 1 / gen.scale
-	local amp = gen.amplitude
-	local seaY = gen.baseY + gen.sea * amp
-
-	local function heightAt(x, z)
-		local nx, nz = x * inv, z * inv
-
-		-- lowlands / ocean basins
-		local base = noise:Fbm(nx, nz, 0.37, gen.octaves, gen.persistence, gen.lacunarity) * 0.5 + 0.5
-		base = math.clamp((base - 0.5) * 1.5 + 0.5, 0, 1)
-
-		-- where mountain ranges are allowed
-		local m = noise:Fbm(nx * 0.5, nz * 0.5, 17.13, 3, 0.5, 2) * 0.5 + 0.5
-		local mask = smoothstep(0.48, 0.72, m) * gen.mountains
-
-		-- the ranges themselves
-		local r = noise:Ridged(nx * 1.2, nz * 1.2, 41.71, gen.octaves, gen.persistence, gen.lacunarity)
-		r = math.clamp((r - 0.45) * 2.2, 0, 1)
-
-		return math.clamp((base ^ 1.4) * 0.5 + mask * r * 0.6, 0, 1)
-	end
-
-	local function climateAt(x, z, h)
-		local t = noise:Fbm(x * inv * 0.35, z * inv * 0.35, 73.29, 3, 0.5, 2) * 0.5 + 0.5
-		t = math.clamp((t - 0.5) * 1.8 + 0.5 - math.max(h - gen.sea, 0) * 0.5, 0, 1)
-
-		local w = noise:Fbm(x * inv * 0.45, z * inv * 0.45, 91.57, 3, 0.5, 2) * 0.5 + 0.5
-		w = math.clamp((w - 0.5) * 1.8 + 0.5, 0, 1)
-
-		return t, w
-	end
-
-	local CHUNK = 16
-
-	local totalX = math.ceil(gen.areaX / VOXEL)
-	local totalZ = math.ceil(gen.areaZ / VOXEL)
-
-	local minX = math.floor((gen.centerX - gen.areaX / 2) / VOXEL) * VOXEL
-	local minZ = math.floor((gen.centerZ - gen.areaZ / 2) / VOXEL) * VOXEL
-	local minY = math.floor((gen.baseY - gen.depth) / VOXEL) * VOXEL
-
-	local totalY = math.ceil((gen.baseY + amp - minY) / VOXEL) + 1
-
-	local totalChunks = math.ceil(totalX / CHUNK) * math.ceil(totalZ / CHUNK)
-	local done = 0
-
-	local caveScale = 1 / 60
-
-	for ox = 0, totalX - 1, CHUNK do
-		for oz = 0, totalZ - 1, CHUNK do
-			if cancelRequested then
-				setStatus("Cancelled")
-				return
-			end
-
-			local cw = math.min(CHUNK, totalX - ox)
-			local cd = math.min(CHUNK, totalZ - oz)
-
-			local rmin = Vector3.new(minX + ox * VOXEL, minY, minZ + oz * VOXEL)
-			local rmax = rmin + Vector3.new(cw * VOXEL, totalY * VOXEL, cd * VOXEL)
-			local region = Region3.new(rmin, rmax)
-
-			if gen.undoable then
-				pushRegionHistory(region)
-			end
-
-			local mats, occs = terrain:ReadVoxels(region, VOXEL)
-			local sz = mats.Size
-			local origin = region.CFrame.Position - region.Size / 2
-
-			-- heights for the chunk plus a 1-column border (for slope)
-			local hs = {}
-			print(mats)
-			print(sz)
-			for ix = 0, sz.X + 1 do
-				local col = {}
-				hs[ix] = col
-
-				local wx = origin.X + (ix - 0.5) * VOXEL
-
-				for iz = 0, sz.Z + 1 do
-					col[iz] = heightAt(wx, origin.Z + (iz - 0.5) * VOXEL)
-				end
-			end
-
-			for ix = 1, sz.X do
-				local wx = origin.X + (ix - 0.5) * VOXEL
-
-				for iz = 1, sz.Z do
-					local wz = origin.Z + (iz - 0.5) * VOXEL
-
-					local h = hs[ix][iz]
-					local surfaceY = gen.baseY + h * amp
-
-					local dx = (hs[ix + 1][iz] - hs[ix - 1][iz]) * amp / (2 * VOXEL)
-					local dz = (hs[ix][iz + 1] - hs[ix][iz - 1]) * amp / (2 * VOXEL)
-					local slope = math.max(math.abs(dx), math.abs(dz))
-
-					local top, sub
-
-					if gen.biomes then
-						local temp, moist = climateAt(wx, wz, h)
-						top, sub = pickBiome(h, slope, temp, moist)
-					else
-						top, sub = cfg.material, Mat.Rock
-					end
-
-					for iy = 1, sz.Y do
-						local yc = origin.Y + (iy - 0.5) * VOXEL
-						local bottom = yc - VOXEL / 2
-
-						local occ = math.clamp((surfaceY - bottom) / VOXEL, 0, 1)
-						local mat = Mat.Air
-
-						if occ > 0 then
-							local depth = surfaceY - yc
-
-							if depth < 3.5 then
-								mat = top
-							elseif depth < 10 then
-								mat = sub
-							elseif depth < 48 then
-								mat = Mat.Rock
-							else
-								mat = Mat.Basalt
-							end
-
-							-- tunnels where two noise fields are both near zero
-							if gen.caves and depth > 8 and yc > minY + 8 then
-								local a = noise:Get(wx * caveScale, yc * caveScale, wz * caveScale)
-								local b = noise:Get(wx * caveScale + 31.4, yc * caveScale + 17.7, wz * caveScale + 53.2)
-
-								if math.abs(a) < gen.caveSize and math.abs(b) < gen.caveSize then
-									occ = 0
-									mat = Mat.Air
-								end
-							end
-						elseif bottom < seaY then
-							occ = math.clamp((seaY - bottom) / VOXEL, 0, 1)
-							mat = Mat.Water
-						end
-
-						if gen.replace or occ > occs[ix][iy][iz] then
-							mats[ix][iy][iz] = mat
-							occs[ix][iy][iz] = occ
-						end
-					end
-				end
-			end
-
-			terrain:WriteVoxels(region, VOXEL, mats, occs)
-
-			done += 1
-
-			if progressCtrl then
-				progressCtrl:SetValue(done / totalChunks)
-			end
-
-			setStatus(string.format("Generating... %d / %d chunks", done, totalChunks))
-
-			RunService.Heartbeat:Wait() -- let the editor breathe
-		end
-	end
-
-	setStatus("Done")
-end
-
-local function startGeneration()
-	if generating then
-		return
-	end
-
-	generating = true
-	cancelRequested = false
-	painting = false
-
-	strokeId += 1 -- the whole generation is one undo step
-
-	setStatus("Starting...")
-
-	if progressCtrl then
-		progressCtrl:SetValue(0)
-	end
-
-	coroutine.wrap(function()
-		local ok, err = pcall(runGeneration)
-
-		generating = false
-
-		if not ok then
-			warn("Terrain generation failed: " .. tostring(err))
-			setStatus("Failed (see output)")
-		end
-	end)()
 end
 
 local rows = {}
@@ -968,126 +543,6 @@ do
 	place(hint)
 end
 
-section("Generator")
-
-local seedCtrl, centerCtrl
-
-do
-	local _
-	_, seedCtrl = numberRow("Seed", gen.seed, 0, 999999, 0, function(v)
-		gen.seed = v
-	end)
-
-	place((UI.button(scroller, "Randomize seed", nil, UDim2.new(1, 0, 0, UI.metrics.buttonHeight), function()
-		gen.seed = math.random(0, 999999)
-		seedCtrl:SetValue(gen.seed, true)
-	end)))
-
-	numberRow("Feature size", gen.scale, 50, 4000, 0, function(v)
-		gen.scale = v
-	end)
-
-	numberRow("Height", gen.amplitude, 16, 1024, 0, function(v)
-		gen.amplitude = v
-	end)
-
-	numberRow("Octaves", gen.octaves, 1, 8, 0, function(v)
-		gen.octaves = math.floor(v)
-	end)
-
-	numberRow("Roughness", gen.persistence, 0.1, 0.9, 2, function(v)
-		gen.persistence = v
-	end)
-
-	numberRow("Sea level", gen.sea, 0, 0.6, 2, function(v)
-		gen.sea = v
-	end)
-
-	numberRow("Mountains", gen.mountains, 0, 1, 2, function(v)
-		gen.mountains = v
-	end)
-
-	numberRow("Cliff slope", gen.cliff, 0.3, 3, 2, function(v)
-		gen.cliff = v
-	end)
-
-	numberRow("Base Y", gen.baseY, -1000, 1000, 0, function(v)
-		gen.baseY = v
-	end)
-
-	numberRow("Ground depth", gen.depth, 8, 512, 0, function(v)
-		gen.depth = v
-	end)
-
-	place((UI.property(scroller, "Area", nil, nil, { gen.areaX, gen.areaZ }, function(v)
-		gen.areaX, gen.areaZ = v[1], v[2]
-	end, {
-		fields = { { prefix = "X" }, { prefix = "Z" } },
-		numeric = true,
-		min = 16,
-		max = 4096,
-		decimals = 0,
-		transparent = true,
-	})))
-
-	local centerRow
-	centerRow, centerCtrl = UI.property(scroller, "Center", nil, nil, { gen.centerX, gen.centerZ }, function(v)
-		gen.centerX, gen.centerZ = v[1], v[2]
-	end, {
-		fields = { { prefix = "X" }, { prefix = "Z" } },
-		numeric = true,
-		decimals = 0,
-		transparent = true,
-	})
-	place(centerRow)
-
-	place((UI.button(scroller, "Center on cursor", nil, UDim2.new(1, 0, 0, UI.metrics.buttonHeight), function()
-		if not lastWorld then
-			return
-		end
-
-		gen.centerX, gen.centerZ = math.floor(lastWorld.X), math.floor(lastWorld.Z)
-		centerCtrl:SetValue({ gen.centerX, gen.centerZ }, true)
-	end)))
-
-	place((UI.checkbox(scroller, "Biomes", nil, gen.biomes, function(v)
-		gen.biomes = v
-	end, { size = UDim2.new(1, 0, 0, UI.metrics.propertyRow) })))
-
-	place((UI.checkbox(scroller, "Caves", nil, gen.caves, function(v)
-		gen.caves = v
-	end, { size = UDim2.new(1, 0, 0, UI.metrics.propertyRow) })))
-
-	numberRow("Cave size", gen.caveSize, 0.02, 0.2, 2, function(v)
-		gen.caveSize = v
-	end)
-
-	place((UI.checkbox(scroller, "Replace existing", nil, gen.replace, function(v)
-		gen.replace = v
-	end, { size = UDim2.new(1, 0, 0, UI.metrics.propertyRow) })))
-
-	place((UI.checkbox(scroller, "Undoable (uses memory)", nil, gen.undoable, function(v)
-		gen.undoable = v
-	end, { size = UDim2.new(1, 0, 0, UI.metrics.propertyRow) })))
-
-	place((UI.button(scroller, "Generate", nil, UDim2.new(1, 0, 0, UI.metrics.buttonHeight), startGeneration, {
-		color = colors.accent,
-		textColor = colors.text,
-	})))
-
-	place((UI.button(scroller, "Cancel", nil, UDim2.new(1, 0, 0, UI.metrics.buttonHeight), function()
-		cancelRequested = true
-	end)))
-
-	local bar
-	bar, progressCtrl = UI.progressBar(scroller, nil, UDim2.new(1, 0, 0, 6), 0)
-	place(bar)
-
-	statusLabel = UI.label(scroller, "Idle", nil, UDim2.new(1, 0, 0, 16), UI.tokens.type.caption, colors.muted)
-	statusLabel.TextXAlignment = Enum.TextXAlignment.Left
-	place(statusLabel)
-end
-
 refreshRows()
 
 ------------------------------------------------------------------ preview parts
@@ -1159,7 +614,7 @@ local function tryApply(cf)
 end
 
 mouse.Button1Down:Connect(function()
-	if generating or not panel.Visible or overUI() then
+	if not panel.Visible or overUI() then
 		return
 	end
 
@@ -1230,10 +685,6 @@ RunService.RenderStepped:Connect(function()
 
 	local cf = visible and brushCFrame() or nil
 	local show = cf ~= nil and cfg.showPreview and not overUI()
-
-	if cf and not overUI() then
-		lastWorld = mouse.Hit.Position
-	end
 
 	for shape, p in pairs(previews) do
 		local active = show and shape == cfg.shape
