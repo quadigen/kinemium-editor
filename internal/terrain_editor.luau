@@ -3,11 +3,14 @@ local UserInputService = game:GetService("UserInputService")
 local mouse: Mouse = UserInputService:GetMouse()
 local RunService = game:GetService("RunService")
 
+local CHEVRON = "builtin://global-icons/chevron-down.svg"
+
 local UI = require("@internal/editor_ui")
 local colors = UI.tokens.color
 local tokens = UI.tokens
 
 local radius = 4
+local material = Enum.Material.Grass
 
 local gui = Instance.new("ScreenGui")
 gui.Name = "TerrainEditor"
@@ -32,38 +35,79 @@ layout1.PaddingLeft = UDim.new(0, 10)
 layout1.PaddingRight = UDim.new(0, 10)
 layout1.Parent = scroller
 
-UI.property(scroller, "Name", UDim2.fromOffset(0, 0), nil, "Part", function(v)
-	print("Name:", v)
+UI.property(scroller, "Name", UDim2.fromOffset(0, 0), nil, "Radius", function(v)
+	radius = tonumber(v)
 end)
 
-local g, tint = UI.property(scroller, "Tint", UDim2.fromOffset(0, 44), nil, nil, function(color)
-	print("Color picked:", color)
+local _, material = UI.property(scroller, "Material", UDim2.fromOffset(0, 66), nil, "Plastic", function(newValue)
+	material = Enum.Material[newValue]
 end, {
 	custom = function(holder, ctrl, colors)
-		local current = Color3.new(1, 1, 1)
+		local innerHeight = UI.metrics.propertyRow - 2
 
-		local swatch = UI.button(holder, "", UDim2.new(0, 0, 0.5, -10), UDim2.fromOffset(40, 20), function()
-			current = Color3.fromHSV(math.random(), 1, 1)
-			ctrl.custom.swatch.BackgroundColor3 = current
-			ctrl:Fire(current) -- triggers the callback above
-		end, { color = current, border = true })
+		local dropOptions = {
+			items = {
+				{ value = "Plastic", label = "Plastic" },
+				{ value = "Wood", label = "Wood" },
+				{ value = "Metal", label = "Metal" },
+				{ value = "Glass", label = "Glass" },
+				{ value = "Neon", label = "Neon" },
+			},
+			menuWidth = 140,
+			showSearch = false,
+
+			menuPosition = function()
+				local button = ctrl.custom.button
+				local p, s = button.AbsolutePosition, button.AbsoluteSize
+				return UDim2.fromOffset(p.X, p.Y + s.Y + 2)
+			end,
+
+			onChanged = function(newValue)
+				ctrl:Fire(newValue) -- runs the property callback
+			end,
+		}
+
+		local button, label, dropdown = UI.dropdown(
+			holder,
+			"Plastic", -- initial value
+			UDim2.new(0, 0, 0.5, -math.floor(innerHeight / 2)),
+			UDim2.new(1, 0, 0, innerHeight),
+			CHEVRON,
+			dropOptions
+		)
+
+		local function syncWidth()
+			local width = button.AbsoluteSize.X
+			if width > 0 then
+				dropOptions.menuWidth = width
+			end
+		end
+
+		syncWidth()
+		button:GetPropertyChangedSignal("AbsoluteSize"):Connect(syncWidth)
 
 		return {
-			swatch = swatch,
+			button = button,
 			GetValue = function()
-				return current
+				return dropdown:GetValue()
 			end,
-			SetValue = function(_, c, silent)
-				current = c
-				swatch.BackgroundColor3 = c
+			SetValue = function(_, newValue, silent)
+				dropdown:SetValue(newValue, true) -- updates label
 				if not silent then
-					ctrl:Fire(c)
+					ctrl:Fire(newValue)
 				end
+			end,
+			SetEnabled = function(_, enabled)
+				dropdown.record.enabled = enabled
+				button.Active = enabled
+				label.TextColor3 = enabled and colors.subtext or colors.muted
+			end,
+			Destroy = function()
+				dropdown:Close()
 			end,
 		}
 	end,
 })
-g.Parent = scroller
 
 local terrain_highlight = Instance.new("Part")
 terrain_highlight.Size = Vector3.new(radius, radius, radius)
@@ -82,11 +126,12 @@ mouse.TargetFilter = terrain_highlight
 
 mouse.Button1Up:Connect(function()
 	local center = terrain_highlight.CFrame.Position
-	terrain:FillBall(center, radius - 2, Enum.Material.Grass)
+	terrain:FillBall(center, radius - 2, material)
 end)
 
 RunService.RenderStepped:Connect(function(a0: number)
 	if mouse.Hit then
+		terrain_highlight.Size = Vector3.new(radius, radius, radius)
 		terrain_highlight.Position = mouse.Hit.Position
 	end
 end)
