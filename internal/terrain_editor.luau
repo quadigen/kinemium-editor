@@ -15,7 +15,8 @@ terrain_highlight.Parent = workspace
 
 mouse.TargetFilter = terrain_highlight
 
-mouse.Button1Down:Connect(function()
+mouse.Button1Up:Connect(function()
+	print("hi")
 	local center = terrain_highlight.CFrame.Position
 	terrain:FillBall(center, radius, Enum.Material.Grass)
 end)
