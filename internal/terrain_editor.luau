@@ -21,7 +21,7 @@ panel.Parent = gui
 
 local scroller = Instance.new("ScrollingFrame")
 scroller.BackgroundTransparency = 1
-scroller.Size = UDim2.new(1, 0, 1, -10)
+scroller.Size = UDim2.new(1, -10, 1, 0)
 scroller.Parent = content
 
 local layout1 = Instance.new("UIListLayout")
