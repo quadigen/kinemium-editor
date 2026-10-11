@@ -132,7 +132,7 @@ mouse.TargetFilter = terrain_highlight
 
 mouse.Button1Up:Connect(function()
 	local center = terrain_highlight.CFrame.Position
-	terrain:FillBall(center, radius - 2, material)
+	terrain:FillBall(center, radius - 2, Enum.Material.Grass)
 end)
 
 RunService.RenderStepped:Connect(function(a0: number)
