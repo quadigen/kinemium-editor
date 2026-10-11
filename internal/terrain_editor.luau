@@ -11,6 +11,7 @@ local radius = 4
 
 local gui = Instance.new("ScreenGui")
 gui.Name = "TerrainEditor"
+gui.RenderOnTop = true
 gui.Parent = game.CoreGui
 
 local panel, content = UI.window("Terrain", UDim2.fromOffset(40, 40), UDim2.fromOffset(400, 240), "Terrain", {
