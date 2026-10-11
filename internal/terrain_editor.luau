@@ -677,7 +677,7 @@ local function runGeneration()
 
 			-- heights for the chunk plus a 1-column border (for slope)
 			local hs = {}
-			print(mats, occs)
+			print(mats)
 			print(sz)
 			for ix = 0, sz.X + 1 do
 				local col = {}
