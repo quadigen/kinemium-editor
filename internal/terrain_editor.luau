@@ -45,7 +45,7 @@ local TERRAIN_MATERIALS = {
 local materialByName = {}
 local materialNames = {}
 for _, name in ipairs(TERRAIN_MATERIALS) do
-	local item = Enum.Material:FromName(name)
+	local item = Enum.Material:fromName(name)
 	if item then
 		materialByName[name] = item
 		table.insert(materialNames, name)
