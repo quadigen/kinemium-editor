@@ -380,7 +380,7 @@ local rows = {}
 local radiusCtrl, heightCtrl, sizeCtrl, rotationCtrl
 
 local function refreshRows()
-	rows.material.Visible = cfg.mode ~= "Subtract"j
+	rows.material.Visible = cfg.mode ~= "Subtract"
 	rows.source.Visible = cfg.mode == "Paint"
 	rows.radius.Visible = cfg.shape == "Ball" or cfg.shape == "Cylinder"
 	rows.height.Visible = cfg.shape == "Cylinder"
