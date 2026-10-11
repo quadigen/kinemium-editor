@@ -94,7 +94,7 @@ UI.backdrop(panel, 15, Color3.new(0, 0, 0))
 local scroller = Instance.new("ScrollingFrame")
 scroller.BackgroundTransparency = 1
 scroller.BorderSizePixel = 0
-scroller.Size = UDim2.fromScale(1, 1)
+scroller.Size = UDim2.new(1, -10, 1, 0)
 scroller.CanvasSize = UDim2.new(0, 0, 0, 0)
 scroller.AutomaticCanvasSize = Enum.AutomaticSize.Y
 scroller.ScrollBarThickness = 5
@@ -297,8 +297,6 @@ local function insideBrush(lp, dims)
 
 	return (lp.Y + h.Y) <= dims.Y * t
 end
-
------------------------------------------------------------------- history
 
 local function pushHistory(cf, dims)
 	local region = brushRegion(cf, dims)

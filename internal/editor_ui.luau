@@ -6752,8 +6752,7 @@ function UI.sectionHeader(parent, text, position, size, options)
 	local colors = UI.tokens.color
 
 	local container =
-		
-UI.frame(parent, position, size or UDim2.new(1, 0, 0, UI.metrics.sectionRow), options.color or colors.surface)
+		UI.frame(parent, position, size or UDim2.new(1, 0, 0, UI.metrics.sectionRow), options.color or colors.surface)
 
 	container.BackgroundTransparency = options.transparent and 1 or 0
 
