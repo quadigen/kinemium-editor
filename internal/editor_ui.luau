@@ -1909,7 +1909,6 @@ function UI.property(parent, text, position, size, value, callback, options)
 			})
 
 		box.Name = "Value"
-		box.TextXAlignment = Enum.TextXAlignment.Left
 
 		local field = { box = box, cell = cell, config = config, current = startText }
 
