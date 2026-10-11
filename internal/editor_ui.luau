@@ -5127,7 +5127,7 @@ function UI.window(name, position, size, title, options)
 		UDim2.fromOffset(0, 0),
 		UDim2.new(1, 0, 0, headerHeight),
 		options.headerColor or colors.panelRaised,
-		radius
+		0
 	)
 
 	header.Name = "Header"
