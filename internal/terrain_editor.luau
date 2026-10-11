@@ -12,6 +12,13 @@ local tokens = UI.tokens
 local radius = 4
 local material = Enum.Material.Grass
 
+local matMap = {
+	["Plastic"] = Enum.Material.Grass,
+	["Wood"] = Enum.Material.Wood,
+	["Glass"] = Enum.Material.Glass,
+	["Neon"] = Enum.Material.Neon,
+}
+
 local gui = Instance.new("ScreenGui")
 gui.Name = "TerrainEditor"
 gui.RenderOnTop = true
@@ -40,7 +47,7 @@ UI.property(scroller, "Name", UDim2.fromOffset(0, 0), nil, "Radius", function(v)
 end)
 
 local _, material = UI.property(scroller, "Material", UDim2.fromOffset(0, 66), nil, "Plastic", function(newValue)
-	material = Enum.Material[newValue]
+	material = matMap[newValue]
 end, {
 	custom = function(holder, ctrl, colors)
 		local innerHeight = UI.metrics.propertyRow - 2
@@ -49,7 +56,6 @@ end, {
 			items = {
 				{ value = "Plastic", label = "Plastic" },
 				{ value = "Wood", label = "Wood" },
-				{ value = "Metal", label = "Metal" },
 				{ value = "Glass", label = "Glass" },
 				{ value = "Neon", label = "Neon" },
 			},
