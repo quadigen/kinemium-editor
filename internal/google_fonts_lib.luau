@@ -23,8 +23,6 @@ local function Get(url, userAgent)
 		},
 	})
 
-	print(response)
-
 	if not response.Success then
 		error(`HTTP {response.StatusCode} for {url}`)
 	end
