@@ -223,12 +223,19 @@ local function MakeFontItem(entry, order)
 	local row = Instance.new("TextButton")
 	row.Size = UDim2.new(1, 0, 0, ROW_HEIGHT)
 	row.LayoutOrder = order
-	row.BackgroundTransparency = 0.95
+	row.BackgroundTransparency = 1
+	row.TextTransparency = 1
 	row.Text = entry.family
 	row.TextColor3 = TEXT_COLOR
 	row.TextSize = 14
 	row.TextXAlignment = Enum.TextXAlignment.Left
 	row.Parent = scroller
+
+	local label = Instance.new("TextLabel")
+	label.Size = UDim2.new(1, 0, 1, 0)
+	label.BackgroundTransparency = 1
+	label.Text = entry.family
+	label.Parent = row
 
 	row.MouseButton1Click:Connect(function()
 		Select(entry.family)
