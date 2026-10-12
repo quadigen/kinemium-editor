@@ -107,6 +107,7 @@ local function createWindow(title, onGone)
 		{
 			tabs = { "Viewer" },
 			selectedTab = "Viewer",
+			closable = true,
 		}
 	)
 
