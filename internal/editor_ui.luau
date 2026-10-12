@@ -6077,6 +6077,9 @@ function UI.window(name, position, size, title, options)
 
 			-- Move the page content to new window
 			local newPanel, newContent, newHeader, newController = newWindow
+			if not newController then
+				return
+			end
 			local newPage = sourcePage:Clone()
 			newPage.Parent = newContent
 			newPage.Name = tabName
