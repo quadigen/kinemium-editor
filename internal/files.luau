@@ -100,23 +100,23 @@ return function(content, windowControls)
 	local rebuilding = false
 	local lastHash = ""
 
-local rowRegistry = {}
-local visibleRows = {}
-local rowIndex = 0
+	local rowRegistry = {}
+	local visibleRows = {}
+	local rowIndex = 0
 
-local wideMode = false
-local wideFolder = nil
-local leftList = nil
-local rightList = nil
-local leftRowRegistry = {}
-local rightRowRegistry = {}
-local leftVisibleRows = {}
-local rightVisibleRows = {}
-local leftRowIndex = 0
-local rightRowIndex = 0
+	local wideMode = false
+	local wideFolder = nil
+	local leftList = nil
+	local rightList = nil
+	local leftRowRegistry = {}
+	local rightRowRegistry = {}
+	local leftVisibleRows = {}
+	local rightVisibleRows = {}
+	local leftRowIndex = 0
+	local rightRowIndex = 0
 
-local drag = nil
-local dragLayer = nil
+	local drag = nil
+	local dragLayer = nil
 
 	local openContextMenu
 	local closeContextMenu
@@ -271,6 +271,8 @@ local dragLayer = nil
 			return Project:GetProjectEntries(directory)
 		end)
 
+		print(ok, entries)
+
 		if not ok or type(entries) ~= "table" then
 			return nil
 		end
@@ -422,7 +424,7 @@ local dragLayer = nil
 
 	local function clearDropHighlight()
 		-- Clear highlights in both registries
-		for _, registry in pairs({leftRowRegistry, rightRowRegistry, rowRegistry}) do
+		for _, registry in pairs({ leftRowRegistry, rightRowRegistry, rowRegistry }) do
 			for _, registered in pairs(registry) do
 				local row = registered.row
 
@@ -521,7 +523,7 @@ local dragLayer = nil
 
 		tween:Play()
 	end
-local function addRowToPane(pane, entry, depth, y)
+	local function addRowToPane(pane, entry, depth, y)
 		local isSelected = selectedPath == entry.Path
 
 		local rowIndexVar, rowRegistryVar, visibleRowsVar, listVar
@@ -1335,17 +1337,19 @@ local function addRowToPane(pane, entry, depth, y)
 		local mouse = UserInputService:GetMouseLocation()
 
 		-- Check both panes in wide mode, single list otherwise
-		local lists = wideMode and {leftList, rightList} or {list}
+		local lists = wideMode and { leftList, rightList } or { list }
 
 		for _, l in ipairs(lists) do
 			if l and UI.isAlive(l) then
 				local position = l.AbsolutePosition
 				local size = l.AbsoluteSize
 
-				if mouse.X >= position.X
+				if
+					mouse.X >= position.X
 					and mouse.X <= position.X + size.X
 					and mouse.Y >= position.Y
-					and mouse.Y <= position.Y + size.Y then
+					and mouse.Y <= position.Y + size.Y
+				then
 					return true
 				end
 			end
@@ -1355,8 +1359,12 @@ local function addRowToPane(pane, entry, depth, y)
 	end
 
 	local function getRegistryForPane(pane)
-		if pane == "left" then return leftRowRegistry end
-		if pane == "right" then return rightRowRegistry end
+		if pane == "left" then
+			return leftRowRegistry
+		end
+		if pane == "right" then
+			return rightRowRegistry
+		end
 		return rowRegistry
 	end
 
@@ -1534,9 +1542,6 @@ local function addRowToPane(pane, entry, depth, y)
 				commitRename()
 			end
 
-			-- A mouse InputObject carries no meaningful KeyCode. Without this guard
-			-- the click falls through to the keyboard handling below and can match
-			-- Delete/Backspace, destroying the selected file on every click.
 			return
 		end
 
@@ -1772,7 +1777,6 @@ local function addRowToPane(pane, entry, depth, y)
 				UI.corner(list, tokens.radius.md)
 			end
 
-			-- Reset expansion state when switching modes
 			expanded = {}
 			wideFolder = nil
 
@@ -1802,7 +1806,6 @@ local function addRowToPane(pane, entry, depth, y)
 			return
 		end
 
-		-- Hash includes wideFolder in wide mode
 		local hash = treeHash(rootPath) .. "#" .. (selectedPath or "") .. "#" .. (wideMode and (wideFolder or "") or "")
 
 		if hash ~= lastHash then
