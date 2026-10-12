@@ -11,6 +11,7 @@ return function(content)
 			end
 
 			local function BuildTree(directory)
+				print(directory)
 				local entries = Project:GetProjectEntries(directory)
 				local list = {}
 
