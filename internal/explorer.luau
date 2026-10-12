@@ -31,8 +31,6 @@ local panel, _, _, windowControls =
 local content = windowControls.pages.Explorer
 local filesPage = windowControls.pages.Files
 
--- The Files tab shares this window and its own keyboard handling, so both tabs
--- must only react while they are the selected one.
 local function explorerTabActive()
 	return windowControls.getSelectedTab() == "Explorer"
 end
