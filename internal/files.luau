@@ -269,16 +269,6 @@ return function(content, windowControls)
 		return "builtin://icons/File.svg"
 	end
 
-	local function selectedEntry()
-		if selectedPath == nil then
-			return nil
-		end
-
-		local registered = rowRegistry[selectedPath]
-
-		return registered and registered.entry or nil
-	end
-
 	local function targetDirectoryFor(path)
 		if path == nil or path == rootPath then
 			return rootPath
@@ -415,6 +405,19 @@ return function(content, windowControls)
 		return true
 	end
 
+	local function moveEntry(source, target)
+		local ok, moved = pcall(function()
+			return Project:MovePath(source, target)
+		end)
+
+		if ok and moved then
+			expanded[target] = true
+			selectedPath = joinPath(target, nameOf(source))
+
+			lastHash = ""
+		end
+	end
+
 	local function finishDrop(reparent)
 		local source = drag.source
 		local target = drag.target
@@ -423,21 +426,12 @@ return function(content, windowControls)
 		clearDropHighlight()
 
 		if reparent and source ~= nil and target ~= nil and canReparent(source, target) then
-			local ok, moved = pcall(function()
-				return Project:MovePath(source, target)
-			end)
-
-			if ok and moved then
-				expanded[target] = true
-				selectedPath = joinPath(target, nameOf(source))
-
-				lastHash = ""
-			end
+			moveEntry(source, target)
 		end
 	end
 
 	local function animateDrop(reparent)
-		-- Capture the drag now: finishDrop runs from the tween's Completed callback
+		-- Capture the drag now: the move runs from the tween's Completed callback
 		-- ~0.12s later, by which point `drag` may describe a different gesture.
 		local source = drag.source
 		local target = drag.target
@@ -447,16 +441,7 @@ return function(content, windowControls)
 			clearDropHighlight()
 
 			if reparent and source ~= nil and target ~= nil and canReparent(source, target) then
-				local ok, moved = pcall(function()
-					return Project:MovePath(source, target)
-				end)
-
-				if ok and moved then
-					expanded[target] = true
-					selectedPath = joinPath(target, nameOf(source))
-
-					lastHash = ""
-				end
+				moveEntry(source, target)
 			end
 		end
 
@@ -478,11 +463,7 @@ return function(content, windowControls)
 		tween:Play()
 	end
 
-	local addRow
-	local lastClickPath = nil
-	local lastClickTime = 0
-
-	addRow = function(entry, depth, y)
+	local function addRow(entry, depth, y)
 		local isSelected = selectedPath == entry.Path
 
 		rowIndex += 1
@@ -490,27 +471,12 @@ return function(content, windowControls)
 		local rowColor = rowIndex % 2 == 0 and tokens.color.rowEven or tokens.color.rowOdd
 
 		local row = UI.button(list, "", UDim2.fromOffset(1, y), UDim2.new(1, -2, 0, UI.metrics.treeRow), function()
-			-- A second click on the same row inside the double-click window is the
-			-- first half of a double-click, so its toggle is undone before applying
-			-- a single deliberate one.
-			local now = os.clock()
-			local doubleClick = lastClickPath == entry.Path and now - lastClickTime < 0.3
-
-			lastClickPath = entry.Path
-			lastClickTime = now
-
 			selectedPath = entry.Path
 
 			if entryIsDirectory(entry) then
-				if doubleClick then
-					expanded[entry.Path] = not expanded[entry.Path] or nil
-				end
-
 				expanded[entry.Path] = not expanded[entry.Path] or nil
 
 				lastHash = ""
-			elseif doubleClick then
-				viewport.OpenFile(entry.Path, entry.Name)
 			end
 		end, {
 			color = isSelected and colors.selection or rowColor,
@@ -558,6 +524,23 @@ return function(content, windowControls)
 		end)
 
 		row.BackgroundTransparency = isSelected and 0 or 0.12
+
+		-- The engine reports the platform's own multi-click count, so this is the
+		-- same double-click detection the explorer rows use. Single clicks on a
+		-- folder already toggle it, so a double-click only has to open files.
+		row.Activated:Connect(function(_, clickCount)
+			if clickCount ~= 2 then
+				return
+			end
+
+			if entryIsDirectory(entry) then
+				expanded[entry.Path] = not expanded[entry.Path] or nil
+
+				lastHash = ""
+			else
+				viewport.OpenFile(entry.Path, entry.Name)
+			end
+		end)
 
 		rowRegistry[entry.Path] = {
 			row = row,
@@ -813,11 +796,11 @@ return function(content, windowControls)
 			if apply and text ~= nil and text ~= "" and text ~= nameOf(path) then
 				local parent = parentOf(path)
 
-				local ok = pcall(function()
+				local ok, renamed = pcall(function()
 					return Project:RenamePath(path, text)
 				end)
 
-				if ok then
+				if ok and renamed then
 					-- The open document tracked the old path, so it has to go.
 					viewport.CloseFile(path)
 

@@ -19,7 +19,7 @@ local ReflectionService = game:GetService("ReflectionService")
 local colors = UI.colors
 local tokens = UI.tokens
 
-local panel, _, _, pages =
+local panel, _, _, windowControls =
 	UI.window("Explorer", theme.ExplorerCoordinates.Position, theme.ExplorerCoordinates.Size, "Explorer", {
 		tabs = {
 			"Explorer",
@@ -28,10 +28,16 @@ local panel, _, _, pages =
 		selectedTab = "Explorer",
 	})
 
-local content = pages.pages.Explorer
-local filesPage = pages.pages.Files
+local content = windowControls.pages.Explorer
+local filesPage = windowControls.pages.Files
 
-local filesController = files(filesPage)
+-- The Files tab shares this window and its own keyboard handling, so both tabs
+-- must only react while they are the selected one.
+local function explorerTabActive()
+	return windowControls.getSelectedTab() == "Explorer"
+end
+
+local filesController = files(filesPage, windowControls)
 
 panel.Position =
 	UDim2.new(panel.Position.X.Scale, panel.Position.X.Offset, panel.Position.Y.Scale, panel.Position.Y.Offset)
@@ -1149,6 +1155,12 @@ UserInputService.InputBegan:Connect(function(input: InputObject, gameProcessed: 
 	end
 
 	if input.UserInputType ~= Enum.UserInputType.Keyboard then
+		return
+	end
+
+	-- The Files tab registers its own keyboard handling for the same window, so
+	-- only the selected tab may consume keys.
+	if not explorerTabActive() then
 		return
 	end
 

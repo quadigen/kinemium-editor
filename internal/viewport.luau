@@ -491,10 +491,11 @@ renderer.Pool.new("2d", function()
 		for _, document in ipairs(editor.documents) do
 			local instance = document.instance
 
-			if instance == nil or not UI.isAlive(instance) then
+			-- File documents have no instance; they live until they are closed.
+			if instance == nil and document.path == nil or instance ~= nil and not UI.isAlive(instance) then
 				doomed = doomed or {}
 				table.insert(doomed, document)
-			elseif instance.Name ~= document.name then
+			elseif instance ~= nil and instance.Name ~= document.name then
 				document.name = instance.Name
 				relabelled = true
 			end
