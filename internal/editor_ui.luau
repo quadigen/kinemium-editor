@@ -5953,9 +5953,15 @@ function UI.window(name, position, size, title, options)
 
 		local function findTabBarAtPosition(mousePos)
 			-- Check all windows for tab bars under the cursor
+			-- Only windows with tab controllers (created with tabs) can receive tabs
 			print("[TabDrag] findTabBarAtPosition at:", mousePos.X, mousePos.Y)
 			for _, window in pairs(shared.windows) do
 				if window and UI.isAlive(window) and window.Visible then
+					-- Only consider windows that have tab controllers (i.e., were created with tabs)
+					local controller = shared.windowControllers[window]
+					if not controller then
+						continue
+					end
 					local header = window:FindFirstChild("Header")
 					if header then
 						local absPos = header.AbsolutePosition
