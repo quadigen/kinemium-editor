@@ -7,6 +7,7 @@ local gameCategory = require("@internal/topbar_game")
 local projectsCategory = require("@internal/topbar_projects")
 local homeCategory = require("@internal/topbar_home")
 local fileCategory = require("@internal/topbar_file")
+local UICategory = require("@internal/topbar_ui")
 local modelCategory = require("@internal/topbar_model")
 local testCategory = require("@internal/topbar_test")
 local viewCategory = require("@internal/topbar_view")
@@ -76,6 +77,7 @@ local toolbarCategories = {
 	modelCategory,
 	testCategory,
 	viewCategory,
+	UICategory,
 	pluginsCategory,
 }
 
