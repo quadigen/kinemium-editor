@@ -3,7 +3,7 @@ local UI = {}
 local StudioThemeService = game:GetService("StudioThemeService")
 local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
-local shared = { buttons = {}, root = nil, background = nil, windows = {} }
+local shared = { buttons = {}, root = nil, background = nil, windows = {}, windowControllers = {} }
 local MIN_SPAN = 0.0005
 local MAX_TICKS = 16
 
@@ -5961,25 +5961,23 @@ function UI.window(name, position, size, title, options)
 		end
 
 		local function getTabControllerForWindow(window)
-			-- Find the controller data in the window's children
-			-- The controller is returned as the 4th return value of UI.window
-			-- We need to store it somewhere accessible
-			return window:GetAttribute("TabController")
+			return shared.windowControllers[window]
 		end
 
-		-- Store controller on the panel for cross-window access
-		panel:SetAttribute("TabController", {
+		-- Store controller in shared registry for cross-window access
+		local ctrl = {
 			tabs = tabButtons,
 			pages = pages,
 			selectTab = controller.selectTab,
 			getSelectedTab = controller.getSelectedTab,
 			getPage = controller.getPage,
-			tabNames = {}, -- Will be populated below
-		})
+			tabNames = {},
+		}
+		shared.windowControllers[panel] = ctrl
 
 		-- Populate tabNames array for index lookup
 		for i, tab in ipairs(tabs) do
-			panel:GetAttribute("TabController").tabNames[i] = getTabName(tab)
+			ctrl.tabNames[i] = getTabName(tab)
 		end
 
 		-- Add drag handlers to each tab button
@@ -6023,7 +6021,7 @@ function UI.window(name, position, size, title, options)
 
 				if targetWindow and targetWindow ~= panel then
 					-- Drop on another window's tab bar - move tab there
-					local targetController = targetWindow:GetAttribute("TabController")
+					local targetController = getTabControllerForWindow(targetWindow)
 					if targetController then
 						-- Get the page from source
 						local sourcePage = pages[tabName]
@@ -6121,7 +6119,7 @@ function UI.window(name, position, size, title, options)
 			destroyDragGhost()
 
 			if targetWindow and targetWindow ~= panel then
-				local targetController = targetWindow:GetAttribute("TabController")
+				local targetController = getTabControllerForWindow(targetWindow)
 				if targetController then
 					-- Move tab to target window
 					moveTabToWindow(draggingTab.name, targetWindow, targetController)
@@ -6135,6 +6133,7 @@ function UI.window(name, position, size, title, options)
 		end)
 
 		panel.Destroying:Connect(function()
+			shared.windowControllers[panel] = nil
 			if dragConnection then dragConnection:Disconnect() end
 			if endConnection then endConnection:Disconnect() end
 			destroyDragGhost()
