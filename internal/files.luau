@@ -19,6 +19,10 @@ local tokens = UI.tokens
 
 local inset = UI.metrics.panelInset
 
+-- Wide mode layout
+local LEFT_WIDTH = 150
+local TILE_W, TILE_H, TILE_GAP = 76, 84, 6
+
 local fileIcons = {
 	lua = "builtin://icons/Script.svg",
 	luau = "builtin://icons/Script.svg",
@@ -100,10 +104,12 @@ return function(content, windowControls)
 	local rebuilding = false
 	local lastHash = ""
 
+	-- Single pane state
 	local rowRegistry = {}
 	local visibleRows = {}
 	local rowIndex = 0
 
+	-- Wide mode state
 	local wideMode = false
 	local wideFolder = nil
 	local leftList = nil
@@ -114,6 +120,12 @@ return function(content, windowControls)
 	local rightVisibleRows = {}
 	local leftRowIndex = 0
 	local rightRowIndex = 0
+
+	-- Animation state: animateNext is requested by navigation, and consumed by
+	-- the next rebuild so ordinary refreshes (selection changes, file watching)
+	-- don't replay the entrance animation.
+	local animateNext = false
+	local animating = false
 
 	local drag = nil
 	local dragLayer = nil
@@ -133,49 +145,38 @@ return function(content, windowControls)
 		return windowControls.getSelectedTab() == "Files"
 	end
 
-	local searchField =
-		UI.input(content, "Search Files...", UDim2.fromOffset(inset, 6), UDim2.new(1, -42, 0, UI.metrics.inputHeight))
+	-- Safe one-shot tween. Returns the tween, or nil if it couldn't be created
+	-- (destroyed object, unsupported property, ...).
+	local function tween(object, properties, duration, style, direction, delay)
+		if object == nil or not UI.isAlive(object) then
+			return nil
+		end
 
-	local list = UI.create("ScrollingFrame", {
-		Position = UDim2.fromOffset(inset, 36),
-		Size = UDim2.new(1, -inset * 2, 1, -42),
+		local ok, result = pcall(function()
+			local info = TweenInfo.new(
+				duration,
+				style or Enum.EasingStyle.Quad,
+				direction or Enum.EasingDirection.Out,
+				0,
+				false,
+				delay or 0
+			)
 
-		BackgroundColor3 = tokens.color.surface,
-		BackgroundTransparency = 0.5,
-		BorderSizePixel = 0,
+			local created = TweenService:Create(object, info, properties)
 
-		CanvasPosition = Vector2.new(0, 0),
-		CanvasSize = UDim2.new(1, 0, 0, 0),
+			created:Play()
 
-		ScrollingEnabled = true,
+			return created
+		end)
 
-		VirtualizedScrolling = true,
+		if ok then
+			return result
+		end
 
-		ScrollSpeed = 38,
+		return nil
+	end
 
-		SmoothScrollingEnabled = true,
-		ScrollSmoothness = 18,
-
-		ScrollBarThickness = 5,
-		ScrollBarImageColor3 = tokens.color.subtext,
-		ScrollBarImageTransparency = 0.4,
-		ScrollBarAutoHide = true,
-		ScrollBarFadeDelay = 0.45,
-		ScrollBarFadeSpeed = 12,
-		ScrollBarMinimumHandleSize = 24,
-
-		ClipsDescendants = true,
-
-		Active = true,
-		InputSink = true,
-	}, content)
-
-	UI.corner(list, tokens.radius.md)
-
-	-- Wide mode: two-pane layout when explorer width >= output width
-	-- Left pane: folder tree (only directories, click to select wideFolder)
-	-- Right pane: flat children of wideFolder (or root if nil)
-	local function createList(parent, position, size)
+	local function createList(parent, position, size, fadeIn)
 		local l = UI.create("ScrollingFrame", {
 			Position = position,
 			Size = size,
@@ -211,8 +212,20 @@ return function(content, windowControls)
 		}, parent)
 
 		UI.corner(l, tokens.radius.md)
+
+		if fadeIn then
+			l.BackgroundTransparency = 1
+
+			tween(l, { BackgroundTransparency = 0.5 }, 0.22)
+		end
+
 		return l
 	end
+
+	local searchField =
+		UI.input(content, "Search Files...", UDim2.fromOffset(inset, 6), UDim2.new(1, -42, 0, UI.metrics.inputHeight))
+
+	local list = createList(content, UDim2.fromOffset(inset, 36), UDim2.new(1, -inset * 2, 1, -42), false)
 
 	local emptyLabel = UI.label(
 		content,
@@ -271,8 +284,6 @@ return function(content, windowControls)
 			return Project:GetProjectEntries(directory)
 		end)
 
-		print(ok, entries)
-
 		if not ok or type(entries) ~= "table" then
 			return nil
 		end
@@ -305,8 +316,9 @@ return function(content, windowControls)
 		end
 
 		local registered = rowRegistry[path]
-		if wideMode and registered == nil then
-			registered = leftRowRegistry[path] or rightRowRegistry[path]
+
+		if registered == nil and wideMode then
+			registered = rightRowRegistry[path] or leftRowRegistry[path]
 		end
 
 		return registered ~= nil and entryIsDirectory(registered.entry)
@@ -422,17 +434,45 @@ return function(content, windowControls)
 		return table.concat(pieces, "|")
 	end
 
+	-- Switches the grid to another folder and asks the next rebuild to animate.
+	local function navigateTo(path)
+		wideFolder = path
+		animateNext = true
+
+		lastHash = ""
+	end
+
+	local registries = function()
+		return { leftRowRegistry, rightRowRegistry, rowRegistry }
+	end
+
+	-- Highlights (or un-highlights) every row/tile that represents `path`,
+	-- across all registries, with a short colour + transparency tween.
+	local function setDropHighlight(path, on)
+		if path == nil then
+			return
+		end
+
+		for _, registry in ipairs(registries()) do
+			local registered = registry[path]
+
+			if registered ~= nil and UI.isAlive(registered.row) then
+				registered.dropTarget = on
+
+				tween(registered.row, {
+					BackgroundTransparency = on and 0 or registered.baseTransparency,
+					BackgroundColor3 = on and colors.selection or registered.baseColor,
+				}, 0.1)
+			end
+		end
+	end
+
 	local function clearDropHighlight()
-		-- Clear highlights in both registries
-		for _, registry in pairs({ leftRowRegistry, rightRowRegistry, rowRegistry }) do
-			for _, registered in pairs(registry) do
-				local row = registered.row
-
-				if UI.isAlive(row) then
-					row.BackgroundTransparency = registered.baseTransparency
+		for _, registry in ipairs(registries()) do
+			for path, registered in pairs(registry) do
+				if registered.dropTarget then
+					setDropHighlight(path, false)
 				end
-
-				registered.dropTarget = false
 			end
 		end
 	end
@@ -475,6 +515,8 @@ return function(content, windowControls)
 			expanded[target] = true
 			selectedPath = joinPath(target, nameOf(source))
 
+			animateNext = true
+
 			lastHash = ""
 		end
 	end
@@ -513,72 +555,34 @@ return function(content, windowControls)
 
 		local layer = dragLayer
 
-		local tween = TweenService:Create(layer, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
-			BackgroundTransparency = 1,
-		})
+		-- Landing on a target shrinks into it; dropping on nothing just fades.
+		local goal = { BackgroundTransparency = 1 }
 
-		tween.Completed:Once(function()
-			apply()
-		end)
-
-		tween:Play()
-	end
-
-	local function addRowToPane(pane, entry, depth, y)
-		local isSelected = selectedPath == entry.Path
-
-		local rowIndexVar, rowRegistryVar, visibleRowsVar, listVar
-		if pane == "left" then
-			leftRowIndex += 1
-			rowIndexVar = leftRowIndex
-			rowRegistryVar = leftRowRegistry
-			visibleRowsVar = leftVisibleRows
-			listVar = leftList
-		elseif pane == "right" then
-			rightRowIndex += 1
-			rowIndexVar = rightRowIndex
-			rowRegistryVar = rightRowRegistry
-			visibleRowsVar = rightVisibleRows
-			listVar = rightList
-		else -- "single"
-			rowIndex += 1
-			rowIndexVar = rowIndex
-			rowRegistryVar = rowRegistry
-			visibleRowsVar = visibleRows
-			listVar = list
+		if reparent then
+			goal.Size = UDim2.fromOffset(110, UI.metrics.treeRow - 4)
 		end
 
-		local rowColor = rowIndexVar % 2 == 0 and tokens.color.rowEven or tokens.color.rowOdd
+		local played = tween(layer, goal, 0.14, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
 
-		local row = UI.button(listVar, "", UDim2.fromOffset(1, y), UDim2.new(1, -2, 0, UI.metrics.treeRow), function()
-			if pane ~= "left" then
-				selectedPath = entry.Path
-			end
+		if played == nil then
+			apply()
+			return
+		end
 
-			if entryIsDirectory(entry) then
-				if pane == "left" then
-					wideFolder = entry.Path
-				end
-				expanded[entry.Path] = not expanded[entry.Path] or nil
-				lastHash = ""
-			end
-		end, {
-			color = isSelected and colors.selection or rowColor,
+		played.Completed:Once(function()
+			apply()
+		end)
+	end
 
-			hoverColor = isSelected and colors.selection or colors.hover,
-
-			radius = isSelected and tokens.radius.sm or 0,
-
-			border = false,
-		})
-
+	-- Shared mouse behaviour for rows and tiles: context menu + drag start.
+	local function attachRowInput(row, entry, pane)
 		row.InputBegan:Connect(function(input)
 			if input.UserInputType == Enum.UserInputType.MouseButton2 then
 				commitRename()
 				closeContextMenu()
 
-				-- In left pane, don't change selectedPath (tracks right-pane selection)
-				if pane == "right" then
+				-- The folder tree only navigates; selection belongs to the grid.
+				if pane ~= "left" then
 					selectedPath = entry.Path
 				end
 
@@ -606,35 +610,115 @@ return function(content, windowControls)
 				pane = pane,
 			}
 		end)
+	end
 
-		row.BackgroundTransparency = isSelected and 0 or 0.12
-
+	-- Shared double-click behaviour.
+	local function attachActivate(row, entry, pane)
 		row.Activated:Connect(function(_, clickCount)
 			if clickCount ~= 2 then
 				return
 			end
 
+			if not entryIsDirectory(entry) then
+				viewport.OpenFile(entry.Path, entry.Name)
+				return
+			end
+
+			if pane == "left" then
+				-- Single click already navigated; nothing more to do.
+				return
+			end
+
+			if pane == "right" then
+				-- Grid: double-click enters the folder.
+				expanded[wideFolder or rootPath] = true
+
+				navigateTo(entry.Path)
+
+				return
+			end
+
+			expanded[entry.Path] = not expanded[entry.Path] or nil
+
+			lastHash = ""
+		end)
+	end
+
+	-- Rows for the single pane tree and the wide mode folder tree.
+	-- pane: "single" | "left"
+	local function addRowToPane(pane, entry, depth, y)
+		local isSelected
+
+		if pane == "left" then
+			isSelected = (wideFolder or rootPath) == entry.Path
+		else
+			isSelected = selectedPath == entry.Path
+		end
+
+		local rowIndexVar, rowRegistryVar, visibleRowsVar, listVar
+
+		if pane == "left" then
+			leftRowIndex += 1
+			rowIndexVar = leftRowIndex
+			rowRegistryVar = leftRowRegistry
+			visibleRowsVar = leftVisibleRows
+			listVar = leftList
+		else
+			rowIndex += 1
+			rowIndexVar = rowIndex
+			rowRegistryVar = rowRegistry
+			visibleRowsVar = visibleRows
+			listVar = list
+		end
+
+		local rowColor = rowIndexVar % 2 == 0 and tokens.color.rowEven or tokens.color.rowOdd
+
+		local row = UI.button(listVar, "", UDim2.fromOffset(1, y), UDim2.new(1, -2, 0, UI.metrics.treeRow), function()
+			if pane ~= "left" then
+				selectedPath = entry.Path
+			end
+
 			if entryIsDirectory(entry) then
 				if pane == "left" then
-					wideFolder = entry.Path
-					expanded[entry.Path] = not expanded[entry.Path] or nil
+					if (wideFolder or rootPath) == entry.Path then
+						-- Already showing this folder: toggle its children.
+						expanded[entry.Path] = not expanded[entry.Path] or nil
+					else
+						expanded[entry.Path] = true
+
+						navigateTo(entry.Path)
+					end
 				else
 					expanded[entry.Path] = not expanded[entry.Path] or nil
 				end
 
 				lastHash = ""
-			else
-				viewport.OpenFile(entry.Path, entry.Name)
 			end
-		end)
+		end, {
+			color = isSelected and colors.selection or rowColor,
+
+			hoverColor = isSelected and colors.selection or colors.hover,
+
+			radius = isSelected and tokens.radius.sm or 0,
+
+			border = false,
+		})
+
+		attachRowInput(row, entry, pane)
+
+		row.BackgroundTransparency = isSelected and 0 or 0.12
+
+		attachActivate(row, entry, pane)
 
 		rowRegistryVar[entry.Path] = {
 			row = row,
 			entry = entry,
 			depth = depth,
 			y = y,
+			h = UI.metrics.treeRow,
 
 			baseTransparency = row.BackgroundTransparency,
+			baseColor = row.BackgroundColor3,
 			dropTarget = false,
 			pane = pane,
 		}
@@ -668,6 +752,7 @@ return function(content, windowControls)
 
 	local function walkSingle(directory, depth, y)
 		local entries = readEntries(directory)
+
 		if entries == nil then
 			return y
 		end
@@ -685,6 +770,7 @@ return function(content, windowControls)
 		return y
 	end
 
+	-- Folders only, not filtered by search.
 	local function walkLeft(directory, depth, y)
 		local entries = readEntries(directory)
 
@@ -694,7 +780,6 @@ return function(content, windowControls)
 
 		for _, entry in ipairs(entries) do
 			if entryIsDirectory(entry) then
-				-- In left pane, show all directories (not filtered by search)
 				y = addRowToPane("left", entry, depth, y)
 
 				if expanded[entry.Path] then
@@ -706,32 +791,158 @@ return function(content, windowControls)
 		return y
 	end
 
-	local function walkRight(directory, depth, y)
-		local entries = readEntries(directory)
+	-- The tree gets a synthetic root row so you can always navigate back up.
+	local function buildLeft()
+		local rootEntry = {
+			Path = rootPath,
+			Name = nameOf(rootPath),
+			Type = "Directory",
+		}
 
-		if entries == nil then
-			return y
-		end
+		local y = addRowToPane("left", rootEntry, 0, 1)
 
-		for _, entry in ipairs(entries) do
-			if subtreeMatches(entry) then
-				y = addRowToPane("right", entry, depth, y)
-
-				-- In right pane, only expand if filter is active (search mode)
-				if entryIsDirectory(entry) and filter ~= "" and expanded[entry.Path] then
-					y = walkRight(entry.Path, depth + 1, y)
-				end
-			end
+		if expanded[rootPath] then
+			y = walkLeft(rootPath, 1, y)
 		end
 
 		return y
 	end
+
+	-- ---------------------------------------------------------------- grid
+
+	local function gridColumns()
+		local width = rightList and rightList.AbsoluteSize.X or 0
+
+		if width <= 0 then
+			width = content.AbsoluteSize.X - LEFT_WIDTH - inset * 2
+		end
+
+		width -= 10 -- scrollbar room
+
+		return math.max(1, math.floor((width - TILE_GAP) / (TILE_W + TILE_GAP)))
+	end
+
+	local function addTile(entry, index, columns)
+		rightRowIndex += 1
+
+		local isSelected = selectedPath == entry.Path
+
+		local column = (index - 1) % columns
+		local gridRow = math.floor((index - 1) / columns)
+
+		local x = TILE_GAP + column * (TILE_W + TILE_GAP)
+		local y = TILE_GAP + gridRow * (TILE_H + TILE_GAP)
+
+		local finalPosition = UDim2.fromOffset(x, y)
+		local baseTransparency = isSelected and 0 or 0.35
+
+		local tile = UI.button(rightList, "", finalPosition, UDim2.fromOffset(TILE_W, TILE_H), function()
+			selectedPath = entry.Path
+		end, {
+			color = isSelected and colors.selection or tokens.color.rowEven,
+			hoverColor = isSelected and colors.selection or colors.hover,
+			radius = tokens.radius.sm,
+			border = false,
+		})
+
+		tile.BackgroundTransparency = baseTransparency
+
+		attachRowInput(tile, entry, "right")
+		attachActivate(tile, entry, "right")
+
+		rightRowRegistry[entry.Path] = {
+			row = tile,
+			entry = entry,
+			depth = 0,
+			y = y,
+			h = TILE_H,
+
+			baseTransparency = baseTransparency,
+			baseColor = tile.BackgroundColor3,
+			dropTarget = false,
+			pane = "right",
+		}
+
+		rightVisibleRows[#rightVisibleRows + 1] = entry
+
+		local icon = UI.image(tile, iconFor(entry), UDim2.fromOffset((TILE_W - 36) / 2, 8), UDim2.fromOffset(36, 36))
+
+		local label = UI.label(
+			tile,
+			entry.Name,
+			UDim2.fromOffset(2, 48),
+			UDim2.new(1, -4, 0, 32),
+			tokens.type.small,
+			isSelected and tokens.color.text or colors.text
+		)
+
+		pcall(function()
+			label.TextXAlignment = Enum.TextXAlignment.Center
+			label.TextYAlignment = Enum.TextYAlignment.Top
+			label.TextWrapped = true
+			label.TextTruncate = Enum.TextTruncate.AtEnd
+		end)
+
+		-- Entrance: tiles rise and fade in with a short stagger.
+		if animating then
+			local delay = math.min(index - 1, 14) * 0.02
+			local labelBase = 0
+
+			pcall(function()
+				labelBase = label.TextTransparency or 0
+			end)
+
+			pcall(function()
+				tile.BackgroundTransparency = 1
+				tile.Position = UDim2.fromOffset(x, y + 10)
+
+				icon.ImageTransparency = 1
+				label.TextTransparency = 1
+			end)
+
+			tween(tile, {
+				BackgroundTransparency = baseTransparency,
+				Position = finalPosition,
+			}, 0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out, delay)
+
+			tween(icon, { ImageTransparency = 0 }, 0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out, delay)
+
+			tween(label, { TextTransparency = labelBase }, 0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out, delay)
+		end
+
+		return y + TILE_H
+	end
+
+	local function buildGrid(directory)
+		local entries = readEntries(directory)
+
+		if entries == nil then
+			return 0
+		end
+
+		local columns = gridColumns()
+		local index = 0
+		local bottom = 0
+
+		for _, entry in ipairs(entries) do
+			if subtreeMatches(entry) then
+				index += 1
+				bottom = addTile(entry, index, columns)
+			end
+		end
+
+		return bottom == 0 and 0 or bottom + TILE_GAP
+	end
+
+	-- ------------------------------------------------------------- rebuild
 
 	rebuild = function()
 		if rebuilding then
 			return
 		end
 
+		-- A live rename box lives inside a row, so rebuilding would destroy the
+		-- field mid-edit. Defer until the rename finishes.
 		if UI.isAlive(renaming) then
 			pendingRebuild = true
 			return
@@ -739,13 +950,19 @@ return function(content, windowControls)
 
 		rebuilding = true
 
-		local leftFinalY = 0
-		local rightFinalY = 0
+		animating = animateNext
+		animateNext = false
+
+		local isEmpty = false
 
 		if wideMode then
-			-- Wide mode: rebuild both panes
 			local oldLeftCanvasPosition = leftList and leftList.CanvasPosition or Vector2.new(0, 0)
 			local oldRightCanvasPosition = rightList and rightList.CanvasPosition or Vector2.new(0, 0)
+
+			-- Navigating to a new folder starts at the top of the grid.
+			if animating then
+				oldRightCanvasPosition = Vector2.new(0, 0)
+			end
 
 			UI.clear(leftList)
 			UI.clear(rightList)
@@ -759,12 +976,17 @@ return function(content, windowControls)
 			leftVisibleRows = {}
 			rightVisibleRows = {}
 
-			if rootPath ~= nil then
-				leftFinalY = walkLeft(rootPath, 0, 1)
+			local leftFinalY = 0
+			local rightFinalY = 0
 
-				-- Right pane shows flat children of wideFolder (or root if nil)
-				local rightRoot = wideFolder or rootPath
-				rightFinalY = walkRight(rightRoot, 0, 1)
+			if rootPath ~= nil then
+				-- The open folder may have been deleted or moved away.
+				if wideFolder ~= nil and readEntries(wideFolder) == nil then
+					wideFolder = nil
+				end
+
+				leftFinalY = buildLeft()
+				rightFinalY = buildGrid(wideFolder or rootPath)
 			end
 
 			if leftList then
@@ -777,9 +999,10 @@ return function(content, windowControls)
 				rightList.CanvasPosition = oldRightCanvasPosition
 			end
 
-			-- Auto-select first item in right pane if nothing selected or selection invalid
-			if wideMode and #rightVisibleRows > 0 then
+			-- Auto-select first item in the grid if nothing (valid) is selected
+			if #rightVisibleRows > 0 then
 				local selectedInRight = false
+
 				if selectedPath ~= nil then
 					for _, entry in ipairs(rightVisibleRows) do
 						if entry.Path == selectedPath then
@@ -794,9 +1017,11 @@ return function(content, windowControls)
 				end
 			end
 
-			emptyLabel.Visible = rootPath == nil or (leftFinalY <= 1 and rightFinalY <= 1)
+			isEmpty = rightFinalY <= 0
+
+			-- Centre the label over the grid rather than the whole panel.
+			emptyLabel.Position = UDim2.new(0.5, (LEFT_WIDTH + 4) / 2, 0.5, 0)
 		else
-			-- Single pane mode (original behavior)
 			local oldCanvasPosition = list.CanvasPosition
 
 			UI.clear(list)
@@ -817,18 +1042,20 @@ return function(content, windowControls)
 
 			list.CanvasPosition = oldCanvasPosition
 
-			emptyLabel.Visible = rootPath == nil or finalY <= 1
+			isEmpty = finalY <= 1
 
-			-- For empty label text
-			leftFinalY = finalY
-			rightFinalY = 0
+			emptyLabel.Position = UDim2.new(0.5, 0, 0.5, 0)
 		end
+
+		emptyLabel.Visible = rootPath == nil or isEmpty
 
 		if rootPath == nil then
 			emptyLabel.Text = "No active project"
-		elseif (wideMode and leftFinalY <= 1 and rightFinalY <= 1) or (not wideMode and leftFinalY <= 1) then
-			emptyLabel.Text = "This folder is empty"
+		elseif isEmpty then
+			emptyLabel.Text = filter ~= "" and "No matching files" or "This folder is empty"
 		end
+
+		animating = false
 
 		rebuilding = false
 	end
@@ -852,7 +1079,7 @@ return function(content, windowControls)
 	end
 
 	local function deleteEntry(path)
-		if path == nil then
+		if path == nil or path == rootPath then
 			return
 		end
 
@@ -881,13 +1108,18 @@ return function(content, windowControls)
 			selectedPath = nil
 		end
 
+		if wideFolder ~= nil and isSameOrDescendantOf(wideFolder, path) then
+			wideFolder = nil
+			animateNext = true
+		end
+
 		expanded[path] = nil
 
 		lastHash = ""
 	end
 
 	local function duplicateEntry(path)
-		if path == nil then
+		if path == nil or path == rootPath then
 			return
 		end
 
@@ -906,7 +1138,7 @@ return function(content, windowControls)
 	end
 
 	local function copyEntry(path)
-		if path ~= nil then
+		if path ~= nil and path ~= rootPath then
 			clipboard = path
 		end
 	end
@@ -929,7 +1161,7 @@ return function(content, windowControls)
 	end
 
 	beginRename = function(path)
-		if path == nil then
+		if path == nil or path == rootPath then
 			return
 		end
 
@@ -937,23 +1169,35 @@ return function(content, windowControls)
 			return
 		end
 
-		-- Check both registries in wide mode
 		local registered = rowRegistry[path]
-		if wideMode and registered == nil then
-			registered = leftRowRegistry[path] or rightRowRegistry[path]
+
+		if registered == nil and wideMode then
+			registered = rightRowRegistry[path] or leftRowRegistry[path]
 		end
 
 		if registered == nil or not UI.isAlive(registered.row) then
 			return
 		end
 
-		local indent = 7 + registered.depth * 16
+		-- Tiles rename along the bottom; tree rows rename inline.
+		local renamePosition
+		local renameSize
+
+		if registered.pane == "right" then
+			renamePosition = UDim2.fromOffset(2, TILE_H - 26)
+			renameSize = UDim2.new(1, -4, 0, 20)
+		else
+			local indent = 7 + registered.depth * 16
+
+			renamePosition = UDim2.fromOffset(indent + 31, 1)
+			renameSize = UDim2.new(1, -(indent + 36), 0, 18)
+		end
 
 		renaming = UI.input(
 			registered.row,
 			nameOf(path),
-			UDim2.fromOffset(indent + 31, 1),
-			UDim2.new(1, -(indent + 36), 0, 18),
+			renamePosition,
+			renameSize,
 			{ textSize = tokens.type.small, color = tokens.color.input, selectAllOnFocus = true }
 		)
 
@@ -1064,6 +1308,7 @@ return function(content, windowControls)
 		return nil
 	end
 
+	-- Selects the row/tile at `index`, scrolling only if it is out of view.
 	local function selectAndReveal(index)
 		local rows = getVisibleRows()
 		local entry = rows[index]
@@ -1074,16 +1319,29 @@ return function(content, windowControls)
 
 		selectedPath = entry.Path
 
-		local registry = getRowRegistry()
-		local registered = registry[entry.Path]
+		local registered = getRowRegistry()[entry.Path]
+		local l = getList()
 
-		if registered ~= nil then
-			local l = getList()
-			if l then
-				local target = math.max(0, registered.y - l.AbsoluteSize.Y / 2)
+		if registered == nil or l == nil then
+			return
+		end
 
-				l.CanvasPosition = Vector2.new(0, target)
-			end
+		local top = l.CanvasPosition.Y
+		local height = l.AbsoluteSize.Y
+
+		local itemTop = registered.y
+		local itemBottom = itemTop + (registered.h or UI.metrics.treeRow)
+
+		local target = nil
+
+		if itemTop < top then
+			target = math.max(0, itemTop - 4)
+		elseif itemBottom > top + height then
+			target = itemBottom - height + 4
+		end
+
+		if target ~= nil then
+			l.CanvasPosition = Vector2.new(0, target)
 		end
 	end
 
@@ -1093,9 +1351,15 @@ return function(content, windowControls)
 		end
 
 		if isDirectoryPath(path) then
-			expanded[path] = not expanded[path] or nil
+			if wideMode then
+				expanded[wideFolder or rootPath] = true
 
-			lastHash = ""
+				navigateTo(path)
+			else
+				expanded[path] = not expanded[path] or nil
+
+				lastHash = ""
+			end
 
 			rebuild()
 
@@ -1140,6 +1404,11 @@ return function(content, windowControls)
 		expanded[directory] = true
 		selectedPath = created
 
+		-- Make sure the new entry is actually visible in the grid.
+		if wideMode and directory ~= (wideFolder or rootPath) then
+			navigateTo(directory)
+		end
+
 		lastHash = ""
 
 		rebuild()
@@ -1166,7 +1435,15 @@ return function(content, windowControls)
 			return
 		end
 
-		createNamed(targetDirectoryFor(selectedPath), template.name, template.value == "Folder")
+		local directory
+
+		if wideMode then
+			directory = wideFolder or rootPath
+		else
+			directory = targetDirectoryFor(selectedPath)
+		end
+
+		createNamed(directory, template.name, template.value == "Folder")
 	end
 
 	local function importFile(directory)
@@ -1352,103 +1629,97 @@ return function(content, windowControls)
 
 	local DRAG_THRESHOLD = 4
 
+	local function pointInGui(gui, mouse)
+		local position = gui.AbsolutePosition
+		local size = gui.AbsoluteSize
+
+		return mouse.X >= position.X
+			and mouse.X <= position.X + size.X
+			and mouse.Y >= position.Y
+			and mouse.Y <= position.Y + size.Y
+	end
+
 	local function mouseInList()
 		local mouse = UserInputService:GetMouseLocation()
 
-		-- Check both panes in wide mode, single list otherwise
 		local lists = wideMode and { leftList, rightList } or { list }
 
 		for _, l in ipairs(lists) do
-			if l and UI.isAlive(l) then
-				local position = l.AbsolutePosition
-				local size = l.AbsoluteSize
-
-				if
-					mouse.X >= position.X
-					and mouse.X <= position.X + size.X
-					and mouse.Y >= position.Y
-					and mouse.Y <= position.Y + size.Y
-				then
-					return true
-				end
+			if l and UI.isAlive(l) and pointInGui(l, mouse) then
+				return true
 			end
 		end
 
 		return false
 	end
 
-	local function getRegistryForPane(pane)
-		if pane == "left" then
-			return leftRowRegistry
-		end
-		if pane == "right" then
-			return rightRowRegistry
-		end
-		return rowRegistry
-	end
-
 	local function updateDragTarget()
 		local mouse = UserInputService:GetMouseLocation()
-
-		local best = nil
-		local bestDistance = math.huge
 		local source = drag.source
+		local best = nil
 
-		-- Determine which registry to use based on drag pane
-		local registry = getRegistryForPane(drag.pane)
-
-		for path, registered in pairs(registry) do
-			local row = registered.row
-
-			if not UI.isAlive(row) then
-				continue
+		if wideMode then
+			-- Drop onto a folder in either pane, or onto the grid's empty space
+			-- to move into the folder that is currently open.
+			for _, registry in ipairs({ leftRowRegistry, rightRowRegistry }) do
+				for path, registered in pairs(registry) do
+					if
+						entryIsDirectory(registered.entry)
+						and UI.isAlive(registered.row)
+						and pointInGui(registered.row, mouse)
+						and canReparent(source, path)
+					then
+						best = path
+					end
+				end
 			end
 
-			local position = row.AbsolutePosition
-			local size = row.AbsoluteSize
-			local offset = mouse.Y - position.Y
+			if best == nil and rightList ~= nil and UI.isAlive(rightList) and pointInGui(rightList, mouse) then
+				local folder = wideFolder or rootPath
 
-			if offset < -size.Y or offset > size.Y * 2 then
-				continue
+				if canReparent(source, folder) then
+					best = folder
+				end
 			end
+		else
+			local bestDistance = math.huge
 
-			local entry = registered.entry
+			for path, registered in pairs(rowRegistry) do
+				local row = registered.row
 
-			local target = offset > size.Y / 2 and (entryIsDirectory(entry) and path or parentOf(path))
-				or parentOf(path)
+				if not UI.isAlive(row) then
+					continue
+				end
 
-			if target == nil then
-				continue
-			end
+				local size = row.AbsoluteSize
+				local offset = mouse.Y - row.AbsolutePosition.Y
 
-			if not canReparent(source, target) then
-				continue
-			end
+				if offset < -size.Y or offset > size.Y * 2 then
+					continue
+				end
 
-			local distance = math.abs(offset - size.Y / 2)
+				local target = offset > size.Y / 2 and (entryIsDirectory(registered.entry) and path or parentOf(path))
+					or parentOf(path)
 
-			if distance < bestDistance then
-				bestDistance = distance
-				best = target
+				if not canReparent(source, target) then
+					continue
+				end
+
+				local distance = math.abs(offset - size.Y / 2)
+
+				if distance < bestDistance then
+					bestDistance = distance
+					best = target
+				end
 			end
 		end
 
 		if best ~= drag.target then
-			local previous = drag.target and getRegistryForPane(drag.pane)[drag.target]
-
-			if previous ~= nil and UI.isAlive(previous.row) then
-				previous.row.BackgroundTransparency = previous.baseTransparency
-				previous.dropTarget = false
-			end
+			setDropHighlight(drag.target, false)
 
 			drag.target = best
 
-			local registered = best and getRegistryForPane(drag.pane)[best]
-
-			if registered ~= nil and UI.isAlive(registered.row) then
-				registered.row.BackgroundTransparency = 0
-				registered.dropTarget = true
-			end
+			setDropHighlight(best, true)
 		end
 	end
 
@@ -1459,9 +1730,9 @@ return function(content, windowControls)
 
 		dragLayer = UI.create("Frame", {
 			Position = UDim2.fromOffset(drag.startX + 10, drag.startY),
-			Size = UDim2.fromOffset(180, UI.metrics.treeRow),
+			Size = UDim2.fromOffset(150, UI.metrics.treeRow - 4),
 			BackgroundColor3 = colors.selection,
-			BackgroundTransparency = 0.2,
+			BackgroundTransparency = 1,
 			BorderSizePixel = 0,
 			Active = false,
 			ZIndex = 5000,
@@ -1477,6 +1748,12 @@ return function(content, windowControls)
 			tokens.type.small,
 			tokens.color.text
 		)
+
+		-- Pop in: grow and fade up.
+		tween(dragLayer, {
+			BackgroundTransparency = 0.2,
+			Size = UDim2.fromOffset(180, UI.metrics.treeRow),
+		}, 0.12, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
 	end
 
 	local function moveDragVisual()
@@ -1486,8 +1763,8 @@ return function(content, windowControls)
 
 		-- Follow the cursor directly. Tweening the ghost spawned a new TweenService
 		-- tween on every mouse-move, each one stepping the VM for the rest of its
-		-- duration, which made dragging visibly laggy. The drop still animates, so
-		-- the gesture keeps its polish without the per-frame cost.
+		-- duration, which made dragging visibly laggy. The pop-in and drop
+		-- animations are one-shot, so they don't have that cost.
 		local mouse = UserInputService:GetMouseLocation()
 
 		dragLayer.Position = UDim2.fromOffset(mouse.X + 10, mouse.Y)
@@ -1520,7 +1797,10 @@ return function(content, windowControls)
 		if mouseInList() then
 			updateDragTarget()
 		else
-			clearDropHighlight()
+			if drag.target ~= nil then
+				setDropHighlight(drag.target, false)
+			end
+
 			drag.target = nil
 		end
 
@@ -1598,8 +1878,34 @@ return function(content, windowControls)
 
 		local index = selectedPath and rowIndexOf(selectedPath) or nil
 
+		-- Grid navigation: arrows move across tiles, up/down jump a full row.
+		if wideMode then
+			local step = nil
+
+			if input.KeyCode == Enum.KeyCode.Up then
+				step = -gridColumns()
+			elseif input.KeyCode == Enum.KeyCode.Down then
+				step = gridColumns()
+			elseif input.KeyCode == Enum.KeyCode.Left then
+				step = -1
+			elseif input.KeyCode == Enum.KeyCode.Right then
+				step = 1
+			end
+
+			if step ~= nil then
+				local rows = getVisibleRows()
+
+				if #rows > 0 then
+					selectAndReveal(index and math.clamp(index + step, 1, #rows) or 1)
+				end
+
+				return
+			end
+		end
+
 		if input.KeyCode == Enum.KeyCode.Up or input.KeyCode == Enum.KeyCode.Down then
 			local rows = getVisibleRows()
+
 			if #rows == 0 then
 				return
 			end
@@ -1624,6 +1930,7 @@ return function(content, windowControls)
 
 		if input.KeyCode == Enum.KeyCode.End then
 			local rows = getVisibleRows()
+
 			selectAndReveal(#rows)
 			return
 		end
@@ -1684,7 +1991,11 @@ return function(content, windowControls)
 				or UserInputService:IsKeyDown(Enum.KeyCode.RightControl)
 
 			if ctrlDown then
-				pasteEntry(targetDirectoryFor(selectedPath))
+				if wideMode then
+					pasteEntry(wideFolder or rootPath)
+				else
+					pasteEntry(targetDirectoryFor(selectedPath))
+				end
 			end
 
 			return
@@ -1728,76 +2039,54 @@ return function(content, windowControls)
 		-- Detect wide mode: explorer width >= output/console width
 		local explorerWidth = content.AbsoluteSize.X
 		local outputWidth = 0
+
 		if theme.OutputCoordinates and theme.OutputCoordinates.Size then
 			outputWidth = theme.OutputCoordinates.Size.X.Offset
 		end
 
 		local newWideMode = explorerWidth >= outputWidth and outputWidth > 0
 
-		-- If wide mode changed, we need to recreate the UI
+		-- If wide mode changed, recreate the lists
 		if newWideMode ~= wideMode then
 			wideMode = newWideMode
 
-			-- Clean up old lists
 			if wideMode then
-				-- Switching to wide mode: create two panes
 				if list and UI.isAlive(list) then
 					list:Destroy()
 				end
 
-				local halfWidth = UDim2.new(0.5, -inset, 1, -42)
+				leftList = createList(content, UDim2.fromOffset(inset, 36), UDim2.new(0, LEFT_WIDTH, 1, -42), true)
 
-				leftList = createList(content, UDim2.fromOffset(inset, 36), halfWidth)
-
-				rightList = createList(content, UDim2.new(0.5, inset, 0, 36), halfWidth)
+				rightList = createList(
+					content,
+					UDim2.fromOffset(inset + LEFT_WIDTH + 4, 36),
+					UDim2.new(1, -(inset * 2 + LEFT_WIDTH + 4), 1, -42),
+					true
+				)
 			else
-				-- Switching to single pane mode: create single list
 				if leftList and UI.isAlive(leftList) then
 					leftList:Destroy()
 				end
+
 				if rightList and UI.isAlive(rightList) then
 					rightList:Destroy()
 				end
 
-				list = UI.create("ScrollingFrame", {
-					Position = UDim2.fromOffset(inset, 36),
-					Size = UDim2.new(1, -inset * 2, 1, -42),
+				leftList = nil
+				rightList = nil
 
-					BackgroundColor3 = tokens.color.surface,
-					BackgroundTransparency = 0.5,
-					BorderSizePixel = 0,
-
-					CanvasPosition = Vector2.new(0, 0),
-					CanvasSize = UDim2.new(1, 0, 0, 0),
-
-					ScrollingEnabled = true,
-
-					VirtualizedScrolling = true,
-
-					ScrollSpeed = 38,
-
-					SmoothScrollingEnabled = true,
-					ScrollSmoothness = 18,
-
-					ScrollBarThickness = 5,
-					ScrollBarImageColor3 = tokens.color.subtext,
-					ScrollBarImageTransparency = 0.4,
-					ScrollBarAutoHide = true,
-					ScrollBarFadeDelay = 0.45,
-					ScrollBarFadeSpeed = 12,
-					ScrollBarMinimumHandleSize = 24,
-
-					ClipsDescendants = true,
-
-					Active = true,
-					InputSink = true,
-				}, content)
-
-				UI.corner(list, tokens.radius.md)
+				list = createList(content, UDim2.fromOffset(inset, 36), UDim2.new(1, -inset * 2, 1, -42), true)
 			end
 
 			expanded = {}
 			wideFolder = nil
+
+			-- The folder tree starts with the project root open.
+			if wideMode and rootPath ~= nil then
+				expanded[rootPath] = true
+			end
+
+			animateNext = true
 
 			lastHash = ""
 			rebuild()
@@ -1810,6 +2099,10 @@ return function(content, windowControls)
 				loadRoot()
 
 				if rootPath ~= nil then
+					if wideMode then
+						expanded[rootPath] = true
+					end
+
 					lastHash = ""
 
 					rebuild()
@@ -1825,7 +2118,14 @@ return function(content, windowControls)
 			return
 		end
 
-		local hash = treeHash(rootPath) .. "#" .. (selectedPath or "") .. "#" .. (wideMode and (wideFolder or "") or "")
+		-- The grid column count is part of the hash so it reflows on resize.
+		local hash = treeHash(rootPath)
+			.. "#"
+			.. (selectedPath or "")
+			.. "#"
+			.. (wideMode and (wideFolder or "") or "")
+			.. "#"
+			.. (wideMode and gridColumns() or 0)
 
 		if hash ~= lastHash then
 			lastHash = hash
@@ -1841,6 +2141,13 @@ return function(content, windowControls)
 			expanded = {}
 			selectedPath = nil
 			clipboard = nil
+			wideFolder = nil
+
+			if wideMode and rootPath ~= nil then
+				expanded[rootPath] = true
+			end
+
+			animateNext = true
 
 			lastHash = ""
 
