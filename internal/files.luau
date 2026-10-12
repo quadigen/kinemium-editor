@@ -150,6 +150,7 @@ local function openImageViewer(ctx)
 
 	local viewerGui = Instance.new("ScreenGui")
 	viewerGui.RenderOnTop = true
+	viewerGui.Name = "ImageViewer"
 	viewerGui.Parent = game.CoreGui
 
 	local container = UI.create("Frame", {
