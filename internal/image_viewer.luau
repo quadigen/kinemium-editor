@@ -228,6 +228,8 @@ function ImageViewer.Open(ctx)
 		Active = true,
 	}, content)
 
+	canvas.BackgroundTransparency = 1
+
 	UI.corner(canvas, tokens.radius.sm)
 
 	local image = UI.image(canvas, ImageViewer.ImageSource(ctx.Path), UDim2.fromScale(0.5, 0.5), UDim2.fromScale(1, 1))
