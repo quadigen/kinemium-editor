@@ -149,6 +149,8 @@ local function openImageViewer(ctx)
 	}
 
 	local viewerGui = Instance.new("ScreenGui")
+	viewerGui.RenderOnTop = true
+	viewerGui.Parent = game.CoreGui
 
 	local container = UI.create("Frame", {
 		Size = UDim2.fromScale(1, 1),
