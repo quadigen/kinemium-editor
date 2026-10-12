@@ -5921,9 +5921,18 @@ function UI.window(name, position, size, title, options)
 
 			UI.corner(ghost, tabRadius)
 
+			-- Get tab text from the original tabs array using the index
+			local tabText = tabName
+			for _, tab in ipairs(tabs) do
+				if getTabName(tab) == tabName then
+					tabText = getTabText(tab)
+					break
+				end
+			end
+
 			local ghostLabel = UI.label(
 				ghost,
-				getTabText(tabs[index]),
+				tabText,
 				UDim2.fromOffset(0, 0),
 				UDim2.fromScale(1, 1),
 				options.tabTextSize or UI.tokens.type.small,
@@ -5972,6 +5981,24 @@ function UI.window(name, position, size, title, options)
 			getSelectedTab = controller.getSelectedTab,
 			getPage = controller.getPage,
 			tabNames = {},
+			-- Visual options for creating tabs in other windows
+			tabOptions = {
+				tabTop = tabTop,
+				tabHeight = tabHeight,
+				tabGap = tabGap,
+				tabPaddingX = tabPaddingX,
+				tabRadius = tabRadius,
+				tabSpeed = tabSpeed,
+				titleX = titleX,
+				activeTabColor = activeTabColor,
+				inactiveTabColor = inactiveTabColor,
+				tabHoverColor = tabHoverColor,
+				tabPressedColor = options.tabPressedColor or colors.pressed,
+				activeText = activeText,
+				inactiveText = inactiveText,
+				tabTextSize = options.tabTextSize or UI.tokens.type.small,
+				tabWidth = options.tabWidth,
+			},
 		}
 		shared.windowControllers[panel] = ctrl
 
@@ -6154,11 +6181,13 @@ function UI.window(name, position, size, title, options)
 				tabButtons[tabName] = nil
 			end
 
-			-- Add to target - we need to call a method on target controller
-			-- For now, we'll use a simplified approach by accessing target's internal data
+			-- Add to target - use target's visual options
 			local targetTabs = targetController.tabs
 			local targetPages = targetController.pages
 			local targetSelectTab = targetController.selectTab
+			local targetOptions = targetController.tabOptions
+
+			if not targetOptions then return end
 
 			-- Clone the page to target window's content area
 			local targetContent = targetWindow:FindFirstChild("Content")
@@ -6175,34 +6204,34 @@ function UI.window(name, position, size, title, options)
 			local targetHeader = targetWindow:FindFirstChild("Header")
 			if not targetHeader then return end
 
-			-- Calculate position for new tab
+			-- Calculate position for new tab using target's options
 			local tabCount = 0
 			for _ in pairs(targetTabs) do tabCount += 1 end
-			local newX = titleX
+			local newX = targetOptions.titleX
 			for _, tData in pairs(targetTabs) do
-				newX += tData.width + tabGap
+				newX += tData.width + targetOptions.tabGap
 			end
 
-			local tabWidth = options.tabWidth or (#tabName * 7 + tabPaddingX * 2)
+			local tabWidth = targetOptions.tabWidth or (#tabName * 7 + targetOptions.tabPaddingX * 2)
 
 			local button, label, record = UI.button(
 				targetHeader,
 				tabName,
-				UDim2.fromOffset(newX, tabTop),
-				UDim2.fromOffset(tabWidth, tabHeight),
+				UDim2.fromOffset(newX, targetOptions.tabTop),
+				UDim2.fromOffset(tabWidth, targetOptions.tabHeight),
 				function()
 					targetSelectTab(tabName)
 				end,
 				{
-					color = inactiveTabColor,
-					hoverColor = tabHoverColor,
-					pressedColor = options.tabPressedColor or colors.pressed,
-					textColor = inactiveText,
-					textSize = options.tabTextSize or UI.tokens.type.small,
+					color = targetOptions.inactiveTabColor,
+					hoverColor = targetOptions.tabHoverColor,
+					pressedColor = targetOptions.tabPressedColor,
+					textColor = targetOptions.inactiveText,
+					textSize = targetOptions.tabTextSize,
 					textY = 0,
-					radius = tabRadius,
+					radius = targetOptions.tabRadius,
 					border = false,
-					paddingX = tabPaddingX,
+					paddingX = targetOptions.tabPaddingX,
 				}
 			)
 
@@ -6226,12 +6255,12 @@ function UI.window(name, position, size, title, options)
 
 			button.MouseEnter:Connect(function()
 				newData.hovered = true
-				wake()
+				-- Need to wake the target window's animation
+				-- For now, we can't easily call target's wake, but the hover will work
 			end)
 
 			button.MouseLeave:Connect(function()
 				newData.hovered = false
-				wake()
 			end)
 
 			targetTabs[tabName] = newData
