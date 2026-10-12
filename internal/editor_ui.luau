@@ -5954,7 +5954,6 @@ function UI.window(name, position, size, title, options)
 		local function findTabBarAtPosition(mousePos)
 			-- Check all windows for tab bars under the cursor
 			-- Only windows with tab controllers (created with tabs) can receive tabs
-			print("[TabDrag] findTabBarAtPosition at:", mousePos.X, mousePos.Y)
 			for _, window in pairs(shared.windows) do
 				if window and UI.isAlive(window) and window.Visible then
 					-- Only consider windows that have tab controllers (i.e., were created with tabs)
@@ -5966,16 +5965,13 @@ function UI.window(name, position, size, title, options)
 					if header then
 						local absPos = header.AbsolutePosition
 						local absSize = header.AbsoluteSize
-						print("[TabDrag] Checking window:", window.Name, "header pos:", absPos, "size:", absSize)
 						if mousePos.X >= absPos.X and mousePos.X <= absPos.X + absSize.X
 							and mousePos.Y >= absPos.Y and mousePos.Y <= absPos.Y + absSize.Y then
-							print("[TabDrag] HIT window:", window.Name)
 							return window, header
 						end
 					end
 				end
 			end
-			print("[TabDrag] No window hit")
 			return nil, nil
 		end
 
@@ -6027,7 +6023,6 @@ function UI.window(name, position, size, title, options)
 					return
 				end
 
-				print("[TabDrag] InputBegan:", tabName, "button:", button)
 
 				-- Don't start drag if clicking on already selected tab's indicator area
 				local mouse = UserInputService:GetMouseLocation()
@@ -6040,7 +6035,6 @@ function UI.window(name, position, size, title, options)
 					active = false,
 					sourceWindow = panel,
 				}
-				print("[TabDrag] draggingTab set:", draggingTab.name)
 			end)
 		end
 
@@ -6066,7 +6060,6 @@ function UI.window(name, position, size, title, options)
 					return
 				end
 
-				print("[TabDrag] Activating drag for:", draggingTab.name)
 				draggingTab.active = true
 				createDragGhost(draggingTab.name, draggingTab.data)
 			end
@@ -6078,7 +6071,6 @@ function UI.window(name, position, size, title, options)
 			-- Visual feedback on target window
 			local targetWindow, targetHeader = findTabBarAtPosition(mouse)
 			if targetWindow then
-				print("[TabDrag] Over target window:", targetWindow.Name)
 			end
 			for _, window in pairs(shared.windows) do
 				if window and UI.isAlive(window) then
@@ -6100,7 +6092,6 @@ function UI.window(name, position, size, title, options)
 				return
 			end
 
-			print("[TabDrag] Global InputEnded, draggingTab:", draggingTab and draggingTab.name, "active:", draggingTab and draggingTab.active)
 
 			if not draggingTab then
 				return
@@ -6117,7 +6108,6 @@ function UI.window(name, position, size, title, options)
 			end
 
 			if not draggingTab.active then
-				print("[TabDrag] Was not active, cancelling")
 				draggingTab = nil
 				return
 			end
@@ -6126,23 +6116,18 @@ function UI.window(name, position, size, title, options)
 			local mouse = UserInputService:GetMouseLocation()
 			local targetWindow, targetHeader = findTabBarAtPosition(mouse)
 
-			print("[TabDrag] Drop - targetWindow:", targetWindow and targetWindow.Name, "source panel:", panel.Name)
 
 			destroyDragGhost()
 
 			if targetWindow and targetWindow ~= panel then
 				local targetController = getTabControllerForWindow(targetWindow)
 				if targetController then
-					print("[TabDrag] Moving tab to window:", targetWindow.Name)
 					moveTabToWindow(draggingTab.name, targetWindow, targetController)
 				else
-					print("[TabDrag] No target controller found for:", targetWindow.Name)
 				end
 			elseif targetWindow == nil then
-				print("[TabDrag] Creating tear-off window")
 				createWindowWithTab(draggingTab.name, mouse)
 			else
-				print("[TabDrag] Dropped on same window, ignoring")
 			end
 
 			draggingTab = nil
@@ -6156,14 +6141,11 @@ function UI.window(name, position, size, title, options)
 		end)
 
 		local function moveTabToWindow(tabName, targetWindow, targetController)
-			print("[TabDrag] moveTabToWindow:", tabName, "->", targetWindow.Name)
 			-- Get source page
 			local sourcePage = pages[tabName]
 			if not sourcePage then 
-				print("[TabDrag] No source page for:", tabName)
 				return 
 			end
-			print("[TabDrag] Source page found:", sourcePage.Name)
 
 			-- Remove from source
 			pages[tabName] = nil
@@ -6182,18 +6164,14 @@ function UI.window(name, position, size, title, options)
 			local targetOptions = targetController.tabOptions
 
 			if not targetOptions then 
-				print("[TabDrag] No targetOptions!")
 				return 
 			end
-			print("[TabDrag] Target options found")
 
 			-- Clone the page to target window's content area
 			local targetContent = targetWindow:FindFirstChild("Content")
 			if not targetContent then 
-				print("[TabDrag] No targetContent!")
 				return 
 			end
-			print("[TabDrag] Target content found")
 
 			local newPage = sourcePage:Clone()
 			newPage.Parent = targetContent
@@ -6201,15 +6179,12 @@ function UI.window(name, position, size, title, options)
 			newPage.Visible = false
 
 			targetPages[tabName] = newPage
-			print("[TabDrag] Page cloned and added to target")
 
 			-- Create tab button in target window
 			local targetHeader = targetWindow:FindFirstChild("Header")
 			if not targetHeader then 
-				print("[TabDrag] No targetHeader!")
 				return 
 			end
-			print("[TabDrag] Target header found")
 
 			-- Calculate position for new tab using target's options
 			local tabCount = 0
@@ -6271,14 +6246,12 @@ function UI.window(name, position, size, title, options)
 			end)
 
 			targetTabs[tabName] = newData
-			print("[TabDrag] Tab button created in target")
 
 			-- Update target controller's tabNames
 			targetController.tabNames[#targetController.tabNames + 1] = tabName
 
 			-- Select the new tab
 			targetSelectTab(tabName)
-			print("[TabDrag] Tab selected in target")
 		end
 
 		local function createWindowWithTab(tabName, position)
