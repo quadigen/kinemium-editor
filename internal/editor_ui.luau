@@ -6038,6 +6038,170 @@ function UI.window(name, position, size, title, options)
 			end)
 		end
 
+		-- Tab drag helper functions (must be defined before connections that use them)
+		local function createWindowWithTab(tabName, position)
+			-- Get source page
+			local sourcePage = pages[tabName]
+			if not sourcePage then return end
+
+			-- Remove from source
+			pages[tabName] = nil
+			local sourceButton = tabButtons[tabName]
+			if sourceButton then
+				if sourceButton.button and UI.isAlive(sourceButton.button) then
+					sourceButton.button:Destroy()
+				end
+				tabButtons[tabName] = nil
+			end
+
+			-- Create new window at drop position
+			-- Use the same options as this window but with single tab
+			local newWindow = UI.window(
+				panel.Name .. "_" .. tabName,
+				UDim2.fromOffset(position.X - 200, position.Y - 100),
+				UDim2.fromOffset(600, 400),
+				panel.Name,
+				{
+					tabs = { { name = tabName, text = tabName } },
+					headerColor = options.headerColor,
+					contentColor = options.contentColor,
+					activeTabColor = options.activeTabColor,
+					inactiveTabColor = options.inactiveTabColor,
+					tabAccentColor = options.tabAccentColor,
+					draggable = true,
+					closable = options.closable,
+					onClose = options.onClose,
+					onTabChanged = options.onTabChanged,
+				}
+			)
+
+			-- Move the page content to new window
+			local newPanel, newContent, newHeader, newController = newWindow
+			local newPage = sourcePage:Clone()
+			newPage.Parent = newContent
+			newPage.Name = tabName
+			newPage.Visible = true
+
+			-- Replace the empty page created by UI.window with our page
+			local emptyPage = newController.getPage(tabName)
+			if emptyPage then
+				emptyPage:Destroy()
+			end
+			newController.pages[tabName] = newPage
+		end
+
+		local function moveTabToWindow(tabName, targetWindow, targetController)
+			-- Get source page
+			local sourcePage = pages[tabName]
+			if not sourcePage then 
+				return 
+			end
+
+			-- Remove from source
+			pages[tabName] = nil
+			local sourceButton = tabButtons[tabName]
+			if sourceButton then
+				if sourceButton.button and UI.isAlive(sourceButton.button) then
+					sourceButton.button:Destroy()
+				end
+				tabButtons[tabName] = nil
+			end
+
+			-- Add to target - use target's visual options
+			local targetTabs = targetController.tabs
+			local targetPages = targetController.pages
+			local targetSelectTab = targetController.selectTab
+			local targetOptions = targetController.tabOptions
+
+			if not targetOptions then 
+				return 
+			end
+
+			-- Clone the page to target window's content area
+			local targetContent = targetWindow:FindFirstChild("Content")
+			if not targetContent then 
+				return 
+			end
+
+			local newPage = sourcePage:Clone()
+			newPage.Parent = targetContent
+			newPage.Name = tabName
+			newPage.Visible = false
+
+			targetPages[tabName] = newPage
+
+			-- Create tab button in target window
+			local targetHeader = targetWindow:FindFirstChild("Header")
+			if not targetHeader then 
+				return 
+			end
+
+			-- Calculate position for new tab using target's options
+			local tabCount = 0
+			for _ in pairs(targetTabs) do tabCount += 1 end
+			local newX = targetOptions.titleX
+			for _, tData in pairs(targetTabs) do
+				newX += tData.width + targetOptions.tabGap
+			end
+
+			local tabWidth = targetOptions.tabWidth or (#tabName * 7 + targetOptions.tabPaddingX * 2)
+
+			local button, label, record = UI.button(
+				targetHeader,
+				tabName,
+				UDim2.fromOffset(newX, targetOptions.tabTop),
+				UDim2.fromOffset(tabWidth, targetOptions.tabHeight),
+				function()
+					targetSelectTab(tabName)
+				end,
+				{
+					color = targetOptions.inactiveTabColor,
+					hoverColor = targetOptions.tabHoverColor,
+					pressedColor = targetOptions.tabPressedColor,
+					textColor = targetOptions.inactiveText,
+					textSize = targetOptions.tabTextSize,
+					textY = 0,
+					radius = targetOptions.tabRadius,
+					border = false,
+					paddingX = targetOptions.tabPaddingX,
+				}
+			)
+
+			button.Name = tabName .. "Tab"
+			button.BackgroundTransparency = 1
+
+			label.TextXAlignment = Enum.TextXAlignment.Center
+			label.TextYAlignment = Enum.TextYAlignment.Center
+
+			local newData = {
+				button = button,
+				label = label,
+				record = record,
+				index = tabCount + 1,
+				x = newX,
+				width = tabWidth,
+				activeAlpha = 0,
+				hoverAlpha = 0,
+				hovered = false,
+			}
+
+			button.MouseEnter:Connect(function()
+				newData.hovered = true
+			end)
+
+			button.MouseLeave:Connect(function()
+				newData.hovered = false
+			end)
+
+			targetTabs[tabName] = newData
+
+			-- Update target controller's tabNames
+			targetController.tabNames[#targetController.tabNames + 1] = tabName
+
+			-- Select the new tab
+			targetSelectTab(tabName)
+		end
+
 		-- Global drag handling (mouse move)
 		local UserInputService = game:GetService("UserInputService")
 		local dragConnection = nil
