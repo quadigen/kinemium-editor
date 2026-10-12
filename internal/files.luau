@@ -100,12 +100,23 @@ return function(content, windowControls)
 	local rebuilding = false
 	local lastHash = ""
 
-	local rowRegistry = {}
-	local visibleRows = {}
-	local rowIndex = 0
+local rowRegistry = {}
+local visibleRows = {}
+local rowIndex = 0
 
-	local drag = nil
-	local dragLayer = nil
+local wideMode = false
+local wideFolder = nil
+local leftList = nil
+local rightList = nil
+local leftRowRegistry = {}
+local rightRowRegistry = {}
+local leftVisibleRows = {}
+local rightVisibleRows = {}
+local leftRowIndex = 0
+local rightRowIndex = 0
+
+local drag = nil
+local dragLayer = nil
 
 	local openContextMenu
 	local closeContextMenu
@@ -160,6 +171,48 @@ return function(content, windowControls)
 	}, content)
 
 	UI.corner(list, tokens.radius.md)
+
+	-- Wide mode: two-pane layout when explorer width >= output width
+	-- Left pane: folder tree (only directories, click to select wideFolder)
+	-- Right pane: flat children of wideFolder (or root if nil)
+	local function createList(parent, position, size)
+		local l = UI.create("ScrollingFrame", {
+			Position = position,
+			Size = size,
+
+			BackgroundColor3 = tokens.color.surface,
+			BackgroundTransparency = 0.5,
+			BorderSizePixel = 0,
+
+			CanvasPosition = Vector2.new(0, 0),
+			CanvasSize = UDim2.new(1, 0, 0, 0),
+
+			ScrollingEnabled = true,
+
+			VirtualizedScrolling = true,
+
+			ScrollSpeed = 38,
+
+			SmoothScrollingEnabled = true,
+			ScrollSmoothness = 18,
+
+			ScrollBarThickness = 5,
+			ScrollBarImageColor3 = tokens.color.subtext,
+			ScrollBarImageTransparency = 0.4,
+			ScrollBarAutoHide = true,
+			ScrollBarFadeDelay = 0.45,
+			ScrollBarFadeSpeed = 12,
+			ScrollBarMinimumHandleSize = 24,
+
+			ClipsDescendants = true,
+
+			Active = true,
+			InputSink = true,
+		}, parent)
+
+		UI.corner(l, tokens.radius.md)
+		return l
+	end
 
 	local emptyLabel = UI.label(
 		content,
@@ -250,6 +303,9 @@ return function(content, windowControls)
 		end
 
 		local registered = rowRegistry[path]
+		if wideMode and registered == nil then
+			registered = leftRowRegistry[path] or rightRowRegistry[path]
+		end
 
 		return registered ~= nil and entryIsDirectory(registered.entry)
 	end
@@ -365,14 +421,17 @@ return function(content, windowControls)
 	end
 
 	local function clearDropHighlight()
-		for _, registered in pairs(rowRegistry) do
-			local row = registered.row
+		-- Clear highlights in both registries
+		for _, registry in pairs({leftRowRegistry, rightRowRegistry, rowRegistry}) do
+			for _, registered in pairs(registry) do
+				local row = registered.row
 
-			if UI.isAlive(row) then
-				row.BackgroundTransparency = registered.baseTransparency
+				if UI.isAlive(row) then
+					row.BackgroundTransparency = registered.baseTransparency
+				end
+
+				registered.dropTarget = false
 			end
-
-			registered.dropTarget = false
 		end
 	end
 
@@ -462,19 +521,40 @@ return function(content, windowControls)
 
 		tween:Play()
 	end
-
-	local function addRow(entry, depth, y)
+local function addRowToPane(pane, entry, depth, y)
 		local isSelected = selectedPath == entry.Path
 
-		rowIndex += 1
+		local rowIndexVar, rowRegistryVar, visibleRowsVar, listVar
+		if pane == "left" then
+			leftRowIndex += 1
+			rowIndexVar = leftRowIndex
+			rowRegistryVar = leftRowRegistry
+			visibleRowsVar = leftVisibleRows
+			listVar = leftList
+		else
+			rightRowIndex += 1
+			rowIndexVar = rightRowIndex
+			rowRegistryVar = rightRowRegistry
+			visibleRowsVar = rightVisibleRows
+			listVar = rightList
+		end
 
-		local rowColor = rowIndex % 2 == 0 and tokens.color.rowEven or tokens.color.rowOdd
+		local rowColor = rowIndexVar % 2 == 0 and tokens.color.rowEven or tokens.color.rowOdd
 
-		local row = UI.button(list, "", UDim2.fromOffset(1, y), UDim2.new(1, -2, 0, UI.metrics.treeRow), function()
-			selectedPath = entry.Path
+		local row = UI.button(listVar, "", UDim2.fromOffset(1, y), UDim2.new(1, -2, 0, UI.metrics.treeRow), function()
+			-- In left pane, clicking a folder sets wideFolder but doesn't change selectedPath
+			-- (selectedPath tracks right-pane selection for keyboard navigation)
+			if pane == "right" then
+				selectedPath = entry.Path
+			end
 
 			if entryIsDirectory(entry) then
-				expanded[entry.Path] = not expanded[entry.Path] or nil
+				if pane == "left" then
+					wideFolder = entry.Path
+					expanded[entry.Path] = not expanded[entry.Path] or nil
+				else
+					expanded[entry.Path] = not expanded[entry.Path] or nil
+				end
 
 				lastHash = ""
 			end
@@ -490,12 +570,13 @@ return function(content, windowControls)
 
 		row.InputBegan:Connect(function(input)
 			if input.UserInputType == Enum.UserInputType.MouseButton2 then
-				-- Commit any in-flight rename and dismiss the previous menu before
-				-- opening a new one, so neither outlives the interaction.
 				commitRename()
 				closeContextMenu()
 
-				selectedPath = entry.Path
+				-- In left pane, don't change selectedPath (tracks right-pane selection)
+				if pane == "right" then
+					selectedPath = entry.Path
+				end
 
 				openContextMenu(entry, input.Position)
 
@@ -506,8 +587,6 @@ return function(content, windowControls)
 				return
 			end
 
-			-- Clicking any row dismisses an open context menu and commits an
-			-- in-flight rename; neither should survive the interaction.
 			closeContextMenu()
 
 			if UI.isAlive(renaming) and renamedPath ~= entry.Path then
@@ -520,21 +599,24 @@ return function(content, windowControls)
 				startX = input.Position.X,
 				startY = input.Position.Y,
 				active = false,
+				pane = pane,
 			}
 		end)
 
 		row.BackgroundTransparency = isSelected and 0 or 0.12
 
-		-- The engine reports the platform's own multi-click count, so this is the
-		-- same double-click detection the explorer rows use. Single clicks on a
-		-- folder already toggle it, so a double-click only has to open files.
 		row.Activated:Connect(function(_, clickCount)
 			if clickCount ~= 2 then
 				return
 			end
 
 			if entryIsDirectory(entry) then
-				expanded[entry.Path] = not expanded[entry.Path] or nil
+				if pane == "left" then
+					wideFolder = entry.Path
+					expanded[entry.Path] = not expanded[entry.Path] or nil
+				else
+					expanded[entry.Path] = not expanded[entry.Path] or nil
+				end
 
 				lastHash = ""
 			else
@@ -542,16 +624,18 @@ return function(content, windowControls)
 			end
 		end)
 
-		rowRegistry[entry.Path] = {
+		rowRegistryVar[entry.Path] = {
 			row = row,
 			entry = entry,
 			depth = depth,
 			y = y,
+
 			baseTransparency = row.BackgroundTransparency,
 			dropTarget = false,
+			pane = pane,
 		}
 
-		visibleRows[#visibleRows + 1] = entry
+		visibleRowsVar[#visibleRowsVar + 1] = entry
 
 		local indent = 7 + depth * 16
 
@@ -578,7 +662,28 @@ return function(content, windowControls)
 		return y + UI.metrics.treeRow
 	end
 
-	local function walk(directory, depth, y)
+	local function walkLeft(directory, depth, y)
+		local entries = readEntries(directory)
+
+		if entries == nil then
+			return y
+		end
+
+		for _, entry in ipairs(entries) do
+			if entryIsDirectory(entry) then
+				-- In left pane, show all directories (not filtered by search)
+				y = addRowToPane("left", entry, depth, y)
+
+				if expanded[entry.Path] then
+					y = walkLeft(entry.Path, depth + 1, y)
+				end
+			end
+		end
+
+		return y
+	end
+
+	local function walkRight(directory, depth, y)
 		local entries = readEntries(directory)
 
 		if entries == nil then
@@ -587,10 +692,11 @@ return function(content, windowControls)
 
 		for _, entry in ipairs(entries) do
 			if subtreeMatches(entry) then
-				y = addRow(entry, depth, y)
+				y = addRowToPane("right", entry, depth, y)
 
-				if entryIsDirectory(entry) and (expanded[entry.Path] or filter ~= "") then
-					y = walk(entry.Path, depth + 1, y)
+				-- In right pane, only expand if filter is active (search mode)
+				if entryIsDirectory(entry) and filter ~= "" and expanded[entry.Path] then
+					y = walkRight(entry.Path, depth + 1, y)
 				end
 			end
 		end
@@ -612,31 +718,90 @@ return function(content, windowControls)
 
 		rebuilding = true
 
-		local oldCanvasPosition = list.CanvasPosition
+		if wideMode then
+			-- Wide mode: rebuild both panes
+			local oldLeftCanvasPosition = leftList and leftList.CanvasPosition or Vector2.new(0, 0)
+			local oldRightCanvasPosition = rightList and rightList.CanvasPosition or Vector2.new(0, 0)
 
-		UI.clear(list)
+			UI.clear(leftList)
+			UI.clear(rightList)
 
-		rowIndex = 0
+			leftRowIndex = 0
+			rightRowIndex = 0
 
-		rowRegistry = {}
+			leftRowRegistry = {}
+			rightRowRegistry = {}
 
-		visibleRows = {}
+			leftVisibleRows = {}
+			rightVisibleRows = {}
 
-		local finalY = 0
+			local leftFinalY = 0
+			local rightFinalY = 0
 
-		if rootPath ~= nil then
-			finalY = walk(rootPath, 0, 1)
+			if rootPath ~= nil then
+				leftFinalY = walkLeft(rootPath, 0, 1)
+
+				-- Right pane shows flat children of wideFolder (or root if nil)
+				local rightRoot = wideFolder or rootPath
+				rightFinalY = walkRight(rightRoot, 0, 1)
+			end
+
+			if leftList then
+				leftList.CanvasSize = UDim2.new(1, 0, 0, leftFinalY + 4)
+				leftList.CanvasPosition = oldLeftCanvasPosition
+			end
+
+			if rightList then
+				rightList.CanvasSize = UDim2.new(1, 0, 0, rightFinalY + 4)
+				rightList.CanvasPosition = oldRightCanvasPosition
+			end
+
+			-- Auto-select first item in right pane if nothing selected or selection invalid
+			if wideMode and #rightVisibleRows > 0 then
+				local selectedInRight = false
+				if selectedPath ~= nil then
+					for _, entry in ipairs(rightVisibleRows) do
+						if entry.Path == selectedPath then
+							selectedInRight = true
+							break
+						end
+					end
+				end
+
+				if not selectedInRight then
+					selectedPath = rightVisibleRows[1].Path
+				end
+			end
+
+			emptyLabel.Visible = rootPath == nil or (leftFinalY <= 1 and rightFinalY <= 1)
+		else
+			-- Single pane mode (original behavior)
+			local oldCanvasPosition = list.CanvasPosition
+
+			UI.clear(list)
+
+			rowIndex = 0
+
+			rowRegistry = {}
+
+			visibleRows = {}
+
+			local finalY = 0
+
+			if rootPath ~= nil then
+				finalY = walkLeft(rootPath, 0, 1)
+			end
+
+			list.CanvasSize = UDim2.new(1, 0, 0, finalY + 4)
+
+			list.CanvasPosition = oldCanvasPosition
+
+			emptyLabel.Visible = rootPath == nil or finalY <= 1
 		end
-
-		list.CanvasSize = UDim2.new(1, 0, 0, finalY + 4)
-
-		list.CanvasPosition = oldCanvasPosition
-
-		emptyLabel.Visible = rootPath == nil or finalY <= 1
 
 		if rootPath == nil then
 			emptyLabel.Text = "No active project"
-		elseif finalY <= 1 then
+		elseif (wideMode and leftFinalY <= 1 and rightFinalY <= 1) or (not wideMode and finalY <= 1) then
 			emptyLabel.Text = "This folder is empty"
 		end
 
@@ -747,7 +912,11 @@ return function(content, windowControls)
 			return
 		end
 
+		-- Check both registries in wide mode
 		local registered = rowRegistry[path]
+		if wideMode and registered == nil then
+			registered = leftRowRegistry[path] or rightRowRegistry[path]
+		end
 
 		if registered == nil or not UI.isAlive(registered.row) then
 			return
@@ -846,8 +1015,22 @@ return function(content, windowControls)
 		end
 	end
 
+	local function getVisibleRows()
+		return wideMode and rightVisibleRows or visibleRows
+	end
+
+	local function getRowRegistry()
+		return wideMode and rightRowRegistry or rowRegistry
+	end
+
+	local function getList()
+		return wideMode and rightList or list
+	end
+
 	local function rowIndexOf(path)
-		for index, entry in ipairs(visibleRows) do
+		local rows = getVisibleRows()
+
+		for index, entry in ipairs(rows) do
 			if entry.Path == path then
 				return index
 			end
@@ -857,7 +1040,8 @@ return function(content, windowControls)
 	end
 
 	local function selectAndReveal(index)
-		local entry = visibleRows[index]
+		local rows = getVisibleRows()
+		local entry = rows[index]
 
 		if entry == nil then
 			return
@@ -865,12 +1049,16 @@ return function(content, windowControls)
 
 		selectedPath = entry.Path
 
-		local registered = rowRegistry[entry.Path]
+		local registry = getRowRegistry()
+		local registered = registry[entry.Path]
 
 		if registered ~= nil then
-			local target = math.max(0, registered.y - list.AbsoluteSize.Y / 2)
+			local l = getList()
+			if l then
+				local target = math.max(0, registered.y - l.AbsoluteSize.Y / 2)
 
-			list.CanvasPosition = Vector2.new(0, target)
+				l.CanvasPosition = Vector2.new(0, target)
+			end
 		end
 	end
 
@@ -1141,26 +1329,44 @@ return function(content, windowControls)
 
 	local function mouseInList()
 		local mouse = UserInputService:GetMouseLocation()
-		local position = list.AbsolutePosition
-		local size = list.AbsoluteSize
 
-		return mouse.X >= position.X
-			and mouse.X <= position.X + size.X
-			and mouse.Y >= position.Y
-			and mouse.Y <= position.Y + size.Y
+		-- Check both panes in wide mode, single list otherwise
+		local lists = wideMode and {leftList, rightList} or {list}
+
+		for _, l in ipairs(lists) do
+			if l and UI.isAlive(l) then
+				local position = l.AbsolutePosition
+				local size = l.AbsoluteSize
+
+				if mouse.X >= position.X
+					and mouse.X <= position.X + size.X
+					and mouse.Y >= position.Y
+					and mouse.Y <= position.Y + size.Y then
+					return true
+				end
+			end
+		end
+
+		return false
+	end
+
+	local function getRegistryForPane(pane)
+		if pane == "left" then return leftRowRegistry end
+		if pane == "right" then return rightRowRegistry end
+		return rowRegistry
 	end
 
 	local function updateDragTarget()
-		-- Read the cursor once. The previous version called GetMouseLocation() (and
-		-- ran a full canReparent ancestry walk) for every visible row on every
-		-- mouse-move, which made dragging crawl on large trees.
 		local mouse = UserInputService:GetMouseLocation()
 
 		local best = nil
 		local bestDistance = math.huge
 		local source = drag.source
 
-		for path, registered in pairs(rowRegistry) do
+		-- Determine which registry to use based on drag pane
+		local registry = getRegistryForPane(drag.pane)
+
+		for path, registered in pairs(registry) do
 			local row = registered.row
 
 			if not UI.isAlive(row) then
@@ -1171,16 +1377,12 @@ return function(content, windowControls)
 			local size = row.AbsoluteSize
 			local offset = mouse.Y - position.Y
 
-			-- Cheap vertical reject before any ancestry work: only rows the cursor
-			-- is actually near can win.
 			if offset < -size.Y or offset > size.Y * 2 then
 				continue
 			end
 
 			local entry = registered.entry
 
-			-- The top half reparents as a sibling, the bottom half as a child,
-			-- which is the behaviour the Roblox explorer uses.
 			local target = offset > size.Y / 2 and (entryIsDirectory(entry) and path or parentOf(path))
 				or parentOf(path)
 
@@ -1201,9 +1403,7 @@ return function(content, windowControls)
 		end
 
 		if best ~= drag.target then
-			-- Only the previously highlighted row needs resetting, rather than
-			-- walking the whole registry.
-			local previous = drag.target and rowRegistry[drag.target]
+			local previous = drag.target and getRegistryForPane(drag.pane)[drag.target]
 
 			if previous ~= nil and UI.isAlive(previous.row) then
 				previous.row.BackgroundTransparency = previous.baseTransparency
@@ -1212,7 +1412,7 @@ return function(content, windowControls)
 
 			drag.target = best
 
-			local registered = best and rowRegistry[best]
+			local registered = best and getRegistryForPane(drag.pane)[best]
 
 			if registered ~= nil and UI.isAlive(registered.row) then
 				registered.row.BackgroundTransparency = 0
@@ -1371,7 +1571,8 @@ return function(content, windowControls)
 		local index = selectedPath and rowIndexOf(selectedPath) or nil
 
 		if input.KeyCode == Enum.KeyCode.Up or input.KeyCode == Enum.KeyCode.Down then
-			if #visibleRows == 0 then
+			local rows = getVisibleRows()
+			if #rows == 0 then
 				return
 			end
 
@@ -1383,7 +1584,7 @@ return function(content, windowControls)
 				next_ = next_ + 1
 			end
 
-			selectAndReveal(math.clamp(next_, 1, #visibleRows))
+			selectAndReveal(math.clamp(next_, 1, #rows))
 
 			return
 		end
@@ -1394,7 +1595,8 @@ return function(content, windowControls)
 		end
 
 		if input.KeyCode == Enum.KeyCode.End then
-			selectAndReveal(#visibleRows)
+			local rows = getVisibleRows()
+			selectAndReveal(#rows)
 			return
 		end
 
@@ -1491,9 +1693,86 @@ return function(content, windowControls)
 	local hashFrame = 0
 
 	renderer.Pool.new("2d", function()
+		-- Detect wide mode: explorer width >= output/console width
+		local explorerWidth = content.AbsoluteSize.X
+		local outputWidth = 0
+		if theme.OutputCoordinates and theme.OutputCoordinates.Size then
+			outputWidth = theme.OutputCoordinates.Size.X.Offset
+		end
+
+		local newWideMode = explorerWidth >= outputWidth and outputWidth > 0
+
+		-- If wide mode changed, we need to recreate the UI
+		if newWideMode ~= wideMode then
+			wideMode = newWideMode
+
+			-- Clean up old lists
+			if wideMode then
+				-- Switching to wide mode: create two panes
+				if list and UI.isAlive(list) then
+					list:Destroy()
+				end
+
+				local halfWidth = UDim2.new(0.5, -inset, 1, -42)
+
+				leftList = createList(content, UDim2.fromOffset(inset, 36), halfWidth)
+
+				rightList = createList(content, UDim2.new(0.5, inset, 0, 36), halfWidth)
+			else
+				-- Switching to single pane mode: create single list
+				if leftList and UI.isAlive(leftList) then
+					leftList:Destroy()
+				end
+				if rightList and UI.isAlive(rightList) then
+					rightList:Destroy()
+				end
+
+				list = UI.create("ScrollingFrame", {
+					Position = UDim2.fromOffset(inset, 36),
+					Size = UDim2.new(1, -inset * 2, 1, -42),
+
+					BackgroundColor3 = tokens.color.surface,
+					BackgroundTransparency = 0.5,
+					BorderSizePixel = 0,
+
+					CanvasPosition = Vector2.new(0, 0),
+					CanvasSize = UDim2.new(1, 0, 0, 0),
+
+					ScrollingEnabled = true,
+
+					VirtualizedScrolling = true,
+
+					ScrollSpeed = 38,
+
+					SmoothScrollingEnabled = true,
+					ScrollSmoothness = 18,
+
+					ScrollBarThickness = 5,
+					ScrollBarImageColor3 = tokens.color.subtext,
+					ScrollBarImageTransparency = 0.4,
+					ScrollBarAutoHide = true,
+					ScrollBarFadeDelay = 0.45,
+					ScrollBarFadeSpeed = 12,
+					ScrollBarMinimumHandleSize = 24,
+
+					ClipsDescendants = true,
+
+					Active = true,
+					InputSink = true,
+				}, content)
+
+				UI.corner(list, tokens.radius.md)
+			end
+
+			-- Reset expansion state when switching modes
+			expanded = {}
+			wideFolder = nil
+
+			lastHash = ""
+			rebuild()
+		end
+
 		if rootPath == nil then
-			-- A project may appear or disappear without a Refresh call, so keep
-			-- probing until one exists.
 			hashFrame += 1
 
 			if hashFrame % 15 == 0 then
@@ -1515,7 +1794,8 @@ return function(content, windowControls)
 			return
 		end
 
-		local hash = treeHash(rootPath) .. "#" .. (selectedPath or "")
+		-- Hash includes wideFolder in wide mode
+		local hash = treeHash(rootPath) .. "#" .. (selectedPath or "") .. "#" .. (wideMode and (wideFolder or "") or "")
 
 		if hash ~= lastHash then
 			lastHash = hash
