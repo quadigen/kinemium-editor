@@ -6,6 +6,7 @@ local UI = require("@internal/editor_ui")
 
 local TextService = game:GetService("TextService")
 local RunService = game:GetService("RunService")
+local Project = game:GetService("Project")
 
 local tokens = UI.tokens
 
@@ -976,6 +977,7 @@ function CodeEditor.new(parent)
 
 	self.documents = {}
 	self.documentByInstance = {}
+	self.documentByPath = {}
 	self.activeDocument = nil
 	self.suppressTextSync = false
 
@@ -1259,6 +1261,14 @@ function CodeEditor:tabWidthFor(name)
 end
 
 function CodeEditor:commitDocument(document)
+	if document.path ~= nil then
+		pcall(function()
+			Project:WriteFile(document.path, document.source)
+		end)
+
+		return
+	end
+
 	local instance = document.instance
 
 	if instance == nil or not UI.isAlive(instance) then
@@ -1394,6 +1404,10 @@ function CodeEditor:closeDocument(document)
 		self.documentByInstance[document.instance] = nil
 	end
 
+	if document.path ~= nil then
+		self.documentByPath[document.path] = nil
+	end
+
 	table.remove(self.documents, index)
 
 	if wasActive then
@@ -1444,6 +1458,48 @@ function CodeEditor:OpenScript(instance)
 	end
 
 	self:focusDocument(document)
+end
+
+function CodeEditor:OpenFile(path, name)
+	if type(path) ~= "string" then
+		return
+	end
+
+	if name == nil or name == "" then
+		name = path:match("[^/\\]+$") or path
+	end
+
+	local document = self.documentByPath[path]
+
+	if document == nil then
+		local source = ""
+		local ok, value = pcall(function()
+			return Project:ReadFile(path)
+		end)
+
+		if ok and type(value) == "string" then
+			source = value
+		end
+
+		document = {
+			path = path,
+			name = name,
+			source = source,
+		}
+
+		table.insert(self.documents, document)
+		self.documentByPath[path] = document
+	end
+
+	self:focusDocument(document)
+end
+
+function CodeEditor:CloseFile(path)
+	self:closeDocument(self.documentByPath[path])
+end
+
+function CodeEditor:IsFileOpen(path)
+	return self.documentByPath[path] ~= nil
 end
 
 function CodeEditor:CloseScript(instance)

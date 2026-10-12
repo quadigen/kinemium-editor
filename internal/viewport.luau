@@ -588,7 +588,6 @@ renderer.Pool.new("2da", function()
 end)
 
 return {
-
 	OpenScript = function(instance)
 		editor:OpenScript(instance)
 	end,
@@ -611,6 +610,18 @@ return {
 
 	ActiveScript = function()
 		return editor:ActiveScript()
+	end,
+
+	OpenFile = function(path, name)
+		editor:OpenFile(path, name)
+	end,
+
+	CloseFile = function(path)
+		editor:CloseFile(path)
+	end,
+
+	IsFileOpen = function(path)
+		return editor:IsFileOpen(path)
 	end,
 
 	CodeEditor = editor.TextBox,
