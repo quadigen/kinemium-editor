@@ -6036,45 +6036,6 @@ function UI.window(name, position, size, title, options)
 				}
 				print("[TabDrag] draggingTab set:", draggingTab.name)
 			end)
-
-			button.InputEnded:Connect(function(input)
-				if input.UserInputType ~= Enum.UserInputType.MouseButton1 then
-					return
-				end
-
-				print("[TabDrag] InputEnded:", tabName, "draggingTab:", draggingTab and draggingTab.name, "active:", draggingTab and draggingTab.active)
-
-				if not draggingTab or not draggingTab.active then
-					draggingTab = nil
-					return
-				end
-
-				-- Drop the tab
-				local mouse = UserInputService:GetMouseLocation()
-				local targetWindow, targetHeader = findTabBarAtPosition(mouse)
-
-				destroyDragGhost()
-
-				if targetWindow and targetWindow ~= panel then
-					-- Drop on another window's tab bar - move tab there
-					local targetController = getTabControllerForWindow(targetWindow)
-					if targetController then
-						-- Get the page from source
-						local sourcePage = pages[tabName]
-						if sourcePage then
-							-- Create new tab in target window
-							-- This requires the target window to have an addTab method
-							-- For now, we'll use the engine's docking system
-							-- TODO: Implement addTab on controller
-						end
-					end
-				elseif targetWindow == nil then
-					-- Drop on empty space - create new window
-					-- TODO: Implement tear-off window creation
-				end
-
-				draggingTab = nil
-			end)
 		end
 
 		-- Global drag handling (mouse move)
