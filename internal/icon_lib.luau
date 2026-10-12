@@ -3,21 +3,26 @@ local colors = UI.tokens.color
 local HttpService = game:GetService("HttpService")
 
 local API = "https://api.iconify.design"
+local PREFIX = "lucide"
+
+-- ImageLabel decodes this straight from the string (see the ImageLabel_Load_Image patch).
+local SVG_PREFIX = "data:image/svg+xml;utf8,"
 
 local COLUMNS = 6
 local TILE = 52
 local GAP = 6
 local ICON_SIZE = 28
-local ICON_RES = 64 -- height requested from the SVG endpoint
-local PAGE = 64 -- Iconify's default and a valid search limit (min 32, max 999)
+local ICON_RES = 64
+local PREVIEW_RES = 128
+local PAGE = 64 -- search limits must be between 32 and 999
 local MAX_LIMIT = 384
+local FETCH_CHUNK = 48 -- icons per icon-data request
 local DEBOUNCE = 0.35
 local PAD = 8
 local CARD_HEIGHT = 112
-local SET_WIDTH = 130
 
 --------------------------------------------------------------------------------
--- Iconify API
+-- Iconify API (Lucide set)
 --------------------------------------------------------------------------------
 
 local function ColorToHex(color)
@@ -30,7 +35,11 @@ local function ColorToHex(color)
 end
 
 local iconColor = ColorToHex(colors.text)
-local sets = {} -- prefix -> icon set info (name, author, license, ...)
+local setInfo = { name = "Lucide", license = "ISC", author = "Lucide Contributors" }
+
+-- name -> { body, width, height }. Bodies are cached, so recolouring and
+-- reselecting never touch the network.
+local entries = {}
 
 local function GetJSON(url)
 	local response = HttpService:RequestAsync({
@@ -45,25 +54,65 @@ local function GetJSON(url)
 	return HttpService:JSONDecode(response.Body)
 end
 
-local function SearchIcons(query, prefix, limit)
-	local url = `{API}/search?query={HttpService:UrlEncode(query)}&limit={math.floor(limit)}`
-
-	if prefix ~= "" then
-		url ..= `&prefix={HttpService:UrlEncode(prefix)}`
-	end
+local function SearchIcons(query, limit)
+	local url = `{API}/search?query={HttpService:UrlEncode(query)}&limit={math.floor(limit)}&prefix={PREFIX}`
 
 	return GetJSON(url)
 end
 
-local function SplitName(name)
-	return string.match(name, "^([^:]+):(.+)$")
+-- One request per chunk returns the SVG bodies for every icon in it.
+local function LoadEntries(names)
+	local missing = {}
+
+	for _, name in ipairs(names) do
+		if not entries[name] then
+			table.insert(missing, name)
+		end
+	end
+
+	for start = 1, #missing, FETCH_CHUNK do
+		local chunk = table.move(missing, start, math.min(start + FETCH_CHUNK - 1, #missing), 1, {})
+		local data = GetJSON(`{API}/{PREFIX}.json?icons={table.concat(chunk, ",")}`)
+
+		local defaultWidth = data.width or 24
+		local defaultHeight = data.height or 24
+
+		for _, name in ipairs(chunk) do
+			local icon = data.icons and data.icons[name]
+
+			if not icon and data.aliases and data.aliases[name] then
+				icon = data.icons and data.icons[data.aliases[name].parent]
+			end
+
+			if icon and icon.body then
+				entries[name] = {
+					body = icon.body,
+					width = icon.width or defaultWidth,
+					height = icon.height or defaultHeight,
+				}
+			end
+		end
+	end
 end
 
--- Icons are rendered by the API itself: /{prefix}/{icon}.svg
-local function IconUrl(name, height)
-	local prefix, icon = SplitName(name)
+-- Lucide draws with stroke="currentColor"; swap it for a real colour here,
+-- because the rasterizer has no CSS colour to inherit.
+local function SvgFor(name, size)
+	local entry = entries[name]
+	local body = string.gsub(entry.body, "currentColor", "#" .. iconColor)
 
-	return `{API}/{prefix}/{icon}.svg?color=%23{iconColor}&height={height}`
+	return string.format(
+		'<svg xmlns="http://www.w3.org/2000/svg" width="%d" height="%d" viewBox="0 0 %d %d">%s</svg>',
+		size,
+		size,
+		entry.width,
+		entry.height,
+		body
+	)
+end
+
+local function ImageFor(name, size)
+	return SVG_PREFIX .. SvgFor(name, size)
 end
 
 --------------------------------------------------------------------------------
@@ -71,12 +120,12 @@ end
 --------------------------------------------------------------------------------
 
 local gui = Instance.new("ScreenGui")
-gui.Name = "Icons"
+gui.Name = "Lucide"
 gui.RenderOnTop = true
 gui.Parent = game.CoreGui
 
 local panel, content =
-	UI.window("Icons", UDim2.fromOffset(120, 120), UDim2.fromOffset(380, 540), "Icon Library (Iconify)", {
+	UI.window("Lucide", UDim2.fromOffset(120, 120), UDim2.fromOffset(380, 540), "Icon Library (Lucide)", {
 		closable = true,
 	})
 
@@ -93,46 +142,10 @@ local listTop = PAD + inputHeight + 6
 
 local search = UI.input(
 	content,
-	"Search icons...",
+	"Search Lucide icons...",
 	UDim2.fromOffset(PAD, PAD),
-	UDim2.new(1, -(PAD * 2 + SET_WIDTH + 6), 0, inputHeight),
+	UDim2.new(1, -PAD * 2, 0, inputHeight),
 	{ textSize = UI.tokens.type.body }
-)
-
--- Icon set filter. The menu is anchored under the button, with its own search box.
-local setButton
-local setLabel
-local setController
-local Search -- assigned further down; the dropdown callback needs it in scope
-
-setButton, setLabel, setController = UI.dropdown(
-	content,
-	"",
-	UDim2.new(1, -(PAD + SET_WIDTH), 0, PAD),
-	UDim2.fromOffset(SET_WIDTH, inputHeight),
-	"builtin://global-icons/chevron-down.svg",
-	{
-		items = { { label = "All icon sets", value = "" } },
-		menuWidth = 240,
-		maxVisibleItems = 10,
-		textSize = UI.tokens.type.small,
-		searchPlaceholder = "Filter icon sets...",
-		format = function(value)
-			if value == "" then
-				return "All icon sets"
-			end
-
-			return sets[value] and sets[value].name or value
-		end,
-		menuPosition = function()
-			local position, size = setButton.AbsolutePosition, setButton.AbsoluteSize
-
-			return UDim2.fromOffset(math.max(position.X + size.X - 240, 4), position.Y + size.Y + 2)
-		end,
-		onChanged = function(value)
-			Search(false, value)
-		end,
-	}
 )
 
 local scroller = UI.create("ScrollingFrame", {
@@ -151,7 +164,7 @@ local scroller = UI.create("ScrollingFrame", {
 
 local status = UI.label(
 	content,
-	"Type to search icons from 200+ icon sets",
+	"Type to search Lucide icons",
 	UDim2.new(0, PAD, 1, -(CARD_HEIGHT + PAD + 18)),
 	UDim2.new(1, -PAD * 2, 0, 16),
 	UI.tokens.type.small,
@@ -160,7 +173,6 @@ local status = UI.label(
 status.TextXAlignment = Enum.TextXAlignment.Left
 status.TextYAlignment = Enum.TextYAlignment.Center
 
--- Detail card: large preview, name, set/license, URL and colour.
 local card = UI.card(
 	content,
 	UDim2.new(0, PAD, 1, -(CARD_HEIGHT + PAD)),
@@ -182,9 +194,10 @@ local metaLabel =
 	UI.label(card, "", UDim2.fromOffset(96, 28), UDim2.new(1, -104, 0, 16), UI.tokens.type.caption, colors.muted)
 metaLabel.TextXAlignment = Enum.TextXAlignment.Left
 
-local urlInput = UI.input(
+-- The SVG source for the selected icon, ready to copy.
+local svgInput = UI.input(
 	card,
-	"Select an icon to get its SVG URL",
+	"Select an icon to get its SVG",
 	UDim2.fromOffset(96, 50),
 	UDim2.new(1, -104, 0, 22),
 	{ textSize = UI.tokens.type.caption, selectAllOnFocus = true }
@@ -205,20 +218,33 @@ local colorInput = UI.input(card, "#RRGGBB", UDim2.fromOffset(138, 80), UDim2.fr
 -- Results
 --------------------------------------------------------------------------------
 
-local icons = {} -- "prefix:name" strings from the last search
+local icons = {} -- bare icon names from the last search
 local tiles = {} -- name -> { button, record, image }
-local built = 0 -- how many entries of `icons` already have a tile
+local built = 0
 local hasMore = false
 local moreButton = nil
 local selected = nil
 
-local currentSet = ""
 local limit = PAGE
 local debounceId = 0
 local requestId = 0
 
 local function SetStatus(text)
 	status.Text = text
+end
+
+local function MetaText()
+	local parts = { setInfo.name }
+
+	if setInfo.license then
+		table.insert(parts, setInfo.license)
+	end
+
+	if setInfo.author then
+		table.insert(parts, setInfo.author)
+	end
+
+	return table.concat(parts, "  •  ")
 end
 
 local function PaintTile(name, tile)
@@ -235,29 +261,10 @@ local function Select(name)
 		PaintTile(tileName, tile)
 	end
 
-	local url = IconUrl(name, ICON_RES)
-	local prefix = SplitName(name)
-	local info = sets[prefix]
-	local parts = {}
-
-	if info then
-		table.insert(parts, info.name or prefix)
-
-		if info.license and info.license.title then
-			table.insert(parts, info.license.title)
-		end
-
-		if info.author and info.author.name then
-			table.insert(parts, info.author.name)
-		end
-	else
-		table.insert(parts, prefix)
-	end
-
-	previewImage.Image = url
+	previewImage.Image = ImageFor(name, PREVIEW_RES)
 	nameLabel.Text = name
-	metaLabel.Text = table.concat(parts, "  •  ")
-	urlInput.Text = url
+	metaLabel.Text = MetaText()
+	svgInput.Text = SvgFor(name, 24)
 end
 
 local function MakeTile(name, index)
@@ -287,7 +294,7 @@ local function MakeTile(name, index)
 	local offset = math.floor(ICON_SIZE / 2)
 	local image = UI.image(
 		button,
-		IconUrl(name, ICON_RES),
+		ImageFor(name, ICON_RES),
 		UDim2.new(0.5, -offset, 0.5, -offset),
 		UDim2.fromOffset(ICON_SIZE, ICON_SIZE)
 	)
@@ -295,7 +302,6 @@ local function MakeTile(name, index)
 	local tile = { button = button, record = record, image = image }
 	tiles[name] = tile
 
-	-- Hovering shows the name without changing the selection.
 	button.MouseEnter:Connect(function()
 		nameLabel.Text = name
 	end)
@@ -317,6 +323,8 @@ local function ClearTiles()
 	scroller.CanvasSize = UDim2.new(1, 0, 0, 0)
 	scroller.CanvasPosition = Vector2.new(0, 0)
 end
+
+local Search
 
 local function LayoutTiles()
 	for index = built + 1, #icons do
@@ -342,7 +350,7 @@ local function LayoutTiles()
 			function()
 				limit = math.min(limit + PAGE, MAX_LIMIT)
 				SetStatus("Loading more...")
-				Search(true, currentSet)
+				Search(true)
 			end,
 			{
 				color = colors.panelRaised,
@@ -362,9 +370,7 @@ local function LayoutTiles()
 end
 
 -- append = true keeps the tiles already built and only adds the new ones.
-Search = function(append, prefix)
-	currentSet = prefix or currentSet
-
+Search = function(append)
 	if not append then
 		limit = PAGE
 	end
@@ -378,14 +384,31 @@ Search = function(append, prefix)
 		icons = {}
 		hasMore = false
 		ClearTiles()
-		SetStatus("Type to search icons from 200+ icon sets")
+		SetStatus("Type to search Lucide icons")
 		return
 	end
 
 	SetStatus("Searching...")
 
 	task.spawn(function()
-		local ok, result = pcall(SearchIcons, query, currentSet, limit)
+		local ok, result = pcall(function()
+			local response = SearchIcons(query, limit)
+
+			-- Results come back as "lucide:name".
+			local names = {}
+
+			for _, full in ipairs(response.icons or {}) do
+				local name = string.match(full, "^[^:]+:(.+)$")
+
+				if name then
+					table.insert(names, name)
+				end
+			end
+
+			LoadEntries(names)
+
+			return { names = names, collections = response.collections }
+		end)
 
 		-- A newer search has started since this one was sent.
 		if thisRequest ~= requestId then
@@ -398,12 +421,24 @@ Search = function(append, prefix)
 			return
 		end
 
-		for prefixName, info in pairs(result.collections or {}) do
-			sets[prefixName] = info
+		local info = result.collections and result.collections[PREFIX]
+
+		if info then
+			setInfo.name = info.name or setInfo.name
+			setInfo.license = info.license and info.license.title or setInfo.license
+			setInfo.author = info.author and info.author.name or setInfo.author
 		end
 
-		icons = result.icons or {}
-		hasMore = #icons >= limit and limit < MAX_LIMIT
+		-- Keep only icons whose SVG actually arrived.
+		icons = {}
+
+		for _, name in ipairs(result.names) do
+			if entries[name] then
+				table.insert(icons, name)
+			end
+		end
+
+		hasMore = #result.names >= limit and limit < MAX_LIMIT
 
 		if not append then
 			ClearTiles()
@@ -423,16 +458,15 @@ Search = function(append, prefix)
 	end)
 end
 
--- Changing the colour only re-points the images; no new search is needed.
+-- Recolouring only rebuilds the SVG strings from the cached bodies.
 local function RefreshImages()
 	for name, tile in pairs(tiles) do
-		tile.image.Image = IconUrl(name, ICON_RES)
+		tile.image.Image = ImageFor(name, ICON_RES)
 	end
 
 	if selected then
-		local url = IconUrl(selected, ICON_RES)
-		previewImage.Image = url
-		urlInput.Text = url
+		previewImage.Image = ImageFor(selected, PREVIEW_RES)
+		svgInput.Text = SvgFor(selected, 24)
 	end
 end
 
@@ -455,36 +489,7 @@ search.TextChanged:Connect(function()
 
 	task.delay(DEBOUNCE, function()
 		if thisDebounce == debounceId then
-			Search(false, currentSet)
+			Search(false)
 		end
 	end)
-end)
-
---------------------------------------------------------------------------------
--- Startup: load the icon set list for the filter dropdown
---------------------------------------------------------------------------------
-
-task.spawn(function()
-	local ok, result = pcall(GetJSON, `{API}/collections`)
-
-	if not ok then
-		warn(`Could not load icon sets: {result}`)
-		return
-	end
-
-	local items = {}
-
-	for prefix, info in pairs(result) do
-		sets[prefix] = info
-		table.insert(items, { label = info.name or prefix, value = prefix })
-	end
-
-	table.sort(items, function(a, b)
-		return string.lower(a.label) < string.lower(b.label)
-	end)
-
-	table.insert(items, 1, { label = "All icon sets", value = "" })
-	setController:SetItems(items)
-
-	print(`Loaded {#items - 1} icon sets`)
 end)
