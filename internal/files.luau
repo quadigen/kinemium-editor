@@ -19,33 +19,513 @@ local tokens = UI.tokens
 
 local inset = UI.metrics.panelInset
 
--- Wide mode layout
 local LEFT_WIDTH = 150
 local TILE_W, TILE_H, TILE_GAP = 76, 84, 6
 
-local fileIcons = {
-	lua = "builtin://icons/Script.svg",
-	luau = "builtin://icons/Script.svg",
-	odin = "builtin://icons/Script.svg",
-	cs = "builtin://icons/Script.svg",
-	py = "builtin://icons/Script.svg",
-	js = "builtin://icons/Script.svg",
-	ts = "builtin://icons/Script.svg",
+local MAX_THUMBNAILS = 150
 
-	png = "builtin://icons/ImageLabel.svg",
-	jpg = "builtin://icons/ImageLabel.svg",
-	jpeg = "builtin://icons/ImageLabel.svg",
-	webp = "builtin://icons/ImageLabel.svg",
-	gif = "builtin://icons/ImageLabel.svg",
-	bmp = "builtin://icons/ImageLabel.svg",
-	svg = "builtin://icons/ImageLabel.svg",
+local function imageSource(path)
+	return path
+end
 
-	wav = "builtin://icons/Sound.svg",
-	mp3 = "builtin://icons/Sound.svg",
-	ogg = "builtin://icons/Sound.svg",
+local extensionLookup = {}
 
-	mat = "builtin://icons/Texture.svg",
+local function extensionOf(name)
+	return string.lower(name):match("%.([%w]+)$")
+end
+
+local function registerFileType(definition)
+	for _, extension in ipairs(definition.extensions or {}) do
+		extensionLookup[string.lower(extension)] = definition
+	end
+end
+
+local function fileTypeOf(entry)
+	if entry == nil or entry.Type == "Directory" then
+		return nil
+	end
+
+	local extension = extensionOf(entry.Name)
+
+	if extension == nil then
+		return nil
+	end
+
+	return extensionLookup[extension]
+end
+
+local function tween(object, properties, duration, style, direction, delay)
+	if object == nil or not UI.isAlive(object) then
+		return nil
+	end
+
+	local ok, result = pcall(function()
+		local info = TweenInfo.new(
+			duration,
+			style or Enum.EasingStyle.Quad,
+			direction or Enum.EasingDirection.Out,
+			0,
+			false,
+			delay or 0
+		)
+
+		local created = TweenService:Create(object, info, properties)
+
+		created:Play()
+
+		return created
+	end)
+
+	if ok then
+		return result
+	end
+
+	return nil
+end
+
+local function toastMessage(kind, title, message)
+	pcall(function()
+		UI.toast("files", {
+			type = kind,
+			title = title,
+			message = message,
+			details = "",
+			detailsTitle = "",
+			backgroundTransparency = 0.4,
+			blur = true,
+			duration = 5,
+		})
+	end)
+end
+
+local function mouseOver(gui)
+	local mouse = UserInputService:GetMouseLocation()
+	local position = gui.AbsolutePosition
+	local size = gui.AbsoluteSize
+
+	return mouse.X >= position.X
+		and mouse.X <= position.X + size.X
+		and mouse.Y >= position.Y
+		and mouse.Y <= position.Y + size.Y
+end
+
+local viewerBackgrounds = {
+	{ name = "Dark", color = Color3.fromRGB(24, 24, 28) },
+	{ name = "Gray", color = Color3.fromRGB(110, 110, 118) },
+	{ name = "Light", color = Color3.fromRGB(235, 235, 240) },
 }
+
+local viewerTints = {
+	{ name = "None", color = Color3.fromRGB(255, 255, 255) },
+	{ name = "Warm", color = Color3.fromRGB(255, 226, 190) },
+	{ name = "Cool", color = Color3.fromRGB(190, 215, 255) },
+	{ name = "Red", color = Color3.fromRGB(255, 150, 150) },
+	{ name = "Green", color = Color3.fromRGB(150, 255, 150) },
+	{ name = "Blue", color = Color3.fromRGB(150, 170, 255) },
+}
+
+local viewerOpacities = { 0, 0.25, 0.5, 0.75 }
+
+local activeViewer = nil
+local viewerClosedAt = -10
+
+local function viewerBlocksInput()
+	return activeViewer ~= nil or os.clock() - viewerClosedAt < 0.1
+end
+
+local function openImageViewer(ctx)
+	if activeViewer ~= nil then
+		activeViewer.close(true)
+	end
+
+	local state = {
+		zoom = 1,
+		panX = 0,
+		panY = 0,
+		rotation = 0,
+		background = 1,
+		tint = 1,
+		opacity = 1,
+	}
+
+	local container = UI.create("Frame", {
+		Size = UDim2.fromScale(1, 1),
+		BackgroundTransparency = 1,
+		BorderSizePixel = 0,
+		Active = false,
+		ZIndex = 4000,
+	}, UI.root())
+
+	local backdrop = UI.create("Frame", {
+		Size = UDim2.fromScale(1, 1),
+		BackgroundColor3 = Color3.fromRGB(0, 0, 0),
+		BackgroundTransparency = 1,
+		BorderSizePixel = 0,
+		Active = true,
+		ZIndex = 4000,
+	}, container)
+
+	local window = UI.create("Frame", {
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.5),
+		Size = UDim2.fromScale(0.56, 0.64),
+		BackgroundColor3 = tokens.color.surface,
+		BackgroundTransparency = 0.05,
+		BorderSizePixel = 0,
+		Active = true,
+		ClipsDescendants = true,
+		ZIndex = 4001,
+	}, container)
+
+	UI.corner(window, tokens.radius.md)
+
+	UI.label(window, ctx.Name, UDim2.fromOffset(12, 9), UDim2.new(1, -56, 0, 18), tokens.type.small, tokens.color.text)
+
+	local canvas = UI.create("Frame", {
+		Position = UDim2.fromOffset(10, 70),
+		Size = UDim2.new(1, -20, 1, -104),
+		BackgroundColor3 = viewerBackgrounds[1].color,
+		BorderSizePixel = 0,
+		ClipsDescendants = true,
+		Active = true,
+	}, window)
+
+	UI.corner(canvas, tokens.radius.sm)
+
+	local image = UI.image(canvas, imageSource(ctx.Path), UDim2.fromScale(0.5, 0.5), UDim2.fromScale(1, 1))
+
+	pcall(function()
+		image.AnchorPoint = Vector2.new(0.5, 0.5)
+		image.ScaleType = Enum.ScaleType.Fit
+		image.BackgroundTransparency = 1
+	end)
+
+	local status =
+		UI.label(window, "", UDim2.new(0, 12, 1, -26), UDim2.new(1, -24, 0, 18), tokens.type.small, tokens.color.muted)
+
+	local function refreshStatus()
+		local opacity = math.floor((1 - viewerOpacities[state.opacity]) * 100 + 0.5)
+
+		status.Text = string.format(
+			"Zoom %d%%    Rotation %d    Tint %s    Opacity %d%%    Background %s",
+			math.floor(state.zoom * 100 + 0.5),
+			state.rotation % 360,
+			viewerTints[state.tint].name,
+			opacity,
+			viewerBackgrounds[state.background].name
+		)
+	end
+
+	local function apply(animated)
+		local size = UDim2.fromScale(state.zoom, state.zoom)
+		local position = UDim2.new(0.5, state.panX, 0.5, state.panY)
+
+		pcall(function()
+			canvas.BackgroundColor3 = viewerBackgrounds[state.background].color
+		end)
+
+		if animated then
+			tween(image, { Size = size, Position = position, Rotation = state.rotation }, 0.15)
+		else
+			pcall(function()
+				image.Size = size
+				image.Position = position
+				image.Rotation = state.rotation
+			end)
+		end
+
+		refreshStatus()
+	end
+
+	local handle = {}
+	local closed = false
+	local connections = {}
+
+	local function close(immediate)
+		if closed then
+			return
+		end
+
+		closed = true
+
+		for _, connection in ipairs(connections) do
+			pcall(function()
+				connection:Disconnect()
+			end)
+		end
+
+		if activeViewer == handle then
+			activeViewer = nil
+		end
+
+		viewerClosedAt = os.clock()
+
+		local function destroy()
+			if UI.isAlive(container) then
+				container:Destroy()
+			end
+		end
+
+		if immediate then
+			destroy()
+			return
+		end
+
+		tween(backdrop, { BackgroundTransparency = 1 }, 0.14)
+
+		local shrink =
+			tween(window, { Size = UDim2.fromScale(0.52, 0.6) }, 0.14, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+
+		if shrink == nil then
+			destroy()
+			return
+		end
+
+		shrink.Completed:Once(destroy)
+	end
+
+	handle.close = close
+	activeViewer = handle
+
+	local function save()
+		local fileType = ctx.Type
+
+		if fileType == nil or fileType.onSave == nil then
+			toastMessage("error", "Nothing to save with", "No onSave callback is registered for this file type.")
+			return
+		end
+
+		local ok, err = pcall(fileType.onSave, ctx, {
+			zoom = state.zoom,
+			rotation = state.rotation % 360,
+			tint = viewerTints[state.tint].name,
+			tintColor = viewerTints[state.tint].color,
+			opacity = 1 - viewerOpacities[state.opacity],
+			background = viewerBackgrounds[state.background].name,
+		})
+
+		if ok then
+			toastMessage("success", "Saved", ctx.Name)
+		else
+			toastMessage("error", "Save failed", tostring(err))
+		end
+	end
+
+	local function cycle(key, count)
+		state[key] = state[key] % count + 1
+
+		apply(false)
+	end
+
+	local tools = {
+		{
+			"Zoom -",
+			function()
+				state.zoom = math.max(0.1, state.zoom / 1.25)
+				apply(true)
+			end,
+		},
+		{
+			"Zoom +",
+			function()
+				state.zoom = math.min(16, state.zoom * 1.25)
+				apply(true)
+			end,
+		},
+		{
+			"Fit",
+			function()
+				state.zoom = 1
+				state.panX = 0
+				state.panY = 0
+				apply(true)
+			end,
+		},
+		{
+			"Rot L",
+			function()
+				state.rotation -= 90
+				apply(true)
+			end,
+		},
+		{
+			"Rot R",
+			function()
+				state.rotation += 90
+				apply(true)
+			end,
+		},
+		{
+			"BG",
+			function()
+				cycle("background", #viewerBackgrounds)
+			end,
+		},
+		{
+			"Tint",
+			function()
+				cycle("tint", #viewerTints)
+			end,
+		},
+		{
+			"Opacity",
+			function()
+				cycle("opacity", #viewerOpacities)
+			end,
+		},
+		{
+			"Reset",
+			function()
+				state.zoom = 1
+				state.panX = 0
+				state.panY = 0
+				state.rotation = state.rotation - state.rotation % 360
+				state.background = 1
+				state.tint = 1
+				state.opacity = 1
+				apply(true)
+			end,
+		},
+		{ "Save", save },
+	}
+
+	local BUTTON_W, BUTTON_H, BUTTON_GAP = 58, 24, 4
+
+	for index, tool in ipairs(tools) do
+		UI.button(
+			window,
+			tool[1],
+			UDim2.fromOffset(10 + (index - 1) * (BUTTON_W + BUTTON_GAP), 38),
+			UDim2.fromOffset(BUTTON_W, BUTTON_H),
+			tool[2],
+			{
+				color = tokens.color.input,
+				hoverColor = colors.hover,
+				radius = tokens.radius.sm,
+				border = false,
+			}
+		)
+	end
+
+	UI.button(window, "X", UDim2.new(1, -34, 0, 6), UDim2.fromOffset(26, 22), function()
+		close(false)
+	end, {
+		color = tokens.color.input,
+		hoverColor = colors.hover,
+		radius = tokens.radius.sm,
+		border = false,
+	})
+
+	backdrop.InputBegan:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 then
+			close(false)
+		end
+	end)
+
+	local panning = nil
+
+	canvas.InputBegan:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 then
+			panning = {
+				x = input.Position.X,
+				y = input.Position.Y,
+				panX = state.panX,
+				panY = state.panY,
+			}
+		end
+	end)
+
+	connections[#connections + 1] = UserInputService.InputChanged:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseMovement and panning ~= nil then
+			state.panX = panning.panX + (input.Position.X - panning.x)
+			state.panY = panning.panY + (input.Position.Y - panning.y)
+
+			apply(false)
+
+			return
+		end
+
+		if input.UserInputType == Enum.UserInputType.MouseWheel and mouseOver(canvas) then
+			local factor = input.Position.Z > 0 and 1.1 or 1 / 1.1
+
+			state.zoom = math.clamp(state.zoom * factor, 0.1, 16)
+
+			apply(false)
+		end
+	end)
+
+	connections[#connections + 1] = UserInputService.InputEnded:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 then
+			panning = nil
+		end
+	end)
+
+	connections[#connections + 1] = UserInputService.InputBegan:Connect(function(input)
+		if input.KeyCode == Enum.KeyCode.Escape then
+			close(false)
+		end
+	end)
+
+	apply(false)
+
+	tween(backdrop, { BackgroundTransparency = 0.45 }, 0.15)
+	tween(window, { Size = UDim2.fromScale(0.6, 0.7) }, 0.2, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+end
+
+registerFileType({
+	name = "Script",
+	extensions = { "lua", "luau", "odin", "cs", "py", "js", "ts" },
+	icon = "builtin://icons/Script.svg",
+})
+
+registerFileType({
+	name = "Audio",
+	extensions = { "wav", "mp3", "ogg" },
+	icon = "builtin://icons/Sound.svg",
+})
+
+registerFileType({
+	name = "Material",
+	extensions = { "mat" },
+	icon = "builtin://icons/Texture.svg",
+})
+
+registerFileType({
+	name = "Image",
+	extensions = { "png", "jpg", "jpeg", "webp", "gif", "bmp" },
+	icon = "builtin://icons/ImageLabel.svg",
+	thumbnail = true,
+
+	onOpen = function(ctx)
+		openImageViewer(ctx)
+	end,
+
+	contextItems = {
+		{ label = "Open in Image Viewer", icon = "builtin://icons/ImageLabel.svg", callback = openImageViewer },
+	},
+})
+
+registerFileType({
+	name = "SVG",
+	extensions = { "svg" },
+	icon = "builtin://icons/ImageLabel.svg",
+	thumbnail = true,
+
+	onOpen = function(ctx)
+		openImageViewer(ctx)
+	end,
+
+	contextItems = {
+		{ label = "Open in Image Viewer", icon = "builtin://icons/ImageLabel.svg", callback = openImageViewer },
+		{
+			label = "Edit as Text",
+			icon = "builtin://icons/Script.svg",
+			callback = function(ctx)
+				viewport.OpenFile(ctx.Path, ctx.Name)
+			end,
+		},
+	},
+})
 
 local templates = {
 	{
@@ -91,6 +571,13 @@ local templates = {
 	},
 }
 
+table.insert(templates, {
+	label = "SVG File",
+	value = "Svg",
+	name = "Image.svg",
+	icon = "builtin://icons/ImageLabel.svg",
+})
+
 return function(content, windowControls)
 	local rootPath = nil
 	local expanded = {}
@@ -104,12 +591,10 @@ return function(content, windowControls)
 	local rebuilding = false
 	local lastHash = ""
 
-	-- Single pane state
 	local rowRegistry = {}
 	local visibleRows = {}
 	local rowIndex = 0
 
-	-- Wide mode state
 	local wideMode = false
 	local wideFolder = nil
 	local leftList = nil
@@ -121,11 +606,9 @@ return function(content, windowControls)
 	local leftRowIndex = 0
 	local rightRowIndex = 0
 
-	-- Animation state: animateNext is requested by navigation, and consumed by
-	-- the next rebuild so ordinary refreshes (selection changes, file watching)
-	-- don't replay the entrance animation.
 	local animateNext = false
 	local animating = false
+	local thumbnailCount = 0
 
 	local drag = nil
 	local dragLayer = nil
@@ -143,37 +626,6 @@ return function(content, windowControls)
 		end
 
 		return windowControls.getSelectedTab() == "Files"
-	end
-
-	-- Safe one-shot tween. Returns the tween, or nil if it couldn't be created
-	-- (destroyed object, unsupported property, ...).
-	local function tween(object, properties, duration, style, direction, delay)
-		if object == nil or not UI.isAlive(object) then
-			return nil
-		end
-
-		local ok, result = pcall(function()
-			local info = TweenInfo.new(
-				duration,
-				style or Enum.EasingStyle.Quad,
-				direction or Enum.EasingDirection.Out,
-				0,
-				false,
-				delay or 0
-			)
-
-			local created = TweenService:Create(object, info, properties)
-
-			created:Play()
-
-			return created
-		end)
-
-		if ok then
-			return result
-		end
-
-		return nil
 	end
 
 	local function createList(parent, position, size, fadeIn)
@@ -238,8 +690,6 @@ return function(content, windowControls)
 
 	emptyLabel.AnchorPoint = Vector2.new(0.5, 0.5)
 
-	-- Paths arrive from the engine in whatever separator style the platform
-	-- uses, so every comparison below normalises before matching.
 	local function nameOf(path)
 		return path:match("[^/\\]+$") or path
 	end
@@ -329,11 +779,10 @@ return function(content, windowControls)
 			return "builtin://icons/Folder.svg"
 		end
 
-		local name = string.lower(entry.Name)
-		local extension = name:match("%.([%w]+)$")
+		local fileType = fileTypeOf(entry)
 
-		if extension and fileIcons[extension] then
-			return fileIcons[extension]
+		if fileType ~= nil and fileType.icon ~= nil then
+			return fileType.icon
 		end
 
 		return "builtin://icons/File.svg"
@@ -434,7 +883,6 @@ return function(content, windowControls)
 		return table.concat(pieces, "|")
 	end
 
-	-- Switches the grid to another folder and asks the next rebuild to animate.
 	local function navigateTo(path)
 		wideFolder = path
 		animateNext = true
@@ -442,12 +890,79 @@ return function(content, windowControls)
 		lastHash = ""
 	end
 
+	local suppressClickUntil = 0
+
+	local function contextFor(entry)
+		return {
+			Path = entry.Path,
+			Name = entry.Name,
+			Extension = extensionOf(entry.Name),
+			Entry = entry,
+			Type = fileTypeOf(entry),
+			Panel = content,
+
+			Refresh = function()
+				lastHash = ""
+			end,
+
+			Select = function(path)
+				selectedPath = path
+
+				lastHash = ""
+			end,
+		}
+	end
+
+	local function reportHandlerError(entry, err)
+		toastMessage("error", "File handler failed", `{entry and entry.Name or "File"}: {tostring(err)}`)
+	end
+
+	local function openFile(entry)
+		local fileType = fileTypeOf(entry)
+
+		if fileType ~= nil and fileType.onOpen ~= nil then
+			local ok, result = pcall(fileType.onOpen, contextFor(entry))
+
+			if not ok then
+				reportHandlerError(entry, result)
+
+				return
+			end
+
+			if result ~= false then
+				return
+			end
+		end
+
+		viewport.OpenFile(entry.Path, entry.Name)
+	end
+
+	local function openPath(path)
+		openFile({ Path = path, Name = nameOf(path), Type = "File" })
+	end
+
+	local function clickFile(entry)
+		if os.clock() < suppressClickUntil then
+			return
+		end
+
+		local fileType = fileTypeOf(entry)
+
+		if fileType == nil or fileType.onClick == nil then
+			return
+		end
+
+		local ok, err = pcall(fileType.onClick, contextFor(entry))
+
+		if not ok then
+			reportHandlerError(entry, err)
+		end
+	end
+
 	local registries = function()
 		return { leftRowRegistry, rightRowRegistry, rowRegistry }
 	end
 
-	-- Highlights (or un-highlights) every row/tile that represents `path`,
-	-- across all registries, with a short colour + transparency tween.
 	local function setDropHighlight(path, on)
 		if path == nil then
 			return
@@ -534,8 +1049,6 @@ return function(content, windowControls)
 	end
 
 	local function animateDrop(reparent)
-		-- Capture the drag now: the move runs from the tween's Completed callback
-		-- ~0.12s later, by which point `drag` may describe a different gesture.
 		local source = drag.source
 		local target = drag.target
 
@@ -555,7 +1068,6 @@ return function(content, windowControls)
 
 		local layer = dragLayer
 
-		-- Landing on a target shrinks into it; dropping on nothing just fades.
 		local goal = { BackgroundTransparency = 1 }
 
 		if reparent then
@@ -574,14 +1086,12 @@ return function(content, windowControls)
 		end)
 	end
 
-	-- Shared mouse behaviour for rows and tiles: context menu + drag start.
 	local function attachRowInput(row, entry, pane)
 		row.InputBegan:Connect(function(input)
 			if input.UserInputType == Enum.UserInputType.MouseButton2 then
 				commitRename()
 				closeContextMenu()
 
-				-- The folder tree only navigates; selection belongs to the grid.
 				if pane ~= "left" then
 					selectedPath = entry.Path
 				end
@@ -612,7 +1122,6 @@ return function(content, windowControls)
 		end)
 	end
 
-	-- Shared double-click behaviour.
 	local function attachActivate(row, entry, pane)
 		row.Activated:Connect(function(_, clickCount)
 			if clickCount ~= 2 then
@@ -620,17 +1129,15 @@ return function(content, windowControls)
 			end
 
 			if not entryIsDirectory(entry) then
-				viewport.OpenFile(entry.Path, entry.Name)
+				openFile(entry)
 				return
 			end
 
 			if pane == "left" then
-				-- Single click already navigated; nothing more to do.
 				return
 			end
 
 			if pane == "right" then
-				-- Grid: double-click enters the folder.
 				expanded[wideFolder or rootPath] = true
 
 				navigateTo(entry.Path)
@@ -644,8 +1151,6 @@ return function(content, windowControls)
 		end)
 	end
 
-	-- Rows for the single pane tree and the wide mode folder tree.
-	-- pane: "single" | "left"
 	local function addRowToPane(pane, entry, depth, y)
 		local isSelected
 
@@ -676,12 +1181,13 @@ return function(content, windowControls)
 		local row = UI.button(listVar, "", UDim2.fromOffset(1, y), UDim2.new(1, -2, 0, UI.metrics.treeRow), function()
 			if pane ~= "left" then
 				selectedPath = entry.Path
+
+				clickFile(entry)
 			end
 
 			if entryIsDirectory(entry) then
 				if pane == "left" then
 					if (wideFolder or rootPath) == entry.Path then
-						-- Already showing this folder: toggle its children.
 						expanded[entry.Path] = not expanded[entry.Path] or nil
 					else
 						expanded[entry.Path] = true
@@ -770,7 +1276,6 @@ return function(content, windowControls)
 		return y
 	end
 
-	-- Folders only, not filtered by search.
 	local function walkLeft(directory, depth, y)
 		local entries = readEntries(directory)
 
@@ -791,7 +1296,6 @@ return function(content, windowControls)
 		return y
 	end
 
-	-- The tree gets a synthetic root row so you can always navigate back up.
 	local function buildLeft()
 		local rootEntry = {
 			Path = rootPath,
@@ -808,8 +1312,6 @@ return function(content, windowControls)
 		return y
 	end
 
-	-- ---------------------------------------------------------------- grid
-
 	local function gridColumns()
 		local width = rightList and rightList.AbsoluteSize.X or 0
 
@@ -817,7 +1319,7 @@ return function(content, windowControls)
 			width = content.AbsoluteSize.X - LEFT_WIDTH - inset * 2
 		end
 
-		width -= 10 -- scrollbar room
+		width -= 10
 
 		return math.max(1, math.floor((width - TILE_GAP) / (TILE_W + TILE_GAP)))
 	end
@@ -838,6 +1340,8 @@ return function(content, windowControls)
 
 		local tile = UI.button(rightList, "", finalPosition, UDim2.fromOffset(TILE_W, TILE_H), function()
 			selectedPath = entry.Path
+
+			clickFile(entry)
 		end, {
 			color = isSelected and colors.selection or tokens.color.rowEven,
 			hoverColor = isSelected and colors.selection or colors.hover,
@@ -865,13 +1369,43 @@ return function(content, windowControls)
 
 		rightVisibleRows[#rightVisibleRows + 1] = entry
 
-		local icon = UI.image(tile, iconFor(entry), UDim2.fromOffset((TILE_W - 36) / 2, 8), UDim2.fromOffset(36, 36))
+		local fileType = fileTypeOf(entry)
+
+		local wantsThumbnail = fileType ~= nil and fileType.thumbnail == true and thumbnailCount < MAX_THUMBNAILS
+
+		local slot = nil
+		local visual = nil
+
+		if wantsThumbnail then
+			thumbnailCount += 1
+
+			slot = UI.create("Frame", {
+				Position = UDim2.fromOffset(6, 6),
+				Size = UDim2.fromOffset(TILE_W - 12, 42),
+				BackgroundColor3 = tokens.color.input,
+				BackgroundTransparency = 0.4,
+				BorderSizePixel = 0,
+				Active = false,
+			}, tile)
+
+			UI.corner(slot, tokens.radius.sm)
+
+			visual = UI.image(slot, imageSource(entry.Path), UDim2.fromOffset(2, 2), UDim2.new(1, -4, 1, -4))
+
+			pcall(function()
+				visual.ScaleType = Enum.ScaleType.Fit
+			end)
+		else
+			visual = UI.image(tile, iconFor(entry), UDim2.fromOffset((TILE_W - 36) / 2, 8), UDim2.fromOffset(36, 36))
+		end
+
+		local labelY = wantsThumbnail and 52 or 48
 
 		local label = UI.label(
 			tile,
 			entry.Name,
-			UDim2.fromOffset(2, 48),
-			UDim2.new(1, -4, 0, 32),
+			UDim2.fromOffset(2, labelY),
+			UDim2.new(1, -4, 0, TILE_H - labelY - 4),
 			tokens.type.small,
 			isSelected and tokens.color.text or colors.text
 		)
@@ -883,7 +1417,6 @@ return function(content, windowControls)
 			label.TextTruncate = Enum.TextTruncate.AtEnd
 		end)
 
-		-- Entrance: tiles rise and fade in with a short stagger.
 		if animating then
 			local delay = math.min(index - 1, 14) * 0.02
 			local labelBase = 0
@@ -896,8 +1429,12 @@ return function(content, windowControls)
 				tile.BackgroundTransparency = 1
 				tile.Position = UDim2.fromOffset(x, y + 10)
 
-				icon.ImageTransparency = 1
+				visual.ImageTransparency = 1
 				label.TextTransparency = 1
+
+				if slot ~= nil then
+					slot.BackgroundTransparency = 1
+				end
 			end)
 
 			tween(tile, {
@@ -905,7 +1442,18 @@ return function(content, windowControls)
 				Position = finalPosition,
 			}, 0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out, delay)
 
-			tween(icon, { ImageTransparency = 0 }, 0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out, delay)
+			tween(visual, { ImageTransparency = 0 }, 0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out, delay)
+
+			if slot ~= nil then
+				tween(
+					slot,
+					{ BackgroundTransparency = 0.4 },
+					0.2,
+					Enum.EasingStyle.Quad,
+					Enum.EasingDirection.Out,
+					delay
+				)
+			end
 
 			tween(label, { TextTransparency = labelBase }, 0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out, delay)
 		end
@@ -934,15 +1482,11 @@ return function(content, windowControls)
 		return bottom == 0 and 0 or bottom + TILE_GAP
 	end
 
-	-- ------------------------------------------------------------- rebuild
-
 	rebuild = function()
 		if rebuilding then
 			return
 		end
 
-		-- A live rename box lives inside a row, so rebuilding would destroy the
-		-- field mid-edit. Defer until the rename finishes.
 		if UI.isAlive(renaming) then
 			pendingRebuild = true
 			return
@@ -953,13 +1497,14 @@ return function(content, windowControls)
 		animating = animateNext
 		animateNext = false
 
+		thumbnailCount = 0
+
 		local isEmpty = false
 
 		if wideMode then
 			local oldLeftCanvasPosition = leftList and leftList.CanvasPosition or Vector2.new(0, 0)
 			local oldRightCanvasPosition = rightList and rightList.CanvasPosition or Vector2.new(0, 0)
 
-			-- Navigating to a new folder starts at the top of the grid.
 			if animating then
 				oldRightCanvasPosition = Vector2.new(0, 0)
 			end
@@ -980,7 +1525,6 @@ return function(content, windowControls)
 			local rightFinalY = 0
 
 			if rootPath ~= nil then
-				-- The open folder may have been deleted or moved away.
 				if wideFolder ~= nil and readEntries(wideFolder) == nil then
 					wideFolder = nil
 				end
@@ -999,7 +1543,6 @@ return function(content, windowControls)
 				rightList.CanvasPosition = oldRightCanvasPosition
 			end
 
-			-- Auto-select first item in the grid if nothing (valid) is selected
 			if #rightVisibleRows > 0 then
 				local selectedInRight = false
 
@@ -1019,7 +1562,6 @@ return function(content, windowControls)
 
 			isEmpty = rightFinalY <= 0
 
-			-- Centre the label over the grid rather than the whole panel.
 			emptyLabel.Position = UDim2.new(0.5, (LEFT_WIDTH + 4) / 2, 0.5, 0)
 		else
 			local oldCanvasPosition = list.CanvasPosition
@@ -1179,7 +1721,6 @@ return function(content, windowControls)
 			return
 		end
 
-		-- Tiles rename along the bottom; tree rows rename inline.
 		local renamePosition
 		local renameSize
 
@@ -1203,8 +1744,6 @@ return function(content, windowControls)
 
 		renaming.Text = nameOf(path)
 
-		-- Preselecting is cosmetic; a runtime that rejects the native call must not
-		-- take the whole rename down with it.
 		pcall(function()
 			renaming:SelectAll()
 		end)
@@ -1239,7 +1778,6 @@ return function(content, windowControls)
 				end)
 
 				if ok and renamed then
-					-- The open document tracked the old path, so it has to go.
 					viewport.CloseFile(path)
 
 					selectedPath = joinPath(parent, text)
@@ -1266,8 +1804,6 @@ return function(content, windowControls)
 		end)
 	end
 
-	-- Applies the pending rename, if any. Clicking elsewhere in the tree should
-	-- keep whatever was typed rather than silently discarding it.
 	commitRename = function()
 		local commit = renameCommit
 
@@ -1308,7 +1844,6 @@ return function(content, windowControls)
 		return nil
 	end
 
-	-- Selects the row/tile at `index`, scrolling only if it is out of view.
 	local function selectAndReveal(index)
 		local rows = getVisibleRows()
 		local entry = rows[index]
@@ -1366,12 +1901,10 @@ return function(content, windowControls)
 			return
 		end
 
-		viewport.OpenFile(path, nameOf(path))
+		openPath(path)
 	end
 
-	-- Creates `name` inside `directory`, selects the new entry and starts an
-	-- inline rename so the placeholder name can be replaced immediately.
-	local function createNamed(directory, name, isFolder)
+	local function createNamed(directory, name, isFolder, onCreated)
 		if directory == nil or name == nil then
 			return
 		end
@@ -1404,7 +1937,6 @@ return function(content, windowControls)
 		expanded[directory] = true
 		selectedPath = created
 
-		-- Make sure the new entry is actually visible in the grid.
 		if wideMode and directory ~= (wideFolder or rootPath) then
 			navigateTo(directory)
 		end
@@ -1412,6 +1944,21 @@ return function(content, windowControls)
 		lastHash = ""
 
 		rebuild()
+
+		if onCreated ~= nil then
+			local ok, err = pcall(
+				onCreated,
+				contextFor({
+					Path = created,
+					Name = nameOf(created),
+					Type = isFolder and "Directory" or "File",
+				})
+			)
+
+			if not ok then
+				reportHandlerError({ Name = unique }, err)
+			end
+		end
 
 		beginRename(created)
 	end
@@ -1443,7 +1990,7 @@ return function(content, windowControls)
 			directory = targetDirectoryFor(selectedPath)
 		end
 
-		createNamed(directory, template.name, template.value == "Folder")
+		createNamed(directory, template.name, template.value == "Folder", template.onCreated)
 	end
 
 	local function importFile(directory)
@@ -1494,6 +2041,7 @@ return function(content, windowControls)
 	local contextMenu
 	local contextMenuOptions
 	local contextTarget = nil
+	local contextCustom = {}
 
 	openContextMenu = function(entry, screenPoint)
 		if entry == nil then
@@ -1507,7 +2055,7 @@ return function(content, windowControls)
 				items = {},
 				menuWidth = 180,
 				itemHeight = UI.metrics.inputHeight,
-				maxVisibleItems = 9,
+				maxVisibleItems = 12,
 				itemBgTransparency = 1,
 				showSearch = false,
 				closeOnOutsideClick = false,
@@ -1519,6 +2067,18 @@ return function(content, windowControls)
 					contextTarget = nil
 
 					if path == nil then
+						return
+					end
+
+					local custom = contextCustom[action]
+
+					if custom ~= nil then
+						local ok, err = pcall(custom.callback, custom.context)
+
+						if not ok then
+							reportHandlerError(custom.context.Entry, err)
+						end
+
 						return
 					end
 
@@ -1556,7 +2116,7 @@ return function(content, windowControls)
 			contextMenu = controller
 		end
 
-		contextMenu:SetItems({
+		local items = {
 			{ label = "New Folder", value = "new_folder", icon = "builtin://global-icons/folder.svg" },
 			{ label = "New Luau Script", value = "new_script", icon = "builtin://icons/Script.svg" },
 			{ label = "Open", value = "open", icon = "builtin://global-icons/api.png" },
@@ -1566,7 +2126,29 @@ return function(content, windowControls)
 			{ label = "Copy", value = "copy", icon = "builtin://global-icons/copy.svg" },
 			{ label = "Paste", value = "paste", icon = "builtin://global-icons/paste_clipboard.svg" },
 			{ label = "Import File..", value = "import", icon = "builtin://global-icons/folder.svg" },
-		})
+		}
+
+		contextCustom = {}
+
+		local fileType = fileTypeOf(entry)
+
+		if fileType ~= nil and fileType.contextItems ~= nil then
+			local context = contextFor(entry)
+
+			for index, item in ipairs(fileType.contextItems) do
+				local value = "custom:" .. index
+
+				contextCustom[value] = { callback = item.callback, context = context }
+
+				items[#items + 1] = {
+					label = item.label,
+					value = value,
+					icon = item.icon or fileType.icon,
+				}
+			end
+		end
+
+		contextMenu:SetItems(items)
 
 		contextMenuOptions.menuPosition = function()
 			return UDim2.fromOffset(screenPoint.X, screenPoint.Y)
@@ -1659,8 +2241,6 @@ return function(content, windowControls)
 		local best = nil
 
 		if wideMode then
-			-- Drop onto a folder in either pane, or onto the grid's empty space
-			-- to move into the folder that is currently open.
 			for _, registry in ipairs({ leftRowRegistry, rightRowRegistry }) do
 				for path, registered in pairs(registry) do
 					if
@@ -1749,7 +2329,6 @@ return function(content, windowControls)
 			tokens.color.text
 		)
 
-		-- Pop in: grow and fade up.
 		tween(dragLayer, {
 			BackgroundTransparency = 0.2,
 			Size = UDim2.fromOffset(180, UI.metrics.treeRow),
@@ -1761,10 +2340,6 @@ return function(content, windowControls)
 			return
 		end
 
-		-- Follow the cursor directly. Tweening the ghost spawned a new TweenService
-		-- tween on every mouse-move, each one stepping the VM for the rest of its
-		-- duration, which made dragging visibly laggy. The pop-in and drop
-		-- animations are one-shot, so they don't have that cost.
 		local mouse = UserInputService:GetMouseLocation()
 
 		dragLayer.Position = UDim2.fromOffset(mouse.X + 10, mouse.Y)
@@ -1817,11 +2392,16 @@ return function(content, windowControls)
 			return
 		end
 
+		suppressClickUntil = os.clock() + 0.2
 		animateDrop(drag.target ~= nil)
 	end)
 
 	UserInputService.InputBegan:Connect(function(input: InputObject, gameProcessed: boolean)
 		if gameProcessed then
+			return
+		end
+
+		if viewerBlocksInput() then
 			return
 		end
 
@@ -1878,7 +2458,6 @@ return function(content, windowControls)
 
 		local index = selectedPath and rowIndexOf(selectedPath) or nil
 
-		-- Grid navigation: arrows move across tiles, up/down jump a full row.
 		if wideMode then
 			local step = nil
 
@@ -2036,7 +2615,6 @@ return function(content, windowControls)
 			return
 		end
 
-		-- Detect wide mode: explorer width >= output/console width
 		local explorerWidth = content.AbsoluteSize.X
 		local outputWidth = 0
 
@@ -2046,7 +2624,6 @@ return function(content, windowControls)
 
 		local newWideMode = explorerWidth >= outputWidth and outputWidth > 0
 
-		-- If wide mode changed, recreate the lists
 		if newWideMode ~= wideMode then
 			wideMode = newWideMode
 
@@ -2081,7 +2658,6 @@ return function(content, windowControls)
 			expanded = {}
 			wideFolder = nil
 
-			-- The folder tree starts with the project root open.
 			if wideMode and rootPath ~= nil then
 				expanded[rootPath] = true
 			end
@@ -2118,7 +2694,6 @@ return function(content, windowControls)
 			return
 		end
 
-		-- The grid column count is part of the hash so it reflows on resize.
 		local hash = treeHash(rootPath)
 			.. "#"
 			.. (selectedPath or "")
@@ -2135,6 +2710,13 @@ return function(content, windowControls)
 	end)
 
 	return {
+
+		RegisterFileType = function(definition)
+			registerFileType(definition)
+
+			lastHash = ""
+		end,
+
 		Refresh = function()
 			loadRoot()
 
