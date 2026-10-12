@@ -148,13 +148,15 @@ local function openImageViewer(ctx)
 		opacity = 1,
 	}
 
+	local viewerGui = Instance.new("ScreenGui")
+
 	local container = UI.create("Frame", {
 		Size = UDim2.fromScale(1, 1),
 		BackgroundTransparency = 1,
 		BorderSizePixel = 0,
 		Active = false,
 		ZIndex = 4000,
-	}, UI.root())
+	}, viewerGui)
 
 	local backdrop = UI.create("Frame", {
 		Size = UDim2.fromScale(1, 1),
