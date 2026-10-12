@@ -127,6 +127,7 @@ search.BackgroundTransparency = 0.8
 search.TextColor3 = TEXT_COLOR
 search.PlaceholderText = "Search fonts..."
 search.Text = ""
+search.Active = true
 search.TextSize = 14
 search.ClearTextOnFocus = false
 search.Parent = content
