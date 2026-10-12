@@ -31,7 +31,7 @@ local panel, _, _, pages =
 local content = pages.pages.Explorer
 local filesPage = pages.pages.Files
 
-files(filesPage)
+local filesController = files(filesPage)
 
 panel.Position =
 	UDim2.new(panel.Position.X.Scale, panel.Position.X.Offset, panel.Position.Y.Scale, panel.Position.Y.Offset)
@@ -1332,3 +1332,7 @@ renderer.Pool.new("2d", function()
 		rebuild()
 	end
 end)
+
+return {
+	filesController = filesController,
+}

@@ -2,6 +2,7 @@ if (IsServer or IsClient) or IsPlaytest then
 	return nil
 end
 local UI = require("@internal/editor_ui")
+local Explorer = require("@internal/explorer")
 
 local Project = game.Project
 local Dialog = game.DialogService
@@ -85,6 +86,8 @@ return function(page, windowControls, gui)
 						gui.Enabled = false
 						UI.root().Enabled = true
 						UI.RootOverlay().Enabled = true
+
+						Explorer.filesController.Refresh()
 
 						UI.toast("creation", {
 							type = "success",
@@ -359,6 +362,8 @@ return function(page, windowControls, gui)
 					print({ iconid, name, descriptiontext, folderPath })
 				else
 					Project:SetActiveProject(folderPath)
+
+					Explorer.filesController.Refresh()
 				end
 				gui.Enabled = false
 
