@@ -1697,6 +1697,10 @@ local function addRowToPane(pane, entry, depth, y)
 	local hashFrame = 0
 
 	renderer.Pool.new("2d", function()
+		if not filesTabActive() then
+			return
+		end
+
 		-- Detect wide mode: explorer width >= output/console width
 		local explorerWidth = content.AbsoluteSize.X
 		local outputWidth = 0
