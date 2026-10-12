@@ -111,6 +111,13 @@ local function createWindow(title, onGone)
 		}
 	)
 
+	pageContent.BackgroundTransparency = 1
+	window.BackgroundTransparency = 0.5
+	window.ClipsDescendants = true
+	window.Parent = gui
+
+	UI.backdrop(pageContent, 15, Color3.new(0, 0, 0))
+
 	if not ok then
 		gui:Destroy()
 
@@ -215,7 +222,7 @@ function ImageViewer.Open(ctx)
 	local canvas = UI.create("Frame", {
 		Position = UDim2.fromOffset(8, 36),
 		Size = UDim2.new(1, -16, 1, -68),
-		BackgroundColor3 = viewerBackgrounds[1].color,
+		BackgroundTransparency = 1,
 		BorderSizePixel = 0,
 		ClipsDescendants = true,
 		Active = true,
