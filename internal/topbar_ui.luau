@@ -19,6 +19,7 @@ return {
 		{
 			name = "Frame",
 			icon = "Frame.svg",
+			width = 100,
 			callback = function()
 				local selected = selectedObject()
 				if selected then
@@ -32,6 +33,8 @@ return {
 		{
 			name = "TextButton",
 			icon = "TextButton.svg",
+			width = 120,
+
 			callback = function()
 				local selected = selectedObject()
 				if selected then
@@ -45,6 +48,8 @@ return {
 		{
 			name = "ImageLabel",
 			icon = "ImageLabel.svg",
+			width = 120,
+
 			callback = function()
 				local selected = selectedObject()
 				if selected then
@@ -58,6 +63,8 @@ return {
 		{
 			name = "ImageButton",
 			icon = "ImageButton.svg",
+			width = 120,
+
 			callback = function()
 				local selected = selectedObject()
 				if selected then
@@ -75,6 +82,8 @@ return {
 		{
 			name = "UICorner",
 			icon = "UICorner.svg",
+			width = 100,
+
 			callback = function()
 				local selected = selectedObject()
 				if selected then
@@ -88,6 +97,8 @@ return {
 		{
 			name = "UIStroke",
 			icon = "UIStroke.svg",
+			width = 100,
+
 			callback = function()
 				local selected = selectedObject()
 				if selected then
@@ -101,6 +112,8 @@ return {
 		{
 			name = "UIShadow",
 			icon = "UIShadow.svg",
+			width = 100,
+
 			callback = function()
 				local selected = selectedObject()
 				if selected then
@@ -114,6 +127,8 @@ return {
 		{
 			name = "UIPadding",
 			icon = "UIPadding.svg",
+			width = 100,
+
 			callback = function()
 				local selected = selectedObject()
 				if selected then
@@ -127,6 +142,8 @@ return {
 		{
 			name = "UIGradient",
 			icon = "UIGradient.svg",
+			width = 100,
+
 			callback = function()
 				local selected = selectedObject()
 				if selected then
