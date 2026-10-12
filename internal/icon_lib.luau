@@ -274,6 +274,11 @@ local function MakeTile(name, index)
 		}
 	)
 
+	local tooltip = UI.tooltip(button, name, {
+		placement = "below",
+		hoverDelay = 0.35,
+	})
+
 	button.Name = name
 
 	local offset = math.floor(ICON_SIZE / 2)
