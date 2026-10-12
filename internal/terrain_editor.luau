@@ -1,3 +1,7 @@
+if IsPlaytest then
+	return
+end
+
 local terrain = game:GetService("Terrain")
 local UserInputService = game:GetService("UserInputService")
 local mouse: Mouse = UserInputService:GetMouse()

@@ -1,3 +1,7 @@
+if IsPlaytest then
+	return
+end
+
 local UI = require("@internal/editor_ui")
 local colors = UI.tokens.color
 local HttpService = game:GetService("HttpService")
@@ -13,10 +17,6 @@ local ROW_HEIGHT = 28
 local MAX_ROWS = 100
 local PAD = 8
 local PREVIEW_HEIGHT = 100
-
---------------------------------------------------------------------------------
--- Networking
---------------------------------------------------------------------------------
 
 local function Get(url, userAgent)
 	local response = HttpService:RequestAsync({
@@ -37,7 +37,6 @@ end
 local function GetAllFonts()
 	local body = Get(CATALOG_URL, CATALOG_USER_AGENT)
 
-	-- The endpoint prefixes the JSON with an anti-XSSI line: )]}'
 	body = body:gsub("^%s*%)%]%}'[^\n]*\n", "")
 	local catalog = HttpService:JSONDecode(body)
 
@@ -81,8 +80,8 @@ local function ResolveFontUrl(family)
 	return url
 end
 
-local faces = {} -- family -> Font
-local pending = {} -- family -> true while a download is running
+local faces = {}
+local pending = {}
 
 local function LoadFace(family)
 	if faces[family] then
@@ -101,10 +100,6 @@ local function LoadFace(family)
 	return face
 end
 
---------------------------------------------------------------------------------
--- Window
---------------------------------------------------------------------------------
-
 local gui = Instance.new("ScreenGui")
 gui.Name = "Fonts"
 gui.RenderOnTop = true
@@ -116,7 +111,7 @@ local panel, content =
 	})
 
 content.BackgroundTransparency = 1
-panel.Visible = true
+panel.Visible = false
 panel.BackgroundTransparency = 0.5
 panel.ClipsDescendants = true
 panel.Parent = gui
@@ -179,12 +174,8 @@ local status = UI.label(
 status.TextXAlignment = Enum.TextXAlignment.Left
 status.TextYAlignment = Enum.TextYAlignment.Center
 
---------------------------------------------------------------------------------
--- List
---------------------------------------------------------------------------------
-
 local allFonts = {}
-local rows = {} -- family -> { family, button, label, record, hovered }
+local rows = {}
 local selected = nil
 
 local function SetStatus(text)
@@ -242,7 +233,6 @@ local function Select(family)
 			ApplyFace(family, result)
 		end
 
-		-- The user may have clicked something else while this was in flight.
 		if selected ~= family then
 			return
 		end
@@ -297,7 +287,6 @@ local function MakeFontItem(entry, order)
 
 	rows[family] = row
 
-	-- Rows whose font is already downloaded show up in their own face.
 	if faces[family] then
 		label.FontFace = faces[family]
 	end
@@ -352,10 +341,6 @@ end
 
 search.TextChanged:Connect(Rebuild)
 
---------------------------------------------------------------------------------
--- Startup
---------------------------------------------------------------------------------
-
 task.spawn(function()
 	local success, result = pcall(GetAllFonts)
 
@@ -369,3 +354,17 @@ task.spawn(function()
 	allFonts = result
 	Rebuild()
 end)
+
+return {
+	Enable = function()
+		panel.Visible = true
+	end,
+
+	Disable = function()
+		panel.Visible = false
+	end,
+
+	Toggle = function()
+		panel.Visible = not panel.Visible
+	end,
+}

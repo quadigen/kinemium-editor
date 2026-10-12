@@ -1,3 +1,7 @@
+if IsPlaytest then
+	return
+end
+
 local UI = require("@internal/editor_ui")
 local colors = UI.tokens.color
 local HttpService = game:GetService("HttpService")
@@ -5,7 +9,6 @@ local HttpService = game:GetService("HttpService")
 local API = "https://api.iconify.design"
 local PREFIX = "lucide"
 
--- ImageLabel decodes this straight from the string (see the ImageLabel_Load_Image patch).
 local SVG_PREFIX = "data:image/svg+xml;utf8,"
 
 local COLUMNS = 6
@@ -14,16 +17,12 @@ local GAP = 6
 local ICON_SIZE = 28
 local ICON_RES = 64
 local PREVIEW_RES = 128
-local PAGE = 64 -- search limits must be between 32 and 999
+local PAGE = 64
 local MAX_LIMIT = 384
-local FETCH_CHUNK = 48 -- icons per icon-data request
+local FETCH_CHUNK = 48
 local DEBOUNCE = 0.35
 local PAD = 8
 local CARD_HEIGHT = 112
-
---------------------------------------------------------------------------------
--- Iconify API (Lucide set)
---------------------------------------------------------------------------------
 
 local function ColorToHex(color)
 	return string.format(
@@ -37,8 +36,6 @@ end
 local iconColor = ColorToHex(colors.text)
 local setInfo = { name = "Lucide", license = "ISC", author = "Lucide Contributors" }
 
--- name -> { body, width, height }. Bodies are cached, so recolouring and
--- reselecting never touch the network.
 local entries = {}
 
 local function GetJSON(url)
@@ -60,7 +57,6 @@ local function SearchIcons(query, limit)
 	return GetJSON(url)
 end
 
--- One request per chunk returns the SVG bodies for every icon in it.
 local function LoadEntries(names)
 	local missing = {}
 
@@ -95,8 +91,6 @@ local function LoadEntries(names)
 	end
 end
 
--- Lucide draws with stroke="currentColor"; swap it for a real colour here,
--- because the rasterizer has no CSS colour to inherit.
 local function SvgFor(name, size)
 	local entry = entries[name]
 	local body = string.gsub(entry.body, "currentColor", "#" .. iconColor)
@@ -115,10 +109,6 @@ local function ImageFor(name, size)
 	return SVG_PREFIX .. SvgFor(name, size)
 end
 
---------------------------------------------------------------------------------
--- Window
---------------------------------------------------------------------------------
-
 local gui = Instance.new("ScreenGui")
 gui.Name = "Lucide"
 gui.RenderOnTop = true
@@ -130,7 +120,7 @@ local panel, content =
 	})
 
 content.BackgroundTransparency = 1
-panel.Visible = true
+panel.Visible = false
 panel.BackgroundTransparency = 0.5
 panel.ClipsDescendants = true
 panel.Parent = gui
@@ -194,7 +184,6 @@ local metaLabel =
 	UI.label(card, "", UDim2.fromOffset(96, 28), UDim2.new(1, -104, 0, 16), UI.tokens.type.caption, colors.muted)
 metaLabel.TextXAlignment = Enum.TextXAlignment.Left
 
--- The SVG source for the selected icon, ready to copy.
 local svgInput = UI.input(
 	card,
 	"Select an icon to get its SVG",
@@ -214,12 +203,8 @@ local colorInput = UI.input(card, "#RRGGBB", UDim2.fromOffset(138, 80), UDim2.fr
 	selectAllOnFocus = true,
 })
 
---------------------------------------------------------------------------------
--- Results
---------------------------------------------------------------------------------
-
-local icons = {} -- bare icon names from the last search
-local tiles = {} -- name -> { button, record, image }
+local icons = {}
+local tiles = {}
 local built = 0
 local hasMore = false
 local moreButton = nil
@@ -369,7 +354,6 @@ local function LayoutTiles()
 	scroller.CanvasSize = UDim2.new(1, 0, 0, height)
 end
 
--- append = true keeps the tiles already built and only adds the new ones.
 Search = function(append)
 	if not append then
 		limit = PAGE
@@ -394,7 +378,6 @@ Search = function(append)
 		local ok, result = pcall(function()
 			local response = SearchIcons(query, limit)
 
-			-- Results come back as "lucide:name".
 			local names = {}
 
 			for _, full in ipairs(response.icons or {}) do
@@ -410,7 +393,6 @@ Search = function(append)
 			return { names = names, collections = response.collections }
 		end)
 
-		-- A newer search has started since this one was sent.
 		if thisRequest ~= requestId then
 			return
 		end
@@ -429,7 +411,6 @@ Search = function(append)
 			setInfo.author = info.author and info.author.name or setInfo.author
 		end
 
-		-- Keep only icons whose SVG actually arrived.
 		icons = {}
 
 		for _, name in ipairs(result.names) do
@@ -458,7 +439,6 @@ Search = function(append)
 	end)
 end
 
--- Recolouring only rebuilds the SVG strings from the cached bodies.
 local function RefreshImages()
 	for name, tile in pairs(tiles) do
 		tile.image.Image = ImageFor(name, ICON_RES)
@@ -482,7 +462,6 @@ colorInput.FocusLost:Connect(function()
 	end
 end)
 
--- Wait for typing to pause, so a search isn't sent for every keystroke.
 search.TextChanged:Connect(function()
 	debounceId += 1
 	local thisDebounce = debounceId
@@ -493,3 +472,17 @@ search.TextChanged:Connect(function()
 		end
 	end)
 end)
+
+return {
+	Enable = function()
+		panel.Visible = true
+	end,
+
+	Disable = function()
+		panel.Visible = false
+	end,
+
+	Toggle = function()
+		panel.Visible = not panel.Visible
+	end,
+}
