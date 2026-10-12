@@ -718,6 +718,9 @@ local function addRowToPane(pane, entry, depth, y)
 
 		rebuilding = true
 
+		local leftFinalY = 0
+		local rightFinalY = 0
+
 		if wideMode then
 			-- Wide mode: rebuild both panes
 			local oldLeftCanvasPosition = leftList and leftList.CanvasPosition or Vector2.new(0, 0)
@@ -734,9 +737,6 @@ local function addRowToPane(pane, entry, depth, y)
 
 			leftVisibleRows = {}
 			rightVisibleRows = {}
-
-			local leftFinalY = 0
-			local rightFinalY = 0
 
 			if rootPath ~= nil then
 				leftFinalY = walkLeft(rootPath, 0, 1)
@@ -797,11 +797,15 @@ local function addRowToPane(pane, entry, depth, y)
 			list.CanvasPosition = oldCanvasPosition
 
 			emptyLabel.Visible = rootPath == nil or finalY <= 1
+
+			-- For empty label text
+			leftFinalY = finalY
+			rightFinalY = 0
 		end
 
 		if rootPath == nil then
 			emptyLabel.Text = "No active project"
-		elseif (wideMode and leftFinalY <= 1 and rightFinalY <= 1) or (not wideMode and finalY <= 1) then
+		elseif (wideMode and leftFinalY <= 1 and rightFinalY <= 1) or (not wideMode and leftFinalY <= 1) then
 			emptyLabel.Text = "This folder is empty"
 		end
 
