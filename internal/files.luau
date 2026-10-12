@@ -523,6 +523,7 @@ return function(content, windowControls)
 
 		tween:Play()
 	end
+
 	local function addRowToPane(pane, entry, depth, y)
 		local isSelected = selectedPath == entry.Path
 
@@ -533,31 +534,32 @@ return function(content, windowControls)
 			rowRegistryVar = leftRowRegistry
 			visibleRowsVar = leftVisibleRows
 			listVar = leftList
-		else
+		elseif pane == "right" then
 			rightRowIndex += 1
 			rowIndexVar = rightRowIndex
 			rowRegistryVar = rightRowRegistry
 			visibleRowsVar = rightVisibleRows
 			listVar = rightList
+		else -- "single"
+			rowIndex += 1
+			rowIndexVar = rowIndex
+			rowRegistryVar = rowRegistry
+			visibleRowsVar = visibleRows
+			listVar = list
 		end
 
 		local rowColor = rowIndexVar % 2 == 0 and tokens.color.rowEven or tokens.color.rowOdd
 
 		local row = UI.button(listVar, "", UDim2.fromOffset(1, y), UDim2.new(1, -2, 0, UI.metrics.treeRow), function()
-			-- In left pane, clicking a folder sets wideFolder but doesn't change selectedPath
-			-- (selectedPath tracks right-pane selection for keyboard navigation)
-			if pane == "right" then
+			if pane ~= "left" then
 				selectedPath = entry.Path
 			end
 
 			if entryIsDirectory(entry) then
 				if pane == "left" then
 					wideFolder = entry.Path
-					expanded[entry.Path] = not expanded[entry.Path] or nil
-				else
-					expanded[entry.Path] = not expanded[entry.Path] or nil
 				end
-
+				expanded[entry.Path] = not expanded[entry.Path] or nil
 				lastHash = ""
 			end
 		end, {
@@ -664,6 +666,25 @@ return function(content, windowControls)
 		return y + UI.metrics.treeRow
 	end
 
+	local function walkSingle(directory, depth, y)
+		local entries = readEntries(directory)
+		if entries == nil then
+			return y
+		end
+
+		for _, entry in ipairs(entries) do
+			if subtreeMatches(entry) then
+				y = addRowToPane("single", entry, depth, y)
+
+				if entryIsDirectory(entry) and (expanded[entry.Path] or filter ~= "") then
+					y = walkSingle(entry.Path, depth + 1, y)
+				end
+			end
+		end
+
+		return y
+	end
+
 	local function walkLeft(directory, depth, y)
 		local entries = readEntries(directory)
 
@@ -711,8 +732,6 @@ return function(content, windowControls)
 			return
 		end
 
-		-- A live rename box lives inside a row, so rebuilding would destroy the
-		-- field mid-edit. Defer until the rename finishes.
 		if UI.isAlive(renaming) then
 			pendingRebuild = true
 			return
@@ -791,7 +810,7 @@ return function(content, windowControls)
 			local finalY = 0
 
 			if rootPath ~= nil then
-				finalY = walkLeft(rootPath, 0, 1)
+				finalY = walkSingle(rootPath, 0, 1)
 			end
 
 			list.CanvasSize = UDim2.new(1, 0, 0, finalY + 4)
