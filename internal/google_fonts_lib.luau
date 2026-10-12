@@ -128,7 +128,6 @@ search.TextColor3 = TEXT_COLOR
 search.PlaceholderText = "Search fonts..."
 search.Text = ""
 search.TextSize = 14
-search.TextXAlignment = Enum.TextXAlignment.Left
 search.ClearTextOnFocus = false
 search.Parent = content
 
