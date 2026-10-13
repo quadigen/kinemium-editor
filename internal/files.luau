@@ -159,6 +159,10 @@ registerFileType({
 	thumbnail = true,
 
 	onOpen = function(ctx)
+		if viewport.ActiveScript() then
+			toastMessage("error", "Cant open", "Cant open while in code editor.")
+			return
+		end
 		openImageViewer(ctx)
 	end,
 
@@ -211,6 +215,10 @@ registerFileType({
 	thumbnail = true,
 
 	onOpen = function(ctx)
+		if viewport.ActiveScript() then
+			toastMessage("error", "Cant open", "Cant open while in code editor.")
+			return
+		end
 		openImageViewer(ctx)
 	end,
 
