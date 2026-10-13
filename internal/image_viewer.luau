@@ -221,7 +221,7 @@ function ImageViewer.Open(ctx)
 
 	local canvas = UI.create("Frame", {
 		Position = UDim2.fromOffset(8, 36),
-		Size = UDim2.new(1, -16, 1, -68),
+		Size = UDim2.new(1, -16, 1, -10),
 		BackgroundTransparency = 1,
 		BorderSizePixel = 0,
 		ClipsDescendants = true,
