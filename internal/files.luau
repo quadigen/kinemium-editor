@@ -12,6 +12,7 @@ local util = require("@internal/util")
 
 local StudioThemeService = game:GetService("StudioThemeService")
 local Selection = game:GetService("Selection")
+local ui_editor = require("@internal/ui_editor")
 local theme = StudioThemeService.SelectedTheme
 
 local UserInputService = game:GetService("UserInputService")
@@ -244,6 +245,18 @@ registerFileType({
 	thumbnail = false,
 	onDrop = importKine,
 	onOpen = importKine,
+	contextItems = {
+		{ label = "Import as Model", icon = "builtin://global-icons/KinemiumWhite.png", callback = importKine },
+	},
+})
+
+registerFileType({
+	name = "KUI",
+	extensions = { "kui" },
+	icon = "builtin://global-icons/KinemiumWhite.png",
+	thumbnail = false,
+	onDrop = ui_editor.OpenScene,
+	onOpen = ui_editor.OpenScene,
 	contextItems = {
 		{ label = "Import as Model", icon = "builtin://global-icons/KinemiumWhite.png", callback = importKine },
 	},
