@@ -272,6 +272,7 @@ local import_confirmation, _, prompt_controller = UI.prompt({
 		},
 	},
 })
+
 import_confirmation.Parent = game.CoreGui
 prompt_controller:Close()
 
@@ -283,12 +284,16 @@ registerFileType({
 
 	onDrop = function(ctx)
 		kine_ctx = ctx
+		print(import_confirmation)
+		print(prompt_controller)
 		print("hello")
 		prompt_controller:Open()
 	end,
 
 	onOpen = function(ctx)
 		kine_ctx = ctx
+		print(import_confirmation)
+		print(prompt_controller)
 		print("hello")
 		prompt_controller:Open()
 	end,
