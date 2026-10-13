@@ -121,6 +121,13 @@ registerFileType({
 	extensions = { "wav", "mp3", "ogg" },
 	icon = "builtin://icons/Sound.svg",
 
+	onDrop = function(ctx)
+		local sound = Instance.new("Sound")
+		sound.Name = ctx.Name
+		sound.SoundId = ctx.Path
+		sound.Parent = workspace
+	end,
+
 	contextItems = {
 		{
 			label = "Import as Sound",
