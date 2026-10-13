@@ -226,47 +226,76 @@ registerFileType({
 	},
 })
 
+local function importKine(ctx)
+	local imported = export_service:ImportFile(ctx.Path)
+	if imported then
+		util.parent(imported)
+
+		UI.toast("creation", {
+			type = "success",
+			title = "Successfully imported!",
+			message = `Successfully imported {ctx.Path}`,
+			details = `Wow.`,
+			detailsTitle = "",
+			backgroundTransparency = 0.4,
+			blur = true,
+			duration = 5,
+		})
+	else
+		UI.toast("import", {
+			type = "error",
+			title = "Importing faliure",
+			message = `Did not import project successfully.`,
+			details = ``,
+			detailsTitle = "",
+			backgroundTransparency = 0.4,
+			blur = true,
+			duration = 5,
+		})
+	end
+end
+
+local kine_ctx = nil
+local import_confirmation, _, prompt_controller = UI.prompt({
+	title = "Import Untrusted Model",
+	description = "This model is unknown, Are you sure you want to import it into your workspace?",
+	destroyOnClose = true,
+	buttons = {
+		{ id = "cancel", text = "Cancel", role = "ghost" },
+		{
+			id = "clear",
+			text = "Clear",
+			role = "danger",
+			callback = function()
+				importKine(kine_ctx)
+			end,
+		},
+	},
+})
+prompt_controller:Close()
+
 registerFileType({
 	name = "KINE",
 	extensions = { "kine" },
 	icon = "builtin://global-icons/KinemiumWhite.png",
 	thumbnail = false,
 
-	onDrop = function(ctx)
-		local imported = export_service:ImportFile(ctx.Path)
-		if imported then
-			util.parent(imported)
-
-			UI.toast("creation", {
-				type = "success",
-				title = "Successfully imported!",
-				message = `Successfully imported {ctx.Path}`,
-				details = `Wow.`,
-				detailsTitle = "",
-				backgroundTransparency = 0.4,
-				blur = true,
-				duration = 5,
-			})
-		else
-			UI.toast("import", {
-				type = "error",
-				title = "Importing faliure",
-				message = `Did not import project successfully.`,
-				details = ``,
-				detailsTitle = "",
-				backgroundTransparency = 0.4,
-				blur = true,
-				duration = 5,
-			})
-		end
-	end,
+	onDrop = function(ctx) end,
 
 	onOpen = function(ctx)
-		openImageViewer(ctx)
+		kine_ctx = ctx
+		prompt_controller:Open()
 	end,
 
 	contextItems = {
-		{ label = "Import as Model", icon = "builtin://global-icons/KinemiumWhite.png", callback = openImageViewer },
+		{
+			label = "Import as Model",
+			icon = "builtin://global-icons/KinemiumWhite.png",
+			callback = function(ctx)
+				kine_ctx = ctx
+				prompt_controller:Open()
+			end,
+		},
 	},
 })
 
