@@ -9,10 +9,10 @@ local Project = game:GetService("Project")
 local dialog = game:GetService("DialogService")
 local export_service = game:GetService("ExportService")
 local util = require("@internal/util")
+local ui_editor = require("@internal/ui_editor")
 
 local StudioThemeService = game:GetService("StudioThemeService")
 local Selection = game:GetService("Selection")
-local ui_editor = require("@internal/ui_editor")
 local theme = StudioThemeService.SelectedTheme
 
 local UserInputService = game:GetService("UserInputService")
