@@ -177,7 +177,6 @@ local settingsBtn = UI.iconButton(
 	}
 )
 
--- playtest settings
 local frame = Instance.new("ScrollingFrame")
 frame.Position =
 	UDim2.fromOffset(settingsBtn.AbsolutePosition.X, settingsBtn.AbsolutePosition.Y + settingsBtn.AbsoluteSize.Y)
@@ -515,7 +514,6 @@ renderer.Pool.new("2d", function()
 		for _, document in ipairs(editor.documents) do
 			local instance = document.instance
 
-			-- File documents have no instance; they live until they are closed.
 			if instance == nil and document.path == nil or instance ~= nil and not UI.isAlive(instance) then
 				doomed = doomed or {}
 				table.insert(doomed, document)
