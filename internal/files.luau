@@ -147,6 +147,25 @@ registerFileType({
 })
 
 registerFileType({
+	name = "Font",
+	extensions = { "ttf", "otf" },
+	icon = "builtin://icons/Font.svg",
+
+	onDrop = function(ctx)
+		local selected = selectedObject()
+		if selected:IsA("TextButton") or selected:IsA("TextLabel") then
+			local face = Font.new(ctx.Path)
+			if face then
+				selected.FontFace = face
+			end
+			return
+		end
+	end,
+
+	contextItems = {},
+})
+
+registerFileType({
 	name = "Material",
 	extensions = { "mat" },
 	icon = "builtin://icons/Texture.svg",
@@ -164,6 +183,11 @@ registerFileType({
 
 	onDrop = function(ctx)
 		local parent = selectedObject()
+
+		if parent:IsA("ImageLabel") or parent:IsA("ImageButton") then
+			parent.Image = ctx.Path
+			return
+		end
 
 		if parent == nil then
 			toastMessage("warning", "Nothing selected", "Select an object to drop the image onto.")
