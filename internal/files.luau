@@ -281,7 +281,11 @@ registerFileType({
 	icon = "builtin://global-icons/KinemiumWhite.png",
 	thumbnail = false,
 
-	onDrop = function(ctx) end,
+	onDrop = function(ctx)
+		kine_ctx = ctx
+		print("hello")
+		prompt_controller:Open()
+	end,
 
 	onOpen = function(ctx)
 		kine_ctx = ctx
