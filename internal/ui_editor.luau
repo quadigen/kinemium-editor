@@ -7,18 +7,19 @@ local UserInputService = game:GetService("UserInputService")
 local colors = UI.colors
 local tokens = UI.tokens
 
-local HANDLE_SIZE = 9
+local HANDLE_SIZE = 7
 local MIN_SIZE = 4
 local Z = 10
+local WHITE = Color3.new(1, 1, 1)
 
 local RESIZE_HANDLES = {
-	{ name = "NW", x = 0, y = 0, l = true, t = true },
+	{ name = "NW", x = 0, y = 0, l = true, t = true, corner = true },
 	{ name = "N", x = 0.5, y = 0, t = true },
-	{ name = "NE", x = 1, y = 0, r = true, t = true },
+	{ name = "NE", x = 1, y = 0, r = true, t = true, corner = true },
 	{ name = "E", x = 1, y = 0.5, r = true },
-	{ name = "SE", x = 1, y = 1, r = true, b = true },
+	{ name = "SE", x = 1, y = 1, r = true, b = true, corner = true },
 	{ name = "S", x = 0.5, y = 1, b = true },
-	{ name = "SW", x = 0, y = 1, l = true, b = true },
+	{ name = "SW", x = 0, y = 1, l = true, b = true, corner = true },
 	{ name = "W", x = 0, y = 0.5, l = true },
 }
 
@@ -48,6 +49,10 @@ local function snapValue(value, origin, step)
 	return math.floor((value - origin) / step + 0.5) * step + origin
 end
 
+local function round(n)
+	return math.floor(n + 0.5)
+end
+
 function Editor.new(options)
 	options = options or {}
 
@@ -62,9 +67,11 @@ function Editor.new(options)
 	end
 	self.snapStep = options.snapStep or 4
 	self.rotateSnap = options.rotateSnap or 15
-	self.canPick = options.canPick == true
+	self.canPick = options.canPick ~= false
+	self.clearOnEmpty = options.clearOnEmpty == true
 	self.enabled = true
 	self.target = nil
+	self.hoverObj = nil
 	self.drag = nil
 	self.connections = {}
 
@@ -81,10 +88,23 @@ function Editor.new(options)
 		Visible = self.canPick,
 	}, self.overlay)
 
+	self.hover = UI.create("Frame", {
+		Name = "GuiEditorHover",
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		BackgroundTransparency = 1,
+		BorderSizePixel = 0,
+		Active = false,
+		InputSink = false,
+		Visible = false,
+		ZIndex = Z - 1,
+	}, self.overlay)
+
+	self.hoverStroke = UI.stroke(self.hover, colors.accent, 1, 0.45)
+
 	self.box = UI.create("TextButton", {
 		Name = "GuiEditorBox",
 		Text = "",
-		AnchorPoint = Vector2.new(0.5, 0.5),
+		BackgroundColor3 = colors.accent,
 		BackgroundTransparency = 1,
 		BorderSizePixel = 0,
 		AutoButtonColor = false,
@@ -97,6 +117,7 @@ function Editor.new(options)
 	UI.stroke(self.box, colors.accent, 1, 0)
 
 	self.handles = {}
+	self.handleDefs = {}
 
 	for _, definition in ipairs(RESIZE_HANDLES) do
 		local handle = UI.create("TextButton", {
@@ -105,7 +126,7 @@ function Editor.new(options)
 			AnchorPoint = Vector2.new(0.5, 0.5),
 			Position = UDim2.fromScale(definition.x, definition.y),
 			Size = UDim2.fromOffset(HANDLE_SIZE, HANDLE_SIZE),
-			BackgroundColor3 = Color3.new(1, 1, 1),
+			BackgroundColor3 = WHITE,
 			BorderSizePixel = 0,
 			AutoButtonColor = false,
 			Active = true,
@@ -113,20 +134,30 @@ function Editor.new(options)
 			ZIndex = Z + 1,
 		}, self.box)
 
+		UI.corner(handle, 2)
 		UI.stroke(handle, colors.accent, 1, 0)
 
 		handle.MouseButton1Down:Connect(function()
 			self:beginDrag("resize", definition)
 		end)
 
+		handle.MouseEnter:Connect(function()
+			handle.BackgroundColor3 = colors.accent
+		end)
+
+		handle.MouseLeave:Connect(function()
+			handle.BackgroundColor3 = WHITE
+		end)
+
 		self.handles[definition.name] = handle
+		self.handleDefs[definition.name] = definition
 	end
 
 	self.rotateStem = UI.create("Frame", {
 		Name = "RotateStem",
 		AnchorPoint = Vector2.new(0.5, 1),
 		Position = UDim2.new(0.5, 0, 0, 0),
-		Size = UDim2.fromOffset(1, 18),
+		Size = UDim2.fromOffset(1, 16),
 		BackgroundColor3 = colors.accent,
 		BorderSizePixel = 0,
 		ZIndex = Z + 1,
@@ -137,9 +168,9 @@ function Editor.new(options)
 		Name = "RotateHandle",
 		Text = "",
 		AnchorPoint = Vector2.new(0.5, 0.5),
-		Position = UDim2.new(0.5, 0, 0, -24),
-		Size = UDim2.fromOffset(12, 12),
-		BackgroundColor3 = Color3.new(1, 1, 1),
+		Position = UDim2.new(0.5, 0, 0, -22),
+		Size = UDim2.fromOffset(11, 11),
+		BackgroundColor3 = WHITE,
 		BorderSizePixel = 0,
 		AutoButtonColor = false,
 		Active = true,
@@ -151,16 +182,38 @@ function Editor.new(options)
 	UI.corner(self.rotateHandle, 6)
 	UI.stroke(self.rotateHandle, colors.accent, 1, 0)
 
+	self.rotateHandle.MouseEnter:Connect(function()
+		self.rotateHandle.BackgroundColor3 = colors.accent
+	end)
+
+	self.rotateHandle.MouseLeave:Connect(function()
+		self.rotateHandle.BackgroundColor3 = WHITE
+	end)
+
 	self.readout =
-		UI.label(self.overlay, "", UDim2.fromOffset(0, 0), UDim2.fromOffset(170, 16), tokens.type.caption, colors.text)
-	self.readout.BackgroundColor3 = colors.secondary
-	self.readout.BackgroundTransparency = 0.15
+		UI.label(self.overlay, "", UDim2.fromOffset(0, 0), UDim2.fromOffset(120, 18), tokens.type.caption, WHITE)
+	self.readout.BackgroundColor3 = colors.accent
+	self.readout.BackgroundTransparency = 0.1
+	self.readout.TextXAlignment = Enum.TextXAlignment.Center
+	self.readout.TextYAlignment = Enum.TextYAlignment.Center
 	self.readout.ZIndex = Z + 3
 	self.readout.Visible = false
-	UI.corner(self.readout, tokens.radius.xs)
+	UI.corner(self.readout, 4)
 
-	self.box.MouseButton1Down:Connect(function()
+	local function startMove()
 		self:beginDrag("move")
+	end
+
+	self.box.MouseButton1Down:Connect(startMove)
+
+	self.box.InputBegan:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 and not self.drag then
+			startMove()
+		end
+	end)
+
+	self.box.MouseEnter:Connect(function()
+		self.hoverObj = nil
 	end)
 
 	self.rotateHandle.MouseButton1Down:Connect(function()
@@ -169,6 +222,16 @@ function Editor.new(options)
 
 	self.hit.MouseButton1Down:Connect(function(x, y)
 		self:pickAt(Vector2.new(x, y))
+	end)
+
+	self.hit.MouseMoved:Connect(function(x, y)
+		if not self.drag then
+			self.hoverObj = self:findAt(Vector2.new(x, y))
+		end
+	end)
+
+	self.hit.MouseLeave:Connect(function()
+		self.hoverObj = nil
 	end)
 
 	table.insert(
@@ -185,7 +248,6 @@ function Editor.new(options)
 		UserInputService.InputEnded:Connect(function(input)
 			if input.UserInputType == Enum.UserInputType.MouseButton1 then
 				self.drag = nil
-				self.readout.Visible = false
 			end
 		end)
 	)
@@ -252,10 +314,6 @@ function Editor:parentInfo(obj)
 	return Vector2.new(1, 1), Vector2.zero
 end
 
-function Editor:originOf(screenGui)
-	return screenGui.RenderOffset - self.overlay.AbsolutePosition
-end
-
 function Editor:snapping()
 	if UserInputService:IsKeyDown(Enum.KeyCode.LeftAlt) then
 		return false
@@ -276,7 +334,6 @@ function Editor:refresh()
 
 	if newTarget ~= self.target then
 		self.drag = nil
-		self.readout.Visible = false
 	end
 
 	self.target = newTarget
@@ -316,21 +373,19 @@ local function depthOf(obj)
 	return depth
 end
 
-function Editor:pickAt(point)
+function Editor:findAt(point)
 	local best, bestZ, bestDepth, bestOrder = nil, -math.huge, -1, -1
 	local order = 0
 
 	for _, screenGui in ipairs(StarterGui:GetChildren()) do
 		if screenGui:IsA("ScreenGui") and screenGui.Enabled ~= false then
-			local origin = screenGui.RenderOffset
-
 			for _, obj in ipairs(screenGui:GetDescendants()) do
 				if obj:IsA("GuiObject") then
 					order += 1
 
 					if isVisibleChain(obj) then
 						local size = obj.AbsoluteSize
-						local center = obj.AbsolutePosition + origin + size / 2
+						local center = obj.AbsolutePosition + size / 2
 						local v = point - center
 						local r = math.rad(-obj.Rotation)
 						local lx = v.X * math.cos(r) - v.Y * math.sin(r)
@@ -354,9 +409,21 @@ function Editor:pickAt(point)
 		end
 	end
 
-	pcall(function()
-		Selection:Set(best and { best } or {})
-	end)
+	return best
+end
+
+function Editor:pickAt(point)
+	local best = self:findAt(point)
+
+	if best then
+		pcall(function()
+			Selection:Set({ best })
+		end)
+	elseif self.clearOnEmpty then
+		pcall(function()
+			Selection:Set({})
+		end)
+	end
 
 	self:refresh()
 
@@ -376,12 +443,6 @@ function Editor:beginDrag(mode, handle)
 		return
 	end
 
-	local screenGui = self:screenGuiOf(obj)
-
-	if not screenGui then
-		return
-	end
-
 	local parentSize, parentAbs = self:parentInfo(obj)
 	local pos, size = obj.AbsolutePosition, obj.AbsoluteSize
 
@@ -397,7 +458,7 @@ function Editor:beginDrag(mode, handle)
 		anchor = obj.AnchorPoint,
 		parentSize = parentSize,
 		parentAbs = parentAbs,
-		center = pos + size / 2 + screenGui.RenderOffset,
+		center = pos + size / 2,
 	}
 end
 
@@ -532,6 +593,24 @@ function Editor:Update()
 
 	self.hit.Visible = self.enabled and self.canPick
 
+	local hoverObj = self.hoverObj
+
+	if hoverObj and (not UI.isAlive(hoverObj) or hoverObj == obj or self.drag or not self.enabled) then
+		hoverObj = nil
+	end
+
+	if hoverObj then
+		local hs = hoverObj.AbsoluteSize
+		local hc = hoverObj.AbsolutePosition - self.overlay.AbsolutePosition + hs / 2
+
+		self.hover.Position = UDim2.fromOffset(hc.X, hc.Y)
+		self.hover.Size = UDim2.fromOffset(math.max(hs.X, 1), math.max(hs.Y, 1))
+		self.hover.Rotation = hoverObj.Rotation
+		self.hover.Visible = true
+	else
+		self.hover.Visible = false
+	end
+
 	local show = self.enabled and obj ~= nil
 	self.box.Visible = show
 
@@ -540,11 +619,8 @@ function Editor:Update()
 		return
 	end
 
-	local screenGui = self:screenGuiOf(obj)
-	local origin = self:originOf(screenGui)
 	local size = obj.AbsoluteSize
-	local pos = obj.AbsolutePosition + origin
-	local center = pos + size / 2
+	local pos = obj.AbsolutePosition - self.overlay.AbsolutePosition
 	local rotation = obj.Rotation
 
 	local tool = self.getTool()
@@ -555,14 +631,28 @@ function Editor:Update()
 	local canSize = (tool == "Select" or tool == "Size") and unrotated
 	local canRotate = tool == "Rotate"
 
-	self.box.Position = UDim2.fromOffset(center.X, center.Y)
-	self.box.Size = UDim2.fromOffset(math.max(size.X, 1), math.max(size.Y, 1))
-	self.box.Rotation = rotation
+	if unrotated then
+		self.box.AnchorPoint = Vector2.new(0, 0)
+		self.box.Position = UDim2.fromOffset(round(pos.X), round(pos.Y))
+		self.box.Size = UDim2.fromOffset(math.max(round(size.X), 1), math.max(round(size.Y), 1))
+		self.box.Rotation = 0
+	else
+		local center = pos + size / 2
+
+		self.box.AnchorPoint = Vector2.new(0.5, 0.5)
+		self.box.Position = UDim2.fromOffset(center.X, center.Y)
+		self.box.Size = UDim2.fromOffset(math.max(size.X, 1), math.max(size.Y, 1))
+		self.box.Rotation = rotation
+	end
+
 	self.box.Active = canMove
 	self.box.InputSink = canMove
+	self.box.BackgroundTransparency = self.drag and 0.92 or 1
 
-	for _, handle in pairs(self.handles) do
-		handle.Visible = canSize
+	local small = size.X < 30 or size.Y < 30
+
+	for name, handle in pairs(self.handles) do
+		handle.Visible = canSize and (not small or self.handleDefs[name].corner == true)
 	end
 
 	self.rotateHandle.Visible = canRotate
@@ -570,22 +660,27 @@ function Editor:Update()
 
 	if self.drag then
 		local _, parentAbs = self:parentInfo(obj)
-		local local_ = obj.AbsolutePosition - parentAbs
+		local rel = obj.AbsolutePosition - parentAbs
 
-		self.readout.Text = string.format(
-			"%d, %d   %d × %d   %d°",
-			math.floor(local_.X + 0.5),
-			math.floor(local_.Y + 0.5),
-			math.floor(size.X + 0.5),
-			math.floor(size.Y + 0.5),
-			math.floor(rotation + 0.5)
-		)
+		local text
+		if self.drag.mode == "rotate" then
+			text = string.format("%d°", round(rotation))
+		elseif self.drag.mode == "resize" then
+			text = string.format("%d × %d", round(size.X), round(size.Y))
+		else
+			text = string.format("%d, %d", round(rel.X), round(rel.Y))
+		end
 
+		local width = #text * 6.5 + 16
+		local center = pos + size / 2
 		local bounds = self.overlay.AbsoluteSize
-		local x = math.clamp(center.X - 85, 0, math.max(bounds.X - 170, 0))
-		local y = math.clamp(pos.Y + size.Y + 10, 0, math.max(bounds.Y - 16, 0))
 
-		self.readout.Position = UDim2.fromOffset(x, y)
+		self.readout.Text = text
+		self.readout.Size = UDim2.fromOffset(width, 18)
+		self.readout.Position = UDim2.fromOffset(
+			math.clamp(center.X - width / 2, 0, math.max(bounds.X - width, 0)),
+			math.clamp(pos.Y + size.Y + 10, 0, math.max(bounds.Y - 18, 0))
+		)
 		self.readout.Visible = true
 	else
 		self.readout.Visible = false
@@ -603,6 +698,7 @@ function Editor:Destroy()
 	UI.forgetButtons(self.box)
 
 	self.hit:Destroy()
+	self.hover:Destroy()
 	self.box:Destroy()
 	self.readout:Destroy()
 end

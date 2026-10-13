@@ -1,82 +1,3130 @@
-local UI = require("@internal/editor_ui")
+local UI = {}
 
-local Selection = game:GetService("Selection")
-local StarterGui = game:GetService("StarterGui")
+local StudioThemeService = game:GetService("StudioThemeService")
 local UserInputService = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
+local shared = { buttons = {}, root = nil, background = nil, windows = {}, windowControllers = {} }
+local MIN_SPAN = 0.0005
+local MAX_TICKS = 16
 
-local colors = UI.colors
-local tokens = UI.tokens
+local function tooltipLerp(a, b, t)
+	return a + (b - a) * t
+end
 
-local HANDLE_SIZE = 7
-local MIN_SIZE = 4
-local Z = 10
-local WHITE = Color3.new(1, 1, 1)
+local function tooltipSmoothTowards(current, target, speed, dt)
+	local t = 1 - math.exp(-speed * dt)
 
-local RESIZE_HANDLES = {
-	{ name = "NW", x = 0, y = 0, l = true, t = true, corner = true },
-	{ name = "N", x = 0.5, y = 0, t = true },
-	{ name = "NE", x = 1, y = 0, r = true, t = true, corner = true },
-	{ name = "E", x = 1, y = 0.5, r = true },
-	{ name = "SE", x = 1, y = 1, r = true, b = true, corner = true },
-	{ name = "S", x = 0.5, y = 1, b = true },
-	{ name = "SW", x = 0, y = 1, l = true, b = true, corner = true },
-	{ name = "W", x = 0, y = 0.5, l = true },
+	return tooltipLerp(current, target, t)
+end
+
+UI.tokens = {
+	color = {
+		canvas = Color3.new(
+			StudioThemeService.SelectedTheme.BaseColor.R,
+			StudioThemeService.SelectedTheme.BaseColor.G,
+			StudioThemeService.SelectedTheme.BaseColor.B
+		),
+
+		panel = Color3.new(
+			StudioThemeService.SelectedTheme.BgColor.R,
+			StudioThemeService.SelectedTheme.BgColor.G,
+			StudioThemeService.SelectedTheme.BgColor.B
+		),
+
+		panelRaised = Color3.new(
+			StudioThemeService.SelectedTheme.SecondaryColor.R,
+			StudioThemeService.SelectedTheme.SecondaryColor.G,
+			StudioThemeService.SelectedTheme.SecondaryColor.B
+		),
+
+		surface = Color3.new(
+			StudioThemeService.SelectedTheme.ThirdColor.R,
+			StudioThemeService.SelectedTheme.ThirdColor.G,
+			StudioThemeService.SelectedTheme.ThirdColor.B
+		),
+
+		surfaceAlt = Color3.new(
+			StudioThemeService.SelectedTheme.SecondaryColor.R,
+			StudioThemeService.SelectedTheme.SecondaryColor.G,
+			StudioThemeService.SelectedTheme.SecondaryColor.B
+		),
+
+		rowEven = Color3.new(
+			StudioThemeService.SelectedTheme.AlternatingColor1.R,
+			StudioThemeService.SelectedTheme.AlternatingColor1.G,
+			StudioThemeService.SelectedTheme.AlternatingColor1.B
+		),
+
+		rowOdd = Color3.new(
+			StudioThemeService.SelectedTheme.AlternatingColor2.R,
+			StudioThemeService.SelectedTheme.AlternatingColor2.G,
+			StudioThemeService.SelectedTheme.AlternatingColor2.B
+		),
+
+		hover = Color3.new(
+			StudioThemeService.SelectedTheme.SecondaryColor.R,
+			StudioThemeService.SelectedTheme.SecondaryColor.G,
+			StudioThemeService.SelectedTheme.SecondaryColor.B
+		),
+
+		pressed = Color3.new(
+			StudioThemeService.SelectedTheme.ThirdColor.R,
+			StudioThemeService.SelectedTheme.ThirdColor.G,
+			StudioThemeService.SelectedTheme.ThirdColor.B
+		),
+
+		input = Color3.new(
+			StudioThemeService.SelectedTheme.InputColor.R,
+			StudioThemeService.SelectedTheme.InputColor.G,
+			StudioThemeService.SelectedTheme.InputColor.B
+		),
+
+		border = Color3.new(
+			StudioThemeService.SelectedTheme.SecondaryColor.R,
+			StudioThemeService.SelectedTheme.SecondaryColor.G,
+			StudioThemeService.SelectedTheme.SecondaryColor.B
+		),
+
+		borderStrong = Color3.new(
+			StudioThemeService.SelectedTheme.InputFocusColor.R,
+			StudioThemeService.SelectedTheme.InputFocusColor.G,
+			StudioThemeService.SelectedTheme.InputFocusColor.B
+		),
+
+		text = Color3.new(
+			StudioThemeService.SelectedTheme.TextColor.R,
+			StudioThemeService.SelectedTheme.TextColor.G,
+			StudioThemeService.SelectedTheme.TextColor.B
+		),
+
+		subtext = Color3.new(
+			StudioThemeService.SelectedTheme.SecondaryTextColor.R,
+			StudioThemeService.SelectedTheme.SecondaryTextColor.G,
+			StudioThemeService.SelectedTheme.SecondaryTextColor.B
+		),
+
+		muted = Color3.new(
+			StudioThemeService.SelectedTheme.TextColorDimmed.R,
+			StudioThemeService.SelectedTheme.TextColorDimmed.G,
+			StudioThemeService.SelectedTheme.TextColorDimmed.B
+		),
+
+		accent = Color3.new(
+			StudioThemeService.SelectedTheme.AccentColor.R,
+			StudioThemeService.SelectedTheme.AccentColor.G,
+			StudioThemeService.SelectedTheme.AccentColor.B
+		),
+
+		accentSoft = Color3.new(
+			StudioThemeService.SelectedTheme.SecondaryColor.R,
+			StudioThemeService.SelectedTheme.SecondaryColor.G,
+			StudioThemeService.SelectedTheme.SecondaryColor.B
+		),
+
+		selection = Color3.new(
+			StudioThemeService.SelectedTheme.AccentColor.R,
+			StudioThemeService.SelectedTheme.AccentColor.G,
+			StudioThemeService.SelectedTheme.AccentColor.B
+		),
+
+		selectionHover = Color3.new(
+			StudioThemeService.SelectedTheme.AccentColor.R,
+			StudioThemeService.SelectedTheme.AccentColor.G,
+			StudioThemeService.SelectedTheme.AccentColor.B
+		),
+
+		focus = Color3.new(
+			StudioThemeService.SelectedTheme.InputFocusColor.R,
+			StudioThemeService.SelectedTheme.InputFocusColor.G,
+			StudioThemeService.SelectedTheme.InputFocusColor.B
+		),
+
+		warning = Color3.fromRGB(224, 168, 74),
+
+		error = Color3.fromRGB(231, 91, 91),
+
+		success = Color3.fromRGB(81, 184, 122),
+	},
+
+	space = { xs = 3, sm = 5, md = 8, lg = 12 },
+
+	radius = { xs = 3, sm = 4, md = 6 },
+
+	type = { caption = 11, small = 12, body = 13, title = 14 },
 }
 
-local ARROWS = {
-	[Enum.KeyCode.Left] = Vector2.new(-1, 0),
-	[Enum.KeyCode.Right] = Vector2.new(1, 0),
-	[Enum.KeyCode.Up] = Vector2.new(0, -1),
-	[Enum.KeyCode.Down] = Vector2.new(0, 1),
-}
+local colors = UI.tokens.color
 
-local Editor = {}
-Editor.__index = Editor
+local function findContainingWindow(gui)
+	local current = gui
 
-local function shiftUDim(u, deltaPx, span)
-	if u.Scale ~= 0 and u.Offset == 0 and span > 0 then
-		return UDim.new(u.Scale + deltaPx / span, 0)
+	while current do
+		for _, window in pairs(shared.windows) do
+			if current == window then
+				return window
+			end
+		end
+
+		current = current.Parent
 	end
 
-	return UDim.new(u.Scale, math.floor(u.Offset + deltaPx + 0.5))
+	return nil
 end
 
-local function udim2(x, y)
-	return UDim2.new(x.Scale, x.Offset, y.Scale, y.Offset)
+UI.metrics = {
+
+	windowHeader = 27,
+
+	buttonHeight = 24,
+
+	inputHeight = 24,
+
+	tabHeight = 28,
+
+	toolbarButton = 30,
+
+	treeRow = 20,
+
+	propertyRow = 22,
+
+	sectionRow = 23,
+
+	panelInset = 6,
+}
+
+UI.colors = {
+
+	base = UI.tokens.color.canvas,
+
+	panel = UI.tokens.color.panel,
+
+	secondary = UI.tokens.color.panelRaised,
+
+	hover = UI.tokens.color.hover,
+
+	pressed = UI.tokens.color.pressed,
+
+	input = UI.tokens.color.input,
+
+	line = UI.tokens.color.border,
+
+	text = UI.tokens.color.text,
+
+	subtext = UI.tokens.color.subtext,
+
+	muted = UI.tokens.color.muted,
+
+	accent = UI.tokens.color.accent,
+
+	selection = UI.tokens.color.selection,
+
+	warning = UI.tokens.color.warning,
+
+	error = UI.tokens.color.error,
+}
+
+local function assign(object, properties)
+	for key, value in pairs(properties or {}) do
+		local ok, message = pcall(function()
+			object[key] = value
+		end)
+
+		if not ok then
+			error(object.ClassName .. "." .. key .. ": " .. tostring(message))
+		end
+	end
+
+	return object
 end
 
-local function snapValue(value, origin, step)
-	return math.floor((value - origin) / step + 0.5) * step + origin
+function UI.create(className, properties, parent)
+	local object = Instance.new(className)
+
+	assign(object, properties)
+
+	if parent then
+		object.Parent = parent
+	end
+
+	return object
 end
 
-local function round(n)
-	return math.floor(n + 0.5)
+function UI.corner(parent, radius)
+	return UI.create("UICorner", { CornerRadius = UDim.new(0, radius or UI.tokens.radius.sm) }, parent)
 end
 
-function Editor.new(options)
+function UI.backdrop(parent, radius, TintColor3)
+	return UI.create("UIBackdrop", {
+		TintColor3 = TintColor3,
+		BlurRadius = radius,
+	}, parent)
+end
+
+function UI.stroke(parent, color, thickness, transparency)
+	return UI.create("UIStroke", {
+
+		Color = color or UI.tokens.color.border,
+
+		Thickness = thickness or 1,
+
+		Transparency = transparency or 0,
+	}, parent)
+end
+
+function UI.frame(parent, position, size, color, radius)
+	local frame = UI.create("Frame", {
+
+		Position = position or UDim2.fromOffset(0, 0),
+
+		Size = size or UDim2.fromOffset(100, 100),
+
+		BackgroundColor3 = color or UI.tokens.color.panel,
+
+		BorderSizePixel = 0,
+	}, parent)
+
+	if radius and radius > 0 then
+		UI.corner(frame, radius)
+	end
+
+	return frame
+end
+
+function UI.prompt(options)
 	options = options or {}
 
-	local self = setmetatable({}, Editor)
+	local colors = UI.tokens.color
 
-	self.overlay = options.overlay
-	self.getTool = options.getTool or function()
-		return "Select"
+	local title = options.title or "Prompt"
+	local description = options.description
+
+	local modal = options.modal ~= false
+	local dim = options.dim ~= false
+	local closable = options.closable ~= false
+	local draggable = options.draggable ~= false
+	local showHeader = options.showHeader ~= false
+	local showFooter = options.showFooter ~= false
+
+	local radius = options.radius or UI.tokens.radius.md
+	local padding = options.padding or 12
+
+	local headerHeight = showHeader and (options.headerHeight or (description and 54 or 38)) or 0
+	local footerHeight = showFooter and (options.footerHeight or 52) or 0
+
+	local size = options.size or UDim2.fromOffset(440, 260)
+	local position = options.position or UDim2.fromScale(0.5, 0.5)
+	local anchorPoint = options.anchorPoint or Vector2.new(0.5, 0.5)
+
+	shared.promptSerial = (shared.promptSerial or 0) + 1
+
+	local promptId = shared.promptSerial
+	local baseZIndex = options.zIndex or (200000 + promptId * 20)
+
+	local screenGui = UI.create("ScreenGui", {
+		Name = options.screenGuiName or ("PromptGui" .. tostring(promptId)),
+		RenderOnTop = options.renderOnTop ~= false,
+	}, options.parent or game.CoreGui)
+
+	local host = UI.create("Frame", {
+		Name = options.name or ("Prompt" .. tostring(promptId)),
+
+		Position = UDim2.fromOffset(0, 0),
+		Size = UDim2.fromScale(1, 1),
+
+		BackgroundTransparency = 1,
+		BorderSizePixel = 0,
+
+		Active = false,
+		InputSink = false,
+		Selectable = false,
+
+		ZIndex = baseZIndex,
+	}, screenGui)
+
+	local controller = {
+		screenGui = screenGui,
+
+		frame = nil,
+		host = host,
+
+		backdrop = nil,
+
+		header = nil,
+		contentArea = nil,
+		content = nil,
+		footer = nil,
+
+		title = nil,
+		description = nil,
+
+		buttons = {},
+		buttonConfigs = {},
+
+		open = options.startVisible ~= false,
+		busy = false,
+		destroyed = false,
+	}
+
+	local needsBackdrop = modal or dim or options.closeOnBackdrop == true or options.blur ~= nil
+
+	local backdrop = nil
+
+	if needsBackdrop then
+		backdrop = UI.create("Frame", {
+			Name = "Backdrop",
+			Position = UDim2.fromOffset(0, 0),
+			Size = UDim2.fromScale(1, 1),
+			BackgroundColor3 = options.dimColor or Color3.new(0, 0, 0),
+			BackgroundTransparency = dim and (options.dimTransparency or 0.45) or 1,
+			BorderSizePixel = 0,
+			InputSink = modal,
+			ZIndex = baseZIndex,
+		}, host)
+
+		controller.backdrop = backdrop
+
+		if options.blur then
+			UI.create("UIBackdrop", {
+				Enabled = true,
+
+				BlurRadius = options.blur,
+
+				TintColor3 = options.blurTintColor or Color3.new(0, 0, 0),
+
+				TintTransparency = options.blurTintTransparency or 1,
+			}, backdrop)
+		end
+
+		if options.closeOnBackdrop == true then
+			backdrop.MouseButton1Click:Connect(function()
+				controller:Close("backdrop")
+			end)
+		end
 	end
-	self.getSnap = options.getSnap or function()
+
+	local panel = UI.frame(host, position, size, options.color or colors.panel, radius)
+
+	panel.Name = "PromptPanel"
+
+	panel.AnchorPoint = anchorPoint
+	panel.ClipsDescendants = options.clip == true
+	panel.ZIndex = baseZIndex + 1
+
+	if options.transparency ~= nil then
+		panel.BackgroundTransparency = options.transparency
+	end
+
+	controller.frame = panel
+
+	if options.border ~= false then
+		controller.border = UI.stroke(
+			panel,
+			options.borderColor or colors.borderStrong,
+			options.borderThickness or 1,
+			options.borderTransparency or 0.25
+		)
+	end
+
+	if options.shadow ~= false then
+		controller.shadow = UI.create("UIShadow", {
+			BlurRadius = UDim.new(0, options.shadowBlur or 18),
+
+			Offset = UDim2.fromOffset(options.shadowOffsetX or 0, options.shadowOffsetY or 6),
+
+			Spread = UDim2.fromOffset(options.shadowSpread or 0, options.shadowSpread or 0),
+
+			Color3 = options.shadowColor or Color3.new(0, 0, 0),
+
+			Transparency = options.shadowTransparency or 0.45,
+
+			Exponent = options.shadowExponent or 2,
+
+			Enabled = true,
+		}, panel)
+	end
+
+	if options.glass == true then
+		controller.panelBackdrop = UI.create("UIBackdrop", {
+			Enabled = true,
+
+			BlurRadius = options.glassBlur or 20,
+
+			TintColor3 = options.glassColor or colors.panel,
+
+			TintTransparency = options.glassTransparency or 0.82,
+		}, panel)
+
+		if options.transparency == nil then
+			panel.BackgroundTransparency = 0.12
+		end
+	end
+
+	local header = nil
+
+	if showHeader then
+		header = UI.create("TextButton", {
+			Name = "Header",
+
+			Text = "",
+
+			Position = UDim2.fromOffset(0, 0),
+			Size = UDim2.new(1, 0, 0, headerHeight),
+
+			BackgroundColor3 = options.headerColor or colors.panelRaised,
+			BackgroundTransparency = options.headerTransparency or 0,
+
+			BorderSizePixel = 0,
+
+			Active = draggable,
+			InputSink = true,
+			AutoButtonColor = false,
+
+			ZIndex = baseZIndex + 2,
+		}, panel)
+
+		UI.corner(header, radius)
+
+		UI.frame(
+			header,
+			UDim2.new(0, 0, 1, -radius),
+			UDim2.new(1, 0, 0, radius),
+			options.headerColor or colors.panelRaised
+		)
+
+		controller.header = header
+
+		if options.accent ~= false then
+			controller.accent = UI.frame(
+				header,
+				UDim2.fromOffset(0, options.accentInset or 7),
+				UDim2.fromOffset(options.accentWidth or 3, headerHeight - (options.accentInset or 7) * 2),
+				options.accentColor or colors.accent,
+				1
+			)
+		end
+
+		local titleX = options.titleX or 12
+
+		if options.icon then
+			local iconSize = options.iconSize or 18
+
+			controller.icon = UI.image(
+				header,
+				options.icon,
+				UDim2.fromOffset(titleX, math.floor((headerHeight - iconSize) / 2)),
+				UDim2.fromOffset(iconSize, iconSize)
+			)
+
+			titleX += iconSize + (options.iconGap or 8)
+		end
+
+		local titleHeight = description and 20 or headerHeight
+
+		local titleLabel = UI.label(
+			header,
+			title,
+			description and UDim2.fromOffset(titleX, 7) or UDim2.fromOffset(titleX, 0),
+			UDim2.new(1, -(titleX + (closable and 42 or 12)), 0, titleHeight),
+			options.titleSize or UI.tokens.type.body,
+			options.titleColor or colors.text
+		)
+
+		titleLabel.Name = "Title"
+		titleLabel.TextXAlignment = Enum.TextXAlignment.Left
+
+		controller.title = titleLabel
+
+		if description then
+			local descriptionLabel = UI.label(
+				header,
+				description,
+				UDim2.fromOffset(titleX, 27),
+				UDim2.new(1, -(titleX + (closable and 42 or 12)), 0, headerHeight - 30),
+				options.descriptionSize or UI.tokens.type.caption,
+				options.descriptionColor or colors.muted
+			)
+
+			descriptionLabel.Name = "Description"
+			descriptionLabel.TextXAlignment = Enum.TextXAlignment.Left
+
+			controller.description = descriptionLabel
+		end
+
+		if options.headerSeparator ~= false then
+			controller.headerSeparator = UI.separator(
+				header,
+				UDim2.new(0, 8, 1, -1),
+				UDim2.new(1, -16, 0, 1),
+				options.separatorColor or colors.border
+			)
+		end
+	end
+
+	if showHeader and closable then
+		local closeButton
+
+		if options.closeIcon then
+			closeButton = UI.iconButton(
+				header,
+				options.closeIcon,
+				UDim2.new(1, -31, 0.5, -11),
+				UDim2.fromOffset(22, 22),
+				function()
+					controller:Close("close")
+				end,
+				{
+					color = options.closeColor or colors.panelRaised,
+
+					hoverColor = options.closeHoverColor or colors.hover,
+
+					pressedColor = options.closePressedColor or colors.pressed,
+
+					iconSize = options.closeIconSize or 11,
+
+					radius = options.closeRadius or UI.tokens.radius.sm,
+
+					border = false,
+				}
+			)
+		else
+			closeButton = UI.button(header, "×", UDim2.new(1, -31, 0.5, -11), UDim2.fromOffset(22, 22), function()
+				controller:Close("close")
+			end, {
+				color = options.closeColor or colors.panelRaised,
+
+				hoverColor = options.closeHoverColor or colors.hover,
+
+				pressedColor = options.closePressedColor or colors.pressed,
+
+				textColor = options.closeTextColor or colors.subtext,
+
+				textSize = options.closeTextSize or 16,
+
+				paddingX = 0,
+
+				radius = options.closeRadius or UI.tokens.radius.sm,
+
+				border = false,
+			})
+		end
+
+		controller.closeButton = closeButton
+	end
+
+	local contentArea = UI.frame(
+		panel,
+		UDim2.fromOffset(0, headerHeight),
+		UDim2.new(1, 0, 1, -(headerHeight + footerHeight)),
+		options.contentColor or colors.panel
+	)
+
+	contentArea.Name = "ContentArea"
+
+	contentArea.BackgroundTransparency = options.contentTransparency or 0
+	contentArea.ClipsDescendants = options.clipContent == true
+
+	controller.contentArea = contentArea
+
+	local contentProperties = {
+		Name = "Content",
+
+		Position = UDim2.fromOffset(padding, padding),
+
+		Size = UDim2.new(1, -padding * 2, 1, -padding * 2),
+
+		BackgroundTransparency = 1,
+
+		BorderSizePixel = 0,
+
+		ClipsDescendants = options.clipContent == true,
+
+		ZIndex = baseZIndex + 2,
+	}
+
+	local content
+
+	if options.scrollable == true then
+		contentProperties.CanvasPosition = options.canvasPosition or Vector2.new(0, 0)
+
+		contentProperties.CanvasSize = options.canvasSize or UDim2.new(0, 0, 0, 0)
+
+		contentProperties.ScrollingEnabled = options.scrollingEnabled ~= false
+
+		contentProperties.ScrollBarThickness = options.scrollBarThickness or 5
+
+		contentProperties.ScrollBarImageColor3 = options.scrollBarColor or colors.subtext
+
+		contentProperties.ScrollBarImageTransparency = options.scrollBarTransparency or 0.4
+
+		contentProperties.ScrollBarAutoHide = options.scrollBarAutoHide ~= false
+
+		content = UI.create("ScrollingFrame", contentProperties, contentArea)
+	else
+		content = UI.create("Frame", contentProperties, contentArea)
+	end
+
+	controller.content = content
+
+	local footer = nil
+	local buttonGroup = nil
+
+	if showFooter then
+		footer = UI.frame(
+			panel,
+			UDim2.new(0, 0, 1, -footerHeight),
+			UDim2.new(1, 0, 0, footerHeight),
+			options.footerColor or colors.panelRaised
+		)
+
+		footer.Name = "Footer"
+
+		footer.BackgroundTransparency = options.footerTransparency or 0
+
+		controller.footer = footer
+
+		if options.footerSeparator ~= false then
+			controller.footerSeparator = UI.separator(
+				footer,
+				UDim2.fromOffset(8, 0),
+				UDim2.new(1, -16, 0, 1),
+				options.separatorColor or colors.border
+			)
+		end
+
+		buttonGroup = UI.frame(footer, UDim2.fromOffset(0, 0), UDim2.fromOffset(0, footerHeight), Color3.new(0, 0, 0))
+
+		buttonGroup.Name = "Buttons"
+		buttonGroup.BackgroundTransparency = 1
+
+		controller.buttonGroup = buttonGroup
+	end
+
+	local function getButtonColors(config)
+		local role = config.role or "secondary"
+
+		if role == "primary" then
+			return config.color or colors.accent,
+				config.hoverColor or colors.selectionHover,
+				config.pressedColor or colors.pressed,
+				config.textColor or colors.text,
+				config.backgroundTransparency or 0
+		elseif role == "danger" then
+			return config.color or colors.error,
+				config.hoverColor or colors.error,
+				config.pressedColor or colors.pressed,
+				config.textColor or colors.text,
+				config.backgroundTransparency or 0
+		elseif role == "ghost" then
+			return config.color or colors.panelRaised,
+				config.hoverColor or colors.hover,
+				config.pressedColor or colors.pressed,
+				config.textColor or colors.subtext,
+				config.backgroundTransparency or 1
+		end
+
+		return config.color or colors.panelRaised,
+			config.hoverColor or colors.hover,
+			config.pressedColor or colors.pressed,
+			config.textColor or colors.subtext,
+			config.backgroundTransparency or 0
+	end
+
+	local function calculateButtonWidth(config)
+		if config.width then
+			return config.width
+		end
+
+		local text = tostring(config.text or config.label or config.id or "Button")
+
+		return math.max(options.buttonWidth or 82, #text * (options.buttonCharacterWidth or 7) + 28)
+	end
+
+	local function renderButtons()
+		if not buttonGroup then
+			return
+		end
+
+		UI.clear(buttonGroup)
+
+		controller.buttons = {}
+
+		local configs = controller.buttonConfigs
+
+		local gap = options.buttonGap or 7
+		local totalWidth = 0
+
+		for index, config in ipairs(configs) do
+			totalWidth += calculateButtonWidth(config)
+
+			if index > 1 then
+				totalWidth += gap
+			end
+		end
+
+		local alignment = options.buttonAlignment or "right"
+
+		if alignment == "left" then
+			buttonGroup.AnchorPoint = Vector2.new(0, 0)
+
+			buttonGroup.Position = UDim2.fromOffset(options.footerPadding or 10, 0)
+		elseif alignment == "center" then
+			buttonGroup.AnchorPoint = Vector2.new(0.5, 0)
+
+			buttonGroup.Position = UDim2.new(0.5, 0, 0, 0)
+		else
+			buttonGroup.AnchorPoint = Vector2.new(1, 0)
+
+			buttonGroup.Position = UDim2.new(1, -(options.footerPadding or 10), 0, 0)
+		end
+
+		buttonGroup.Size = UDim2.fromOffset(totalWidth, footerHeight)
+
+		local x = 0
+
+		for index, config in ipairs(configs) do
+			local id = config.id or config.name or tostring(index)
+
+			local text = config.text or config.label or tostring(id)
+
+			local width = calculateButtonWidth(config)
+
+			local height = config.height or options.buttonHeight or UI.metrics.buttonHeight
+
+			local color, hoverColor, pressedColor, textColor, backgroundTransparency = getButtonColors(config)
+
+			local button
+			local label
+			local record
+
+			button, label, record = UI.button(
+				buttonGroup,
+				text,
+				UDim2.fromOffset(x, math.floor((footerHeight - height) / 2)),
+				UDim2.fromOffset(width, height),
+				function()
+					if record and not record.enabled then
+						return
+					end
+
+					local callbackResult = nil
+
+					if config.callback then
+						callbackResult = config.callback(controller, config, content)
+					end
+
+					local resultValue = id
+
+					if config.value ~= nil then
+						resultValue = config.value
+					end
+
+					if options.onResult then
+						options.onResult(id, resultValue, config, controller, callbackResult)
+					end
+
+					if callbackResult ~= false and config.close ~= false then
+						controller:Close(id, resultValue)
+					end
+				end,
+				{
+					color = color,
+
+					hoverColor = hoverColor,
+
+					pressedColor = pressedColor,
+
+					textColor = textColor,
+
+					textSize = config.textSize or options.buttonTextSize or UI.tokens.type.small,
+
+					radius = config.radius or options.buttonRadius or UI.tokens.radius.sm,
+
+					border = config.border ~= false,
+
+					borderColor = config.borderColor or options.buttonBorderColor or colors.border,
+
+					borderTransparency = config.borderTransparency or options.buttonBorderTransparency or 0,
+
+					paddingX = config.paddingX or options.buttonPaddingX or UI.tokens.space.md,
+
+					icon = config.icon,
+
+					iconSize = config.iconSize or options.buttonIconSize or 14,
+
+					enabled = config.enabled ~= false,
+				}
+			)
+
+			button.Name = tostring(id)
+
+			button.BackgroundTransparency = backgroundTransparency
+
+			controller.buttons[id] = {
+				id = id,
+
+				button = button,
+				label = label,
+				record = record,
+
+				config = config,
+
+				color = color,
+				hoverColor = hoverColor,
+
+				textColor = textColor,
+
+				enabled = config.enabled ~= false,
+			}
+
+			x += width + gap
+		end
+	end
+
+	function controller:IsOpen()
+		return self.open and not self.destroyed
+	end
+
+	function controller:Open()
+		if self.destroyed then
+			return false
+		end
+
+		if self.open then
+			return true
+		end
+
+		self.open = true
+		self.screenGui.Enabled = true
+
+		if options.onOpen then
+			options.onOpen(self)
+		end
+
 		return true
 	end
-	self.snapStep = options.snapStep or 4
-	self.rotateSnap = options.rotateSnap or 15
-	self.canPick = options.canPick ~= false
-	self.clearOnEmpty = options.clearOnEmpty == true
-	self.enabled = true
-	self.target = nil
-	self.hoverObj = nil
-	self.drag = nil
-	self.connections = {}
 
-	self.hit = UI.create("TextButton", {
-		Name = "GuiEditorHit",
+	function controller:Close(reason, result)
+		if self.destroyed or not self.open then
+			return false
+		end
+
+		if options.beforeClose then
+			local allowed = options.beforeClose(reason, result, self)
+
+			if allowed == false then
+				return false
+			end
+		end
+
+		self.open = false
+		self.screenGui.Enabled = false
+
+		if options.onClose then
+			options.onClose(reason, result, self)
+		end
+
+		if options.destroyOnClose == true then
+			self:Destroy()
+		end
+
+		return true
+	end
+
+	function controller:Destroy()
+		if self.destroyed then
+			return
+		end
+
+		self.destroyed = true
+		self.open = false
+
+		UI.forgetButtons(self.screenGui)
+
+		self.screenGui:Destroy()
+	end
+
+	function controller:SetTitle(text)
+		if self.title then
+			self.title.Text = tostring(text or "")
+		end
+	end
+
+	function controller:SetDescription(text)
+		if not self.description then
+			return
+		end
+
+		self.description.Text = tostring(text or "")
+	end
+
+	function controller:SetSize(newSize)
+		panel.Size = newSize
+	end
+
+	function controller:SetPosition(newPosition)
+		panel.Position = newPosition
+	end
+
+	function controller:SetModal(value)
+		modal = value == true
+
+		if backdrop then
+			backdrop.Active = modal or options.closeOnBackdrop == true
+			backdrop.InputSink = modal
+		end
+	end
+
+	function controller:GetButton(id)
+		return self.buttons[id]
+	end
+
+	function controller:SetButtonEnabled(id, enabled)
+		local data = self.buttons[id]
+
+		if not data then
+			return false
+		end
+
+		enabled = enabled == true
+
+		data.enabled = enabled
+		data.record.enabled = enabled
+
+		data.button.Active = enabled
+
+		if enabled then
+			data.record.color = data.color
+			data.record.hoverColor = data.hoverColor
+
+			data.button.BackgroundColor3 = data.color
+			data.label.TextColor3 = data.textColor
+		else
+			data.button.BackgroundColor3 = options.disabledButtonColor or colors.surface
+
+			data.label.TextColor3 = options.disabledTextColor or colors.muted
+		end
+
+		return true
+	end
+
+	function controller:SetButtons(buttons)
+		self.buttonConfigs = buttons or {}
+
+		renderButtons()
+	end
+
+	function controller:AddButton(config)
+		table.insert(self.buttonConfigs, config)
+
+		renderButtons()
+
+		return self.buttons[config.id or config.name or tostring(#self.buttonConfigs)]
+	end
+
+	function controller:SetBusy(value, targetButton, busyText)
+		value = value == true
+
+		if self.busy == value then
+			return
+		end
+
+		self.busy = value
+
+		if value then
+			self._busyStates = {}
+
+			for id, data in pairs(self.buttons) do
+				self._busyStates[id] = data.enabled
+
+				self:SetButtonEnabled(id, false)
+			end
+
+			if targetButton and self.buttons[targetButton] then
+				local data = self.buttons[targetButton]
+
+				data._normalText = data.label.Text
+
+				if busyText then
+					data.label.Text = busyText
+				end
+			end
+		else
+			for id, enabled in pairs(self._busyStates or {}) do
+				self:SetButtonEnabled(id, enabled)
+			end
+
+			if targetButton and self.buttons[targetButton] then
+				local data = self.buttons[targetButton]
+
+				if data._normalText then
+					data.label.Text = data._normalText
+					data._normalText = nil
+				end
+			end
+
+			self._busyStates = nil
+		end
+	end
+
+	if header and draggable then
+		local dragging = false
+
+		local startMouseX = 0
+		local startMouseY = 0
+
+		local startPosition = nil
+
+		header.MouseButton1Down:Connect(function(x, y)
+			dragging = true
+
+			startMouseX = x
+			startMouseY = y
+
+			startPosition = panel.Position
+
+			if options.onDragBegin then
+				options.onDragBegin(controller)
+			end
+		end)
+
+		header.MouseMoved:Connect(function(x, y)
+			if not dragging or not startPosition then
+				return
+			end
+
+			local deltaX = x - startMouseX
+			local deltaY = y - startMouseY
+
+			panel.Position = UDim2.new(
+				startPosition.X.Scale,
+				startPosition.X.Offset + deltaX,
+				startPosition.Y.Scale,
+				startPosition.Y.Offset + deltaY
+			)
+
+			if options.onDrag then
+				options.onDrag(panel.Position, controller)
+			end
+		end)
+
+		header.MouseButton1Up:Connect(function()
+			if not dragging then
+				return
+			end
+
+			dragging = false
+
+			if options.onDragEnd then
+				options.onDragEnd(panel.Position, controller)
+			end
+		end)
+	end
+
+	local initialButtons = options.buttons
+
+	if initialButtons == nil and showFooter then
+		initialButtons = {
+			{
+				id = "ok",
+				text = options.defaultButtonText or "OK",
+				role = "primary",
+			},
+		}
+	end
+
+	controller.buttonConfigs = initialButtons or {}
+
+	renderButtons()
+
+	if options.build then
+		options.build(content, controller)
+	end
+
+	if options.onCreated then
+		options.onCreated(controller, content)
+	end
+
+	screenGui.Enabled = controller.open
+
+	if controller.open and options.onOpen then
+		options.onOpen(controller)
+	end
+
+	return panel, content, controller
+end
+
+function UI.rangeSlider(parent, position, size, minimum, maximum, low, high, callback, options)
+	options = options or {}
+
+	local colors = UI.tokens.color
+
+	minimum = minimum or 0
+	maximum = maximum or 1
+
+	low = math.clamp(low or minimum, minimum, maximum)
+	high = math.clamp(high or maximum, minimum, maximum)
+
+	if low > high then
+		low, high = high, low
+	end
+
+	local step = options.step or 0
+	local dragging = nil
+
+	local container = UI.create("TextButton", {
+		Text = "",
+		Position = position or UDim2.fromOffset(0, 0),
+		Size = size or UDim2.fromOffset(160, UI.metrics.inputHeight),
+
+		BackgroundTransparency = 1,
+		BorderSizePixel = 0,
+
+		Active = true,
+		InputSink = true,
+		AutoButtonColor = false,
+	}, parent)
+
+	local trackHeight = options.trackHeight or 4
+
+	local track = UI.frame(
+		container,
+		UDim2.new(0, 0, 0.5, -math.floor(trackHeight / 2)),
+		UDim2.new(1, 0, 0, trackHeight),
+		options.trackColor or colors.input,
+		math.floor(trackHeight / 2)
+	)
+
+	local fill = UI.frame(
+		track,
+		UDim2.fromOffset(0, 0),
+		UDim2.fromOffset(0, trackHeight),
+		options.fillColor or colors.accent,
+		math.floor(trackHeight / 2)
+	)
+
+	local knobSize = options.knobSize or 12
+
+	local lowKnob = UI.frame(
+		container,
+		UDim2.fromOffset(0, 0),
+		UDim2.fromOffset(knobSize, knobSize),
+		options.knobColor or colors.text,
+		math.floor(knobSize / 2)
+	)
+
+	local highKnob = UI.frame(
+		container,
+		UDim2.fromOffset(0, 0),
+		UDim2.fromOffset(knobSize, knobSize),
+		options.knobColor or colors.text,
+		math.floor(knobSize / 2)
+	)
+
+	UI.stroke(lowKnob, options.knobBorderColor or colors.borderStrong, 1, 0)
+	UI.stroke(highKnob, options.knobBorderColor or colors.borderStrong, 1, 0)
+
+	local function alpha(value)
+		if maximum == minimum then
+			return 0
+		end
+
+		return math.clamp((value - minimum) / (maximum - minimum), 0, 1)
+	end
+
+	local function redraw()
+		local lowAlpha = alpha(low)
+		local highAlpha = alpha(high)
+
+		fill.Position = UDim2.new(lowAlpha, 0, 0, 0)
+		fill.Size = UDim2.new(math.max(highAlpha - lowAlpha, 0), 0, 1, 0)
+
+		lowKnob.Position = UDim2.new(lowAlpha, -math.floor(knobSize / 2), 0.5, -math.floor(knobSize / 2))
+
+		highKnob.Position = UDim2.new(highAlpha, -math.floor(knobSize / 2), 0.5, -math.floor(knobSize / 2))
+	end
+
+	local function valueFromPoint(x)
+		local position = track.AbsolutePosition
+		local absoluteSize = track.AbsoluteSize
+
+		if not position or not absoluteSize or absoluteSize.X <= 0 then
+			return nil
+		end
+
+		local a = math.clamp((x - position.X) / absoluteSize.X, 0, 1)
+		local value = minimum + (maximum - minimum) * a
+
+		if step > 0 then
+			value = math.floor((value - minimum) / step + 0.5) * step + minimum
+		end
+
+		return math.clamp(value, minimum, maximum)
+	end
+
+	local function chooseKnob(x)
+		local value = valueFromPoint(x)
+
+		if value == nil then
+			return
+		end
+
+		if math.abs(value - low) <= math.abs(value - high) then
+			dragging = "low"
+		else
+			dragging = "high"
+		end
+	end
+
+	local function updateFromPoint(x, silent)
+		local value = valueFromPoint(x)
+
+		if value == nil then
+			return
+		end
+
+		if dragging == "low" then
+			low = math.min(value, high)
+		elseif dragging == "high" then
+			high = math.max(value, low)
+		else
+			return
+		end
+
+		redraw()
+
+		if not silent and callback then
+			callback(low, high)
+		end
+	end
+
+	container.MouseButton1Down:Connect(function(x)
+		chooseKnob(x)
+
+		if options.onBegin then
+			options.onBegin()
+		end
+
+		updateFromPoint(x)
+	end)
+
+	container.MouseMoved:Connect(function(x)
+		if dragging then
+			updateFromPoint(x)
+		end
+	end)
+
+	container.MouseButton1Up:Connect(function(x)
+		if dragging then
+			updateFromPoint(x)
+		end
+
+		dragging = nil
+
+		if options.onEnd then
+			options.onEnd()
+		end
+	end)
+
+	local controller = {
+		frame = container,
+		track = track,
+		fill = fill,
+		lowKnob = lowKnob,
+		highKnob = highKnob,
+	}
+
+	function controller:GetValues()
+		return low, high
+	end
+
+	function controller:SetValues(newLow, newHigh, silent)
+		low = math.clamp(newLow, minimum, maximum)
+		high = math.clamp(newHigh, minimum, maximum)
+
+		if low > high then
+			low, high = high, low
+		end
+
+		redraw()
+
+		if not silent and callback then
+			callback(low, high)
+		end
+	end
+
+	function controller:SetRange(newMinimum, newMaximum)
+		minimum = newMinimum
+		maximum = newMaximum
+
+		low = math.clamp(low, minimum, maximum)
+		high = math.clamp(high, minimum, maximum)
+
+		redraw()
+	end
+
+	redraw()
+
+	return container, controller
+end
+
+function UI.point2D(parent, position, size, minimumX, maximumX, minimumY, maximumY, x, y, callback, options)
+	options = options or {}
+
+	local colors = UI.tokens.color
+
+	minimumX = minimumX or -1
+	maximumX = maximumX or 1
+	minimumY = minimumY or -1
+	maximumY = maximumY or 1
+
+	x = math.clamp(x or 0, minimumX, maximumX)
+	y = math.clamp(y or 0, minimumY, maximumY)
+
+	local dragging = false
+
+	local pad = UI.create("TextButton", {
+		Text = "",
+		Position = position,
+		Size = size or UDim2.fromOffset(160, 120),
+
+		BackgroundColor3 = options.color or colors.input,
+		BorderSizePixel = 0,
+
+		Active = true,
+		InputSink = true,
+		AutoButtonColor = false,
+		ClipsDescendants = true,
+	}, parent)
+
+	UI.corner(pad, options.radius or UI.tokens.radius.xs)
+	UI.stroke(pad, options.borderColor or colors.border, 1, 0)
+
+	local centerX =
+		UI.separator(pad, UDim2.new(0.5, 0, 0, 0), UDim2.new(0, 1, 1, 0), options.gridColor or colors.border)
+
+	centerX.BackgroundTransparency = 0.35
+
+	local centerY =
+		UI.separator(pad, UDim2.new(0, 0, 0.5, 0), UDim2.new(1, 0, 0, 1), options.gridColor or colors.border)
+
+	centerY.BackgroundTransparency = 0.35
+
+	local cursorSize = options.cursorSize or 10
+
+	local cursor = UI.frame(
+		pad,
+		UDim2.fromOffset(0, 0),
+		UDim2.fromOffset(cursorSize, cursorSize),
+		options.cursorColor or colors.text,
+		math.floor(cursorSize / 2)
+	)
+
+	UI.stroke(cursor, options.cursorBorderColor or colors.borderStrong, 1, 0)
+
+	local function normalizedX()
+		if maximumX == minimumX then
+			return 0
+		end
+
+		return math.clamp((x - minimumX) / (maximumX - minimumX), 0, 1)
+	end
+
+	local function normalizedY()
+		if maximumY == minimumY then
+			return 0
+		end
+
+		return math.clamp((y - minimumY) / (maximumY - minimumY), 0, 1)
+	end
+
+	local function redraw()
+		cursor.Position =
+			UDim2.new(normalizedX(), -math.floor(cursorSize / 2), normalizedY(), -math.floor(cursorSize / 2))
+	end
+
+	local function updateFromPoint(mouseX, mouseY)
+		local absolutePosition = pad.AbsolutePosition
+		local absoluteSize = pad.AbsoluteSize
+
+		if not absolutePosition or not absoluteSize then
+			return
+		end
+
+		if absoluteSize.X <= 0 or absoluteSize.Y <= 0 then
+			return
+		end
+
+		local alphaX = math.clamp((mouseX - absolutePosition.X) / absoluteSize.X, 0, 1)
+
+		local alphaY = math.clamp((mouseY - absolutePosition.Y) / absoluteSize.Y, 0, 1)
+
+		x = minimumX + (maximumX - minimumX) * alphaX
+		y = minimumY + (maximumY - minimumY) * alphaY
+
+		redraw()
+
+		if callback then
+			callback(x, y)
+		end
+	end
+
+	pad.MouseButton1Down:Connect(function(mouseX, mouseY)
+		dragging = true
+
+		if options.onBegin then
+			options.onBegin()
+		end
+
+		updateFromPoint(mouseX, mouseY)
+	end)
+
+	pad.MouseMoved:Connect(function(mouseX, mouseY)
+		if dragging then
+			updateFromPoint(mouseX, mouseY)
+		end
+	end)
+
+	pad.MouseButton1Up:Connect(function(mouseX, mouseY)
+		if dragging then
+			updateFromPoint(mouseX, mouseY)
+		end
+
+		dragging = false
+
+		if options.onEnd then
+			options.onEnd()
+		end
+	end)
+
+	local controller = {
+		frame = pad,
+		cursor = cursor,
+	}
+
+	function controller:GetValue()
+		return x, y
+	end
+
+	function controller:SetValue(newX, newY, silent)
+		x = math.clamp(newX, minimumX, maximumX)
+		y = math.clamp(newY, minimumY, maximumY)
+
+		redraw()
+
+		if not silent and callback then
+			callback(x, y)
+		end
+	end
+
+	redraw()
+
+	return pad, controller
+end
+
+function UI.label(parent, text, position, size, textSize, color)
+	return UI.create("TextLabel", {
+
+		Text = tostring(text or ""),
+
+		Position = position or UDim2.fromOffset(0, 0),
+
+		Size = size or UDim2.fromOffset(100, 20),
+
+		BackgroundTransparency = 1,
+
+		TextSize = textSize or UI.tokens.type.body,
+
+		TextColor3 = color or UI.tokens.color.text,
+
+		BorderSizePixel = 0,
+	}, parent)
+end
+
+function UI.image(parent, path, position, size)
+	return UI.create("ImageLabel", {
+
+		Image = path,
+
+		Position = position,
+
+		Size = size,
+
+		BackgroundTransparency = 1,
+
+		BorderSizePixel = 0,
+	}, parent)
+end
+
+local function probeInstanceAlive(gui)
+	return gui:IsDescendantOf(gui)
+end
+
+function UI.isAlive(gui)
+	if gui == nil then
+		return false
+	end
+
+	return pcall(probeInstanceAlive, gui)
+end
+
+function UI.forgetButtons(container)
+	if container == nil then
+		return
+	end
+
+	local retained = {}
+
+	for _, item in ipairs(shared.buttons) do
+		local gui = item.gui
+
+		if gui ~= nil and gui ~= container and UI.isAlive(gui) and not gui:IsDescendantOf(container) then
+			table.insert(retained, item)
+		else
+			item.destroyed = true
+		end
+	end
+
+	shared.buttons = retained
+end
+
+function UI.clear(parent, keep)
+	local doomedChildren = {}
+	local doomed = {}
+
+	for _, child in ipairs(parent:GetChildren()) do
+		local decoration = child:IsA("UICorner")
+			or child:IsA("UIStroke")
+			or child:IsA("UIShadow")
+			or child:IsA("UIBackdrop")
+
+		if not decoration and (not keep or not keep[child]) then
+			table.insert(doomedChildren, child)
+
+			doomed[child] = true
+
+			for _, descendant in ipairs(child:GetDescendants()) do
+				doomed[descendant] = true
+			end
+		end
+	end
+
+	local retained = {}
+
+	for _, item in ipairs(shared.buttons) do
+		local gui = item.gui
+
+		if gui ~= nil and not doomed[gui] and UI.isAlive(gui) then
+			table.insert(retained, item)
+		else
+			item.destroyed = true
+		end
+	end
+
+	shared.buttons = retained
+
+	for _, child in ipairs(doomedChildren) do
+		child:Destroy()
+	end
+end
+
+function UI.property(parent, text, position, size, value, callback, options)
+	options = options or {}
+
+	local colors = UI.tokens.color
+
+	local rowHeight = UI.metrics.propertyRow
+	local padding = options.padding or UI.tokens.space.md
+	local gap = options.gap or UI.tokens.space.sm
+	local fieldGap = options.fieldGap or UI.tokens.space.xs
+	local textSize = options.textSize or UI.tokens.type.small
+	local innerHeight = rowHeight - 2
+
+	local row: Frame = UI.frame(
+		parent,
+		position or UDim2.fromOffset(0, 0),
+		size or UDim2.new(1, 0, 0, rowHeight),
+		options.color or colors.panel,
+		options.radius or 0
+	)
+	row.ClipsDescendants = false
+	row.Name = options.name or "Property"
+	row.BackgroundTransparency = options.transparent and 1 or 0
+
+	local labelSize, areaPosition, areaSize
+
+	if options.labelWidth then
+		labelSize = UDim2.new(0, options.labelWidth, 1, 0)
+		areaPosition = UDim2.new(0, padding + options.labelWidth + gap, 0, 0)
+		areaSize = UDim2.new(1, -(padding * 2 + options.labelWidth + gap), 1, 0)
+	else
+		local scale = options.labelScale or 0.45
+		labelSize = UDim2.new(scale, -padding, 1, 0)
+		areaPosition = UDim2.new(scale, gap, 0, 0)
+		areaSize = UDim2.new(1 - scale, -(padding + gap), 1, 0)
+	end
+
+	local label =
+		UI.label(row, text, UDim2.fromOffset(padding, 0), labelSize, textSize, options.labelColor or colors.subtext)
+
+	label.Name = "Label"
+	label.TextXAlignment = Enum.TextXAlignment.Left
+	label.TextYAlignment = Enum.TextYAlignment.Center
+
+	local holder = UI.create("Frame", {
+		Name = "Content",
+		Position = areaPosition,
+		Size = areaSize,
+		BackgroundTransparency = 1,
+		BorderSizePixel = 0,
+	}, row)
+
+	local controller = {
+		frame = row,
+		label = label,
+		content = holder,
+		fields = {},
+		custom = nil,
+	}
+
+	local enabled = true
+
+	if options.custom then
+		controller.custom = options.custom(holder, controller, colors)
+
+		function controller:Fire(newValue)
+			if callback then
+				callback(newValue, controller)
+			end
+		end
+
+		function controller:GetValue()
+			local custom = self.custom
+			if type(custom) == "table" and custom.GetValue then
+				return custom:GetValue()
+			end
+		end
+
+		function controller:SetValue(newValue, silent)
+			local custom = self.custom
+			if type(custom) == "table" and custom.SetValue then
+				custom:SetValue(newValue, silent)
+			end
+		end
+
+		function controller:SetLabel(newText)
+			label.Text = tostring(newText or "")
+		end
+
+		function controller:SetEnabled(value)
+			enabled = value == true
+			label.TextColor3 = enabled and (options.labelColor or colors.subtext) or colors.muted
+
+			local custom = self.custom
+			if type(custom) == "table" and custom.SetEnabled then
+				custom:SetEnabled(enabled)
+			end
+		end
+
+		function controller:IsEnabled()
+			return enabled
+		end
+
+		function controller:Destroy()
+			local custom = self.custom
+			if type(custom) == "table" and custom.Destroy then
+				custom:Destroy()
+			end
+
+			UI.forgetButtons(row)
+			row:Destroy()
+		end
+
+		return row, controller
+	end
+
+	local multi = options.fields ~= nil or options.count ~= nil
+	local configs = {}
+
+	if options.fields then
+		for index, config in ipairs(options.fields) do
+			configs[index] = config
+		end
+	elseif options.count then
+		for index = 1, options.count do
+			configs[index] = {}
+		end
+	else
+		configs[1] = {}
+	end
+
+	local count = #configs
+
+	local function setting(config, key)
+		if config[key] ~= nil then
+			return config[key]
+		end
+
+		return options[key]
+	end
+
+	local function formatNumber(config, number)
+		local decimals = setting(config, "decimals")
+
+		if decimals then
+			local factor = 10 ^ decimals
+			number = math.floor(number * factor + 0.5) / factor
+		end
+
+		return tostring(number)
+	end
+
+	local function normalize(config, raw)
+		if setting(config, "numeric") then
+			local number = tonumber(raw)
+
+			if number == nil then
+				return false
+			end
+
+			local minimum, maximum = setting(config, "min"), setting(config, "max")
+
+			if minimum then
+				number = math.max(number, minimum)
+			end
+
+			if maximum then
+				number = math.min(number, maximum)
+			end
+
+			return true, formatNumber(config, number)
+		end
+
+		local validate = setting(config, "validate")
+
+		if validate then
+			local ok, normalized = validate(raw)
+
+			if not ok then
+				return false
+			end
+
+			return true, normalized ~= nil and tostring(normalized) or raw
+		end
+
+		return true, raw
+	end
+
+	local function outValue(field)
+		if setting(field.config, "numeric") then
+			return tonumber(field.current)
+		end
+
+		return field.current
+	end
+
+	local function collect()
+		if not multi then
+			return outValue(controller.fields[1])
+		end
+
+		local values = {}
+
+		for index, field in ipairs(controller.fields) do
+			values[index] = outValue(field)
+		end
+
+		return values
+	end
+
+	local function notify(index)
+		if not callback then
+			return
+		end
+
+		if multi then
+			callback(collect(), controller, index)
+		else
+			callback(collect(), controller)
+		end
+	end
+
+	local initial = value
+
+	if not multi then
+		initial = { value }
+	end
+
+	initial = type(initial) == "table" and initial or {}
+
+	local prefixWidth = options.prefixWidth or 12
+
+	for index, config in ipairs(configs) do
+		local cell = UI.create("Frame", {
+			Name = "Field" .. index,
+			Position = UDim2.new(
+				(index - 1) / count,
+				(index - 1) * fieldGap / count,
+				0.5,
+				-math.floor(innerHeight / 2)
+			),
+			Size = UDim2.new(1 / count, -fieldGap * (count - 1) / count, 0, innerHeight),
+			BackgroundTransparency = 1,
+			BorderSizePixel = 0,
+		}, holder)
+
+		local boxX, boxWidth = 0, UDim2.new(1, 0, 1, 0)
+
+		if config.prefix then
+			local prefixColor = config.prefixColor
+				or (options.prefixColors and options.prefixColors[index])
+				or colors.muted
+
+			local prefix = UI.label(
+				cell,
+				config.prefix,
+				UDim2.fromOffset(0, 0),
+				UDim2.fromOffset(prefixWidth, innerHeight),
+				UI.tokens.type.caption,
+				prefixColor
+			)
+
+			prefix.Name = "Prefix"
+			prefix.TextXAlignment = Enum.TextXAlignment.Center
+			prefix.TextYAlignment = Enum.TextYAlignment.Center
+
+			boxX = prefixWidth + 2
+			boxWidth = UDim2.new(1, -boxX, 1, 0)
+		end
+
+		local startValue = initial[index]
+		local startText = startValue ~= nil and tostring(startValue) or ""
+
+		local box =
+			UI.input(cell, config.placeholder or options.placeholder or "", UDim2.fromOffset(boxX, 0), boxWidth, {
+				text = startText,
+				textSize = textSize,
+				textColor = setting(config, "textColor"),
+				color = setting(config, "inputColor"),
+				textEditable = not setting(config, "readOnly"),
+				selectAllOnFocus = options.selectAllOnFocus,
+			})
+
+		box.Name = "Value"
+
+		local field = { box = box, cell = cell, config = config, current = startText }
+
+		controller.fields[index] = field
+
+		box.FocusLost:Connect(function()
+			local ok, normalized = normalize(config, box.Text)
+
+			if not ok then
+				box.Text = field.current
+				return
+			end
+
+			box.Text = normalized
+
+			if normalized == field.current then
+				return
+			end
+
+			field.current = normalized
+			notify(index)
+		end)
+	end
+
+	controller.box = controller.fields[1].box
+
+	function controller:GetValue()
+		return collect()
+	end
+
+	function controller:GetField(index)
+		local field = self.fields[index]
+		return field and outValue(field) or nil
+	end
+
+	function controller:SetField(index, newValue, silent)
+		local field = self.fields[index]
+
+		if not field then
+			return false
+		end
+
+		local raw = newValue ~= nil and tostring(newValue) or ""
+		local ok, normalized = normalize(field.config, raw)
+
+		if not ok then
+			return false
+		end
+
+		field.current = normalized
+		field.box.Text = normalized
+
+		if not silent then
+			notify(index)
+		end
+
+		return true
+	end
+
+	function controller:SetValue(newValue, silent)
+		if not multi then
+			return self:SetField(1, newValue, silent)
+		end
+
+		if type(newValue) ~= "table" then
+			return false
+		end
+
+		local changed = false
+
+		for index = 1, count do
+			if newValue[index] ~= nil and self:SetField(index, newValue[index], true) then
+				changed = true
+			end
+		end
+
+		if changed and not silent then
+			notify(nil)
+		end
+
+		return changed
+	end
+
+	function controller:SetLabel(newText)
+		label.Text = tostring(newText or "")
+	end
+
+	function controller:SetEnabled(value)
+		enabled = value == true
+
+		label.TextColor3 = enabled and (options.labelColor or colors.subtext) or colors.muted
+
+		for _, field in ipairs(self.fields) do
+			field.box.TextEditable = enabled and not setting(field.config, "readOnly")
+			field.box.Active = enabled
+			field.box.TextColor3 = enabled and (setting(field.config, "textColor") or colors.text) or colors.muted
+		end
+	end
+
+	function controller:IsEnabled()
+		return enabled
+	end
+
+	function controller:Focus(index)
+		local field = self.fields[index or 1]
+
+		if field then
+			field.box:CaptureFocus()
+		end
+	end
+
+	function controller:Destroy()
+		UI.forgetButtons(row)
+		row:Destroy()
+	end
+
+	return row, controller
+end
+
+function UI.toast(text, options)
+	options = options or {}
+
+	local colors = UI.tokens.color
+
+	shared.toasts = shared.toasts or {}
+	shared.toastSerial = (shared.toastSerial or 0) + 1
+
+	shared.toastMargin = shared.toastMargin or (options.margin or 20)
+	shared.toastGap = shared.toastGap or (options.gap or 10)
+
+	local margin = shared.toastMargin
+	local gap = shared.toastGap
+
+	if not shared.toastRoot then
+		shared.toastRoot = UI.create("ScreenGui", {
+			Name = "ToastOverlay",
+
+			DisplayOrder = options.displayOrder or 3000,
+
+			IgnoreGuiInset = true,
+			RenderOnTop = true,
+		}, options.parent or game.CoreGui)
+	end
+
+	local root = shared.toastRoot
+
+	local kind = options.type or "info"
+
+	local typeConfigs = {
+		info = {
+			color = colors.accent,
+			icon = "builtin://global-icons/info.svg",
+		},
+
+		success = {
+			color = colors.success,
+			icon = "builtin://global-icons/check.svg",
+		},
+
+		warning = {
+			color = colors.warning,
+			icon = "builtin://global-icons/warning.svg",
+		},
+
+		error = {
+			color = colors.error,
+			icon = "builtin://global-icons/error",
+		},
+	}
+
+	local typeConfig = typeConfigs[kind] or typeConfigs.info
+
+	local accentColor = options.accentColor or typeConfig.color
+	local iconCharacter = options.icon or typeConfig.icon
+	local blur
+	local controller = {}
+
+	local title = options.title or tostring(text or "Notification")
+	local messagePrefix = options.message or ""
+
+	local details = tostring(options.details or "")
+
+	local hasDetails = details ~= "" or options.buildDetails ~= nil
+
+	local width = options.width or 520
+
+	local headerHeight = options.headerHeight or 52
+	local summaryHeight = options.summaryHeight or 40
+	local progressHeight = options.progressHeight or 4
+
+	local collapsedHeight = options.height or (headerHeight + summaryHeight + progressHeight)
+
+	local expandedHeight = options.expandedHeight or (collapsedHeight + 120)
+
+	expandedHeight = math.max(expandedHeight, collapsedHeight + 50)
+
+	local duration = options.duration
+
+	if duration == nil then
+		duration = 9
+	end
+
+	local fadeSpeed = options.fadeSpeed or 14
+	local moveSpeed = options.moveSpeed or 16
+	local slideDistance = options.slideDistance or 18
+
+	local backgroundTransparency = options.backgroundTransparency or 0
+	local borderTransparency = options.borderTransparency or 0.25
+
+	local zIndex = options.zIndex or (150000 + shared.toastSerial * 10)
+
+	local frame = UI.create("Frame", {
+		Name = "Toast" .. tostring(shared.toastSerial),
+		ClipsDescendants = true,
+
+		AnchorPoint = Vector2.new(0.5, 0),
+
+		Position = UDim2.new(0.5, 0, 0, margin - slideDistance),
+
+		Size = UDim2.fromOffset(width, collapsedHeight),
+
+		BackgroundColor3 = options.backgroundColor or colors.panelRaised,
+		BackgroundTransparency = 1,
+
+		BorderSizePixel = 0,
+
+		Active = false,
+		InputSink = false,
+
+		ZIndex = zIndex,
+	}, root)
+
+	UI.corner(frame, options.radius or UI.tokens.radius.md)
+
+	local border = UI.stroke(frame, options.borderColor or colors.borderStrong, options.borderThickness or 1, 1)
+
+	local shadow = nil
+
+	if options.shadow ~= false then
+		shadow = UI.create("UIShadow", {
+			BlurRadius = UDim.new(0, options.shadowBlur or 18),
+
+			Offset = UDim2.fromOffset(0, options.shadowOffset or 6),
+
+			Spread = UDim2.fromOffset(0, 0),
+
+			Color3 = options.shadowColor or Color3.new(0, 0, 0),
+
+			Transparency = 1,
+
+			Exponent = 2,
+
+			Enabled = true,
+		}, frame)
+	end
+
+	if options.blur ~= false then
+		blur = UI.create("UIBackdrop", {
+			TintColor3 = options.shadowColor or Color3.new(0, 0, 0),
+		}, frame)
+	end
+
+	local titleLabel = UI.label(
+		frame,
+		title,
+		UDim2.fromOffset(20, 15),
+		UDim2.new(1, -155, 0, headerHeight),
+		options.titleSize or 15,
+		options.titleColor or colors.text
+	)
+
+	titleLabel.Name = "Title"
+
+	titleLabel.TextXAlignment = Enum.TextXAlignment.Left
+	titleLabel.TextTransparency = 1
+
+	titleLabel.ZIndex = zIndex + 2
+
+	local summaryButton = UI.create("TextButton", {
+		Name = "Summary",
+
+		Text = "",
+
+		Position = UDim2.fromOffset(0, headerHeight + 1),
+
+		Size = UDim2.new(1, 0, 0, summaryHeight - 1),
+
+		BackgroundTransparency = 1,
+
+		BorderSizePixel = 0,
+
+		Active = true,
+		InputSink = true,
+		AutoButtonColor = false,
+
+		ZIndex = zIndex + 2,
+	}, frame)
+
+	local summaryLabel = UI.create("TextLabel", {
+		Name = "Message",
+
+		Text = "",
+
+		Position = UDim2.fromOffset(20, 0),
+
+		Size = UDim2.new(1, -40, 1, 0),
+
+		BackgroundTransparency = 1,
+
+		BorderSizePixel = 0,
+
+		TextSize = options.textSize or UI.tokens.type.body,
+
+		TextColor3 = options.textColor or colors.subtext,
+
+		TextTransparency = 1,
+
+		TextWrapped = true,
+
+		TextXAlignment = Enum.TextXAlignment.Left,
+
+		ZIndex = zIndex + 3,
+	}, summaryButton)
+
+	local detailsFrame = UI.create("Frame", {
+		Name = "Details",
+
+		Position = UDim2.fromOffset(0, headerHeight + summaryHeight),
+
+		Size = UDim2.new(1, 0, 0, expandedHeight - collapsedHeight),
+
+		BackgroundTransparency = 1,
+
+		BorderSizePixel = 0,
+
+		Visible = false,
+
+		ZIndex = zIndex + 2,
+	}, frame)
+
+	local detailsTitle = nil
+
+	if options.detailsTitle then
+		detailsTitle = UI.label(
+			detailsFrame,
+			options.detailsTitle,
+			UDim2.fromOffset(20, 12),
+			UDim2.new(1, -40, 0, 20),
+			options.detailsTitleSize or UI.tokens.type.small,
+			options.detailsTitleColor or colors.text
+		)
+
+		detailsTitle.TextXAlignment = Enum.TextXAlignment.Left
+
+		detailsTitle.TextTransparency = 1
+
+		detailsTitle.ZIndex = zIndex + 3
+	end
+
+	local detailsY = options.detailsTitle and 38 or 12
+
+	local detailsLabel = UI.create("TextLabel", {
+		Name = "DetailsText",
+
+		Text = details,
+
+		Position = UDim2.fromOffset(20, detailsY),
+
+		Size = UDim2.new(1, -40, 1, -(detailsY + 12)),
+
+		BackgroundTransparency = 1,
+
+		BorderSizePixel = 0,
+
+		TextSize = options.detailsTextSize or UI.tokens.type.small,
+
+		TextColor3 = options.detailsTextColor or colors.subtext,
+
+		TextTransparency = 1,
+
+		TextWrapped = true,
+
+		TextXAlignment = Enum.TextXAlignment.Left,
+
+		ZIndex = zIndex + 3,
+	}, detailsFrame)
+
+	local expandIconImage = options.expandIcon or "builtin://global-icons/chevron-down.svg"
+	local collapseIconImage = options.collapseIcon or "builtin://global-icons/chevron-up.svg"
+
+	local expandButton, _, expandIcon = UI.iconButton(
+		frame,
+		expandIconImage,
+		UDim2.new(1, -70, 0, 10),
+		UDim2.fromOffset(32, 32),
+		function() end,
+		{
+			color = colors.panelRaised,
+			bgTransparency = 1,
+			hoverColor = colors.hover,
+			pressedColor = colors.pressed,
+			iconSize = options.closeIconSize or 16,
+			border = false,
+		}
+	)
+
+	local closeButton, _, closeIcon = UI.iconButton(
+		frame,
+		options.closeIcon or "builtin://global-icons/x.svg",
+		UDim2.new(1, -46, 0, 10),
+		UDim2.fromOffset(32, 32),
+		function() end,
+		{
+			color = colors.panelRaised,
+			bgTransparency = 1,
+			hoverColor = colors.hover,
+			pressedColor = colors.pressed,
+			iconSize = options.closeIconSize or 16,
+			border = false,
+		}
+	)
+
+	local progressBackground = UI.frame(
+		frame,
+		UDim2.new(0, 0, 1, -progressHeight),
+		UDim2.new(1, 0, 0, progressHeight),
+		options.progressBackgroundColor or colors.input
+	)
+
+	progressBackground.ZIndex = zIndex + 4
+	progressBackground.BackgroundTransparency = 1
+
+	local progress = UI.frame(progressBackground, UDim2.fromOffset(0, 0), UDim2.fromScale(1, 1), accentColor)
+
+	progress.ZIndex = zIndex + 5
+	progress.BackgroundTransparency = 1
+
+	local state = {
+		alpha = 0,
+
+		y = margin - slideDistance,
+		targetY = margin,
+
+		elapsed = 0,
+
+		timerStopped = false,
+
+		expanded = false,
+
+		closing = false,
+		destroyed = false,
+
+		reason = nil,
+	}
+
+	local record = {
+		frame = frame,
+		state = state,
+		controller = controller,
+	}
+
+	table.insert(shared.toasts, 1, record)
+
+	local function reflowToasts()
+		local y = margin
+
+		for _, toast in ipairs(shared.toasts) do
+			if not toast.state.destroyed then
+				toast.state.targetY = y
+
+				y += toast.frame.Size.Y.Offset + gap
+			end
+		end
+	end
+
+	local function removeToast()
+		for index, toast in ipairs(shared.toasts) do
+			if toast == record then
+				table.remove(shared.toasts, index)
+
+				break
+			end
+		end
+
+		reflowToasts()
+	end
+
+	local function updateSummary()
+		if duration <= 0 then
+			if messagePrefix ~= "" then
+				summaryLabel.Text = messagePrefix
+			else
+				summaryLabel.Text = "Click × to close."
+			end
+
+			return
+		end
+
+		if state.timerStopped then
+			if messagePrefix ~= "" then
+				summaryLabel.Text = messagePrefix .. " Automatic closing stopped."
+			else
+				summaryLabel.Text = "Automatic closing stopped."
+			end
+
+			return
+		end
+
+		local remaining = math.max(duration - state.elapsed, 0)
+
+		local seconds = math.ceil(remaining)
+
+		local timerText =
+			string.format("This message will close in %d second%s. Click to stop.", seconds, seconds == 1 and "" or "s")
+
+		if messagePrefix ~= "" then
+			summaryLabel.Text = messagePrefix .. " " .. timerText
+		else
+			summaryLabel.Text = timerText
+		end
+	end
+
+	local function setExpanded(expanded)
+		if not hasDetails then
+			return false
+		end
+
+		expanded = expanded == true
+
+		if state.expanded == expanded then
+			return true
+		end
+
+		state.expanded = expanded
+
+		if expanded then
+			frame.Size = UDim2.fromOffset(width, expandedHeight)
+
+			detailsFrame.Visible = true
+
+			expandIcon.Image = collapseIconImage
+
+			if options.stopOnExpand ~= false and duration > 0 then
+				state.timerStopped = true
+			end
+		else
+			frame.Size = UDim2.fromOffset(width, collapsedHeight)
+
+			detailsFrame.Visible = false
+
+			expandIcon.Image = expandIconImage
+		end
+
+		updateSummary()
+		reflowToasts()
+
+		if options.onExpand then
+			options.onExpand(expanded, controller)
+		end
+
+		return true
+	end
+
+	local heartbeatConnection = nil
+
+	controller.frame = frame
+	controller.detailsFrame = detailsFrame
+	controller.summary = summaryLabel
+	controller.details = detailsLabel
+
+	function controller:IsOpen()
+		return not state.destroyed and not state.closing
+	end
+
+	function controller:IsExpanded()
+		return state.expanded
+	end
+
+	function controller:Expand()
+		return setExpanded(true)
+	end
+
+	function controller:Collapse()
+		return setExpanded(false)
+	end
+
+	function controller:Toggle()
+		return setExpanded(not state.expanded)
+	end
+
+	function controller:StopTimer()
+		if state.timerStopped then
+			return
+		end
+
+		state.timerStopped = true
+
+		updateSummary()
+
+		if options.onStop then
+			options.onStop(controller)
+		end
+	end
+
+	function controller:SetTitle(newTitle)
+		title = tostring(newTitle or "")
+
+		titleLabel.Text = title
+	end
+
+	function controller:SetMessage(newMessage)
+		messagePrefix = tostring(newMessage or "")
+
+		updateSummary()
+	end
+
+	function controller:SetDetails(newDetails)
+		details = tostring(newDetails or "")
+
+		detailsLabel.Text = details
+
+		hasDetails = details ~= "" or options.buildDetails ~= nil
+
+		expandButton.Visible = hasDetails
+		expandButton.Active = hasDetails
+		expandButton.InputSink = hasDetails
+
+		if not hasDetails and state.expanded then
+			setExpanded(false)
+		end
+	end
+
+	function controller:SetDuration(seconds)
+		duration = math.max(tonumber(seconds) or 0, 0)
+
+		state.elapsed = 0
+		state.timerStopped = false
+
+		updateSummary()
+	end
+
+	function controller:SetType(newType)
+		local config = typeConfigs[newType]
+
+		if not config then
+			return false
+		end
+
+		kind = newType
+		typeConfig = config
+
+		accentColor = config.color
+
+		progress.BackgroundColor3 = accentColor
+
+		return true
+	end
+
+	function controller:Close(reason)
+		if state.destroyed or state.closing then
+			return false
+		end
+
+		state.closing = true
+
+		state.reason = reason or "closed"
+
+		return true
+	end
+
+	function controller:Destroy()
+		if state.destroyed then
+			return
+		end
+
+		state.destroyed = true
+
+		if heartbeatConnection then
+			heartbeatConnection:Disconnect()
+			heartbeatConnection = nil
+		end
+
+		removeToast()
+
+		UI.forgetButtons(frame)
+
+		frame:Destroy()
+	end
+
+	summaryButton.MouseButton1Click:Connect(function()
+		controller:StopTimer()
+	end)
+
+	expandButton.MouseButton1Click:Connect(function()
+		controller:Toggle()
+	end)
+
+	closeButton.MouseButton1Click:Connect(function()
+		controller:Close("close")
+	end)
+
+	if options.buildDetails then
+		options.buildDetails(detailsFrame, controller)
+	end
+
+	updateSummary()
+	reflowToasts()
+
+	heartbeatConnection = RunService.Heartbeat:Connect(function(dt)
+		if state.destroyed then
+			if heartbeatConnection then
+				heartbeatConnection:Disconnect()
+				heartbeatConnection = nil
+			end
+
+			return
+		end
+
+		if not state.closing and not state.timerStopped and duration > 0 then
+			state.elapsed += dt
+
+			if state.elapsed >= duration then
+				state.elapsed = duration
+
+				controller:Close("timeout")
+			end
+		end
+
+		updateSummary()
+
+		local progressAlpha = 0
+
+		if duration > 0 then
+			progressAlpha = math.clamp((duration - state.elapsed) / duration, 0, 1)
+		end
+
+		progress.Size = UDim2.new(progressAlpha, 0, 1, 0)
+
+		local targetAlpha = state.closing and 0 or 1
+
+		state.alpha = tooltipSmoothTowards(state.alpha, targetAlpha, fadeSpeed, dt)
+
+		state.y = tooltipSmoothTowards(state.y, state.targetY, moveSpeed, dt)
+
+		if math.abs(state.alpha - targetAlpha) < 0.005 then
+			state.alpha = targetAlpha
+		end
+
+		if math.abs(state.y - state.targetY) < 0.1 then
+			state.y = state.targetY
+		end
+
+		local slide = (1 - state.alpha) * -slideDistance
+
+		frame.Position = UDim2.new(0.5, 0, 0, state.y + slide)
+
+		frame.BackgroundTransparency = 1 - state.alpha * (1 - backgroundTransparency)
+
+		border.Transparency = 1 - state.alpha * (1 - borderTransparency)
+
+		titleLabel.TextTransparency = 1 - state.alpha
+
+		summaryLabel.TextTransparency = 1 - state.alpha
+
+		progressBackground.BackgroundTransparency = 1 - state.alpha
+
+		progress.BackgroundTransparency = 1 - state.alpha
+
+		if state.expanded then
+			detailsLabel.TextTransparency = 1 - state.alpha
+
+			if detailsTitle then
+				detailsTitle.TextTransparency = 1 - state.alpha
+			end
+		end
+
+		if shadow then
+			local wantedShadowTransparency = options.shadowTransparency or 0.5
+
+			shadow.Transparency = 1 - state.alpha * (1 - wantedShadowTransparency)
+		end
+
+		if state.closing and state.alpha <= 0.001 then
+			if heartbeatConnection then
+				heartbeatConnection:Disconnect()
+				heartbeatConnection = nil
+			end
+
+			state.destroyed = true
+
+			removeToast()
+
+			UI.forgetButtons(frame)
+
+			frame:Destroy()
+
+			if options.onClose then
+				options.onClose(state.reason, controller)
+			end
+		end
+	end)
+
+	return controller
+end
+
+local function pointInside(gui, point)
+	local position, size = gui.AbsolutePosition, gui.AbsoluteSize
+
+	return position
+		and size
+		and point.X >= position.X
+		and point.Y >= position.Y
+		and point.X <= position.X + size.X
+		and point.Y <= position.Y + size.Y
+end
+
+UI.pointInside = pointInside
+
+local closeActiveDropdown
+
+local function wireNativeButton(button, record, enableHovering)
+	button.MouseEnter:Connect(function()
+		if record.enabled and enableHovering then
+			button.BackgroundColor3 = record.hoverColor
+		end
+	end)
+
+	button.MouseLeave:Connect(function()
+		if enableHovering then
+			button.BackgroundColor3 = record.color
+		end
+	end)
+
+	button.MouseButton1Down:Connect(function()
+		if not record.enabled then
+			return
+		end
+
+		button.BackgroundColor3 = record.pressedColor
+	end)
+
+	button.MouseButton1Up:Connect(function(x, y)
+		if not record.enabled then
+			button.BackgroundColor3 = record.color
+			return
+		end
+
+		local point = Vector2.new(x, y)
+
+		if enableHovering and pointInside(button, point) then
+			button.BackgroundColor3 = record.hoverColor
+		else
+			button.BackgroundColor3 = record.color
+		end
+	end)
+
+	button.MouseButton1Click:Connect(function()
+		if not record.enabled then
+			return
+		end
+
+		local active = shared.activeDropdown
+
+		if active and closeActiveDropdown and active.closeOnOutsideClick ~= false then
+			local insideButton = button == active.button or button:IsDescendantOf(active.button)
+
+			local insideMenu = active.menu and (button == active.menu or button:IsDescendantOf(active.menu))
+
+			if not insideButton and not insideMenu then
+				closeActiveDropdown()
+			end
+		end
+
+		record.callback()
+	end)
+end
+
+function UI.setButtonState(record, state)
+	if not record or record.destroyed or not UI.isAlive(record.gui) then
+		return
+	end
+
+	local colors = UI.tokens.color
+
+	if state == "selected" then
+		record.color, record.hoverColor = colors.selection, colors.selectionHover
+	elseif state == "accent" then
+		record.color, record.hoverColor = colors.accentSoft, colors.accent
+	else
+		record.color, record.hoverColor = record.defaultColor, record.defaultHoverColor
+	end
+
+	record.gui.BackgroundColor3 = record.color
+end
+
+function UI.button(parent, text, position, size, callback, options)
+	options = options or {}
+
+	local colors, padding = UI.tokens.color, options.paddingX or UI.tokens.space.md
+
+	local color = options.color or colors.panelRaised
+
+	local button = UI.create("TextButton", {
+		Text = "",
+		Position = position or UDim2.fromOffset(0, 0),
+		Size = size or UDim2.fromOffset(100, UI.metrics.buttonHeight),
+		BackgroundColor3 = color,
+		BackgroundTransparency = options.bgTransparency,
+		BorderSizePixel = 0,
+		Active = options.enabled ~= false,
+		InputSink = true,
+		AutoButtonColor = false,
+	}, parent)
+
+	local radius = options.radius or UI.tokens.radius.sm
+
+	if radius and radius > 0 then
+		UI.corner(button, radius)
+	end
+
+	local label = UI.label(
+		button,
+		text,
+		UDim2.fromOffset(padding, options.textY or 3),
+		UDim2.new(1, -padding * 2, 1, -(options.textY or 3)),
+		options.textSize or UI.tokens.type.small,
+		options.textColor or colors.subtext
+	)
+
+	if options.icon then
+		local iconSize = options.iconSize or 16
+
+		UI.image(
+			button,
+			options.icon,
+			UDim2.fromOffset(6, math.floor((((size and size.Y.Offset) or UI.metrics.buttonHeight) - iconSize) / 2)),
+			UDim2.fromOffset(iconSize, iconSize)
+		)
+
+		label.Position = UDim2.fromOffset(iconSize + 12, options.textY or 3)
+	end
+
+	if options.border ~= false then
+		UI.stroke(button, options.borderColor or colors.border, 1, options.borderTransparency or 0)
+	end
+
+	local record = {
+
+		gui = button,
+
+		callback = callback or function() end,
+
+		color = color,
+
+		defaultColor = color,
+
+		hoverColor = options.hoverColor or colors.hover,
+
+		defaultHoverColor = options.hoverColor or colors.hover,
+
+		pressedColor = options.pressedColor or colors.pressed,
+
+		enabled = options.enabled ~= false,
+	}
+
+	table.insert(shared.buttons, record)
+
+	wireNativeButton(button, record, options.hoveringEnabled ~= false)
+
+	if options.selected then
+		UI.setButtonState(record, "selected")
+	end
+
+	return button, label, record
+end
+
+function UI.iconButton(parent, icon, position, size, callback, options)
+	options = options or {}
+
+	local button, _, record = UI.button(parent, "", position, size, callback, options)
+
+	local iconSize = options.iconSize or 16
+
+	local image = UI.image(
+		button,
+		icon,
+		UDim2.new(0.5, -math.floor(iconSize / 2), 0.5, -math.floor(iconSize / 2)),
+		UDim2.fromOffset(iconSize, iconSize)
+	)
+
+	return button, record, image
+end
+
+function UI.graph(parent, position, size, options)
+	options = options or {}
+
+	local colors = UI.tokens.color
+	local UserInputService = game:GetService("UserInputService")
+
+	local palette = {
+		Color3.fromRGB(76, 114, 176),
+		Color3.fromRGB(221, 132, 82),
+		Color3.fromRGB(85, 168, 104),
+		Color3.fromRGB(196, 78, 82),
+		Color3.fromRGB(129, 114, 179),
+		Color3.fromRGB(147, 120, 96),
+		Color3.fromRGB(218, 139, 195),
+		Color3.fromRGB(140, 140, 140),
+	}
+
+	local interactive = options.interactive ~= false
+	local tickTextSize = options.tickTextSize or UI.tokens.type.caption
+	local legendMode = options.legend
+	if legendMode == nil then
+		legendMode = "top-left"
+	end
+
+	local marginLeft = options.leftMargin or (options.yLabel and 58 or 42)
+	local marginRight = options.rightMargin or 14
+	local marginTop = options.topMargin or (options.title and 30 or 12)
+	local marginBottom = options.bottomMargin or (options.xLabel and 42 or 26)
+
+	local state = {
+		series = {},
+		title = options.title,
+		xLabel = options.xLabel,
+		yLabel = options.yLabel,
+		fixed = { xMin = options.xMin, xMax = options.xMax, yMin = options.yMin, yMax = options.yMax },
+		auto = { xMin = 0, xMax = 1, yMin = 0, yMax = 1 },
+		xMin = 0,
+		xMax = 1,
+		yMin = 0,
+		yMax = 1,
+		target = nil,
+		clearAfter = false,
+		dirty = false,
+		cache = nil,
+		destroyed = false,
+	}
+
+	local function getX(s, i)
+		if s.xs then
+			return s.xs[i]
+		end
+		return s.x0 + i - 1
+	end
+
+	local function niceStep(range, count)
+		if range <= 0 then
+			return 1
+		end
+
+		local rough = range / math.max(count - 1, 1)
+		local exponent = math.floor(math.log10(rough))
+		local fraction = rough / 10 ^ exponent
+
+		local nice
+		if fraction <= 1 then
+			nice = 1
+		elseif fraction <= 2 then
+			nice = 2
+		elseif fraction <= 5 then
+			nice = 5
+		else
+			nice = 10
+		end
+
+		return nice * 10 ^ exponent
+	end
+
+	local function formatTick(value, step)
+		if step >= 1 then
+			return string.format("%d", math.floor(value + 0.5))
+		end
+
+		local decimals = math.clamp(-math.floor(math.log10(step)), 0, 8)
+		return string.format("%." .. decimals .. "f", value)
+	end
+
+	local function formatValue(value)
+		return string.format("%.4g", value)
+	end
+
+	local function clearChildren(frame)
+		for _, child in ipairs(frame:GetChildren()) do
+			if not (child:IsA("UICorner") or child:IsA("UIStroke") or child:IsA("UIGradient")) then
+				child:Destroy()
+			end
+		end
+	end
+
+	local function makeLabel(layer, text, pos, sz, textSize, color, alignX)
+		local label = UI.label(layer, text, pos, sz, textSize, color)
+		label.TextXAlignment = alignX or Enum.TextXAlignment.Center
+		label.TextYAlignment = Enum.TextYAlignment.Center
+		return label
+	end
+
+	local function line(layer, x1, y1, x2, y2, thickness, color)
+		local dx, dy = x2 - x1, y2 - y1
+		local length = math.sqrt(dx * dx + dy * dy)
+
+		if length < 0.01 then
+			return
+		end
+
+		UI.create("Frame", {
+			AnchorPoint = Vector2.new(0.5, 0.5),
+			Position = UDim2.fromOffset((x1 + x2) / 2, (y1 + y2) / 2),
+			Size = UDim2.fromOffset(length + thickness * 0.5, thickness),
+			Rotation = math.deg(math.atan2(dy, dx)),
+			BackgroundColor3 = color,
+			BorderSizePixel = 0,
+		}, layer)
+	end
+
+	local function clipSegment(x1, y1, x2, y2, w, h)
+		local dx, dy = x2 - x1, y2 - y1
+		local t0, t1 = 0, 1
+
+		local p = { -dx, dx, -dy, dy }
+		local q = { x1 + 2, w + 2 - x1, y1 + 2, h + 2 - y1 }
+
+		for i = 1, 4 do
+			if p[i] == 0 then
+				if q[i] < 0 then
+					return nil
+				end
+			else
+				local r = q[i] / p[i]
+
+				if p[i] < 0 then
+					if r > t1 then
+						return nil
+					end
+					if r > t0 then
+						t0 = r
+					end
+				else
+					if r < t0 then
+						return nil
+					end
+					if r < t1 then
+						t1 = r
+					end
+				end
+			end
+		end
+
+		return x1 + t0 * dx, y1 + t0 * dy, x1 + t1 * dx, y1 + t1 * dy
+	end
+
+	local container = UI.frame(
+		parent,
+		position or UDim2.fromOffset(0, 0),
+		size or UDim2.fromOffset(500, 300),
+		options.color or colors.panel
+	)
+
+	container.Name = options.name or "Graph"
+	container.BackgroundTransparency = options.color and 0 or 1
+
+	local tickLayer = UI.create("Frame", {
+		Name = "Ticks",
+		Size = UDim2.fromScale(1, 1),
+		BackgroundTransparency = 1,
+		BorderSizePixel = 0,
+	}, container)
+
+	local plot = UI.frame(
+		container,
+		UDim2.fromOffset(marginLeft, marginTop),
+		UDim2.new(1, -(marginLeft + marginRight), 1, -(marginTop + marginBottom)),
+		options.plotColor or colors.input,
+		UI.tokens.radius.xs
+	)
+
+	plot.Name = "Plot"
+	plot.ClipsDescendants = true
+	UI.stroke(plot, colors.border, 1, 0)
+
+	local function newLayer(name)
+		return UI.create("Frame", {
+			Name = name,
+			Size = UDim2.fromScale(1, 1),
+			BackgroundTransparency = 1,
+			BorderSizePixel = 0,
+		}, plot)
+	end
+
+	local gridLayer = newLayer("Grid")
+	local seriesLayer = newLayer("Series")
+	local overlayLayer = newLayer("Overlay")
+
+	local crossLine = UI.frame(overlayLayer, UDim2.fromOffset(0, 0), UDim2.new(0, 1, 1, 0), colors.subtext)
+	crossLine.BackgroundTransparency = 0.5
+	crossLine.Visible = false
+
+	local dots = {}
+
+	local selFrame = UI.frame(overlayLayer, UDim2.fromOffset(0, 0), UDim2.fromOffset(0, 0), colors.accent)
+	selFrame.Name = "Selection"
+	selFrame.BackgroundTransparency = 0.8
+	selFrame.Visible = false
+	UI.stroke(selFrame, colors.accent, 1, 0.1)
+
+	local selLabel = UI.label(overlayLayer, "", UDim2.fromOffset(0, 0), UDim2.fromOffset(120, 16), 11, colors.text)
+	selLabel.Name = "SelectionLabel"
+	selLabel.Visible = false
+	selLabel.TextXAlignment = Enum.TextXAlignment.Center
+	selLabel.BackgroundTransparency = 0.15
+	selLabel.BackgroundColor3 = colors.panelRaised
+
+	local hit = UI.create("TextButton", {
+		Name = "Hit",
 		Text = "",
 		Size = UDim2.fromScale(1, 1),
 		BackgroundTransparency = 1,
@@ -84,623 +3132,4971 @@ function Editor.new(options)
 		AutoButtonColor = false,
 		Active = true,
 		InputSink = false,
-		ZIndex = 0,
-		Visible = self.canPick,
-	}, self.overlay)
+	}, plot)
 
-	self.hover = UI.create("Frame", {
-		Name = "GuiEditorHover",
-		AnchorPoint = Vector2.new(0.5, 0.5),
+	local legendFrame = nil
+
+	local function plotSize()
+		local s = plot.AbsoluteSize
+		return math.max(s.X, 1), math.max(s.Y, 1)
+	end
+
+	local function invalidate()
+		state.cache = nil
+	end
+
+	local function scanExtent(x0, x1)
+		local function run(onlyVisible)
+			local xMin, xMax, yMin, yMax = math.huge, -math.huge, math.huge, -math.huge
+
+			for _, s in ipairs(state.series) do
+				if not onlyVisible or s.visible then
+					for i, v in ipairs(s.values) do
+						local x = getX(s, i)
+
+						if not x0 or (x >= x0 and x <= x1) then
+							xMin = math.min(xMin, x)
+							xMax = math.max(xMax, x)
+							yMin = math.min(yMin, v)
+							yMax = math.max(yMax, v)
+						end
+					end
+				end
+			end
+
+			if xMin == math.huge then
+				return nil
+			end
+
+			return { xMin = xMin, xMax = xMax, yMin = yMin, yMax = yMax }
+		end
+
+		return run(true) or run(false)
+	end
+
+	local function niceY(yMin, yMax)
+		if options.includeZero ~= false then
+			yMin = math.min(yMin, 0)
+			yMax = math.max(yMax, 0)
+		end
+
+		if yMax - yMin < 1e-9 then
+			yMin -= 1
+			yMax += 1
+		end
+
+		local _, ph = plotSize()
+		local count = math.clamp(math.floor(ph / 40) + 1, 3, 11)
+		local step = niceStep(yMax - yMin, count)
+
+		return math.floor(yMin / step) * step, math.ceil(yMax / step) * step
+	end
+
+	local function computeBounds()
+		local full = state.cache
+
+		if not full then
+			full = scanExtent() or { xMin = 0, xMax = 1, yMin = 0, yMax = 1 }
+			state.cache = full
+		end
+
+		local axMin, axMax = full.xMin, full.xMax
+
+		if axMax - axMin < 1e-9 then
+			axMin -= 1
+			axMax += 1
+		end
+
+		local ayMin, ayMax = niceY(full.yMin, full.yMax)
+
+		state.auto = { xMin = axMin, xMax = axMax, yMin = ayMin, yMax = ayMax }
+
+		local fixed = state.fixed
+
+		state.xMin = fixed.xMin or axMin
+		state.xMax = fixed.xMax or axMax
+
+		if state.xMax - state.xMin < 1e-12 then
+			state.xMax = state.xMin + 1e-12
+		end
+
+		if fixed.yMin and fixed.yMax then
+			state.yMin, state.yMax = fixed.yMin, fixed.yMax
+		else
+			local yMin, yMax = ayMin, ayMax
+
+			if options.autoFitY and (fixed.xMin or fixed.xMax) then
+				local visible = scanExtent(state.xMin, state.xMax)
+
+				if visible then
+					yMin, yMax = niceY(visible.yMin, visible.yMax)
+				end
+			end
+
+			state.yMin = fixed.yMin or yMin
+			state.yMax = fixed.yMax or yMax
+		end
+
+		if state.yMax - state.yMin < 1e-12 then
+			state.yMax = state.yMin + 1e-12
+		end
+	end
+
+	local redraw
+
+	local function buildLegend()
+		if legendFrame then
+			UI.forgetButtons(legendFrame)
+			legendFrame:Destroy()
+			legendFrame = nil
+		end
+
+		if not legendMode or #state.series == 0 then
+			return
+		end
+
+		local rowHeight = 20
+		local widest = 0
+
+		for _, s in ipairs(state.series) do
+			widest = math.max(widest, #s.name)
+		end
+
+		local width = widest * 7 + 38
+		local height = #state.series * rowHeight + 6
+
+		local anchor = Vector2.new(0, 0)
+		local pos = UDim2.fromOffset(marginLeft + 8, marginTop + 8)
+
+		if legendMode == "top-right" then
+			anchor = Vector2.new(1, 0)
+			pos = UDim2.new(1, -(marginRight + 8), 0, marginTop + 8)
+		end
+
+		legendFrame = UI.frame(container, pos, UDim2.fromOffset(width, height), colors.panel, UI.tokens.radius.xs)
+		legendFrame.Name = "Legend"
+		legendFrame.AnchorPoint = anchor
+		legendFrame.BackgroundTransparency = 0.1
+		UI.stroke(legendFrame, colors.border, 1, 0)
+
+		for index, s in ipairs(state.series) do
+			local row, label = UI.button(
+				legendFrame,
+				s.name,
+				UDim2.fromOffset(3, 3 + (index - 1) * rowHeight),
+				UDim2.new(1, -6, 0, rowHeight),
+				function()
+					s.visible = not s.visible
+					invalidate()
+					buildLegend()
+					redraw()
+				end,
+				{
+					color = colors.panel,
+					hoverColor = colors.hover,
+					pressedColor = colors.pressed,
+					textColor = s.visible and colors.text or colors.muted,
+					textSize = UI.tokens.type.small,
+					radius = UI.tokens.radius.xs,
+					border = false,
+					bgTransparency = 1,
+				}
+			)
+
+			row.Name = s.name
+
+			label.Position = UDim2.fromOffset(24, 0)
+			label.Size = UDim2.new(1, -28, 1, 0)
+			label.TextXAlignment = Enum.TextXAlignment.Left
+
+			local swatch = UI.frame(row, UDim2.fromOffset(6, 5), UDim2.fromOffset(11, 11), s.color, 2)
+			swatch.BackgroundTransparency = s.visible and 0 or 0.7
+		end
+	end
+
+	local function lowerBound(s, x)
+		local lo, hi = 1, #s.values + 1
+
+		while lo < hi do
+			local mid = math.floor((lo + hi) / 2)
+
+			if getX(s, mid) < x then
+				lo = mid + 1
+			else
+				hi = mid
+			end
+		end
+
+		return lo
+	end
+
+	local lastNotified = nil
+
+	redraw = function()
+		if state.destroyed then
+			return
+		end
+
+		clearChildren(tickLayer)
+		clearChildren(gridLayer)
+		clearChildren(seriesLayer)
+
+		computeBounds()
+
+		local pw, ph = plotSize()
+		local xMin, xMax, yMin, yMax = state.xMin, state.xMax, state.yMin, state.yMax
+
+		local function toX(x)
+			return (x - xMin) / (xMax - xMin) * pw
+		end
+
+		local function toY(y)
+			return ph - (y - yMin) / (yMax - yMin) * ph
+		end
+
+		local yTicks = math.clamp(math.floor(ph / 40) + 1, 3, 11)
+		local yStep = niceStep(yMax - yMin, yTicks)
+		local yStart = math.ceil(yMin / yStep - 1e-9) * yStep
+
+		local labelX = options.yLabel and 18 or 0
+
+		local value = yStart
+		local guard = 0
+		while value <= yMax + yStep * 1e-6 and guard < 64 do
+			guard += 1
+			local py = toY(value)
+
+			if options.grid ~= false then
+				local g = UI.frame(gridLayer, UDim2.fromOffset(0, math.floor(py)), UDim2.new(1, 0, 0, 1), colors.border)
+				g.BackgroundTransparency = 0.45
+			end
+
+			makeLabel(
+				tickLayer,
+				formatTick(value, yStep),
+				UDim2.fromOffset(labelX, marginTop + py - 8),
+				UDim2.fromOffset(marginLeft - 6 - labelX, 16),
+				tickTextSize,
+				colors.subtext,
+				Enum.TextXAlignment.Right
+			)
+
+			value += yStep
+		end
+
+		local xTicks = math.clamp(math.floor(pw / 70) + 1, 3, 11)
+		local xStep = niceStep(xMax - xMin, xTicks)
+		local xStart = math.ceil(xMin / xStep - 1e-9) * xStep
+
+		value = xStart
+		guard = 0
+		while value <= xMax + xStep * 1e-6 and guard < 64 do
+			guard += 1
+			local px = toX(value)
+
+			if options.grid ~= false then
+				local g = UI.frame(gridLayer, UDim2.fromOffset(math.floor(px), 0), UDim2.new(0, 1, 1, 0), colors.border)
+				g.BackgroundTransparency = 0.45
+			end
+
+			makeLabel(
+				tickLayer,
+				formatTick(value, xStep),
+				UDim2.fromOffset(marginLeft + px - 25, marginTop + ph + 4),
+				UDim2.fromOffset(50, 14),
+				tickTextSize,
+				colors.subtext
+			)
+
+			value += xStep
+		end
+
+		if state.title then
+			makeLabel(
+				tickLayer,
+				state.title,
+				UDim2.fromOffset(marginLeft, 4),
+				UDim2.fromOffset(pw, 20),
+				UI.tokens.type.body,
+				colors.text
+			)
+		end
+
+		if state.xLabel then
+			makeLabel(
+				tickLayer,
+				state.xLabel,
+				UDim2.fromOffset(marginLeft, marginTop + ph + 20),
+				UDim2.fromOffset(pw, 16),
+				UI.tokens.type.small,
+				colors.text
+			)
+		end
+
+		if state.yLabel then
+			local yl = makeLabel(
+				tickLayer,
+				state.yLabel,
+				UDim2.fromOffset(9, marginTop + ph / 2),
+				UDim2.fromOffset(ph, 16),
+				UI.tokens.type.small,
+				colors.text
+			)
+			yl.AnchorPoint = Vector2.new(0.5, 0.5)
+			yl.Rotation = -90
+		end
+
+		for _, s in ipairs(state.series) do
+			local n = #s.values
+
+			if s.visible and n > 0 then
+				local first = math.max(1, lowerBound(s, xMin) - 1)
+				local last = math.min(n, lowerBound(s, xMax))
+
+				if last >= first then
+					local count = last - first + 1
+					local stride = math.max(1, math.floor(count / (pw * 1.5)))
+					local px, py = {}, {}
+
+					local function addPoint(i)
+						table.insert(px, toX(getX(s, i)))
+						table.insert(py, toY(s.values[i]))
+					end
+
+					local i = first
+					local lastAdded = first
+
+					while i <= last do
+						addPoint(i)
+						lastAdded = i
+						i += stride
+					end
+
+					if lastAdded ~= last then
+						addPoint(last)
+					end
+
+					if s.fill and #px >= 2 then
+						local colW = 2
+						local j = 1
+
+						local c0 = math.max(math.floor(px[1]), 0)
+						local c1 = math.min(math.ceil(px[#px]), pw) - 1
+
+						for col = c0, c1, colW do
+							local cx = col + colW / 2
+
+							while j < #px - 1 and px[j + 1] < cx do
+								j += 1
+							end
+
+							local span = px[j + 1] - px[j]
+							local t = span > 0 and math.clamp((cx - px[j]) / span, 0, 1) or 0
+							local y = py[j] + (py[j + 1] - py[j]) * t
+
+							if y < ph then
+								y = math.max(y, -1)
+
+								local c = UI.frame(
+									seriesLayer,
+									UDim2.fromOffset(col, y),
+									UDim2.fromOffset(colW, ph - y),
+									s.color
+								)
+								c.BackgroundTransparency = s.fillTransparency
+							end
+						end
+					end
+
+					for k = 1, #px - 1 do
+						local ax, ay, bx, by = clipSegment(px[k], py[k], px[k + 1], py[k + 1], pw, ph)
+
+						if ax then
+							line(seriesLayer, ax, ay, bx, by, s.thickness, s.color)
+						end
+					end
+
+					if #px == 1 then
+						local dot = UI.frame(
+							seriesLayer,
+							UDim2.fromOffset(px[1] - 2, py[1] - 2),
+							UDim2.fromOffset(4, 4),
+							s.color,
+							2
+						)
+						dot.Name = "Point"
+					end
+				end
+			end
+		end
+
+		if options.onViewChanged then
+			local v = lastNotified
+
+			if not v or v[1] ~= state.xMin or v[2] ~= state.xMax or v[3] ~= state.yMin or v[4] ~= state.yMax then
+				lastNotified = { state.xMin, state.xMax, state.yMin, state.yMax }
+				options.onViewChanged(state.xMin, state.xMax, state.yMin, state.yMax)
+			end
+		end
+	end
+
+	local function clampAxis(lo, hi, aLo, aHi)
+		local aSpan = math.max(aHi - aLo, 1e-9)
+		local minSpan = aSpan * 1e-7
+		local maxSpan = aSpan * (options.maxZoomOut or 4)
+
+		local span = hi - lo
+		local clamped = math.clamp(span, minSpan, maxSpan)
+
+		if clamped ~= span then
+			local center = (lo + hi) / 2
+			lo = center - clamped / 2
+			hi = center + clamped / 2
+			span = clamped
+		end
+
+		local keep = span * 0.1
+
+		if hi < aLo + keep then
+			local shift = aLo + keep - hi
+			lo += shift
+			hi += shift
+		elseif lo > aHi - keep then
+			local shift = lo - (aHi - keep)
+			lo -= shift
+			hi -= shift
+		end
+
+		return lo, hi
+	end
+
+	local function setTarget(partial, clearAfter)
+		if options.smooth == false then
+			for key, value in pairs(partial) do
+				state.fixed[key] = value
+			end
+
+			state.target = nil
+
+			if clearAfter then
+				state.fixed = {}
+			end
+
+			state.dirty = true
+			return
+		end
+
+		state.target = state.target or {}
+
+		for key, value in pairs(partial) do
+			state.target[key] = value
+		end
+
+		state.clearAfter = clearAfter == true
+	end
+
+	local function zoomAxis(axis, fraction, factor)
+		local target = state.target
+		local lo = (target and target[axis .. "Min"]) or state[axis .. "Min"]
+		local hi = (target and target[axis .. "Max"]) or state[axis .. "Max"]
+
+		local anchor = lo + fraction * (hi - lo)
+		local span = (hi - lo) * factor
+
+		lo, hi = anchor - fraction * span, anchor + (1 - fraction) * span
+		lo, hi = clampAxis(lo, hi, state.auto[axis .. "Min"], state.auto[axis .. "Max"])
+
+		return { [axis .. "Min"] = lo, [axis .. "Max"] = hi }
+	end
+
+	local function nearestIndex(s, x)
+		local n = #s.values
+
+		if n == 0 then
+			return nil
+		end
+
+		local hi = math.min(lowerBound(s, x), n)
+		local lo = math.max(hi - 1, 1)
+
+		if math.abs(getX(s, lo) - x) <= math.abs(getX(s, hi) - x) then
+			return lo
+		end
+
+		return hi
+	end
+
+	local function hideHover()
+		crossLine.Visible = false
+
+		for _, dot in ipairs(dots) do
+			dot.Visible = false
+		end
+	end
+
+	local tip = nil
+	local hovering = false
+	local lastMouse = Vector2.new(0, 0)
+	local panning = nil
+	local selecting = nil
+	local lastClick = 0
+	local connections = {}
+	local controller_AutoFit
+
+	local function isShift()
+		return UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) or UserInputService:IsKeyDown(Enum.KeyCode.RightShift)
+	end
+
+	local function isCtrl()
+		return UserInputService:IsKeyDown(Enum.KeyCode.LeftControl)
+			or UserInputService:IsKeyDown(Enum.KeyCode.RightControl)
+	end
+
+	if options.crosshair ~= false then
+		tip = UI.tooltip(hit, "", { followCursor = true, hoverDelay = 0, placement = "cursor" })
+	end
+
+	local function updateHover(mx)
+		local pw, ph = plotSize()
+		local lx = mx - plot.AbsolutePosition.X
+
+		local dataX = state.xMin + math.clamp(lx / pw, 0, 1) * (state.xMax - state.xMin)
+
+		local lines = {}
+		local snapped = nil
+		local dotIndex = 0
+
+		for _, s in ipairs(state.series) do
+			if s.visible then
+				local i = nearestIndex(s, dataX)
+
+				if i then
+					local x, y = getX(s, i), s.values[i]
+
+					snapped = snapped or x
+
+					if #lines == 0 then
+						table.insert(lines, (state.xLabel or "x") .. ": " .. formatValue(x))
+					end
+
+					table.insert(lines, s.name .. ": " .. formatValue(y))
+
+					dotIndex += 1
+
+					local dot = dots[dotIndex]
+
+					if not dot then
+						dot = UI.frame(overlayLayer, UDim2.fromOffset(0, 0), UDim2.fromOffset(7, 7), s.color, 4)
+						dots[dotIndex] = dot
+					end
+
+					dot.BackgroundColor3 = s.color
+					dot.Visible = true
+					dot.Position = UDim2.fromOffset(
+						(x - state.xMin) / (state.xMax - state.xMin) * pw - 3,
+						ph - (y - state.yMin) / (state.yMax - state.yMin) * ph - 3
+					)
+				end
+			end
+		end
+
+		for k = dotIndex + 1, #dots do
+			dots[k].Visible = false
+		end
+
+		if snapped then
+			crossLine.Visible = true
+			crossLine.Position =
+				UDim2.fromOffset(math.floor((snapped - state.xMin) / (state.xMax - state.xMin) * pw), 0)
+
+			if tip then
+				tip:SetText(table.concat(lines, "\n"))
+			end
+		else
+			hideHover()
+		end
+	end
+
+	hit.MouseEnter:Connect(function(x, y)
+		hovering = true
+		lastMouse = Vector2.new(x, y)
+	end)
+
+	hit.MouseLeave:Connect(function()
+		hovering = false
+		hideHover()
+	end)
+
+	hit.MouseMoved:Connect(function(x, y)
+		lastMouse = Vector2.new(x, y)
+
+		if panning or selecting then
+			hideHover()
+			return
+		end
+
+		if options.crosshair ~= false then
+			updateHover(x)
+		end
+	end)
+
+	local function updateSelection()
+		if not selecting then
+			selFrame.Visible = false
+			selLabel.Visible = false
+			return
+		end
+
+		local pw, ph = plotSize()
+		local origin = plot.AbsolutePosition
+
+		local x0 = math.clamp(selecting.start.X - origin.X, 0, pw)
+		local x1 = math.clamp(selecting.current.X - origin.X, 0, pw)
+		local y0 = math.clamp(selecting.start.Y - origin.Y, 0, ph)
+		local y1 = math.clamp(selecting.current.Y - origin.Y, 0, ph)
+
+		local left, right = math.min(x0, x1), math.max(x0, x1)
+		local top, bottom = math.min(y0, y1), math.max(y0, y1)
+
+		selecting.box = isShift()
+
+		if not selecting.box then
+			top, bottom = 0, ph
+		end
+
+		selecting.rect = { left = left, right = right, top = top, bottom = bottom }
+
+		selFrame.Visible = true
+		selFrame.Position = UDim2.fromOffset(left, top)
+		selFrame.Size = UDim2.fromOffset(right - left, bottom - top)
+
+		local width = (right - left) / pw * (state.xMax - state.xMin)
+
+		selLabel.Visible = true
+		selLabel.Text = "Δ " .. formatValue(width)
+		selLabel.Position = UDim2.fromOffset(
+			math.clamp((left + right) / 2 - 60, 0, math.max(pw - 120, 0)),
+			math.clamp(top + 4, 0, math.max(ph - 20, 0))
+		)
+	end
+
+	if interactive then
+		hit.MouseButton1Down:Connect(function(x, y)
+			lastMouse = Vector2.new(x, y)
+
+			local now = os.clock()
+
+			if now - lastClick < 0.3 then
+				lastClick = 0
+				panning = nil
+				controller_AutoFit()
+				return
+			end
+
+			lastClick = now
+
+			state.target = nil
+
+			panning = {
+				loc = UserInputService:GetMouseLocation(),
+				view = { xMin = state.xMin, xMax = state.xMax, yMin = state.yMin, yMax = state.yMax },
+				movedY = false,
+			}
+
+			if tip then
+				tip:Hide()
+			end
+
+			hideHover()
+		end)
+
+		hit.MouseButton2Down:Connect(function(x, y)
+			lastMouse = Vector2.new(x, y)
+
+			state.target = nil
+
+			selecting = {
+				start = Vector2.new(x, y),
+				current = Vector2.new(x, y),
+				loc = UserInputService:GetMouseLocation(),
+			}
+
+			if tip then
+				tip:Hide()
+			end
+
+			hideHover()
+			updateSelection()
+		end)
+
+		table.insert(
+			connections,
+			UserInputService.InputChanged:Connect(function(input)
+				if input.UserInputType == Enum.UserInputType.MouseWheel then
+					if not hovering or panning or selecting then
+						return
+					end
+
+					local steps = input.Position.Z
+
+					if steps == 0 then
+						return
+					end
+
+					local factor = (options.zoomSpeed or 0.8) ^ steps
+
+					local pw, ph = plotSize()
+					local origin = plot.AbsolutePosition
+
+					local fx = math.clamp((lastMouse.X - origin.X) / pw, 0, 1)
+					local fy = 1 - math.clamp((lastMouse.Y - origin.Y) / ph, 0, 1)
+
+					local shift, ctrl = isShift(), isCtrl()
+
+					local partial = {}
+
+					if (not shift or ctrl) and options.zoomX ~= false then
+						for k, v in pairs(zoomAxis("x", fx, factor)) do
+							partial[k] = v
+						end
+					end
+
+					if (shift or ctrl) and options.zoomY ~= false then
+						for k, v in pairs(zoomAxis("y", fy, factor)) do
+							partial[k] = v
+						end
+					end
+
+					if next(partial) then
+						setTarget(partial, false)
+						hideHover()
+					end
+				elseif input.UserInputType == Enum.UserInputType.MouseMovement then
+					if panning then
+						local loc = UserInputService:GetMouseLocation()
+						local dx, dy = loc.X - panning.loc.X, loc.Y - panning.loc.Y
+
+						local pw, ph = plotSize()
+						local v = panning.view
+						local a = state.auto
+
+						local shiftX = dx / pw * (v.xMax - v.xMin)
+						local nx0, nx1 = clampAxis(v.xMin - shiftX, v.xMax - shiftX, a.xMin, a.xMax)
+
+						state.fixed.xMin, state.fixed.xMax = nx0, nx1
+
+						if options.panY ~= false and (panning.movedY or math.abs(dy) > 4) then
+							panning.movedY = true
+
+							local shiftY = dy / ph * (v.yMax - v.yMin)
+							local ny0, ny1 = clampAxis(v.yMin + shiftY, v.yMax + shiftY, a.yMin, a.yMax)
+
+							state.fixed.yMin, state.fixed.yMax = ny0, ny1
+						end
+
+						state.dirty = true
+					elseif selecting then
+						local loc = UserInputService:GetMouseLocation()
+
+						selecting.current = selecting.start + (loc - selecting.loc)
+
+						updateSelection()
+					end
+				end
+			end)
+		)
+
+		table.insert(
+			connections,
+			UserInputService.InputEnded:Connect(function(input)
+				if input.UserInputType == Enum.UserInputType.MouseButton1 then
+					if panning then
+						panning = nil
+
+						if tip and hovering then
+							tip:Show()
+						end
+					end
+				elseif input.UserInputType == Enum.UserInputType.MouseButton2 then
+					if selecting then
+						local sel = selecting
+						selecting = nil
+
+						updateSelection()
+
+						local rect = sel.rect
+
+						if rect and rect.right - rect.left >= 4 then
+							local pw, ph = plotSize()
+							local a = state.auto
+
+							local dx = state.xMax - state.xMin
+							local x0 = state.xMin + rect.left / pw * dx
+							local x1 = state.xMin + rect.right / pw * dx
+
+							x0, x1 = clampAxis(x0, x1, a.xMin, a.xMax)
+
+							local partial = { xMin = x0, xMax = x1 }
+
+							if sel.box and rect.bottom - rect.top >= 4 then
+								local dy = state.yMax - state.yMin
+								local y1 = state.yMax - rect.top / ph * dy
+								local y0 = state.yMax - rect.bottom / ph * dy
+
+								y0, y1 = clampAxis(y0, y1, a.yMin, a.yMax)
+
+								partial.yMin, partial.yMax = y0, y1
+							end
+
+							setTarget(partial, false)
+						end
+
+						if tip and hovering then
+							tip:Show()
+						end
+					end
+				end
+			end)
+		)
+	end
+
+	table.insert(
+		connections,
+		RunService.Heartbeat:Connect(function(dt)
+			if state.destroyed then
+				return
+			end
+
+			local target = state.target
+
+			if target then
+				local speed = options.smoothSpeed or 16
+				local done = true
+
+				for key, goal in pairs(target) do
+					local axis = string.sub(key, 1, 1)
+					local span = math.max(state[axis .. "Max"] - state[axis .. "Min"], 1e-12)
+
+					local current = state.fixed[key]
+
+					if current == nil then
+						current = state[key]
+					end
+
+					local nextValue = tooltipSmoothTowards(current, goal, speed, dt)
+
+					if math.abs(nextValue - goal) < span * 1e-4 then
+						nextValue = goal
+					else
+						done = false
+					end
+
+					state.fixed[key] = nextValue
+				end
+
+				if done then
+					state.target = nil
+
+					if state.clearAfter then
+						state.fixed = {}
+						state.clearAfter = false
+					end
+				end
+
+				state.dirty = true
+			end
+
+			if state.dirty then
+				state.dirty = false
+				redraw()
+			end
+		end)
+	)
+
+	pcall(function()
+		plot:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
+			state.dirty = true
+		end)
+	end)
+
+	local function normalize(config, index)
+		return {
+			name = tostring(config.name or ("Series " .. index)),
+			values = config.values or {},
+			xs = config.xs,
+			x0 = config.xStart or 0,
+			color = config.color or palette[((index - 1) % #palette) + 1],
+			fill = config.fill ~= nil and config.fill or options.fill ~= false,
+			fillTransparency = config.fillTransparency or options.fillTransparency or 0.8,
+			thickness = config.thickness or options.thickness or 1.5,
+			visible = config.visible ~= false,
+		}
+	end
+
+	local function find(name)
+		for _, s in ipairs(state.series) do
+			if s.name == name then
+				return s
+			end
+		end
+
+		return nil
+	end
+
+	local controller = { frame = container, plot = plot }
+
+	function controller:SetSeries(list)
+		state.series = {}
+
+		for index, config in ipairs(list or {}) do
+			table.insert(state.series, normalize(config, index))
+		end
+
+		invalidate()
+		buildLegend()
+		redraw()
+	end
+
+	function controller:AddSeries(config)
+		table.insert(state.series, normalize(config, #state.series + 1))
+
+		invalidate()
+		buildLegend()
+		redraw()
+	end
+
+	function controller:SetValues(name, values, xs)
+		local s = find(name)
+
+		if not s then
+			return false
+		end
+
+		s.values = values or {}
+		s.xs = xs
+
+		invalidate()
+		redraw()
+
+		return true
+	end
+
+	function controller:Push(name, value, maxPoints)
+		local s = find(name)
+
+		if not s then
+			return false
+		end
+
+		table.insert(s.values, value)
+
+		if s.xs then
+			table.insert(s.xs, (s.xs[#s.xs] or -1) + 1)
+		end
+
+		if maxPoints then
+			while #s.values > maxPoints do
+				table.remove(s.values, 1)
+
+				if s.xs then
+					table.remove(s.xs, 1)
+				else
+					s.x0 += 1
+				end
+			end
+		end
+
+		invalidate()
+		state.dirty = true
+
+		return true
+	end
+
+	function controller:SetRange(xMin, xMax, yMin, yMax)
+		state.fixed = { xMin = xMin, xMax = xMax, yMin = yMin, yMax = yMax }
+		state.target = nil
+
+		redraw()
+	end
+
+	function controller:SetView(xMin, xMax, yMin, yMax, animate)
+		local partial = { xMin = xMin, xMax = xMax, yMin = yMin, yMax = yMax }
+
+		if animate == false then
+			for key, value in pairs(partial) do
+				state.fixed[key] = value
+			end
+
+			state.target = nil
+			redraw()
+		else
+			setTarget(partial, false)
+		end
+	end
+
+	function controller:ZoomTo(x0, x1, animate)
+		self:SetView(x0, x1, nil, nil, animate)
+	end
+
+	function controller:GetView()
+		return state.xMin, state.xMax, state.yMin, state.yMax
+	end
+
+	function controller:AutoFit(animate)
+		if animate == false then
+			state.fixed = {}
+			state.target = nil
+			redraw()
+			return
+		end
+
+		local a = state.auto
+
+		setTarget({ xMin = a.xMin, xMax = a.xMax, yMin = a.yMin, yMax = a.yMax }, true)
+	end
+
+	controller_AutoFit = function()
+		controller:AutoFit()
+	end
+
+	function controller:SetTitle(text)
+		state.title = text
+		redraw()
+	end
+
+	function controller:SetLabels(xLabel, yLabel)
+		state.xLabel = xLabel
+		state.yLabel = yLabel
+		redraw()
+	end
+
+	function controller:SetSeriesVisible(name, visible)
+		local s = find(name)
+
+		if not s then
+			return false
+		end
+
+		s.visible = visible == true
+
+		invalidate()
+		buildLegend()
+		redraw()
+
+		return true
+	end
+
+	function controller:GetSeries(name)
+		return find(name)
+	end
+
+	function controller:Redraw()
+		redraw()
+	end
+
+	function controller:Destroy()
+		if state.destroyed then
+			return
+		end
+
+		state.destroyed = true
+
+		for _, connection in ipairs(connections) do
+			connection:Disconnect()
+		end
+
+		if tip then
+			tip:Destroy()
+		end
+
+		UI.forgetButtons(container)
+		container:Destroy()
+	end
+
+	for index, config in ipairs(options.series or {}) do
+		table.insert(state.series, normalize(config, index))
+	end
+
+	buildLegend()
+	redraw()
+
+	return container, controller
+end
+
+local function niceStep(range, count)
+	if range <= 0 then
+		return 1
+	end
+
+	local rough = range / math.max(count - 1, 1)
+	local exponent = math.floor(math.log10(rough))
+	local fraction = rough / 10 ^ exponent
+
+	local nice
+
+	if fraction <= 1 then
+		nice = 1
+	elseif fraction <= 2 then
+		nice = 2
+	elseif fraction <= 5 then
+		nice = 5
+	else
+		nice = 10
+	end
+
+	return nice * 10 ^ exponent
+end
+
+local function formatTick(value, step)
+	if step >= 1 then
+		return string.format("%d ms", math.floor(value + 0.5))
+	end
+
+	local decimals = math.clamp(-math.floor(math.log10(step)), 0, 6)
+
+	return string.format("%." .. decimals .. "f ms", value)
+end
+
+local function colorFromRGB(c)
+	if not c or c == 0 then
+		return colors.accent
+	end
+
+	return Color3.new(math.floor(c / 65536) / 255, math.floor((c % 65536) / 256) / 255, (c % 256) / 255)
+end
+
+local function textColorFor(background)
+	local luminance = 0.299 * background.R + 0.587 * background.G + 0.114 * background.B
+
+	return luminance > 0.62 and Color3.new(0.06, 0.07, 0.09) or Color3.new(1, 1, 1)
+end
+
+local function analyze(zones)
+	local items = {}
+
+	for i, z in ipairs(zones) do
+		items[i] = {
+			name = z.name,
+			color = z.color,
+			start = z.startMs or 0,
+			ms = z.ms,
+			idx = i,
+			childMs = 0,
+			depth = 0,
+		}
+	end
+
+	table.sort(items, function(a, b)
+		if a.start ~= b.start then
+			return a.start < b.start
+		end
+
+		if a.ms ~= b.ms then
+			return a.ms > b.ms
+		end
+
+		return a.idx > b.idx
+	end)
+
+	local stack = {}
+	local maxEnd = 0
+
+	for _, it in ipairs(items) do
+		while #stack > 0 do
+			local top = stack[#stack]
+
+			if top.start + top.ms <= it.start + 1e-9 then
+				stack[#stack] = nil
+			else
+				break
+			end
+		end
+
+		it.depth = #stack
+
+		local parent = stack[#stack]
+
+		if parent then
+			parent.childMs += it.ms
+		end
+
+		stack[#stack + 1] = it
+		maxEnd = math.max(maxEnd, it.start + it.ms)
+	end
+
+	local byName = {}
+	local rows = {}
+
+	for _, it in ipairs(items) do
+		it.self = math.max(it.ms - it.childMs, 0)
+
+		local row = byName[it.name]
+
+		if not row then
+			row = { name = it.name, color = it.color, total = 0, self = 0, calls = 0, max = 0 }
+			byName[it.name] = row
+			rows[#rows + 1] = row
+		end
+
+		row.total += it.ms
+		row.self += it.self
+		row.calls += 1
+		row.max = math.max(row.max, it.ms)
+	end
+
+	return items, rows, maxEnd
+end
+
+function UI.flamegraph(parent, position, size, options)
+	options = options or {}
+
+	local rowHeight = options.rowHeight or 18
+	local rulerHeight = options.ruler == false and 0 or 18
+	local maxBoxes = options.maxBoxes or 800
+	local labelMinWidth = options.labelMinWidth or 36
+	local zoomEnabled = options.zoom ~= false
+
+	local container = UI.frame(
+		parent,
+		position or UDim2.fromOffset(0, 0),
+		size or UDim2.fromOffset(600, 240),
+		options.color or colors.input,
+		UI.tokens.radius.xs
+	)
+
+	container.Name = options.name or "Flamegraph"
+	container.ClipsDescendants = true
+	UI.stroke(container, colors.border, 1, 0)
+
+	local data = { items = {}, rows = {}, maxEnd = 0 }
+	local viewLo, viewHi = 0, 1
+	local selectedName = nil
+	local panning = nil
+	local lastMouse = nil
+	local lastClick = 0
+	local destroyed = false
+	local connections = {}
+	local boxes = {}
+	local ticks = {}
+
+	local controller = { frame = container, rows = data.rows }
+
+	local gridLayer = UI.create("Frame", {
+		Name = "Grid",
+		Size = UDim2.fromScale(1, 1),
 		BackgroundTransparency = 1,
 		BorderSizePixel = 0,
-		Active = false,
-		InputSink = false,
-		Visible = false,
-		ZIndex = Z - 1,
-	}, self.overlay)
+	}, container)
 
-	self.hoverStroke = UI.stroke(self.hover, colors.accent, 1, 0.45)
-
-	self.box = UI.create("TextButton", {
-		Name = "GuiEditorBox",
+	local hit = UI.create("TextButton", {
+		Name = "Hit",
 		Text = "",
-		BackgroundColor3 = colors.accent,
+		Size = UDim2.fromScale(1, 1),
 		BackgroundTransparency = 1,
 		BorderSizePixel = 0,
 		AutoButtonColor = false,
 		Active = true,
-		InputSink = true,
-		Visible = false,
-		ZIndex = Z,
-	}, self.overlay)
+		InputSink = false,
+	}, container)
 
-	UI.stroke(self.box, colors.accent, 1, 0)
+	local ruler = nil
 
-	self.handles = {}
-	self.handleDefs = {}
+	if rulerHeight > 0 then
+		ruler = UI.frame(container, UDim2.fromOffset(0, 0), UDim2.new(1, 0, 0, rulerHeight), colors.panelRaised)
+		ruler.Name = "Ruler"
+		UI.separator(ruler, UDim2.new(0, 0, 1, -1), UDim2.new(1, 0, 0, 1), colors.border)
+	end
 
-	for _, definition in ipairs(RESIZE_HANDLES) do
-		local handle = UI.create("TextButton", {
-			Name = "Handle" .. definition.name,
+	local emptyLabel = UI.label(
+		container,
+		options.emptyText or "No zones captured",
+		UDim2.new(0, 0, 0.5, -10),
+		UDim2.new(1, 0, 0, 20),
+		UI.tokens.type.small,
+		colors.muted
+	)
+	emptyLabel.TextXAlignment = Enum.TextXAlignment.Center
+
+	local relayout
+
+	local function setView(lo, hi)
+		local span = math.clamp(hi - lo, MIN_SPAN, 1)
+
+		lo = math.clamp(lo, 0, 1 - span)
+
+		viewLo, viewHi = lo, lo + span
+
+		relayout()
+
+		if options.onViewChanged then
+			options.onViewChanged(viewLo, viewHi)
+		end
+	end
+
+	local function beginPan()
+		panning = {
+			loc = UserInputService:GetMouseLocation(),
+			lo = viewLo,
+			hi = viewHi,
+		}
+	end
+
+	local function setHover(item)
+		if options.onHover then
+			options.onHover(item)
+		end
+	end
+
+	local function newBox(index)
+		local box = {}
+
+		local button = UI.create("TextButton", {
 			Text = "",
-			AnchorPoint = Vector2.new(0.5, 0.5),
-			Position = UDim2.fromScale(definition.x, definition.y),
-			Size = UDim2.fromOffset(HANDLE_SIZE, HANDLE_SIZE),
-			BackgroundColor3 = WHITE,
 			BorderSizePixel = 0,
 			AutoButtonColor = false,
 			Active = true,
 			InputSink = true,
-			ZIndex = Z + 1,
-		}, self.box)
+			ClipsDescendants = true,
+		}, container)
 
-		UI.corner(handle, 2)
-		UI.stroke(handle, colors.accent, 1, 0)
+		local label = UI.label(button, "", UDim2.fromOffset(3, 0), UDim2.new(1, -3, 1, 0), 11, Color3.new(1, 1, 1))
+		label.TextXAlignment = Enum.TextXAlignment.Left
+		label.TextYAlignment = Enum.TextYAlignment.Center
 
-		handle.MouseButton1Down:Connect(function()
-			self:beginDrag("resize", definition)
+		box.button = button
+		box.label = label
+
+		button.MouseButton1Click:Connect(function()
+			if box.zone then
+				controller:SetSelected(selectedName ~= box.zone.name and box.zone.name or nil)
+			end
 		end)
 
-		handle.MouseEnter:Connect(function()
-			handle.BackgroundColor3 = colors.accent
+		button.MouseButton2Down:Connect(function(x, y)
+			lastMouse = Vector2.new(x, y)
+			beginPan()
 		end)
 
-		handle.MouseLeave:Connect(function()
-			handle.BackgroundColor3 = WHITE
+		button.MouseEnter:Connect(function(x, y)
+			lastMouse = Vector2.new(x, y)
+
+			if box.zone then
+				setHover(box.zone)
+			end
 		end)
 
-		self.handles[definition.name] = handle
-		self.handleDefs[definition.name] = definition
+		button.MouseMoved:Connect(function(x, y)
+			lastMouse = Vector2.new(x, y)
+		end)
+
+		button.MouseLeave:Connect(function()
+			lastMouse = nil
+			setHover(nil)
+		end)
+
+		boxes[index] = box
+		return box
 	end
 
-	self.rotateStem = UI.create("Frame", {
-		Name = "RotateStem",
-		AnchorPoint = Vector2.new(0.5, 1),
-		Position = UDim2.new(0.5, 0, 0, 0),
-		Size = UDim2.fromOffset(1, 16),
-		BackgroundColor3 = colors.accent,
-		BorderSizePixel = 0,
-		ZIndex = Z + 1,
-		Visible = false,
-	}, self.box)
+	local function newTick(index)
+		local grid = UI.frame(gridLayer, UDim2.fromOffset(0, 0), UDim2.new(0, 1, 1, 0), colors.border)
+		grid.BackgroundTransparency = 0.7
 
-	self.rotateHandle = UI.create("TextButton", {
-		Name = "RotateHandle",
+		local label = nil
+
+		if ruler then
+			label =
+				UI.label(ruler, "", UDim2.fromOffset(0, 1), UDim2.fromOffset(70, rulerHeight - 3), 10, colors.subtext)
+			label.TextXAlignment = Enum.TextXAlignment.Left
+			label.TextYAlignment = Enum.TextYAlignment.Center
+		end
+
+		ticks[index] = { grid = grid, label = label }
+		return ticks[index]
+	end
+
+	relayout = function()
+		if destroyed then
+			return
+		end
+
+		local sizeNow = container.AbsoluteSize
+		local width, height = sizeNow.X, sizeNow.Y
+
+		if width <= 0 or height <= 0 then
+			return
+		end
+
+		local span = math.max(data.maxEnd, 1e-6)
+		local lo, hi = viewLo * span, viewHi * span
+		local scale = width / (hi - lo)
+
+		local tickCount = math.clamp(math.floor(width / 90) + 1, 3, MAX_TICKS - 2)
+		local step = niceStep(hi - lo, tickCount)
+		local value = math.ceil(lo / step - 1e-9) * step
+		local used = 0
+
+		while value <= hi + step * 1e-6 and used < MAX_TICKS do
+			used += 1
+
+			local tick = ticks[used] or newTick(used)
+			local px = math.floor((value - lo) * scale)
+
+			tick.grid.Position = UDim2.fromOffset(px, 0)
+			tick.grid.Visible = true
+
+			if tick.label then
+				tick.label.Position = UDim2.fromOffset(px + 3, 1)
+				tick.label.Text = formatTick(value, step)
+				tick.label.Visible = true
+			end
+
+			value += step
+		end
+
+		for i = used + 1, #ticks do
+			ticks[i].grid.Visible = false
+
+			if ticks[i].label then
+				ticks[i].label.Visible = false
+			end
+		end
+
+		local maxRows = math.max(math.floor((height - rulerHeight - 4) / rowHeight), 1)
+		local boxesUsed = 0
+
+		for _, it in ipairs(data.items) do
+			if it.depth < maxRows and boxesUsed < maxBoxes then
+				local x0 = (it.start - lo) * scale
+				local x1 = x0 + it.ms * scale
+
+				if x1 >= 0 and x0 <= width and x1 - x0 >= 1 then
+					boxesUsed += 1
+
+					local box = boxes[boxesUsed] or newBox(boxesUsed)
+					local px = math.max(x0, 0)
+					local pw = math.min(x1, width) - px
+					local fill = colorFromRGB(it.color)
+
+					box.zone = it
+					box.button.Position = UDim2.fromOffset(px, rulerHeight + 2 + it.depth * rowHeight)
+					box.button.Size = UDim2.fromOffset(math.max(pw, 1), rowHeight - 2)
+					box.button.BackgroundColor3 = fill
+					box.button.BackgroundTransparency = (selectedName and it.name ~= selectedName) and 0.65 or 0
+					box.label.TextColor3 = textColorFor(fill)
+
+					if pw > 150 then
+						box.label.Text = string.format("%s  %.3f ms", it.name, it.ms)
+					elseif pw > labelMinWidth then
+						box.label.Text = it.name
+					else
+						box.label.Text = ""
+					end
+
+					box.button.Visible = true
+				end
+			end
+		end
+
+		for i = boxesUsed + 1, #boxes do
+			boxes[i].button.Visible = false
+			boxes[i].zone = nil
+		end
+	end
+
+	hit.MouseButton1Down:Connect(function(x, y)
+		lastMouse = Vector2.new(x, y)
+
+		local now = os.clock()
+
+		if now - lastClick < 0.3 then
+			lastClick = 0
+			panning = nil
+			setView(0, 1)
+			return
+		end
+
+		lastClick = now
+		beginPan()
+	end)
+
+	hit.MouseButton2Down:Connect(function(x, y)
+		lastMouse = Vector2.new(x, y)
+		beginPan()
+	end)
+
+	hit.MouseEnter:Connect(function(x, y)
+		lastMouse = Vector2.new(x, y)
+	end)
+
+	hit.MouseMoved:Connect(function(x, y)
+		lastMouse = Vector2.new(x, y)
+	end)
+
+	hit.MouseLeave:Connect(function()
+		lastMouse = nil
+	end)
+
+	table.insert(
+		connections,
+		UserInputService.InputChanged:Connect(function(input)
+			if input.UserInputType == Enum.UserInputType.MouseWheel then
+				if not zoomEnabled or panning or not lastMouse or not UI.pointInside(container, lastMouse) then
+					return
+				end
+
+				local steps = input.Position.Z
+
+				if steps == 0 then
+					return
+				end
+
+				local width = math.max(container.AbsoluteSize.X, 1)
+				local fx = math.clamp((lastMouse.X - container.AbsolutePosition.X) / width, 0, 1)
+
+				local span = viewHi - viewLo
+				local anchor = viewLo + fx * span
+				local newSpan = math.clamp(span * (options.zoomSpeed or 0.8) ^ steps, MIN_SPAN, 1)
+				local newLo = anchor - fx * newSpan
+
+				setView(newLo, newLo + newSpan)
+			elseif input.UserInputType == Enum.UserInputType.MouseMovement then
+				if not panning then
+					return
+				end
+
+				local loc = UserInputService:GetMouseLocation()
+				local dx = loc.X - panning.loc.X
+				local width = math.max(container.AbsoluteSize.X, 1)
+				local shift = dx / width * (panning.hi - panning.lo)
+
+				setView(panning.lo - shift, panning.hi - shift)
+			end
+		end)
+	)
+
+	table.insert(
+		connections,
+		UserInputService.InputEnded:Connect(function(input)
+			if
+				input.UserInputType == Enum.UserInputType.MouseButton1
+				or input.UserInputType == Enum.UserInputType.MouseButton2
+			then
+				panning = nil
+			end
+		end)
+	)
+
+	pcall(function()
+		container:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
+			relayout()
+		end)
+	end)
+
+	function controller:SetData(zones)
+		local items, rows, maxEnd = analyze(zones or {})
+
+		data = { items = items, rows = rows, maxEnd = maxEnd }
+		self.rows = rows
+
+		emptyLabel.Visible = #items == 0
+
+		relayout()
+
+		return rows, maxEnd
+	end
+
+	function controller:GetRows()
+		return data.rows
+	end
+
+	function controller:GetItems()
+		return data.items
+	end
+
+	function controller:SetSelected(name, silent)
+		if selectedName == name then
+			return
+		end
+
+		selectedName = name
+
+		relayout()
+
+		if not silent and options.onSelect then
+			options.onSelect(name)
+		end
+	end
+
+	function controller:GetSelected()
+		return selectedName
+	end
+
+	function controller:SetView(lo, hi)
+		setView(lo, hi)
+	end
+
+	function controller:GetView()
+		return viewLo, viewHi
+	end
+
+	function controller:Fit()
+		setView(0, 1)
+	end
+
+	function controller:Relayout()
+		relayout()
+	end
+
+	function controller:Destroy()
+		if destroyed then
+			return
+		end
+
+		destroyed = true
+
+		for _, connection in ipairs(connections) do
+			connection:Disconnect()
+		end
+
+		container:Destroy()
+	end
+
+	emptyLabel.Visible = true
+
+	return container, controller
+end
+
+function UI.colorPicker(parent, position, size, initialColor, callback)
+	local colors = UI.tokens.color
+	local picker = UI.frame(parent, position, size or UDim2.fromOffset(226, 286), colors.panel, UI.tokens.radius.md)
+	picker.Name = "ColorPicker"
+	picker.ZIndex = 100000
+	UI.stroke(picker, colors.borderStrong, 1, 0)
+
+	local title =
+		UI.label(picker, "Color", UDim2.fromOffset(10, 7), UDim2.new(1, -20, 0, 18), UI.tokens.type.small, colors.text)
+	title.TextXAlignment = Enum.TextXAlignment.Left
+
+	local color = initialColor or Color3.new(1, 1, 1)
+	local hue, saturation, value = color:ToHSV()
+	local draggingSquare, draggingHue = false, false
+	local redraw
+
+	local square = UI.frame(
+		picker,
+		UDim2.fromOffset(10, 30),
+		UDim2.new(1, -20, 0, 142),
+		Color3.fromHSV(hue, 1, 1),
+		UI.tokens.radius.xs
+	)
+	square.ClipsDescendants = true
+	UI.create("UIGradient", {
+		Color = ColorSequence.new(Color3.new(1, 1, 1)),
+		Transparency = NumberSequence.new(0, 1),
+		Rotation = 0,
+	}, square)
+	UI.create("UIGradient", {
+		Color = ColorSequence.new(Color3.new(0, 0, 0)),
+		Transparency = NumberSequence.new(1, 0),
+		Rotation = 90,
+	}, square)
+	local squareInput = UI.create("TextButton", {
 		Text = "",
-		AnchorPoint = Vector2.new(0.5, 0.5),
-		Position = UDim2.new(0.5, 0, 0, -22),
-		Size = UDim2.fromOffset(11, 11),
-		BackgroundColor3 = WHITE,
+		Position = UDim2.fromScale(0, 0),
+		Size = UDim2.fromScale(1, 1),
+		BackgroundTransparency = 1,
 		BorderSizePixel = 0,
 		AutoButtonColor = false,
 		Active = true,
 		InputSink = true,
-		ZIndex = Z + 2,
-		Visible = false,
-	}, self.box)
+	}, square)
+	local squareCursor = UI.frame(square, UDim2.fromOffset(0, 0), UDim2.fromOffset(12, 12), Color3.new(1, 1, 1), 6)
+	UI.stroke(squareCursor, Color3.new(0, 0, 0), 1, 0)
 
-	UI.corner(self.rotateHandle, 6)
-	UI.stroke(self.rotateHandle, colors.accent, 1, 0)
+	local hueBar =
+		UI.frame(picker, UDim2.fromOffset(10, 180), UDim2.new(1, -20, 0, 14), colors.input, UI.tokens.radius.xs)
+	for index = 0, 23 do
+		local segment = UI.frame(
+			hueBar,
+			UDim2.new(index / 24, 0, 0, 0),
+			UDim2.new(1 / 24, 1, 1, 0),
+			Color3.fromHSV(index / 24, 1, 1),
+			0
+		)
+		segment.BorderSizePixel = 0
+	end
+	UI.create("UIGradient", {
+		Color = ColorSequence.new({
+			ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 0, 0)),
+			ColorSequenceKeypoint.new(1 / 6, Color3.fromRGB(255, 255, 0)),
+			ColorSequenceKeypoint.new(2 / 6, Color3.fromRGB(0, 255, 0)),
+			ColorSequenceKeypoint.new(3 / 6, Color3.fromRGB(0, 255, 255)),
+			ColorSequenceKeypoint.new(4 / 6, Color3.fromRGB(0, 0, 255)),
+			ColorSequenceKeypoint.new(5 / 6, Color3.fromRGB(255, 0, 255)),
+			ColorSequenceKeypoint.new(1, Color3.fromRGB(255, 0, 0)),
+		}),
+		Rotation = 0,
+	}, hueBar)
+	local hueInput = UI.create("TextButton", {
+		Text = "",
+		Position = UDim2.fromScale(0, 0),
+		Size = UDim2.fromScale(1, 1),
+		BackgroundTransparency = 1,
+		BorderSizePixel = 0,
+		AutoButtonColor = false,
+		Active = true,
+		InputSink = true,
+	}, hueBar)
+	local hueCursor = UI.frame(hueBar, UDim2.fromOffset(0, -2), UDim2.fromOffset(4, 18), colors.text, 2)
 
-	self.rotateHandle.MouseEnter:Connect(function()
-		self.rotateHandle.BackgroundColor3 = colors.accent
+	local hexLabel = UI.label(picker, "HEX", UDim2.fromOffset(10, 208), UDim2.fromOffset(28, 20), 11, colors.subtext)
+	hexLabel.TextXAlignment = Enum.TextXAlignment.Left
+	local hexInput = UI.input(picker, "#FFFFFF", UDim2.fromOffset(42, 205), UDim2.new(1, -52, 0, 24), {
+		text = string.format("#%02X%02X%02X", color.R * 255, color.G * 255, color.B * 255),
+		maxLength = 7,
+		textSize = 12,
+	})
+	local function applyHex()
+		local raw = string.gsub(hexInput.Text, "#", "")
+		if #raw == 6 then
+			local red, green, blue =
+				tonumber(string.sub(raw, 1, 2), 16),
+				tonumber(string.sub(raw, 3, 4), 16),
+				tonumber(string.sub(raw, 5, 6), 16)
+			if red and green and blue then
+				color = Color3.fromRGB(red, green, blue)
+				hue, saturation, value = color:ToHSV()
+				redraw()
+				if callback then
+					callback(color)
+				end
+			end
+		end
+	end
+	hexInput.FocusLost:Connect(function()
+		applyHex()
 	end)
+	local swatches = UI.frame(picker, UDim2.fromOffset(10, 240), UDim2.new(1, -20, 0, 34), colors.panel, 0)
+	local presetColors = {
+		Color3.fromRGB(255, 255, 255),
+		Color3.fromRGB(0, 0, 0),
+		Color3.fromRGB(231, 76, 60),
+		Color3.fromRGB(241, 196, 15),
+		Color3.fromRGB(46, 204, 113),
+		Color3.fromRGB(52, 152, 219),
+		Color3.fromRGB(155, 89, 182),
+		Color3.fromRGB(149, 165, 166),
+	}
 
-	self.rotateHandle.MouseLeave:Connect(function()
-		self.rotateHandle.BackgroundColor3 = WHITE
-	end)
-
-	self.readout =
-		UI.label(self.overlay, "", UDim2.fromOffset(0, 0), UDim2.fromOffset(120, 18), tokens.type.caption, WHITE)
-	self.readout.BackgroundColor3 = colors.accent
-	self.readout.BackgroundTransparency = 0.1
-	self.readout.TextXAlignment = Enum.TextXAlignment.Center
-	self.readout.TextYAlignment = Enum.TextYAlignment.Center
-	self.readout.ZIndex = Z + 3
-	self.readout.Visible = false
-	UI.corner(self.readout, 4)
-
-	local function startMove()
-		self:beginDrag("move")
+	redraw = function()
+		square.BackgroundColor3 = Color3.fromHSV(hue, 1, 1)
+		squareCursor.Position = UDim2.new(saturation, -6, 1 - value, -6)
+		hueCursor.Position = UDim2.new(hue, -2, 0, -2)
+		hexInput.Text = string.format("#%02X%02X%02X", color.R * 255, color.G * 255, color.B * 255)
 	end
 
-	self.box.MouseButton1Down:Connect(startMove)
+	local function updateColor(notify)
+		color = Color3.fromHSV(hue, saturation, value)
+		redraw()
+		if notify and callback then
+			callback(color)
+		end
+	end
 
-	self.box.InputBegan:Connect(function(input)
-		if input.UserInputType == Enum.UserInputType.MouseButton1 and not self.drag then
-			startMove()
+	local function setSquareFromPoint(x, y)
+		local p, s = square.AbsolutePosition, square.AbsoluteSize
+		if not p or not s or s.X <= 0 or s.Y <= 0 then
+			return
+		end
+		saturation = math.clamp((x - p.X) / s.X, 0, 1)
+		value = 1 - math.clamp((y - p.Y) / s.Y, 0, 1)
+		updateColor(true)
+	end
+
+	local function setHueFromPoint(x)
+		local p, s = hueBar.AbsolutePosition, hueBar.AbsoluteSize
+		if not p or not s or s.X <= 0 then
+			return
+		end
+		hue = math.clamp((x - p.X) / s.X, 0, 1)
+		updateColor(true)
+	end
+
+	squareInput.MouseButton1Down:Connect(function(x, y)
+		draggingSquare = true
+		setSquareFromPoint(x, y)
+	end)
+	squareInput.MouseMoved:Connect(function(x, y)
+		if draggingSquare then
+			setSquareFromPoint(x, y)
 		end
 	end)
-
-	self.box.MouseEnter:Connect(function()
-		self.hoverObj = nil
+	squareInput.MouseButton1Up:Connect(function()
+		draggingSquare = false
 	end)
-
-	self.rotateHandle.MouseButton1Down:Connect(function()
-		self:beginDrag("rotate")
+	hueInput.MouseButton1Down:Connect(function(x)
+		draggingHue = true
+		setHueFromPoint(x)
 	end)
-
-	self.hit.MouseButton1Down:Connect(function(x, y)
-		self:pickAt(Vector2.new(x, y))
-	end)
-
-	self.hit.MouseMoved:Connect(function(x, y)
-		if not self.drag then
-			self.hoverObj = self:findAt(Vector2.new(x, y))
+	hueInput.MouseMoved:Connect(function(x)
+		if draggingHue then
+			setHueFromPoint(x)
 		end
 	end)
-
-	self.hit.MouseLeave:Connect(function()
-		self.hoverObj = nil
+	hueInput.MouseButton1Up:Connect(function()
+		draggingHue = false
 	end)
-
-	table.insert(
-		self.connections,
-		UserInputService.InputChanged:Connect(function(input)
-			if self.drag and input.UserInputType == Enum.UserInputType.MouseMovement then
-				self:applyDrag(UserInputService:GetMouseLocation())
+	for index, preset in ipairs(presetColors) do
+		local swatchButton = UI.create("TextButton", {
+			Text = "",
+			Position = UDim2.fromOffset((index - 1) * 25, 0),
+			Size = UDim2.fromOffset(20, 20),
+			BackgroundColor3 = preset,
+			BorderSizePixel = 0,
+			AutoButtonColor = false,
+			Active = true,
+			InputSink = true,
+		}, swatches)
+		UI.corner(swatchButton, 2)
+		swatchButton.MouseButton1Click:Connect(function()
+			color = preset
+			hue, saturation, value = color:ToHSV()
+			redraw()
+			if callback then
+				callback(color)
 			end
 		end)
+	end
+
+	local function setZIndex()
+		for _, child in ipairs(picker:GetDescendants()) do
+			if child:IsA("GuiObject") then
+				child.ZIndex = 100001
+			end
+		end
+	end
+	setZIndex()
+	redraw()
+
+	local controller = { frame = picker }
+	function controller:GetColor()
+		return color
+	end
+	function controller:SetColor(nextColor, silent)
+		color = nextColor or Color3.new(1, 1, 1)
+		hue, saturation, value = color:ToHSV()
+		redraw()
+		if not silent and callback then
+			callback(color)
+		end
+	end
+
+	picker.Visible = false
+	return picker, controller
+end
+
+function UI.separator(parent, position, size, color)
+	return UI.frame(parent, position, size, color or UI.tokens.color.border)
+end
+
+function UI.group(parent, position, size, options)
+	options = options or {}
+
+	local group = UI.frame(
+		parent,
+		position,
+		size,
+		options.color or UI.tokens.color.surface,
+		options.radius or UI.tokens.radius.md
 	)
 
-	table.insert(
-		self.connections,
-		UserInputService.InputEnded:Connect(function(input)
-			if input.UserInputType == Enum.UserInputType.MouseButton1 then
-				self.drag = nil
-			end
-		end)
+	group.ClipsDescendants = true
+
+	return group
+end
+
+function UI.tab(parent, text, position, size, selected, callback)
+	local colors = UI.tokens.color
+
+	local button, label, record = UI.button(parent, text, position, size, callback, {
+
+		color = selected and colors.surfaceAlt or colors.panel,
+
+		hoverColor = colors.hover,
+
+		textColor = selected and colors.text or colors.subtext,
+
+		textSize = UI.tokens.type.small,
+
+		radius = 0,
+
+		border = false,
+
+		paddingX = UI.tokens.space.md,
+	})
+
+	if selected then
+		UI.frame(button, UDim2.new(0, 5, 1, -2), UDim2.new(1, -10, 0, 2), colors.accent, 1)
+	end
+
+	return button, label, record
+end
+
+function UI.tree(parent, position, size, data, options)
+	options = options or {}
+
+	local colors = UI.tokens.color
+
+	local rowHeight = options.rowHeight or UI.metrics.treeRow
+	local indent = options.indent or 14
+	local iconSize = options.iconSize or 14
+	local chevronSize = options.chevronSize or 10
+	local textSize = options.textSize or UI.tokens.type.small
+	local padding = options.padding or UI.tokens.space.sm
+	local separator = options.separator or "/"
+
+	local chevronIcon = options.chevronIcon or "builtin://global-icons/chevron-down.svg"
+	local folderIcon = options.folderIcon or "builtin://global-icons/folder.svg"
+	local fileIcon = options.fileIcon or "builtin://global-icons/file.svg"
+
+	local rowColor = options.rowColor or colors.panel
+
+	local container = UI.frame(
+		parent,
+		position or UDim2.fromOffset(0, 0),
+		size or UDim2.fromOffset(240, 300),
+		options.color or colors.panel,
+		options.radius or 0
 	)
 
-	table.insert(
-		self.connections,
-		UserInputService.InputBegan:Connect(function(input)
-			local direction = ARROWS[input.KeyCode]
+	container.Name = options.name or "Tree"
+	container.ClipsDescendants = true
 
-			if not direction or not self.enabled or not self.target then
-				return
-			end
+	local list = UI.create("ScrollingFrame", {
+		Name = "List",
+		Position = UDim2.fromOffset(0, 0),
+		Size = UDim2.fromScale(1, 1),
+		BackgroundTransparency = 1,
+		BorderSizePixel = 0,
+		CanvasSize = UDim2.new(1, 0, 0, 0),
+		ScrollBarThickness = 5,
+		ScrollBarImageColor3 = colors.subtext,
+		ScrollBarImageTransparency = 0.4,
+		ScrollBarAutoHide = true,
+		ClipsDescendants = true,
+	}, container)
 
-			local ok, focused = pcall(function()
-				return UserInputService:GetFocusedTextBox()
+	local state = {
+		data = data or {},
+		expanded = {},
+		seen = {},
+		selected = nil,
+		lastClickKey = nil,
+		lastClickTime = 0,
+		destroyed = false,
+	}
+
+	local controller = { frame = container, list = list }
+	local refresh
+
+	local function keyOf(path)
+		if type(path) == "string" then
+			return path
+		end
+
+		local parts = {}
+
+		for index, name in ipairs(path) do
+			parts[index] = tostring(name)
+		end
+
+		return table.concat(parts, separator)
+	end
+
+	local function isBranch(value, name, path)
+		if options.isBranch then
+			return options.isBranch(value, name, path) == true
+		end
+
+		return type(value) == "table"
+	end
+
+	local function copyPath(path, name)
+		local new = table.clone(path)
+
+		table.insert(new, name)
+
+		return new
+	end
+
+	local function flatten(tbl, path, depth, out)
+		local entries = {}
+
+		for name, value in pairs(tbl) do
+			local entryPath = copyPath(path, name)
+
+			table.insert(entries, {
+				name = name,
+				text = tostring(name),
+				value = value,
+				path = entryPath,
+				key = keyOf(entryPath),
+				branch = isBranch(value, name, entryPath),
+				depth = depth,
+			})
+		end
+
+		if options.sort ~= false then
+			table.sort(entries, function(a, b)
+				if a.branch ~= b.branch then
+					return a.branch
+				end
+
+				return string.lower(a.text) < string.lower(b.text)
 			end)
-
-			if ok and focused then
-				return
-			end
-
-			local shift = UserInputService:IsKeyDown(Enum.KeyCode.LeftShift)
-				or UserInputService:IsKeyDown(Enum.KeyCode.RightShift)
-
-			self:nudge(direction * (shift and 10 or 1))
-		end)
-	)
-
-	table.insert(
-		self.connections,
-		Selection.SelectionChanged:Connect(function()
-			self:refresh()
-		end)
-	)
-
-	self:refresh()
-
-	return self
-end
-
-function Editor:screenGuiOf(obj)
-	local screenGui = obj:FindFirstAncestorWhichIsA("ScreenGui")
-
-	if screenGui and screenGui.Parent == StarterGui then
-		return screenGui
-	end
-
-	return nil
-end
-
-function Editor:parentInfo(obj)
-	local parent = obj.Parent
-
-	if parent and parent:IsA("GuiBase2d") then
-		local size = parent.AbsoluteSize
-
-		if parent:IsA("ScreenGui") and (size.X <= 0 or size.Y <= 0) then
-			size = parent.Size
 		end
 
-		return Vector2.new(math.max(size.X, 1), math.max(size.Y, 1)), parent.AbsolutePosition
-	end
+		for _, entry in ipairs(entries) do
+			table.insert(out, entry)
 
-	return Vector2.new(1, 1), Vector2.zero
-end
+			if entry.branch then
+				if not state.seen[entry.key] then
+					state.seen[entry.key] = true
+					state.expanded[entry.key] = options.startExpanded == true
+				end
 
-function Editor:snapping()
-	if UserInputService:IsKeyDown(Enum.KeyCode.LeftAlt) then
-		return false
-	end
-
-	return self.getSnap() == true
-end
-
-function Editor:refresh()
-	local selected = Selection:Get()
-	local obj = selected and selected[1]
-
-	local newTarget = nil
-
-	if obj and obj:IsA("GuiObject") and self:screenGuiOf(obj) then
-		newTarget = obj
-	end
-
-	if newTarget ~= self.target then
-		self.drag = nil
-	end
-
-	self.target = newTarget
-end
-
-function Editor:SetEnabled(value)
-	self.enabled = value == true
-end
-
-function Editor:IsDragging()
-	return self.drag ~= nil
-end
-
-local function isVisibleChain(obj)
-	local current = obj
-
-	while current and current:IsA("GuiObject") do
-		if not current.Visible then
-			return false
-		end
-
-		current = current.Parent
-	end
-
-	return true
-end
-
-local function depthOf(obj)
-	local depth = 0
-	local current = obj.Parent
-
-	while current do
-		depth += 1
-		current = current.Parent
-	end
-
-	return depth
-end
-
-function Editor:findAt(point)
-	local best, bestZ, bestDepth, bestOrder = nil, -math.huge, -1, -1
-	local order = 0
-
-	for _, screenGui in ipairs(StarterGui:GetChildren()) do
-		if screenGui:IsA("ScreenGui") and screenGui.Enabled ~= false then
-			for _, obj in ipairs(screenGui:GetDescendants()) do
-				if obj:IsA("GuiObject") then
-					order += 1
-
-					if isVisibleChain(obj) then
-						local size = obj.AbsoluteSize
-						local center = obj.AbsolutePosition + size / 2
-						local v = point - center
-						local r = math.rad(-obj.Rotation)
-						local lx = v.X * math.cos(r) - v.Y * math.sin(r)
-						local ly = v.X * math.sin(r) + v.Y * math.cos(r)
-
-						if math.abs(lx) <= size.X / 2 and math.abs(ly) <= size.Y / 2 then
-							local z = obj.ZIndex
-							local depth = depthOf(obj)
-
-							if
-								z > bestZ
-								or (z == bestZ and depth > bestDepth)
-								or (z == bestZ and depth == bestDepth and order > bestOrder)
-							then
-								best, bestZ, bestDepth, bestOrder = obj, z, depth, order
-							end
-						end
-					end
+				if state.expanded[entry.key] and type(entry.value) == "table" then
+					flatten(entry.value, entry.path, depth + 1, out)
 				end
 			end
 		end
 	end
 
-	return best
-end
+	local function setExpanded(entry, expanded)
+		if not entry.branch or state.expanded[entry.key] == expanded then
+			return
+		end
 
-function Editor:pickAt(point)
-	local best = self:findAt(point)
+		state.expanded[entry.key] = expanded
 
-	if best then
-		pcall(function()
-			Selection:Set({ best })
-		end)
-	elseif self.clearOnEmpty then
-		pcall(function()
-			Selection:Set({})
-		end)
-	end
+		refresh()
 
-	self:refresh()
-
-	if best and self.target == best then
-		local tool = self.getTool()
-
-		if tool == "Select" or tool == "Move" then
-			self:beginDrag("move")
+		if options.onToggle then
+			options.onToggle(entry.path, expanded, controller)
 		end
 	end
-end
 
-function Editor:beginDrag(mode, handle)
-	local obj = self.target
+	local function select(entry)
+		state.selected = entry.key
 
-	if not obj or not self.enabled then
-		return
+		refresh()
+
+		if options.onSelect then
+			options.onSelect(entry.path, entry.value, entry.branch, controller)
+		end
 	end
 
-	local parentSize, parentAbs = self:parentInfo(obj)
-	local pos, size = obj.AbsolutePosition, obj.AbsoluteSize
+	local function onRowClick(entry)
+		local now = os.clock()
+		local doubleClick = state.lastClickKey == entry.key and now - state.lastClickTime < 0.3
 
-	self.drag = {
-		mode = mode,
-		handle = handle,
-		mouse = UserInputService:GetMouseLocation(),
-		pos = pos,
-		size = size,
-		position = obj.Position,
-		sizeValue = obj.Size,
-		rotation = obj.Rotation,
-		anchor = obj.AnchorPoint,
-		parentSize = parentSize,
-		parentAbs = parentAbs,
-		center = pos + size / 2,
-	}
-end
+		state.lastClickKey = entry.key
+		state.lastClickTime = now
 
-function Editor:applyDrag(mouse)
-	local d = self.drag
-	local obj = self.target
-
-	if not d or not obj or not UI.isAlive(obj) then
-		self.drag = nil
-		return
-	end
-
-	local snap = self:snapping()
-	local step = self.snapStep
-	local pa = d.parentAbs
-
-	if d.mode == "rotate" then
-		local v0 = d.mouse - d.center
-		local v1 = mouse - d.center
-		local delta = math.deg(math.atan2(v1.Y, v1.X) - math.atan2(v0.Y, v0.X))
-		local rotation = d.rotation + delta
-
-		if snap then
-			rotation = math.floor(rotation / self.rotateSnap + 0.5) * self.rotateSnap
+		if state.selected ~= entry.key then
+			select(entry)
 		end
 
-		obj.Rotation = rotation % 360
-		return
-	end
+		if doubleClick then
+			state.lastClickKey = nil
 
-	local dx, dy = mouse.X - d.mouse.X, mouse.Y - d.mouse.Y
-
-	local left, top = d.pos.X, d.pos.Y
-	local right, bottom = left + d.size.X, top + d.size.Y
-
-	if d.mode == "move" then
-		left += dx
-		top += dy
-
-		if snap then
-			left = snapValue(left, pa.X, step)
-			top = snapValue(top, pa.Y, step)
-		end
-
-		right = left + d.size.X
-		bottom = top + d.size.Y
-	else
-		local h = d.handle
-
-		if h.l then
-			left += dx
-		end
-		if h.r then
-			right += dx
-		end
-		if h.t then
-			top += dy
-		end
-		if h.b then
-			bottom += dy
-		end
-
-		if snap then
-			if h.l then
-				left = snapValue(left, pa.X, step)
-			end
-			if h.r then
-				right = snapValue(right, pa.X, step)
-			end
-			if h.t then
-				top = snapValue(top, pa.Y, step)
-			end
-			if h.b then
-				bottom = snapValue(bottom, pa.Y, step)
-			end
-		end
-
-		if right - left < MIN_SIZE then
-			if h.l then
-				left = right - MIN_SIZE
-			else
-				right = left + MIN_SIZE
-			end
-		end
-
-		if bottom - top < MIN_SIZE then
-			if h.t then
-				top = bottom - MIN_SIZE
-			else
-				bottom = top + MIN_SIZE
+			if entry.branch then
+				setExpanded(entry, not state.expanded[entry.key])
+			elseif options.onActivate then
+				options.onActivate(entry.path, entry.value, controller)
 			end
 		end
 	end
 
-	local newW, newH = right - left, bottom - top
-	local a = d.anchor
+	refresh = function()
+		if state.destroyed then
+			return
+		end
 
-	local dPosX = (left + a.X * newW) - (d.pos.X + a.X * d.size.X)
-	local dPosY = (top + a.Y * newH) - (d.pos.Y + a.Y * d.size.Y)
+		UI.clear(list)
 
-	obj.Position = udim2(shiftUDim(d.position.X, dPosX, d.parentSize.X), shiftUDim(d.position.Y, dPosY, d.parentSize.Y))
+		local rows = {}
 
-	if d.mode == "resize" then
-		obj.Size = udim2(
-			shiftUDim(d.sizeValue.X, newW - d.size.X, d.parentSize.X),
-			shiftUDim(d.sizeValue.Y, newH - d.size.Y, d.parentSize.Y)
-		)
-	end
-end
+		flatten(state.data, {}, 0, rows)
 
-function Editor:nudge(direction)
-	local obj = self.target
+		for index, entry in ipairs(rows) do
+			local selected = state.selected == entry.key
 
-	if not obj or not UI.isAlive(obj) then
-		return
-	end
+			local color = selected and colors.selection or rowColor
+			local hoverColor = selected and colors.selectionHover or colors.hover
 
-	local parentSize = self:parentInfo(obj)
-	local p = obj.Position
+			local button, label = UI.button(
+				list,
+				entry.text,
+				UDim2.fromOffset(0, (index - 1) * rowHeight),
+				UDim2.new(1, 0, 0, rowHeight),
+				function()
+					onRowClick(entry)
+				end,
+				{
+					color = color,
+					hoverColor = hoverColor,
+					pressedColor = colors.pressed,
+					textColor = selected and colors.text or colors.subtext,
+					textSize = textSize,
+					radius = 0,
+					border = false,
+					textY = 0,
+				}
+			)
 
-	obj.Position = udim2(shiftUDim(p.X, direction.X, parentSize.X), shiftUDim(p.Y, direction.Y, parentSize.Y))
-end
+			button.Name = entry.text
+			button.BackgroundTransparency = (not selected and options.transparentRows) and 1 or 0
 
-function Editor:Update()
-	local obj = self.target
+			local x = padding + entry.depth * indent
 
-	if obj and (not UI.isAlive(obj) or not self:screenGuiOf(obj)) then
-		self.target = nil
-		self.drag = nil
-		obj = nil
-	end
+			if entry.branch then
+				local expanded = state.expanded[entry.key] == true
 
-	self.hit.Visible = self.enabled and self.canPick
+				local _, _, chevron = UI.iconButton(
+					button,
+					chevronIcon,
+					UDim2.fromOffset(x, math.floor((rowHeight - 16) / 2)),
+					UDim2.fromOffset(16, 16),
+					function()
+						setExpanded(entry, not state.expanded[entry.key])
+					end,
+					{
+						bgTransparency = 1,
+						hoveringEnabled = false,
+						border = false,
+						iconSize = chevronSize,
+					}
+				)
 
-	local hoverObj = self.hoverObj
+				chevron.Rotation = expanded and 0 or -90
+			end
 
-	if hoverObj and (not UI.isAlive(hoverObj) or hoverObj == obj or self.drag or not self.enabled) then
-		hoverObj = nil
-	end
+			x += 16 + 2
 
-	if hoverObj then
-		local hs = hoverObj.AbsoluteSize
-		local hc = hoverObj.AbsolutePosition - self.overlay.AbsolutePosition + hs / 2
+			local icon = entry.branch and folderIcon or fileIcon
 
-		self.hover.Position = UDim2.fromOffset(hc.X, hc.Y)
-		self.hover.Size = UDim2.fromOffset(math.max(hs.X, 1), math.max(hs.Y, 1))
-		self.hover.Rotation = hoverObj.Rotation
-		self.hover.Visible = true
-	else
-		self.hover.Visible = false
-	end
+			if options.getIcon then
+				icon = options.getIcon(entry.path, entry.value, entry.branch, state.expanded[entry.key] == true) or icon
+			end
 
-	local show = self.enabled and obj ~= nil
-	self.box.Visible = show
+			if icon and icon ~= "" then
+				UI.image(
+					button,
+					icon,
+					UDim2.fromOffset(x, math.floor((rowHeight - iconSize) / 2)),
+					UDim2.fromOffset(iconSize, iconSize)
+				)
 
-	if not show then
-		self.readout.Visible = false
-		return
-	end
+				x += iconSize + 5
+			end
 
-	local size = obj.AbsoluteSize
-	local pos = obj.AbsolutePosition - self.overlay.AbsolutePosition
-	local rotation = obj.Rotation
+			label.Position = UDim2.fromOffset(x, 0)
+			label.Size = UDim2.new(1, -(x + padding), 1, 0)
+			label.TextXAlignment = Enum.TextXAlignment.Left
+			label.TextYAlignment = Enum.TextYAlignment.Center
+		end
 
-	local tool = self.getTool()
-	local r = rotation % 360
-	local unrotated = r < 0.01 or r > 359.99
-
-	local canMove = tool == "Select" or tool == "Move"
-	local canSize = (tool == "Select" or tool == "Size") and unrotated
-	local canRotate = tool == "Rotate"
-
-	if unrotated then
-		self.box.AnchorPoint = Vector2.new(0, 0)
-		self.box.Position = UDim2.fromOffset(round(pos.X), round(pos.Y))
-		self.box.Size = UDim2.fromOffset(math.max(round(size.X), 1), math.max(round(size.Y), 1))
-		self.box.Rotation = 0
-	else
-		local center = pos + size / 2
-
-		self.box.AnchorPoint = Vector2.new(0.5, 0.5)
-		self.box.Position = UDim2.fromOffset(center.X, center.Y)
-		self.box.Size = UDim2.fromOffset(math.max(size.X, 1), math.max(size.Y, 1))
-		self.box.Rotation = rotation
-	end
-
-	self.box.Active = canMove
-	self.box.InputSink = canMove
-	self.box.BackgroundTransparency = self.drag and 0.92 or 1
-
-	local small = size.X < 30 or size.Y < 30
-
-	for name, handle in pairs(self.handles) do
-		handle.Visible = canSize and (not small or self.handleDefs[name].corner == true)
+		list.CanvasSize = UDim2.new(1, 0, 0, #rows * rowHeight)
 	end
 
-	self.rotateHandle.Visible = canRotate
-	self.rotateStem.Visible = canRotate
+	function controller:SetData(newData)
+		state.data = newData or {}
+		refresh()
+	end
 
-	if self.drag then
-		local _, parentAbs = self:parentInfo(obj)
-		local rel = obj.AbsolutePosition - parentAbs
+	function controller:GetData()
+		return state.data
+	end
 
-		local text
-		if self.drag.mode == "rotate" then
-			text = string.format("%d°", round(rotation))
-		elseif self.drag.mode == "resize" then
-			text = string.format("%d × %d", round(size.X), round(size.Y))
+	function controller:Refresh()
+		refresh()
+	end
+
+	function controller:IsExpanded(path)
+		return state.expanded[keyOf(path)] == true
+	end
+
+	function controller:Expand(path)
+		if type(path) == "table" then
+			for i = 1, #path do
+				local key = keyOf({ table.unpack(path, 1, i) })
+				state.seen[key] = true
+				state.expanded[key] = true
+			end
 		else
-			text = string.format("%d, %d", round(rel.X), round(rel.Y))
+			state.seen[path] = true
+			state.expanded[path] = true
 		end
 
-		local width = #text * 6.5 + 16
-		local center = pos + size / 2
-		local bounds = self.overlay.AbsoluteSize
+		refresh()
+	end
 
-		self.readout.Text = text
-		self.readout.Size = UDim2.fromOffset(width, 18)
-		self.readout.Position = UDim2.fromOffset(
-			math.clamp(center.X - width / 2, 0, math.max(bounds.X - width, 0)),
-			math.clamp(pos.Y + size.Y + 10, 0, math.max(bounds.Y - 18, 0))
+	function controller:Collapse(path)
+		local key = keyOf(path)
+		state.seen[key] = true
+		state.expanded[key] = false
+		refresh()
+	end
+
+	function controller:Toggle(path)
+		local key = keyOf(path)
+		state.seen[key] = true
+		state.expanded[key] = not state.expanded[key]
+		refresh()
+	end
+
+	local function setAll(value)
+		local function walk(tbl, path)
+			for name, child in pairs(tbl) do
+				local childPath = copyPath(path, name)
+
+				if isBranch(child, name, childPath) and type(child) == "table" then
+					local key = keyOf(childPath)
+					state.seen[key] = true
+					state.expanded[key] = value
+					walk(child, childPath)
+				end
+			end
+		end
+
+		walk(state.data, {})
+		refresh()
+	end
+
+	function controller:ExpandAll()
+		setAll(true)
+	end
+
+	function controller:CollapseAll()
+		setAll(false)
+	end
+
+	function controller:GetSelected()
+		return state.selected
+	end
+
+	function controller:SetSelected(path)
+		state.selected = path ~= nil and keyOf(path) or nil
+		refresh()
+	end
+
+	function controller:Destroy()
+		if state.destroyed then
+			return
+		end
+
+		state.destroyed = true
+
+		UI.forgetButtons(container)
+		container:Destroy()
+	end
+
+	refresh()
+
+	return container, controller
+end
+
+function UI.window(name, position, size, title, options)
+	options = options or {}
+
+	local colors = UI.tokens.color
+	local radius = options.radius or UI.tokens.radius.md
+	local draggable = options.draggable ~= false
+	local gripSize = 10
+	local gripOffset = 6
+	local titleX = draggable and (gripOffset + gripSize + 4) or 10
+
+	local tabs = options.tabs or {}
+	local hasTabs = #tabs > 0
+
+	local headerHeight = options.headerHeight or 30
+	local tabGap = options.tabGap or 2
+	local tabTop = options.tabTop or 4
+	local tabPaddingX = options.tabPaddingX or 12
+	local tabRadius = options.tabRadius or UI.tokens.radius.sm
+	local tabSpeed = options.tabSpeed or 18
+
+	local headerColor = options.headerColor or colors.panelRaised
+	local contentColor = options.contentColor or colors.panel
+
+	local panel = UI.frame(UI.root(), position, size, colors.panel, radius)
+
+	panel.Name = name
+	panel.ClipsDescendants = false
+
+	shared.windows[string.lower(name)] = panel
+
+	if options.backdrop == true then
+		UI.create("UIBackdrop", {
+			Enabled = true,
+			BlurRadius = options.backdropBlur or 16,
+			TintColor3 = options.backdropColor or colors.panel,
+			TintTransparency = options.backdropTransparency or 0.78,
+		}, panel)
+
+		panel.BackgroundTransparency = options.panelTransparency or 0.08
+	end
+
+	local border = UI.stroke(
+		panel,
+		options.borderColor or colors.borderStrong,
+		options.borderThickness or 1,
+		options.borderTransparency or 0.35
+	)
+
+	local header = UI.frame(panel, UDim2.fromOffset(0, 0), UDim2.new(1, 0, 0, headerHeight), headerColor, 0)
+
+	header.Name = "Header"
+	header.ClipsDescendants = true
+
+	UI.frame(header, UDim2.new(0, 0, 1, -radius), UDim2.new(1, 0, 0, radius), headerColor)
+
+	UI.frame(header, UDim2.new(0, 8, 1, -1), UDim2.new(1, -16, 0, 1), colors.border)
+
+	local tabHeight = headerHeight - tabTop
+	local activeTabColor = options.activeTabColor or contentColor
+	local inactiveTabColor = options.inactiveTabColor or headerColor
+	local tabHoverColor = options.tabHoverColor or colors.hover
+
+	local activeText = options.activeTabTextColor or colors.text
+	local inactiveText = options.inactiveTabTextColor or colors.muted
+
+	local titleTab = nil
+	local titleText = tostring(title or name)
+
+	local titleLabel
+
+	local indicator = nil
+
+	local function makeTabShape(parent, pos, sz, color)
+		local shape = UI.frame(parent, pos, sz, color, tabRadius)
+
+		local fill = UI.frame(shape, UDim2.new(0, 0, 1, -tabRadius), UDim2.new(1, 0, 0, tabRadius), color, 0)
+		fill.Name = "BottomFill"
+
+		if options.tabAccentColor then
+			local accent = UI.frame(
+				shape,
+				UDim2.fromOffset(tabRadius + 2, 0),
+				UDim2.new(1, -(tabRadius + 2) * 2, 0, 2),
+				options.tabAccentColor,
+				1
+			)
+			accent.Name = "ActiveAccent"
+		end
+
+		return shape
+	end
+
+	if not hasTabs then
+		local function titleWidth(text)
+			return options.titleTabWidth or (#text * 7 + tabPaddingX * 2)
+		end
+
+		titleTab = makeTabShape(
+			header,
+			UDim2.fromOffset(titleX, tabTop),
+			UDim2.fromOffset(titleWidth(titleText), tabHeight),
+			activeTabColor
 		)
-		self.readout.Visible = true
+
+		titleTab.Name = "TitleTab"
+
+		titleLabel = UI.label(
+			titleTab,
+			titleText,
+			UDim2.fromOffset(0, 0),
+			UDim2.fromScale(1, 1),
+			options.titleSize or UI.tokens.type.small,
+			options.titleColor or colors.text
+		)
+
+		titleLabel.TextXAlignment = Enum.TextXAlignment.Center
+		titleLabel.TextYAlignment = Enum.TextYAlignment.Center
+
+		titleLabel:GetPropertyChangedSignal("Text"):Connect(function()
+			titleTab.Size = UDim2.fromOffset(titleWidth(titleLabel.Text), tabHeight)
+		end)
 	else
-		self.readout.Visible = false
+		titleLabel = UI.label(header, titleText, UDim2.fromOffset(titleX, 0), UDim2.fromOffset(0, 0), 12, colors.text)
+		titleLabel.Visible = false
+
+		indicator =
+			makeTabShape(header, UDim2.fromOffset(titleX, tabTop), UDim2.fromOffset(0, tabHeight), activeTabColor)
+
+		indicator.Name = "TabIndicator"
+		indicator.Visible = false
+	end
+
+	titleLabel.Name = "Title"
+
+	local closeButton = nil
+
+	if options.closable then
+		closeButton = UI.iconButton(
+			header,
+			options.closeIcon or "builtin://global-icons/x.svg",
+			UDim2.new(1, -27, 0.5, -math.floor(19 / 2)),
+			UDim2.fromOffset(22, 19),
+			function()
+				if options.onClose then
+					options.onClose(panel)
+				else
+					panel.Visible = false
+				end
+			end,
+			{
+				color = headerColor,
+				hoverColor = options.closeHoverColor or colors.hover,
+				pressedColor = colors.pressed,
+				iconSize = 11,
+				radius = UI.tokens.radius.sm,
+				border = false,
+			}
+		)
+	end
+
+	local dragHandle = nil
+
+	if draggable then
+		dragHandle = UI.iconButton(
+			header,
+			options.gripIcon or "builtin://global-icons/grip.svg",
+			UDim2.new(0, gripOffset, 0.5, -math.floor(19 / 2)),
+			UDim2.fromOffset(gripSize, 19),
+			function() end,
+			{
+				color = headerColor,
+				hoverColor = colors.hover,
+				pressedColor = colors.pressed,
+				iconSize = 11,
+				radius = UI.tokens.radius.sm,
+				border = false,
+			}
+		)
+
+		dragHandle.Name = "DragHandle"
+
+		local UserInputService = game:GetService("UserInputService")
+
+		local dragging = false
+		local dragStartX, dragStartY = 0, 0
+		local startPos = nil
+
+		local function isPointer(input)
+			return input.UserInputType == Enum.UserInputType.MouseButton1
+				or input.UserInputType == Enum.UserInputType.Touch
+		end
+
+		local connections = {}
+
+		table.insert(
+			connections,
+			dragHandle.InputBegan:Connect(function(input)
+				if not isPointer(input) then
+					return
+				end
+
+				local mouse = UserInputService:GetMouseLocation()
+
+				dragging = true
+				dragStartX, dragStartY = mouse.X, mouse.Y
+				startPos = panel.Position
+
+				panel:SetAttribute("Dragging", true)
+			end)
+		)
+
+		table.insert(
+			connections,
+			UserInputService.InputChanged:Connect(function(input)
+				if not dragging or not startPos then
+					return
+				end
+
+				if input.UserInputType ~= Enum.UserInputType.MouseMovement then
+					return
+				end
+
+				local mouse = UserInputService:GetMouseLocation()
+
+				local newX = startPos.X.Offset + (mouse.X - dragStartX)
+				local newY = startPos.Y.Offset + (mouse.Y - dragStartY)
+
+				local root = UI.root()
+				local rootSize = root and root.AbsoluteSize
+				local panelSize = panel.AbsoluteSize
+
+				if rootSize and panelSize then
+					newX = math.clamp(newX, 0, math.max(0, rootSize.X - panelSize.X))
+					newY = math.clamp(newY, 0, math.max(0, rootSize.Y - headerHeight))
+				end
+
+				panel.Position = UDim2.new(startPos.X.Scale, newX, startPos.Y.Scale, newY)
+			end)
+		)
+
+		table.insert(
+			connections,
+			UserInputService.InputEnded:Connect(function(input)
+				if
+					input.UserInputType == Enum.UserInputType.MouseButton1
+					or input.UserInputType == Enum.UserInputType.Touch
+				then
+					dragging = false
+					startPos = nil
+
+					panel:SetAttribute("Dragging", false)
+				end
+			end)
+		)
+
+		panel.Destroying:Connect(function()
+			for _, c in ipairs(connections) do
+				c:Disconnect()
+			end
+		end)
+	end
+
+	local tabButtons = {}
+	local pages = {}
+	local selectedTab = nil
+
+	local contentY = headerHeight
+
+	local content = UI.frame(panel, UDim2.fromOffset(0, contentY), UDim2.new(1, 0, 1, -contentY), contentColor)
+
+	content.Name = "Content"
+	content.ClipsDescendants = true
+
+	local controller = {}
+
+	local function getTabName(tab)
+		if type(tab) == "table" then
+			return tab.name or tab.id or tab.text or "Tab"
+		end
+
+		return tostring(tab)
+	end
+
+	local function getTabText(tab)
+		if type(tab) == "table" then
+			return tab.text or tab.title or tab.name or tab.id or "Tab"
+		end
+
+		return tostring(tab)
+	end
+
+	local anim = {
+		x = titleX,
+		w = 0,
+		running = false,
+		snap = false,
+	}
+
+	local function wake()
+		anim.running = true
+	end
+
+	local function step(dt)
+		if not anim.running then
+			return
+		end
+
+		local moving = false
+
+		for tabName, data in pairs(tabButtons) do
+			local active = tabName == selectedTab
+
+			local activeTarget = active and 1 or 0
+			local hoverTarget = (data.hovered and not active) and 1 or 0
+
+			if anim.snap then
+				data.activeAlpha = activeTarget
+				data.hoverAlpha = hoverTarget
+			else
+				data.activeAlpha = tooltipSmoothTowards(data.activeAlpha, activeTarget, tabSpeed, dt)
+				data.hoverAlpha = tooltipSmoothTowards(data.hoverAlpha, hoverTarget, tabSpeed, dt)
+			end
+
+			if math.abs(data.activeAlpha - activeTarget) < 0.005 then
+				data.activeAlpha = activeTarget
+			else
+				moving = true
+			end
+
+			if math.abs(data.hoverAlpha - hoverTarget) < 0.005 then
+				data.hoverAlpha = hoverTarget
+			else
+				moving = true
+			end
+
+			data.label.TextColor3 = inactiveText:Lerp(activeText, data.activeAlpha)
+			data.button.BackgroundTransparency = 1 - data.hoverAlpha
+		end
+
+		local current = selectedTab and tabButtons[selectedTab]
+
+		if current and indicator then
+			indicator.Visible = true
+
+			if anim.snap then
+				anim.x, anim.w = current.x, current.width
+			else
+				anim.x = tooltipSmoothTowards(anim.x, current.x, tabSpeed, dt)
+				anim.w = tooltipSmoothTowards(anim.w, current.width, tabSpeed, dt)
+			end
+
+			if math.abs(anim.x - current.x) < 0.25 and math.abs(anim.w - current.width) < 0.25 then
+				anim.x, anim.w = current.x, current.width
+			else
+				moving = true
+			end
+
+			indicator.Position = UDim2.fromOffset(anim.x, tabTop)
+			indicator.Size = UDim2.fromOffset(anim.w, tabHeight)
+		end
+
+		anim.snap = false
+		anim.running = moving
+	end
+
+	local heartbeat = nil
+
+	if hasTabs then
+		heartbeat = RunService.Heartbeat:Connect(step)
+
+		panel.Destroying:Connect(function()
+			if heartbeat then
+				heartbeat:Disconnect()
+				heartbeat = nil
+			end
+		end)
+	end
+
+	function controller.selectTab(tabName)
+		if not pages[tabName] then
+			return
+		end
+
+		if selectedTab == tabName then
+			return
+		end
+
+		local previousTab = selectedTab
+
+		selectedTab = tabName
+
+		for pageName, page in pairs(pages) do
+			page.Visible = pageName == selectedTab
+		end
+
+		if previousTab == nil then
+			anim.snap = true
+		end
+
+		wake()
+
+		if options.onTabChanged then
+			options.onTabChanged(tabName, previousTab, pages[tabName], panel)
+		end
+	end
+
+	function controller.getSelectedTab()
+		return selectedTab
+	end
+
+	function controller.getPage(tabName)
+		return pages[tabName]
+	end
+
+	if hasTabs then
+		local x = titleX
+
+		for index, tab in ipairs(tabs) do
+			local tabName = getTabName(tab)
+			local tabText = getTabText(tab)
+
+			local tabWidth = options.tabWidth
+			if type(tab) == "table" and tab.width then
+				tabWidth = tab.width
+			end
+			tabWidth = tabWidth or (#tabText * 7 + tabPaddingX * 2)
+
+			local page = UI.frame(content, UDim2.fromOffset(0, 0), UDim2.new(1, 0, 1, 0), contentColor)
+
+			page.Name = tabName
+			page.Visible = false
+			page.ClipsDescendants = true
+
+			pages[tabName] = page
+
+			local button, label, record
+
+			button, label, record = UI.button(
+				header,
+				tabText,
+				UDim2.fromOffset(x, tabTop),
+				UDim2.fromOffset(tabWidth, tabHeight),
+				function()
+					controller.selectTab(tabName)
+				end,
+				{
+					color = inactiveTabColor,
+					hoverColor = tabHoverColor,
+					pressedColor = options.tabPressedColor or colors.pressed,
+					textColor = inactiveText,
+					textSize = options.tabTextSize or UI.tokens.type.small,
+					textY = 0,
+					radius = tabRadius,
+					border = false,
+					paddingX = tabPaddingX,
+				}
+			)
+
+			button.Name = tabName .. "Tab"
+			button.BackgroundTransparency = 1
+
+			label.TextXAlignment = Enum.TextXAlignment.Center
+			label.TextYAlignment = Enum.TextYAlignment.Center
+
+			local data = {
+				button = button,
+				label = label,
+				record = record,
+				index = index,
+				x = x,
+				width = tabWidth,
+				activeAlpha = 0,
+				hoverAlpha = 0,
+				hovered = false,
+			}
+
+			button.MouseEnter:Connect(function()
+				data.hovered = true
+				wake()
+			end)
+
+			button.MouseLeave:Connect(function()
+				data.hovered = false
+				wake()
+			end)
+
+			tabButtons[tabName] = data
+
+			x += tabWidth + tabGap
+		end
+
+		local initialTab = options.selectedTab
+
+		if not initialTab then
+			initialTab = getTabName(tabs[1])
+		end
+
+		controller.selectTab(initialTab)
+
+		step(0)
+	end
+
+	local clip = UI.frame(panel, UDim2.fromOffset(0, 0), UDim2.new(1, 0, 1, 0), colors.panel, radius)
+
+	clip.Name = "WindowClip"
+	clip.BackgroundTransparency = 1
+	clip.InputSink = false
+	clip.Selectable = false
+
+	return panel,
+		content,
+		header,
+		{
+			title = titleLabel,
+			titleTab = titleTab,
+			indicator = indicator,
+			closeButton = closeButton,
+			dragHandle = dragHandle,
+			border = border,
+			clip = clip,
+
+			tabBar = nil,
+			tabs = tabButtons,
+			pages = pages,
+
+			selectTab = controller.selectTab,
+			getSelectedTab = controller.getSelectedTab,
+			getPage = controller.getPage,
+		}
+end
+
+function UI.toggleWindow(name)
+	local window = shared.windows[string.lower(name)]
+
+	if window then
+		window.Visible = not window.Visible
 	end
 end
 
-function Editor:Destroy()
-	for _, connection in ipairs(self.connections) do
-		connection:Disconnect()
-	end
-
-	self.connections = {}
-
-	UI.forgetButtons(self.hit)
-	UI.forgetButtons(self.box)
-
-	self.hit:Destroy()
-	self.hover:Destroy()
-	self.box:Destroy()
-	self.readout:Destroy()
+function UI.getWindow(name)
+	return shared.windows[string.lower(name)]
 end
 
-return Editor
+function UI.input(parent, placeholder, position, size, options)
+	options = options or {}
+
+	local field = UI.create("TextBox", {
+
+		Position = position or UDim2.fromOffset(0, 0),
+
+		Size = size or UDim2.fromOffset(100, UI.metrics.inputHeight),
+
+		BackgroundColor3 = options.color or UI.tokens.color.input,
+
+		BorderSizePixel = 0,
+
+		Text = options.text or "",
+
+		PlaceholderText = tostring(placeholder or ""),
+
+		TextSize = options.textSize or UI.tokens.type.small,
+
+		TextColor3 = options.textColor or UI.tokens.color.text,
+
+		PlaceholderColor3 = options.placeholderColor or UI.tokens.color.muted,
+
+		TextTransparency = options.textTransparency or 0,
+
+		TextEditable = options.textEditable ~= false,
+
+		ClearTextOnFocus = options.clearTextOnFocus == true,
+
+		SelectAllOnFocus = options.selectAllOnFocus == true,
+
+		MaxLength = options.maxLength or -1,
+
+		CaretColor3 = options.caretColor or UI.tokens.color.accent,
+
+		SelectionColor3 = options.selectionColor or UI.tokens.color.selection,
+
+		SelectionTransparency = options.selectionTransparency or 0.65,
+
+		FocusColor3 = options.focusColor or UI.tokens.color.focus,
+
+		Active = true,
+
+		InputSink = true,
+	}, parent)
+
+	UI.corner(field, options.radius or UI.tokens.radius.sm)
+
+	local stroke = UI.stroke(
+		field,
+		options.borderColor or UI.tokens.color.border,
+		options.strokeThickness or 1,
+		options.strokeTransparency or 0
+	)
+
+	return field, field, stroke
+end
+
+local function removeButtonRecords(gui)
+	UI.forgetButtons(gui)
+end
+
+closeActiveDropdown = function()
+	local active = shared.activeDropdown
+
+	if not active then
+		return
+	end
+
+	shared.activeDropdown = nil
+
+	if active.menu then
+		removeButtonRecords(active.menu)
+
+		active.menu:Destroy()
+	end
+end
+
+function UI.dropdown(parent, value, position, size, chevronIcon, options)
+	options = options or {}
+
+	local colors = UI.tokens.color
+
+	local currentValue = value
+
+	local items = options.items or {}
+
+	local button
+
+	local label
+
+	local record
+
+	local controller = {}
+
+	button, label, record = UI.button(
+		parent,
+		tostring(options.format and options.format(value) or value or ""),
+		position,
+		size or UDim2.fromOffset(140, UI.metrics.inputHeight),
+		function()
+			if shared.activeDropdown and shared.activeDropdown.controller == controller then
+				closeActiveDropdown()
+
+				return
+			end
+
+			closeActiveDropdown()
+
+			local rowHeight = options.itemHeight or UI.metrics.inputHeight
+
+			local maxVisibleItems = options.maxVisibleItems or 8
+
+			local gap = options.menuGap or 2
+
+			local margin = options.menuMargin or 4
+
+			local desiredRows = math.min(#items, maxVisibleItems)
+			desiredRows = math.max(1, desiredRows)
+
+			local visibleRows = desiredRows
+			local menuWidth = options.menuWidth or 140
+			local menuHeight = visibleRows * rowHeight
+
+			local showSearch = options.showSearch ~= false
+			local searchHeight = showSearch and 34 or 0
+
+			local fixedMenuPosition = options.menuPosition()
+
+			if fixedMenuPosition then
+				local overlay = UI.RootOverlay()
+				local screen = workspace:GetWindowDimensions()
+				local edge = options.menuMargin or 4
+
+				local totalHeight = menuHeight + searchHeight
+
+				totalHeight = math.min(totalHeight, math.max(screen.Y - edge * 2, 1))
+				local clampedWidth = math.min(menuWidth, math.max(screen.X - edge * 2, 1))
+
+				local px = fixedMenuPosition.X.Scale * screen.X + fixedMenuPosition.X.Offset
+				local py = fixedMenuPosition.Y.Scale * screen.Y + fixedMenuPosition.Y.Offset
+
+				if px + clampedWidth > screen.X - edge then
+					px = px - clampedWidth
+				end
+				if py + totalHeight > screen.Y - edge then
+					py = py - totalHeight
+				end
+
+				px = math.clamp(px, edge, math.max(edge, screen.X - clampedWidth - edge))
+				py = math.clamp(py, edge, math.max(edge, screen.Y - totalHeight - edge))
+
+				local menu = UI.frame(
+					overlay,
+					UDim2.fromOffset(px, py),
+					UDim2.fromOffset(clampedWidth, totalHeight),
+					options.menuColor or colors.panelRaised,
+					options.radius or UI.tokens.radius.sm
+				)
+
+				if options.backdrop then
+					UI.create("UIBackdrop", {
+						Enabled = true,
+						BlurRadius = options.backdropBlur or 18,
+						TintColor3 = options.backdropColor or colors.panelRaised,
+						TintTransparency = options.backdropTransparency or options.BackgroundTransparency or 0.85,
+					}, menu)
+				end
+
+				menu.BackgroundTransparency = options.BackgroundTransparency or 0
+				menu.Name = "DropdownMenu"
+				menu.ZIndex = options.menuZIndex or 100000
+				menu.ClipsDescendants = true
+				UI.stroke(menu, options.borderColor or colors.borderStrong, 1, options.borderTransparency or 0)
+
+				local search
+				if showSearch then
+					search = UI.input(
+						menu,
+						options.searchPlaceholder or "Search...",
+						UDim2.fromOffset(5, 5),
+						UDim2.new(1, -10, 0, 24),
+						{ textSize = options.textSize or UI.tokens.type.small }
+					)
+					search.ZIndex = (options.menuZIndex or 100000) + 1
+				end
+
+				local list = UI.create("ScrollingFrame", {
+					Position = UDim2.fromOffset(0, searchHeight),
+					Size = UDim2.new(1, 0, 1, -searchHeight),
+					BackgroundTransparency = 1,
+					BorderSizePixel = 0,
+					CanvasPosition = Vector2.new(0, 0),
+					CanvasSize = UDim2.new(1, 0, 0, 0),
+					ScrollingEnabled = true,
+					ScrollBarThickness = 5,
+					ScrollBarImageColor3 = colors.subtext,
+					ScrollBarImageTransparency = 0.4,
+					ScrollBarAutoHide = true,
+					ClipsDescendants = true,
+				}, menu)
+
+				list.ZIndex = (options.menuZIndex or 100000) + 1
+
+				local function itemMatches(item, query)
+					if query == "" then
+						return true
+					end
+					local text = tostring(item.label or item.text or item.name or item.value or ""):lower()
+					return string.find(text, query, 1, true) ~= nil
+				end
+
+				local function renderItems()
+					UI.clear(list)
+					local query = search and string.lower(search.Text or "") or ""
+					local y = 0
+					local visible = 0
+					local categories = options.categories
+					if categories then
+						for _, category in ipairs(categories) do
+							local categoryItems = {}
+							for _, item in ipairs(category.items or {}) do
+								if itemMatches(item, query) then
+									table.insert(categoryItems, item)
+								end
+							end
+							if #categoryItems > 0 then
+								UI.label(
+									list,
+									category.name,
+									UDim2.fromOffset(10, y + 3),
+									UDim2.new(1, -20, 0, rowHeight - 4),
+									options.categoryTextSize or 10,
+									colors.muted
+								)
+								y += rowHeight
+								for _, item in ipairs(categoryItems) do
+									local itemValue = item.value or item[1]
+									local itemText = tostring(item.label or item.text or item.name or itemValue or "")
+									local shortcut = item.shortcut and ("    " .. item.shortcut) or ""
+									local button = UI.button(
+										list,
+										itemText .. shortcut,
+										UDim2.fromOffset(0, y),
+										UDim2.new(1, 0, 0, rowHeight),
+										function()
+											currentValue = itemValue
+											if not options.keepLabel then
+												label.Text = itemText
+											end
+											closeActiveDropdown()
+											if options.onChanged then
+												options.onChanged(itemValue, item)
+											end
+										end,
+										{
+											color = colors.panelRaised,
+											hoverColor = colors.hover,
+											pressedColor = colors.pressed,
+											textColor = colors.subtext,
+											textSize = options.textSize or UI.tokens.type.small,
+											radius = 0,
+											border = false,
+
+											paddingX = UI.tokens.space.md,
+											icon = item.icon,
+											iconSize = options.iconSize or 14,
+										}
+									)
+									button.BackgroundTransparency = options.itemBgTransparency
+										or options.BackgroundTransparency
+										or 0
+									y += rowHeight
+									visible += 1
+								end
+							end
+						end
+					else
+						for _, item in ipairs(items) do
+							if itemMatches(item, query) then
+								local itemValue = item.value or item[1]
+								local itemText = tostring(item.label or item.text or item.name or itemValue or "")
+								local button = UI.button(
+									list,
+									itemText,
+									UDim2.fromOffset(0, y),
+									UDim2.new(1, 0, 0, rowHeight),
+									function()
+										currentValue = itemValue
+										if not options.keepLabel then
+											label.Text = itemText
+										end
+										closeActiveDropdown()
+										if options.onChanged then
+											options.onChanged(itemValue, item)
+										end
+									end,
+									{
+										color = colors.panelRaised,
+										hoverColor = colors.hover,
+										pressedColor = colors.pressed,
+										textColor = colors.subtext,
+										textSize = options.textSize or UI.tokens.type.small,
+										radius = 0,
+										border = false,
+										paddingX = UI.tokens.space.md,
+										icon = item.icon,
+										iconSize = options.iconSize or 14,
+									}
+								)
+								button.BackgroundTransparency = options.itemBgTransparency or 0
+								y += rowHeight
+								visible += 1
+							end
+						end
+					end
+					list.CanvasSize = UDim2.new(1, 0, 0, math.max(y, rowHeight))
+				end
+				if search then
+					search.TextChanged:Connect(renderItems)
+					search.FocusLost:Connect(renderItems)
+				end
+				renderItems()
+
+				shared.activeDropdown = {
+					button = button,
+					menu = menu,
+					controller = controller,
+					closeOnOutsideClick = options.closeOnOutsideClick ~= false,
+				}
+				return
+			end
+			local absolutePosition = button.AbsolutePosition
+			local absoluteSize = button.AbsoluteSize
+
+			if not absolutePosition or not absoluteSize then
+				return
+			end
+
+			local boundsPosition = Vector2.new(0, 0)
+			local boundsSize = UI.RootOverlay().AbsoluteSize
+
+			if not boundsPosition or not boundsSize then
+				return
+			end
+
+			local boundsLeft = boundsPosition.X + margin
+
+			local boundsTop = boundsPosition.Y + margin
+
+			local boundsRight = boundsPosition.X + boundsSize.X - margin
+
+			local boundsBottom = boundsPosition.Y + boundsSize.Y - margin
+
+			menuWidth = options.menuWidth or 140
+
+			local maximumWidth = math.max(1, boundsRight - boundsLeft)
+
+			menuWidth = math.min(menuWidth, maximumWidth)
+
+			local menuX = absolutePosition.X
+
+			if options.menuSide == "left" then
+				menuX = absolutePosition.X - menuWidth - gap
+			end
+
+			if options.menuSide ~= "left" and menuX + menuWidth > boundsRight then
+				menuX = boundsRight - menuWidth
+			end
+
+			if options.menuSide ~= "left" and menuX < boundsLeft then
+				menuX = boundsLeft
+			end
+
+			local buttonTop = absolutePosition.Y
+
+			local buttonBottom = absolutePosition.Y + absoluteSize.Y
+
+			local spaceBelow = boundsBottom - buttonBottom - gap
+
+			local spaceAbove = buttonTop - boundsTop - gap
+
+			local desiredHeight = desiredRows * rowHeight
+
+			local openAbove = false
+
+			if desiredHeight > spaceBelow and spaceAbove > spaceBelow then
+				openAbove = true
+			end
+
+			local availableSpace = openAbove and spaceAbove or spaceBelow
+
+			visibleRows = math.floor(availableSpace / rowHeight)
+
+			visibleRows = math.clamp(visibleRows, 1, desiredRows)
+
+			local menuHeight = visibleRows * rowHeight
+
+			local menuY
+
+			if openAbove then
+				menuY = buttonTop - menuHeight - gap
+			else
+				menuY = buttonBottom + gap
+			end
+
+			menuY = math.clamp(menuY, boundsTop, math.max(boundsTop, boundsBottom - menuHeight))
+
+			local menu = UI.create("ScrollingFrame", {
+				Position = UDim2.fromOffset(menuX, menuY),
+				Size = UDim2.fromOffset(menuWidth, menuHeight),
+				BackgroundColor3 = options.menuColor or colors.panelRaised,
+				BackgroundTransparency = options.BackgroundTransparency or 0,
+				BorderSizePixel = 0,
+				CanvasPosition = Vector2.new(0, 0),
+				CanvasSize = UDim2.new(1, 0, 0, #items * rowHeight),
+				ScrollingEnabled = #items > visibleRows,
+				ScrollBarThickness = 5,
+				ScrollBarImageColor3 = colors.subtext,
+				ScrollBarImageTransparency = 0.4,
+				ScrollBarAutoHide = true,
+				ScrollBarFadeDelay = 0.45,
+				ScrollBarFadeSpeed = 12,
+				ClipsDescendants = true,
+			}, UI.root())
+			UI.corner(menu, options.radius or UI.tokens.radius.sm)
+
+			if options.backdrop then
+				UI.create("UIBackdrop", {
+					Enabled = true,
+					BlurRadius = options.backdropBlur or 18,
+					TintColor3 = options.backdropColor or colors.panelRaised,
+					TintTransparency = options.backdropTransparency or 0.85,
+				}, menu)
+			end
+
+			menu.Name = "DropdownMenu"
+			menu.ZIndex = options.menuZIndex or 100000
+
+			menu.ClipsDescendants = true
+
+			UI.stroke(menu, options.borderColor or colors.borderStrong, 1, options.borderTransparency or 0)
+
+			shared.activeDropdown = {
+				button = button,
+				menu = menu,
+				controller = controller,
+				closeOnOutsideClick = options.closeOnOutsideClick ~= false,
+			}
+
+			for index, item in ipairs(items) do
+				if index > visibleRows then
+					break
+				end
+
+				local itemValue = item
+
+				local itemText = tostring(item)
+
+				if type(item) == "table" then
+					itemValue = item.value
+
+					if itemValue == nil then
+						itemValue = item[1]
+					end
+
+					itemText = tostring(item.label or item.text or item.name or itemValue or "")
+				end
+
+				local selected = itemValue == currentValue
+
+				local row
+
+				local rowLabel
+
+				row, rowLabel = UI.button(
+					menu,
+					itemText,
+					UDim2.fromOffset(0, (index - 1) * rowHeight),
+					UDim2.new(1, 0, 0, rowHeight),
+					function() end,
+					{
+						color = selected and colors.selection or options.menuColor or colors.panelRaised,
+						hoverColor = selected and colors.selectionHover or colors.hover,
+						pressedColor = colors.pressed,
+						textColor = selected and colors.text or colors.subtext,
+						textSize = options.textSize or UI.tokens.type.small,
+						radius = 0,
+						border = false,
+						paddingX = UI.tokens.space.md,
+						icon = type(item) == "table" and item.icon or nil,
+						iconSize = options.iconSize or 14,
+					}
+				)
+
+				row.BackgroundTransparency = options.itemBgTransparency or options.BackgroundTransparency or 0
+			end
+		end,
+		{
+
+			color = options.color or colors.input,
+
+			hoverColor = options.hoverColor or colors.hover,
+
+			pressedColor = options.pressedColor or colors.pressed,
+
+			textColor = options.textColor or colors.subtext,
+
+			textSize = options.textSize or UI.tokens.type.small,
+
+			radius = options.radius or UI.tokens.radius.sm,
+
+			border = options.border ~= false,
+
+			borderColor = options.borderColor or colors.border,
+
+			paddingX = options.paddingX or UI.tokens.space.md,
+
+			icon = options.icon,
+
+			iconSize = options.iconSize or 14,
+		}
+	)
+
+	if chevronIcon then
+		local iconSize = options.chevronSize or 12
+
+		UI.image(
+			button,
+			chevronIcon,
+			UDim2.new(1, -(iconSize + 6), 0.5, -math.floor(iconSize / 2)),
+			UDim2.fromOffset(iconSize, iconSize)
+		)
+
+		label.Size = UDim2.new(1, -(iconSize + 18), 1, 0)
+	end
+
+	function controller:GetValue()
+		return currentValue
+	end
+
+	function controller:SetValue(newValue, silent)
+		currentValue = newValue
+
+		if not options.keepLabel then
+			label.Text = tostring(options.format and options.format(newValue) or newValue or "")
+		end
+
+		if not silent and options.onChanged then
+			options.onChanged(newValue)
+		end
+	end
+
+	function controller:SetItems(newItems)
+		items = newItems or {}
+
+		if shared.activeDropdown and shared.activeDropdown.controller == controller then
+			closeActiveDropdown()
+		end
+	end
+
+	function controller:Open()
+		if record == nil or record.destroyed or not UI.isAlive(record.gui) then
+			return
+		end
+
+		record.callback()
+	end
+
+	function controller:Close()
+		if shared.activeDropdown and shared.activeDropdown.controller == controller then
+			closeActiveDropdown()
+		end
+	end
+
+	controller.button = button
+
+	controller.label = label
+
+	controller.record = record
+	button.BackgroundTransparency = options.BackgroundTransparency or 0
+	return button, label, controller
+end
+
+function UI.checkbox(parent, text, position, checked, callback, options)
+	options = options or {}
+
+	local colors = UI.tokens.color
+
+	local value = checked == true
+
+	local boxSize = options.boxSize or 18
+	local markSize = options.markSize or 12
+	local markIcon = options.markIcon or "builtin://global-icons/check.svg"
+
+	local container = UI.frame(
+		parent,
+		position or UDim2.fromOffset(0, 0),
+		options.size or UDim2.fromOffset(180, UI.metrics.propertyRow),
+		colors.panel
+	)
+
+	container.BackgroundTransparency = 1
+
+	local box
+	local mark
+	local record
+
+	local function redraw()
+		local base = value and colors.accent or options.color or colors.input
+
+		record.color = base
+		record.defaultColor = base
+
+		box.BackgroundColor3 = base
+
+		mark.Visible = value
+	end
+
+	box, _, record = UI.button(
+		container,
+		"",
+		UDim2.fromOffset(0, math.floor((UI.metrics.propertyRow - boxSize) / 2)),
+		UDim2.fromOffset(boxSize, boxSize),
+		function()
+			value = not value
+
+			redraw()
+
+			if callback then
+				callback(value)
+			end
+		end,
+		{
+			color = colors.input,
+
+			hoverColor = colors.hover,
+
+			pressedColor = colors.pressed,
+
+			radius = options.radius or UI.tokens.radius.xs,
+
+			borderColor = colors.border,
+
+			paddingX = 0,
+		}
+	)
+
+	mark = UI.image(
+		box,
+		markIcon,
+		UDim2.new(0.5, -math.floor(markSize / 2), 0.5, -math.floor(markSize / 2)),
+		UDim2.fromOffset(markSize, markSize)
+	)
+
+	mark.Name = "Mark"
+	mark.Visible = value
+
+	local textLabel = UI.label(
+		container,
+		text,
+		UDim2.fromOffset(boxSize + 7, 1),
+		UDim2.new(1, -(boxSize + 7), 1, -1),
+		options.textSize or UI.tokens.type.small,
+		options.textColor or colors.text
+	)
+
+	textLabel.TextYAlignment = Enum.TextYAlignment.Center
+	textLabel.TextXAlignment = Enum.TextXAlignment.Left
+
+	local controller = {}
+
+	function controller:GetValue()
+		return value
+	end
+
+	function controller:SetValue(newValue, silent)
+		value = newValue == true
+
+		redraw()
+
+		if not silent and callback then
+			callback(value)
+		end
+	end
+
+	controller.frame = container
+
+	controller.box = box
+
+	controller.mark = mark
+
+	controller.label = textLabel
+
+	controller.record = record
+
+	redraw()
+
+	return container, controller
+end
+
+function UI.radio(parent, text, position, selected, callback, options)
+	options = options or {}
+
+	local colors = UI.tokens.color
+
+	local value = selected == true
+	local enabled = options.enabled ~= false
+
+	local circleSize = options.circleSize or 18
+	local dotSize = options.dotSize or 8
+
+	local container = UI.frame(
+		parent,
+		position or UDim2.fromOffset(0, 0),
+		options.size or UDim2.fromOffset(180, UI.metrics.propertyRow),
+		colors.panel
+	)
+
+	container.BackgroundTransparency = 1
+
+	local circle, record, dot, stroke, textLabel
+
+	local function redraw()
+		dot.Visible = value
+
+		local base = options.color or colors.input
+
+		record.color = base
+		record.defaultColor = base
+
+		circle.BackgroundColor3 = base
+
+		if stroke then
+			stroke.Color = value and (options.selectedBorderColor or colors.accent)
+				or (options.borderColor or colors.border)
+		end
+
+		textLabel.TextColor3 = enabled and (options.textColor or colors.text) or colors.muted
+	end
+
+	local function select()
+		if not enabled or value then
+			return
+		end
+
+		value = true
+
+		redraw()
+
+		if callback then
+			callback(true)
+		end
+	end
+
+	circle, _, record = UI.button(
+		container,
+		"",
+		UDim2.fromOffset(0, math.floor((UI.metrics.propertyRow - circleSize) / 2)),
+		UDim2.fromOffset(circleSize, circleSize),
+		select,
+		{
+			color = options.color or colors.input,
+			hoverColor = colors.hover,
+			pressedColor = colors.pressed,
+			radius = math.floor(circleSize / 2),
+			borderColor = colors.border,
+			paddingX = 0,
+			enabled = enabled,
+		}
+	)
+
+	stroke = circle:FindFirstChildOfClass("UIStroke")
+
+	dot = UI.frame(
+		circle,
+		UDim2.new(0.5, -math.floor(dotSize / 2), 0.5, -math.floor(dotSize / 2)),
+		UDim2.fromOffset(dotSize, dotSize),
+		options.dotColor or colors.accent,
+		math.floor(dotSize / 2)
+	)
+
+	textLabel = UI.label(
+		container,
+		text,
+		UDim2.fromOffset(circleSize + 7, 1),
+		UDim2.new(1, -(circleSize + 7), 1, -1),
+		options.textSize or UI.tokens.type.small,
+		options.textColor or colors.text
+	)
+
+	textLabel.TextXAlignment = Enum.TextXAlignment.Left
+
+	local textButton = UI.create("TextButton", {
+		Text = "",
+		Position = UDim2.fromOffset(circleSize + 4, 0),
+		Size = UDim2.new(1, -(circleSize + 4), 1, 0),
+		BackgroundTransparency = 1,
+		BorderSizePixel = 0,
+		AutoButtonColor = false,
+		Active = true,
+		InputSink = true,
+	}, container)
+
+	textButton.MouseButton1Click:Connect(select)
+
+	local controller = {}
+
+	function controller:GetValue()
+		return value
+	end
+
+	function controller:SetValue(newValue, silent)
+		newValue = newValue == true
+
+		if value == newValue then
+			return
+		end
+
+		value = newValue
+
+		redraw()
+
+		if not silent and callback then
+			callback(value)
+		end
+	end
+
+	function controller:SetText(newText)
+		textLabel.Text = tostring(newText or "")
+	end
+
+	function controller:SetEnabled(newEnabled)
+		enabled = newEnabled == true
+
+		record.enabled = enabled
+		circle.Active = enabled
+		textButton.Active = enabled
+
+		redraw()
+	end
+
+	controller.frame = container
+	controller.circle = circle
+	controller.dot = dot
+	controller.label = textLabel
+	controller.record = record
+
+	redraw()
+
+	return container, controller
+end
+
+function UI.radioGroup(parent, position, size, items, value, callback, options)
+	options = options or {}
+
+	items = items or {}
+
+	local rowHeight = options.itemHeight or UI.metrics.propertyRow
+	local gap = options.gap or 4
+	local horizontal = options.direction == "horizontal"
+
+	local container = UI.frame(parent, position or UDim2.fromOffset(0, 0), size, UI.tokens.color.panel)
+
+	container.BackgroundTransparency = 1
+
+	local currentValue = value
+	local radios = {}
+
+	local function normalize(item)
+		if type(item) == "table" then
+			local itemValue = item.value
+			if itemValue == nil then
+				itemValue = item[1]
+			end
+
+			return itemValue, tostring(item.text or item.label or item.name or itemValue or "")
+		end
+
+		return item, tostring(item)
+	end
+
+	local function setSelected(newValue)
+		currentValue = newValue
+
+		for radioValue, radio in pairs(radios) do
+			radio:SetValue(radioValue == newValue, true)
+		end
+	end
+
+	local offset = 0
+
+	for _, item in ipairs(items) do
+		local itemValue, itemText = normalize(item)
+
+		local itemWidth = options.itemWidth or (#itemText * 7 + 32)
+
+		local itemPosition = horizontal and UDim2.fromOffset(offset, 0) or UDim2.fromOffset(0, offset)
+
+		local itemSize = horizontal and UDim2.fromOffset(itemWidth, rowHeight) or UDim2.new(1, 0, 0, rowHeight)
+
+		local _, radio = UI.radio(container, itemText, itemPosition, itemValue == currentValue, function()
+			if currentValue == itemValue then
+				return
+			end
+
+			setSelected(itemValue)
+
+			if callback then
+				callback(itemValue, item)
+			end
+		end, {
+			size = itemSize,
+			textSize = options.textSize,
+			textColor = options.textColor,
+			enabled = options.enabled,
+		})
+
+		radios[itemValue] = radio
+
+		offset += (horizontal and itemWidth or rowHeight) + gap
+	end
+
+	local controller = {}
+
+	function controller:GetValue()
+		return currentValue
+	end
+
+	function controller:SetValue(newValue, silent)
+		if radios[newValue] == nil or currentValue == newValue then
+			return
+		end
+
+		setSelected(newValue)
+
+		if not silent and callback then
+			callback(newValue)
+		end
+	end
+
+	function controller:SetEnabled(enabled)
+		for _, radio in pairs(radios) do
+			radio:SetEnabled(enabled)
+		end
+	end
+
+	controller.frame = container
+	controller.radios = radios
+
+	return container, controller
+end
+
+function UI.switch(parent, position, value, callback, options)
+	options = options or {}
+
+	local colors = UI.tokens.color
+
+	local enabled = value == true
+
+	local width = options.width or 34
+
+	local height = options.height or 18
+
+	local knobSize = height - 6
+
+	local track
+
+	local knob
+
+	local record
+
+	local function redraw()
+		track.BackgroundColor3 = enabled and (options.enabledColor or colors.accent)
+			or (options.disabledColor or colors.input)
+
+		knob.Position = enabled and UDim2.new(1, -(knobSize + 3), 0.5, -math.floor(knobSize / 2))
+			or UDim2.new(0, 3, 0.5, -math.floor(knobSize / 2))
+	end
+
+	track, _, record = UI.button(parent, "", position, UDim2.fromOffset(width, height), function()
+		enabled = not enabled
+
+		redraw()
+
+		if callback then
+			callback(enabled)
+		end
+	end, {
+
+		color = colors.input,
+
+		hoverColor = colors.hover,
+
+		pressedColor = colors.pressed,
+
+		radius = math.floor(height / 2),
+
+		borderColor = colors.border,
+
+		paddingX = 0,
+	})
+
+	knob = UI.frame(
+		track,
+		UDim2.fromOffset(3, 3),
+		UDim2.fromOffset(knobSize, knobSize),
+		options.knobColor or colors.text,
+		math.floor(knobSize / 2)
+	)
+
+	local controller = {}
+
+	function controller:GetValue()
+		return enabled
+	end
+
+	function controller:SetValue(newValue, silent)
+		enabled = newValue == true
+
+		redraw()
+
+		if not silent and callback then
+			callback(enabled)
+		end
+	end
+
+	controller.track = track
+
+	controller.knob = knob
+
+	controller.record = record
+
+	redraw()
+
+	return track, controller
+end
+
+function UI.slider(parent, position, size, minimum, maximum, value, callback, options)
+	options = options or {}
+
+	local colors = UI.tokens.color
+
+	minimum = minimum or 0
+
+	maximum = maximum or 1
+
+	value = math.clamp(value or minimum, minimum, maximum)
+
+	local step = options.step or 0
+
+	local dragging = false
+
+	local container = UI.create("TextButton", {
+
+		Text = "",
+
+		Position = position or UDim2.fromOffset(0, 0),
+
+		Size = size or UDim2.fromOffset(160, UI.metrics.inputHeight),
+
+		BackgroundColor3 = colors.panel,
+
+		BackgroundTransparency = 1,
+
+		BorderSizePixel = 0,
+
+		Active = true,
+
+		InputSink = true,
+
+		AutoButtonColor = false,
+	}, parent)
+
+	local trackHeight = options.trackHeight or 4
+
+	local track = UI.frame(
+		container,
+		UDim2.new(0, 0, 0.5, -math.floor(trackHeight / 2)),
+		UDim2.new(1, 0, 0, trackHeight),
+		options.trackColor or colors.input,
+		math.floor(trackHeight / 2)
+	)
+
+	local fill = UI.frame(
+		track,
+		UDim2.fromOffset(0, 0),
+		UDim2.new(0, 0, 1, 0),
+		options.fillColor or colors.accent,
+		math.floor(trackHeight / 2)
+	)
+
+	local knobSize = options.knobSize or 12
+
+	local knob = UI.frame(
+		container,
+		UDim2.fromOffset(0, 0),
+		UDim2.fromOffset(knobSize, knobSize),
+		options.knobColor or colors.text,
+		math.floor(knobSize / 2)
+	)
+
+	UI.stroke(knob, options.knobBorderColor or colors.borderStrong, 1, options.knobBorderTransparency or 0)
+
+	local function alphaFromValue()
+		if maximum == minimum then
+			return 0
+		end
+
+		return math.clamp((value - minimum) / (maximum - minimum), 0, 1)
+	end
+
+	local function redraw()
+		local alpha = alphaFromValue()
+
+		fill.Size = UDim2.new(alpha, 0, 1, 0)
+
+		knob.Position = UDim2.new(alpha, -math.floor(knobSize / 2), 0.5, -math.floor(knobSize / 2))
+	end
+
+	local function setFromPoint(pointX, silent)
+		local absolutePosition = track.AbsolutePosition
+
+		local absoluteSize = track.AbsoluteSize
+
+		if not absolutePosition or not absoluteSize or absoluteSize.X <= 0 then
+			return
+		end
+
+		local alpha = math.clamp((pointX - absolutePosition.X) / absoluteSize.X, 0, 1)
+
+		local newValue = minimum + (maximum - minimum) * alpha
+
+		if step > 0 then
+			newValue = math.floor((newValue - minimum) / step + 0.5) * step + minimum
+		end
+
+		newValue = math.clamp(newValue, minimum, maximum)
+
+		if newValue == value then
+			return
+		end
+
+		value = newValue
+
+		redraw()
+
+		if not silent and callback then
+			callback(value)
+		end
+	end
+
+	container.MouseButton1Down:Connect(function(x)
+		dragging = true
+
+		setFromPoint(x)
+	end)
+
+	container.MouseMoved:Connect(function(x)
+		if not dragging then
+			return
+		end
+
+		setFromPoint(x)
+	end)
+
+	container.MouseButton1Up:Connect(function(x)
+		if dragging then
+			setFromPoint(x)
+		end
+
+		dragging = false
+	end)
+
+	local controller = {}
+
+	function controller:GetValue()
+		return value
+	end
+
+	function controller:SetValue(newValue, silent)
+		value = math.clamp(newValue, minimum, maximum)
+
+		if step > 0 then
+			value = math.floor((value - minimum) / step + 0.5) * step + minimum
+		end
+
+		redraw()
+
+		if not silent and callback then
+			callback(value)
+		end
+	end
+
+	function controller:SetRange(newMinimum, newMaximum)
+		minimum = newMinimum
+
+		maximum = newMaximum
+
+		value = math.clamp(value, minimum, maximum)
+
+		redraw()
+	end
+
+	controller.frame = container
+
+	controller.track = track
+
+	controller.fill = fill
+
+	controller.knob = knob
+
+	redraw()
+
+	return container, controller
+end
+
+function UI.progressBar(parent, position, size, value, options)
+	options = options or {}
+
+	local colors = UI.tokens.color
+
+	local progress = math.clamp(value or 0, 0, 1)
+
+	local background = UI.frame(
+		parent,
+		position,
+		size or UDim2.fromOffset(160, 6),
+		options.color or colors.input,
+		options.radius or UI.tokens.radius.xs
+	)
+
+	background.ClipsDescendants = true
+
+	local fill = UI.frame(
+		background,
+		UDim2.fromOffset(0, 0),
+		UDim2.new(progress, 0, 1, 0),
+		options.fillColor or colors.accent,
+		options.radius or UI.tokens.radius.xs
+	)
+
+	local controller = {}
+
+	function controller:GetValue()
+		return progress
+	end
+
+	function controller:SetValue(newValue)
+		progress = math.clamp(newValue, 0, 1)
+
+		fill.Size = UDim2.new(progress, 0, 1, 0)
+	end
+
+	controller.frame = background
+
+	controller.fill = fill
+
+	return background, controller
+end
+
+function UI.sectionHeader(parent, text, position, size, options)
+	options = options or {}
+
+	local colors = UI.tokens.color
+
+	local container = UI.frame(
+		parent,
+		position,
+		size or UDim2.new(1, 0, 0, UI.metrics.sectionRow),
+		options.headerColor or colors.panelRaised
+	)
+
+	container.BackgroundTransparency = options.transparent and 1 or 0
+
+	local label = UI.label(
+		container,
+		text,
+		UDim2.fromOffset(UI.tokens.space.md, 2),
+		UDim2.new(1, -UI.tokens.space.md * 2, 1, -3),
+		options.textSize or UI.tokens.type.small,
+		options.textColor or colors.text
+	)
+
+	if options.separator ~= false then
+		UI.separator(
+			container,
+			UDim2.new(0, UI.tokens.space.sm, 1, -1),
+			UDim2.new(1, -UI.tokens.space.sm * 2, 0, 1),
+			options.separatorColor or colors.border
+		)
+	end
+
+	return container, label
+end
+
+function UI.badge(parent, text, position, options)
+	options = options or {}
+
+	local colors = UI.tokens.color
+
+	local width = options.width or math.max(36, #tostring(text) * 7 + 12)
+
+	local height = options.height or 18
+
+	local frame = UI.frame(
+		parent,
+		position,
+		UDim2.fromOffset(width, height),
+		options.color or colors.accentSoft,
+		options.radius or math.floor(height / 2)
+	)
+
+	local label = UI.label(
+		frame,
+		text,
+		UDim2.fromOffset(4, 0),
+		UDim2.new(1, -8, 1, 0),
+		options.textSize or UI.tokens.type.caption,
+		options.textColor or colors.text
+	)
+
+	return frame, label
+end
+
+function UI.card(parent, position, size, options)
+	options = options or {}
+
+	local colors = UI.tokens.color
+
+	local card =
+		
+UI.frame(parent, position, size, options.color or colors.surface, options.radius or UI.tokens.radius.md)
+
+	if options.border ~= false then
+		UI.stroke(
+			card,
+			options.borderColor or colors.border,
+			options.borderThickness or 1,
+			options.borderTransparency or 0
+		)
+	end
+
+	if options.shadow then
+		UI.create("UIShadow", {
+
+			BlurRadius = UDim.new(0, options.shadowBlur or 10),
+
+			Offset = UDim2.fromOffset(0, options.shadowOffset or 3),
+
+			Spread = UDim2.fromOffset(0, 0),
+
+			Color3 = options.shadowColor or Color3.fromRGB(0, 0, 0),
+
+			Transparency = options.shadowTransparency or 0.6,
+
+			Exponent = 2,
+
+			Enabled = true,
+		}, card)
+	end
+
+	return card
+end
+
+function UI.root()
+	if shared.root then
+		return shared.root
+	end
+
+	local root = UI.create("ScreenGui", { Name = "Studio", DisplayOrder = 1000, IgnoreGuiInset = true }, game.CoreGui)
+
+	shared.root = root
+
+	shared.background = UI.create("TextButton", {
+
+		Name = "EditorBackground",
+
+		Text = "",
+
+		Position = UDim2.fromOffset(0, 0),
+
+		Size = UDim2.new(1, 0, 1, 0),
+
+		BackgroundColor3 = UI.tokens.color.canvas,
+
+		BorderSizePixel = 0,
+
+		Active = true,
+
+		InputSink = false,
+
+		AutoButtonColor = false,
+
+		ZIndex = -100000,
+	}, root)
+
+	shared.background.MouseButton1Click:Connect(function()
+		local active = shared.activeDropdown
+
+		if active and closeActiveDropdown and active.closeOnOutsideClick ~= false then
+			closeActiveDropdown()
+		end
+	end)
+
+	return root
+end
+
+function UI.RootOverlay()
+	if shared.overlayRoot then
+		return shared.overlayRoot
+	end
+
+	local root = UI.create("ScreenGui", {
+
+		Name = "Overlay",
+
+		DisplayOrder = 1001,
+
+		IgnoreGuiInset = true,
+	}, game.CoreGui)
+
+	root.RenderOnTop = true
+
+	shared.overlayRoot = root
+
+	return root
+end
+
+function UI.TopbarButton(parent, definition, options)
+	options = options or {}
+
+	local tokens = UI.tokens
+	local colors = options.colors
+		or {
+			surface = tokens.color.surface,
+			raised = tokens.color.panelRaised,
+			input = tokens.color.input,
+			subtext = tokens.color.subtext,
+		}
+	local radius = options.radius or tokens.radius.sm
+	local size = options.size or UDim2.fromOffset(52, 58)
+	local position = options.position or UDim2.fromOffset(0, 0)
+	local onClick = options.onClick
+
+	local item = UI.button(parent, "", position, size, function() end, {
+		color = colors.surface,
+		hoverColor = colors.raised,
+		pressedColor = colors.input,
+		radius = radius,
+		hoveringEnabled = options.hoveringEnabled,
+		border = false,
+	})
+
+	item.Name = definition.name .. "Tool"
+
+	if definition.icon then
+		local iconSize = options.iconSize or 22
+
+		UI.image(
+			item,
+			"builtin://icons/" .. definition.icon,
+			UDim2.new(0.5, -math.floor(iconSize / 2), 0, 7),
+			UDim2.fromOffset(iconSize, iconSize)
+		)
+	end
+
+	local label = UI.label(
+		item,
+		definition.name,
+		UDim2.fromOffset(4, 35),
+		UDim2.new(1, -8, 0, 16),
+		tokens.type.caption,
+		colors.subtext
+	)
+	label.TextXAlignment = Enum.TextXAlignment.Center
+	label.TextYAlignment = Enum.TextYAlignment.Top
+
+	if onClick then
+		item.MouseButton1Click:Connect(function()
+			onClick(item, definition)
+		end)
+	end
+
+	return item, label
+end
+
+function UI.buttonList(parent, position, size, buttons, options)
+	options = options or {}
+
+	local colors = UI.tokens.color
+	local horizontal = options.direction == "horizontal"
+	local iconPrefix = options.iconPrefix or "builtin://global-icons/"
+
+	local BASE =
+		{ rowHeight = 22, gap = 0, iconSize = 14, textSize = 12, paddingX = 6, iconGap = 6, separatorSpace = 7 }
+
+	local scale = options.scale or 1
+	local rowHeight, gap, iconSize, textSize, paddingX, iconGap, separatorSpace, charWidth
+
+	local function applyScale(newScale)
+		scale = math.max(newScale or 1, 0.1)
+
+		local function s(value)
+			return math.max(1, math.floor(value * scale + 0.5))
+		end
+
+		rowHeight = options.rowHeight or s(BASE.rowHeight)
+		gap = options.gap or math.floor(BASE.gap * scale + 0.5)
+		iconSize = options.iconSize or s(BASE.iconSize)
+		textSize = options.textSize or math.clamp(s(BASE.textSize), 6, 100)
+		paddingX = options.paddingX or s(BASE.paddingX)
+		iconGap = options.iconGap or s(BASE.iconGap)
+		separatorSpace = options.separatorSpace or s(BASE.separatorSpace)
+		charWidth = options.charWidth or (textSize * 0.58)
+	end
+
+	applyScale(scale)
+	local hoverColor = options.hoverColor or colors.hover
+	local selectedColor = options.selectedColor or colors.selection
+	local textColor = options.textColor or colors.text
+
+	local function iconPath(icon)
+		if not icon or icon == "" then
+			return nil
+		end
+		if string.find(icon, "://", 1, true) then
+			return icon
+		end
+		return iconPrefix .. icon
+	end
+
+	local function rowWidth(config)
+		if config.width then
+			return config.width
+		end
+		local text = tostring(config.text or config.label or config.name or "")
+		local width = math.ceil(#text * charWidth) + paddingX * 2
+		if config.icon then
+			width += iconSize + iconGap
+		end
+		return width
+	end
+
+	local function computeAutoWidth(list)
+		local widest = 0
+		for _, config in ipairs(list or {}) do
+			if (config.type or "button") == "button" then
+				widest = math.max(widest, rowWidth(config))
+			end
+		end
+		return options.width or widest
+	end
+
+	local autoWidth = computeAutoWidth(buttons)
+
+	local autoSize = size == nil
+
+	local container = UI.frame(
+		parent,
+		position or UDim2.fromOffset(0, 0),
+		size or (horizontal and UDim2.fromOffset(0, rowHeight) or UDim2.fromOffset(autoWidth, 0)),
+		options.color or colors.panel
+	)
+	container.Name = options.name or "ButtonList"
+	container.BackgroundTransparency = options.color and 0 or 1
+
+	if autoSize then
+		container.AutomaticSize = horizontal and Enum.AutomaticSize.X or Enum.AutomaticSize.Y
+	end
+
+	local layout = UI.create("UIListLayout", {
+		FillDirection = horizontal and Enum.FillDirection.Horizontal or Enum.FillDirection.Vertical,
+		SortOrder = Enum.SortOrder.LayoutOrder,
+		Padding = UDim.new(0, gap),
+		VerticalAlignment = Enum.VerticalAlignment.Top,
+	}, container)
+
+	local controller = { frame = container, layout = layout, items = {}, selected = options.selected }
+
+	local function paint(item, hovered)
+		if not item.enabled then
+			item.button.BackgroundTransparency = 1
+			item.label.TextColor3 = colors.muted
+			return
+		end
+
+		local isSelected = options.selectable and controller.selected == item.id
+
+		item.label.TextColor3 = textColor
+
+		if isSelected then
+			item.button.BackgroundColor3 = hovered and colors.selectionHover or selectedColor
+			item.button.BackgroundTransparency = 0
+		elseif hovered then
+			item.button.BackgroundColor3 = hoverColor
+			item.button.BackgroundTransparency = 0
+		else
+			item.button.BackgroundTransparency = 1
+		end
+	end
+
+	local function repaintAll()
+		for _, item in pairs(controller.items) do
+			if item.button then
+				paint(item, item.hovered)
+			end
+		end
+	end
+
+	local function build()
+		UI.clear(container, { [layout] = true })
+		controller.items = {}
+
+		for index, config in ipairs(controller.buttonConfigs) do
+			local kind = config.type or "button"
+
+			if kind == "separator" then
+				local holder = UI.create("Frame", {
+					Name = "Separator",
+					Size = horizontal and UDim2.new(0, separatorSpace, 1, 0) or UDim2.new(1, 0, 0, separatorSpace),
+					BackgroundTransparency = 1,
+					BorderSizePixel = 0,
+					LayoutOrder = index,
+				}, container)
+
+				UI.separator(
+					holder,
+					horizontal and UDim2.new(0.5, 0, 0, 3) or UDim2.new(0, 4, 0.5, 0),
+					horizontal and UDim2.new(0, 1, 1, -6) or UDim2.new(1, -8, 0, 1),
+					colors.border
+				)
+			elseif kind == "custom" then
+				local holder = UI.create("Frame", {
+					Name = tostring(config.name or ("Custom" .. index)),
+					Size = horizontal and UDim2.new(0, config.width or 100, 1, 0)
+						or UDim2.new(1, 0, 0, config.height or rowHeight),
+					BackgroundTransparency = 1,
+					BorderSizePixel = 0,
+					LayoutOrder = index,
+				}, container)
+
+				if config.create then
+					config.create(holder, colors, UDim2.fromOffset(0, 0), UDim2.fromScale(1, 1))
+				end
+			else
+				local id = config.name or config.id or tostring(index)
+				local text = tostring(config.text or config.label or config.name or "")
+				local icon = iconPath(config.icon)
+				local enabled = config.enabled ~= false
+
+				local button, label, record
+				button, label, record = UI.button(
+					container,
+					text,
+					UDim2.fromOffset(0, 0),
+					horizontal and UDim2.fromOffset(rowWidth(config), rowHeight) or UDim2.new(1, 0, 0, rowHeight),
+					function()
+						if options.selectable then
+							controller.selected = id
+							repaintAll()
+							if options.onSelected then
+								options.onSelected(id, config)
+							end
+						end
+						if config.callback then
+							config.callback(controller, config)
+						end
+					end,
+					{
+						color = colors.panel,
+						hoverColor = hoverColor,
+						pressedColor = colors.pressed,
+						textColor = textColor,
+						textSize = textSize,
+						radius = options.radius or UI.tokens.radius.xs,
+						border = false,
+						paddingX = paddingX,
+						textY = 0,
+						enabled = enabled,
+					}
+				)
+
+				button.Name = tostring(id)
+				button.LayoutOrder = index
+				button.BackgroundTransparency = 1
+
+				local labelX = paddingX
+				if icon then
+					UI.image(
+						button,
+						icon,
+						UDim2.new(0, paddingX, 0.5, -math.floor(iconSize / 2)),
+						UDim2.fromOffset(iconSize, iconSize)
+					)
+					labelX = paddingX + iconSize + iconGap
+				end
+
+				label.Position = UDim2.fromOffset(labelX, 0)
+				label.Size = UDim2.new(1, -(labelX + paddingX), 1, 0)
+				label.TextXAlignment = Enum.TextXAlignment.Left
+				label.TextYAlignment = Enum.TextYAlignment.Center
+
+				local item = {
+					id = id,
+					button = button,
+					label = label,
+					record = record,
+					config = config,
+					enabled = enabled,
+					hovered = false,
+				}
+				controller.items[id] = item
+
+				button.MouseEnter:Connect(function()
+					item.hovered = true
+					paint(item, true)
+				end)
+				button.MouseLeave:Connect(function()
+					item.hovered = false
+					paint(item, false)
+				end)
+				button.MouseButton1Down:Connect(function()
+					if item.enabled then
+						button.BackgroundColor3 = colors.pressed
+						button.BackgroundTransparency = 0
+					end
+				end)
+				button.MouseButton1Up:Connect(function()
+					paint(item, item.hovered)
+				end)
+
+				if config.tooltip then
+					UI.tooltip(button, config.tooltip, config.tooltipOptions)
+				end
+
+				paint(item, false)
+			end
+		end
+	end
+
+	function controller:GetButton(name)
+		local item = self.items[name]
+		return item and item.button or nil
+	end
+
+	function controller:GetSelected()
+		return self.selected
+	end
+
+	function controller:SetSelected(name, silent)
+		self.selected = name
+		repaintAll()
+		if not silent and name ~= nil and options.onSelected and self.items[name] then
+			options.onSelected(name, self.items[name].config)
+		end
+	end
+
+	function controller:SetEnabled(name, enabled)
+		local item = self.items[name]
+		if not item then
+			return false
+		end
+		item.enabled = enabled == true
+		item.record.enabled = item.enabled
+		item.button.Active = item.enabled
+		paint(item, false)
+		return true
+	end
+
+	function controller:SetScale(newScale)
+		applyScale(newScale)
+
+		layout.Padding = UDim.new(0, gap)
+
+		if autoSize then
+			if horizontal then
+				container.Size = UDim2.fromOffset(0, rowHeight)
+			else
+				container.Size = UDim2.fromOffset(computeAutoWidth(self.buttonConfigs), 0)
+			end
+		end
+
+		build()
+	end
+
+	function controller:GetScale()
+		return scale
+	end
+
+	function controller:SetText(name, text)
+		local item = self.items[name]
+		if item then
+			item.label.Text = tostring(text or "")
+		end
+	end
+
+	function controller:SetButtons(newButtons)
+		self.buttonConfigs = newButtons or {}
+
+		if autoSize and not horizontal then
+			container.Size = UDim2.fromOffset(computeAutoWidth(self.buttonConfigs), 0)
+		end
+
+		build()
+	end
+
+	function controller:Destroy()
+		UI.forgetButtons(container)
+		container:Destroy()
+	end
+
+	controller.buttonConfigs = buttons or {}
+	build()
+
+	return container, controller
+end
+
+function UI.tooltip(target, text, options)
+	options = options or {}
+
+	local colors = UI.tokens.color
+
+	shared.tooltips = shared.tooltips or {}
+
+	local existing = shared.tooltips[target]
+	if existing then
+		existing:SetText(text)
+		return existing
+	end
+
+	if not shared.tooltipJanitor then
+		shared.tooltipJanitor = RunService.Heartbeat:Connect(function()
+			local registry = shared.tooltips
+			if registry == nil then
+				return
+			end
+
+			for tooltipTarget, tooltipController in pairs(registry) do
+				if not UI.isAlive(tooltipTarget) then
+					tooltipController:Destroy()
+					registry[tooltipTarget] = nil
+				end
+			end
+		end)
+	end
+
+	local hoverDelay = options.hoverDelay or 0.4
+
+	local fadeSpeed = options.fadeSpeed or 14
+
+	local riseDistance = options.riseDistance or 6
+
+	local padding = options.padding or 6
+
+	local gap = options.gap or 8
+
+	local screenMargin = options.screenMargin or 4
+
+	local placement = options.placement or "cursor"
+
+	local offset = options.offset or Vector2.new(12, 20)
+
+	local textSize = options.textSize or 12
+
+	local maxWidth = options.maxWidth
+
+	local backgroundTransparency = options.backgroundTransparency or 0
+
+	local borderTransparency = options.borderTransparency or 0
+
+	local textTransparency = options.textTransparency or 0
+
+	local root = UI.RootOverlay()
+
+	local tooltip = UI.create("Frame", {
+
+		Name = "Tooltip",
+
+		Position = UDim2.fromOffset(0, 0),
+
+		Size = UDim2.fromOffset(1, 1),
+
+		BackgroundColor3 = options.backgroundColor or colors.surface,
+
+		BackgroundTransparency = 1,
+
+		BorderSizePixel = 0,
+
+		Active = false,
+
+		InputSink = false,
+
+		Selectable = false,
+
+		Visible = false,
+
+		ZIndex = options.zIndex or 100000,
+	}, root)
+
+	UI.corner(tooltip, options.cornerRadius or UI.tokens.radius.sm)
+
+	local stroke = UI.stroke(tooltip, options.borderColor or colors.borderStrong, options.borderThickness or 1, 1)
+
+	local label = UI.create("TextLabel", {
+
+		Name = "Text",
+
+		Text = tostring(text or ""),
+
+		Position = UDim2.fromOffset(padding, padding),
+
+		Size = UDim2.fromOffset(1, 1),
+
+		BackgroundTransparency = 1,
+
+		BorderSizePixel = 0,
+
+		TextSize = textSize,
+
+		TextColor3 = options.textColor or colors.text,
+
+		TextTransparency = 1,
+
+		TextWrapped = maxWidth ~= nil,
+
+		ZIndex = (options.zIndex or 100000) + 1,
+	}, tooltip)
+
+	local state = {
+
+		hovered = false,
+
+		hoverTime = 0,
+
+		alpha = 0,
+
+		anchorMouse = Vector2.new(0, 0),
+
+		mouse = Vector2.new(0, 0),
+
+		destroyed = false,
+	}
+
+	local controller = {}
+
+	local function updateSize()
+		local bounds = label.TextBounds
+
+		if not bounds then
+			return tooltip.AbsoluteSize.X, tooltip.AbsoluteSize.Y
+		end
+
+		local contentWidth = math.max(bounds.X, 1)
+
+		local contentHeight = math.max(bounds.Y, textSize)
+
+		if maxWidth then
+			contentWidth = math.min(contentWidth, maxWidth)
+
+			label.Size = UDim2.fromOffset(maxWidth, math.max(contentHeight, textSize))
+
+			contentWidth = maxWidth
+		else
+			label.Size = UDim2.fromOffset(contentWidth, contentHeight)
+		end
+
+		local width = contentWidth + padding * 2
+
+		local height = contentHeight + padding * 2
+
+		tooltip.Size = UDim2.fromOffset(width, height)
+
+		return width, height
+	end
+
+	local function calculatePosition(width, height)
+		local targetPosition = target.AbsolutePosition
+
+		local targetSize = target.AbsoluteSize
+
+		local x
+		local y
+
+		if placement == "cursor" then
+			local anchor = options.followCursor and state.mouse or state.anchorMouse
+
+			x = anchor.X + offset.X
+
+			y = anchor.Y + offset.Y
+		elseif placement == "above" then
+			x = targetPosition.X + (targetSize.X - width) / 2
+
+			y = targetPosition.Y - height - gap
+		elseif placement == "below" then
+			x = targetPosition.X + (targetSize.X - width) / 2
+
+			y = targetPosition.Y + targetSize.Y + gap
+		elseif placement == "left" then
+			x = targetPosition.X - width - gap
+
+			y = targetPosition.Y + (targetSize.Y - height) / 2
+		else
+			x = targetPosition.X + targetSize.X + gap
+
+			y = targetPosition.Y + (targetSize.Y - height) / 2
+		end
+
+		local rise = (1 - state.alpha) * riseDistance
+
+		if placement == "left" then
+			x -= rise
+		elseif placement == "right" then
+			x += rise
+		else
+			y -= rise
+		end
+
+		local screenSize = root.AbsoluteSize
+
+		if screenSize then
+			x = math.clamp(x, screenMargin, math.max(screenMargin, screenSize.X - width - screenMargin))
+
+			y = math.clamp(y, screenMargin, math.max(screenMargin, screenSize.Y - height - screenMargin))
+		end
+
+		return x, y
+	end
+
+	local function updateTransparency()
+		tooltip.BackgroundTransparency = 1 - state.alpha * (1 - backgroundTransparency)
+
+		stroke.Transparency = 1 - state.alpha * (1 - borderTransparency)
+
+		label.TextTransparency = 1 - state.alpha * (1 - textTransparency)
+	end
+
+	local enterConnection = target.MouseEnter:Connect(function(x, y)
+		state.hovered = true
+
+		state.hoverTime = 0
+
+		state.anchorMouse = Vector2.new(x, y)
+
+		state.mouse = state.anchorMouse
+	end)
+
+	local leaveConnection = target.MouseLeave:Connect(function()
+		state.hovered = false
+
+		state.hoverTime = 0
+	end)
+
+	local moveConnection = target.MouseMoved:Connect(function(x, y)
+		state.mouse = Vector2.new(x, y)
+	end)
+
+	local heartbeatConnection = RunService.Heartbeat:Connect(function(dt)
+		if state.destroyed then
+			return
+		end
+
+		if state.hovered then
+			state.hoverTime += dt
+		else
+			state.hoverTime = 0
+		end
+
+		local targetAlpha = state.hovered and state.hoverTime >= hoverDelay and 1 or 0
+
+		state.alpha = tooltipSmoothTowards(state.alpha, targetAlpha, fadeSpeed, dt)
+
+		if math.abs(state.alpha - targetAlpha) < 0.01 then
+			state.alpha = targetAlpha
+		end
+
+		if state.alpha <= 0.001 then
+			tooltip.Visible = false
+
+			return
+		end
+
+		tooltip.Visible = true
+
+		local width, height = updateSize()
+
+		local x, y = calculatePosition(width, height)
+
+		tooltip.Position = UDim2.fromOffset(x, y)
+
+		updateTransparency()
+	end)
+
+	function controller:SetText(newText)
+		label.Text = tostring(newText or "")
+	end
+
+	function controller:SetPlacement(newPlacement)
+		placement = newPlacement or "cursor"
+	end
+
+	function controller:Show()
+		state.hovered = true
+
+		state.hoverTime = hoverDelay
+	end
+
+	function controller:Hide()
+		state.hovered = false
+
+		state.hoverTime = 0
+	end
+
+	function controller:Destroy()
+		if state.destroyed then
+			return
+		end
+
+		state.destroyed = true
+
+		if shared.tooltips and shared.tooltips[target] == controller then
+			shared.tooltips[target] = nil
+		end
+
+		enterConnection:Disconnect()
+
+		leaveConnection:Disconnect()
+
+		moveConnection:Disconnect()
+
+		heartbeatConnection:Disconnect()
+
+		tooltip:Destroy()
+	end
+
+	controller.frame = tooltip
+	controller.label = label
+	controller.target = target
+
+	shared.tooltips[target] = controller
+
+	return controller
+end
+
+function UI.shared()
+	return shared
+end
+
+return UI
