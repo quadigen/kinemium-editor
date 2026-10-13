@@ -667,6 +667,10 @@ end
 local WINDOW_MIN_W, WINDOW_MIN_H = 560, 340
 local headerHeight = UI.metrics.windowHeader or 26
 
+local gui = Instance.new("ScreenGui")
+gui.RenderOnTop = true
+gui.Parent = game.CoreGui
+
 local windowFrame = UI.create("Frame", {
 	Position = UDim2.fromOffset(80, 60),
 	Size = UDim2.fromOffset(900, 560),
@@ -677,7 +681,7 @@ local windowFrame = UI.create("Frame", {
 	Active = true,
 	ZIndex = 900,
 	Visible = true,
-}, UI.rootOverlay())
+}, gui)
 
 UI.corner(windowFrame, tokens.radius.md)
 
