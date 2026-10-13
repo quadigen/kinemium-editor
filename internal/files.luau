@@ -122,7 +122,18 @@ registerFileType({
 	icon = "builtin://icons/Sound.svg",
 
 	contextItems = {
-		{ label = "Import as Sound", icon = "builtin://icons/Sound.svg", callback = openImageViewer },
+		{
+			label = "Import as Sound",
+			icon = "builtin://icons/Sound.svg",
+			callback = function(ctx)
+				local parent = selectedObject()
+				if parent then
+					local new = Instance.new("Sound")
+					new.SoundId = ctx.Path
+					new.Parent = parent
+				end
+			end,
+		},
 	},
 })
 
@@ -140,6 +151,19 @@ registerFileType({
 
 	onOpen = function(ctx)
 		openImageViewer(ctx)
+	end,
+
+	onDrop = function(ctx)
+		local parent = selectedObject()
+
+		if parent == nil then
+			toastMessage("warning", "Nothing selected", "Select an object to drop the image onto.")
+			return
+		end
+
+		local new = Instance.new("ImageLabel")
+		new.Image = ctx.Path
+		new.Parent = parent
 	end,
 
 	contextItems = {
@@ -633,6 +657,18 @@ return function(content, windowControls)
 		return { leftRowRegistry, rightRowRegistry, rowRegistry }
 	end
 
+	local function entryForPath(path)
+		for _, registry in ipairs(registries()) do
+			local registered = registry[path]
+
+			if registered ~= nil then
+				return registered.entry
+			end
+		end
+
+		return nil
+	end
+
 	local function setDropHighlight(path, on)
 		if path == nil then
 			return
@@ -666,6 +702,8 @@ return function(content, windowControls)
 		if dragLayer ~= nil and UI.isAlive(dragLayer) then
 			dragLayer:Destroy()
 		end
+
+		viewport.SetDropHighlight(false)
 
 		dragLayer = nil
 		drag = nil
@@ -2042,7 +2080,10 @@ return function(content, windowControls)
 			beginDragVisual()
 		end
 
+		local mouse = UserInputService:GetMouseLocation()
+
 		if mouseInList() then
+			viewport.SetDropHighlight(false)
 			updateDragTarget()
 		else
 			if drag.target ~= nil then
@@ -2050,6 +2091,11 @@ return function(content, windowControls)
 			end
 
 			drag.target = nil
+
+			local over = viewport.ContainsPoint(mouse)
+			local fileType = fileTypeOf(entryForPath(drag.source))
+
+			viewport.SetDropHighlight(over and fileType ~= nil and fileType.onDrop ~= nil)
 		end
 
 		moveDragVisual()
@@ -2066,7 +2112,34 @@ return function(content, windowControls)
 		end
 
 		suppressClickUntil = os.clock() + 0.2
-		animateDrop(drag.target ~= nil)
+
+		local source = drag.source
+		local hadTarget = drag.target ~= nil
+		local mouse = UserInputService:GetMouseLocation()
+
+		if not hadTarget and not mouseInList() then
+			local inside, localPosition = viewport.ContainsPoint(mouse)
+			local entry = entryForPath(source)
+			local fileType = fileTypeOf(entry)
+
+			if inside and fileType ~= nil and fileType.onDrop ~= nil then
+				animateDrop(false)
+
+				local context = contextFor(entry)
+				context.ScreenPosition = mouse
+				context.ViewportPosition = localPosition
+
+				local ok, err = pcall(fileType.onDrop, context)
+
+				if not ok then
+					reportHandlerError(entry, err)
+				end
+
+				return
+			end
+		end
+
+		animateDrop(hadTarget)
 	end)
 
 	UserInputService.InputBegan:Connect(function(input: InputObject, gameProcessed: boolean)

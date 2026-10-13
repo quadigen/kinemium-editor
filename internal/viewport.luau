@@ -70,6 +70,16 @@ local viewportOverlay = UI.frame(rootOverlay, getViewportPosition(), getViewport
 viewportOverlay.Name = "ViewportOverlay"
 viewportOverlay.BackgroundTransparency = 1
 
+local dropHighlight = UI.frame(viewportOverlay, UDim2.fromOffset(0, 0), UDim2.fromScale(1, 1), colors.accent)
+
+dropHighlight.Name = "DropHighlight"
+dropHighlight.BackgroundTransparency = 0.92
+dropHighlight.Active = false
+dropHighlight.Visible = false
+dropHighlight.ZIndex = 50
+
+UI.stroke(dropHighlight, colors.accent, 2, 0.2)
+
 local activeTool = renderer.Dimension == "2D" and "Select" or "Move"
 local snapEnabled = true
 local toolButtons = {}
@@ -656,5 +666,31 @@ return {
 
 		updateGizmos()
 		updateTools()
+	end,
+
+	ContainsPoint = function(point)
+		if scriptRoot.Visible then
+			return false, nil
+		end
+
+		local position = viewportRoot.AbsolutePosition
+		local size = viewportRoot.AbsoluteSize
+
+		local top = math.max(position.Y, UI.shared().topbarBottom or 0)
+
+		local inside = point.X >= position.X
+			and point.X <= position.X + size.X
+			and point.Y >= top
+			and point.Y <= position.Y + size.Y
+
+		if not inside then
+			return false, nil
+		end
+
+		return true, Vector2.new(point.X - position.X, point.Y - position.Y)
+	end,
+
+	SetDropHighlight = function(visible)
+		dropHighlight.Visible = visible == true
 	end,
 }
