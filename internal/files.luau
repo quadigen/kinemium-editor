@@ -2366,5 +2366,9 @@ return function(content, windowControls)
 
 			rebuild()
 		end,
+
+		GetSelectedPath = function()
+			return selectedPath
+		end,
 	}
 end

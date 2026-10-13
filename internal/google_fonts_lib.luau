@@ -9,6 +9,9 @@ local HttpService = game:GetService("HttpService")
 local CATALOG_URL = "https://fonts.google.com/metadata/fonts"
 local CSS_URL = "https://fonts.googleapis.com/css2?family="
 
+local explorer = require("@internal/explorer")
+local files = explorer.filesController
+
 local CSS_USER_AGENT =
 	"Mozilla/5.0 (Linux; U; Android 2.2; en-us) AppleWebKit/533.1 (KHTML, like Gecko) Version/4.0 Mobile Safari/533.1"
 local CATALOG_USER_AGENT = "Mozilla/5.0"
