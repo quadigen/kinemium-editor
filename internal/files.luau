@@ -572,6 +572,10 @@ return function(content, windowControls)
 		openFile({ Path = path, Name = nameOf(path), Type = "File" })
 	end
 
+	local function copyPathWindow(path)
+		Project:CopyPathWindow(path)
+	end
+
 	local function clickFile(entry)
 		if os.clock() < suppressClickUntil then
 			return
@@ -1731,6 +1735,8 @@ return function(content, windowControls)
 						importFile(targetDirectoryFor(path))
 					elseif action == "duplicate" then
 						duplicateEntry(path)
+					elseif action == "copypath" then
+						copyPathWindow(path)
 					elseif action == "delete" then
 						deleteEntry(path)
 					elseif action == "copy" then
@@ -1754,6 +1760,7 @@ return function(content, windowControls)
 			{ label = "Rename", value = "rename", icon = "builtin://global-icons/pencil.svg" },
 			{ label = "Duplicate", value = "duplicate", icon = "builtin://global-icons/plus.svg" },
 			{ label = "Delete", value = "delete", icon = "builtin://global-icons/x.svg" },
+			{ label = "Copy Path", value = "copypath", icon = "builtin://global-icons/copy.svg" },
 			{ label = "Copy", value = "copy", icon = "builtin://global-icons/copy.svg" },
 			{ label = "Paste", value = "paste", icon = "builtin://global-icons/paste_clipboard.svg" },
 			{ label = "Import File..", value = "import", icon = "builtin://global-icons/folder.svg" },
