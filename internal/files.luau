@@ -255,27 +255,6 @@ local function importKine(ctx)
 	end
 end
 
-local kine_ctx = nil
-local import_confirmation, _, prompt_controller = UI.prompt({
-	title = "Import Model",
-	description = "This model is untrusted, Are you sure you want to import it into your workspace?",
-	destroyOnClose = true,
-	buttons = {
-		{ id = "cancel", text = "Cancel", role = "ghost" },
-		{
-			id = "clear",
-			text = "Clear",
-			role = "danger",
-			callback = function()
-				importKine(kine_ctx)
-			end,
-		},
-	},
-})
-
-import_confirmation.Parent = game.CoreGui
-prompt_controller:Close()
-
 registerFileType({
 	name = "KINE",
 	extensions = { "kine" },
@@ -283,30 +262,15 @@ registerFileType({
 	thumbnail = false,
 
 	onDrop = function(ctx)
-		kine_ctx = ctx
-		print(import_confirmation)
-		print(prompt_controller)
-		print("hello")
-		prompt_controller:Open()
+		importKine(ctx)
 	end,
 
 	onOpen = function(ctx)
-		kine_ctx = ctx
-		print(import_confirmation)
-		print(prompt_controller)
-		print("hello")
-		prompt_controller:Open()
+		importKine(ctx)
 	end,
 
 	contextItems = {
-		{
-			label = "Import as Model",
-			icon = "builtin://global-icons/KinemiumWhite.png",
-			callback = function(ctx)
-				kine_ctx = ctx
-				prompt_controller:Open()
-			end,
-		},
+		{ label = "Import as Model", icon = "builtin://global-icons/KinemiumWhite.png", callback = importKine },
 	},
 })
 
@@ -563,6 +527,8 @@ return function(content, windowControls)
 		end
 
 		local fileType = fileTypeOf(entry)
+
+		print(entry)
 
 		if fileType ~= nil and fileType.icon ~= nil then
 			return fileType.icon
