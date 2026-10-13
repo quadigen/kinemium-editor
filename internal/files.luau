@@ -257,8 +257,8 @@ end
 
 local kine_ctx = nil
 local import_confirmation, _, prompt_controller = UI.prompt({
-	title = "Import Untrusted Model",
-	description = "This model is unknown, Are you sure you want to import it into your workspace?",
+	title = "Import Model",
+	description = "This model is untrusted, Are you sure you want to import it into your workspace?",
 	destroyOnClose = true,
 	buttons = {
 		{ id = "cancel", text = "Cancel", role = "ghost" },
@@ -284,6 +284,7 @@ registerFileType({
 
 	onOpen = function(ctx)
 		kine_ctx = ctx
+		print("hello")
 		prompt_controller:Open()
 	end,
 
