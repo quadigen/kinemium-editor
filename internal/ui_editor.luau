@@ -677,7 +677,7 @@ local windowFrame = UI.create("Frame", {
 	Active = true,
 	ZIndex = 900,
 	Visible = true,
-}, UI.root())
+}, UI.rootOverlay())
 
 UI.corner(windowFrame, tokens.radius.md)
 
