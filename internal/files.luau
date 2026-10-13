@@ -528,10 +528,12 @@ return function(content, windowControls)
 
 		local fileType = fileTypeOf(entry)
 
-		print(entry)
-
 		if fileType ~= nil and fileType.icon ~= nil then
 			return fileType.icon
+		end
+
+		if string.find(entry.Name, "loki") then
+			return "builtin://global-icons/loki.png"
 		end
 
 		return "builtin://icons/File.svg"
