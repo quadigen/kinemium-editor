@@ -9,7 +9,6 @@ local Project = game:GetService("Project")
 local dialog = game:GetService("DialogService")
 local export_service = game:GetService("ExportService")
 local util = require("@internal/util")
-local ui_editor = require("@internal/ui_editor")
 
 local StudioThemeService = game:GetService("StudioThemeService")
 local Selection = game:GetService("Selection")
@@ -245,18 +244,6 @@ registerFileType({
 	thumbnail = false,
 	onDrop = importKine,
 	onOpen = importKine,
-	contextItems = {
-		{ label = "Import as Model", icon = "builtin://global-icons/KinemiumWhite.png", callback = importKine },
-	},
-})
-
-registerFileType({
-	name = "KUI",
-	extensions = { "kui" },
-	icon = "builtin://global-icons/KinemiumWhite.png",
-	thumbnail = false,
-	onDrop = ui_editor.OpenScene,
-	onOpen = ui_editor.OpenScene,
 	contextItems = {
 		{ label = "Import as Model", icon = "builtin://global-icons/KinemiumWhite.png", callback = importKine },
 	},

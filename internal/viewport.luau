@@ -5,6 +5,7 @@ end
 local UI = require("@internal/editor_ui")
 local CodeEditor = require("@internal/code_editor")
 local docker = require("@internal/docker")
+local UIEditor = require("@internal/ui_editor")
 
 local StudioThemeService = game:GetService("StudioThemeService")
 local theme = StudioThemeService.SelectedTheme
@@ -318,6 +319,19 @@ local function updateTools()
 	end
 end
 
+local uiEditor = UIEditor.new({
+	overlay = viewportOverlay,
+	canPick = renderer.Dimension == "2D",
+	getTool = function()
+		return activeTool
+	end,
+	getSnap = function()
+		return snapEnabled
+	end,
+	snapStep = 4,
+	rotateSnap = 15,
+})
+
 for index, definition in ipairs(renderer.Dimension == "2D" and tools2D or tools3D) do
 	local current = definition
 
@@ -596,6 +610,8 @@ renderer.Pool.new("2da", function()
 			object.RenderOffset = Vector2.new(absoluteX, renderTop)
 		end
 	end
+	uiEditor:SetEnabled(not scriptRoot.Visible)
+	uiEditor:Update()
 end)
 
 return {
@@ -692,5 +708,9 @@ return {
 
 	SetDropHighlight = function(visible)
 		dropHighlight.Visible = visible == true
+	end,
+
+	GetUIEditor = function()
+		return uiEditor
 	end,
 }

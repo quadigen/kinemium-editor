@@ -1,2182 +1,610 @@
-if (IsServer or IsClient) or IsPlaytest then
-	return nil
-end
-
 local UI = require("@internal/editor_ui")
 
-local Project = game:GetService("Project")
-local dialog = game:GetService("DialogService")
+local Selection = game:GetService("Selection")
+local StarterGui = game:GetService("StarterGui")
 local UserInputService = game:GetService("UserInputService")
 
 local colors = UI.colors
 local tokens = UI.tokens
-local inset = UI.metrics.panelInset
 
-local TREE_W, INSPECTOR_W = 150, 190
-local HANDLE = 7
+local HANDLE_SIZE = 9
 local MIN_SIZE = 4
-local MIN_ZOOM, MAX_ZOOM = 0.25, 4
-local HISTORY_LIMIT = 100
-local SCENE_EXT = ".kui"
-local LUA_EXT = ".ui.luau"
+local Z = 10
 
-local CLASSES = {
-	Frame = { w = 120, h = 80, color = "#3A3F4B", transparency = 0, icon = "builtin://icons/File.svg" },
-	TextLabel = {
-		w = 120,
-		h = 24,
-		color = "#000000",
-		transparency = 1,
-		hasText = true,
-		text = "Label",
-		icon = "builtin://icons/Script.svg",
-	},
-	TextButton = {
-		w = 100,
-		h = 28,
-		color = "#4B5563",
-		transparency = 0,
-		hasText = true,
-		text = "Button",
-		icon = "builtin://icons/Script.svg",
-	},
-	ImageLabel = {
-		w = 64,
-		h = 64,
-		color = "#3A3F4B",
-		transparency = 0,
-		hasImage = true,
-		icon = "builtin://icons/ImageLabel.svg",
-	},
+local RESIZE_HANDLES = {
+	{ name = "NW", x = 0, y = 0, l = true, t = true },
+	{ name = "N", x = 0.5, y = 0, t = true },
+	{ name = "NE", x = 1, y = 0, r = true, t = true },
+	{ name = "E", x = 1, y = 0.5, r = true },
+	{ name = "SE", x = 1, y = 1, r = true, b = true },
+	{ name = "S", x = 0.5, y = 1, b = true },
+	{ name = "SW", x = 0, y = 1, l = true, b = true },
+	{ name = "W", x = 0, y = 0.5, l = true },
 }
 
-local CLASS_ORDER = { "Frame", "TextLabel", "TextButton", "ImageLabel" }
-
-local NUMBER_KEYS = { "x", "y", "w", "h", "transparency", "radius", "textSize" }
-local STRING_KEYS = { "color", "text", "textColor", "image" }
-
---------------------------------------------------------------------------------
--- JSON (self-contained so saving does not depend on any service)
---------------------------------------------------------------------------------
-
-local json = {}
-
-local ESCAPES = { ['"'] = '\\"', ["\\"] = "\\\\", ["\n"] = "\\n", ["\r"] = "\\r", ["\t"] = "\\t" }
-
-local function escapeString(s)
-	return '"' .. (s:gsub('[%c"\\]', function(c)
-		return ESCAPES[c] or string.format("\\u%04x", c:byte())
-	end)) .. '"'
-end
-
-function json.encode(value)
-	local kind = type(value)
-
-	if kind == "string" then
-		return escapeString(value)
-	elseif kind == "number" then
-		if value ~= value or value == math.huge or value == -math.huge then
-			return "0"
-		end
-
-		return string.format("%.14g", value)
-	elseif kind == "boolean" then
-		return tostring(value)
-	elseif kind == "table" then
-		if #value > 0 or next(value) == nil then
-			local out = {}
-
-			for index, item in ipairs(value) do
-				out[index] = json.encode(item)
-			end
-
-			return "[" .. table.concat(out, ",") .. "]"
-		end
-
-		local keys = {}
-
-		for key in pairs(value) do
-			keys[#keys + 1] = key
-		end
-
-		table.sort(keys)
-
-		local out = {}
-
-		for _, key in ipairs(keys) do
-			out[#out + 1] = escapeString(key) .. ":" .. json.encode(value[key])
-		end
-
-		return "{" .. table.concat(out, ",") .. "}"
-	end
-
-	return "null"
-end
-
-function json.decode(text)
-	local pos = 1
-	local parseValue
-
-	local function skip()
-		pos = text:find("%S", pos) or #text + 1
-	end
-
-	local function parseString()
-		pos += 1
-
-		local out = {}
-
-		while true do
-			local c = text:sub(pos, pos)
-
-			if c == "" then
-				error("unterminated string")
-			end
-
-			if c == '"' then
-				pos += 1
-				break
-			end
-
-			if c == "\\" then
-				local n = text:sub(pos + 1, pos + 1)
-
-				if n == "u" then
-					out[#out + 1] = utf8.char(tonumber(text:sub(pos + 2, pos + 5), 16) or 63)
-					pos += 6
-				else
-					out[#out + 1] = ({ n = "\n", r = "\r", t = "\t", b = "\b", f = "\f" })[n] or n
-					pos += 2
-				end
-			else
-				out[#out + 1] = c
-				pos += 1
-			end
-		end
-
-		return table.concat(out)
-	end
-
-	parseValue = function()
-		skip()
-
-		local c = text:sub(pos, pos)
-
-		if c == "{" then
-			pos += 1
-
-			local object = {}
-
-			skip()
-
-			if text:sub(pos, pos) == "}" then
-				pos += 1
-				return object
-			end
-
-			while true do
-				skip()
-
-				local key = parseString()
-
-				skip()
-
-				if text:sub(pos, pos) ~= ":" then
-					error("expected ':'")
-				end
-
-				pos += 1
-				object[key] = parseValue()
-
-				skip()
-
-				local d = text:sub(pos, pos)
-
-				pos += 1
-
-				if d == "}" then
-					return object
-				elseif d ~= "," then
-					error("expected ',' or '}'")
-				end
-			end
-		elseif c == "[" then
-			pos += 1
-
-			local array = {}
-
-			skip()
-
-			if text:sub(pos, pos) == "]" then
-				pos += 1
-				return array
-			end
-
-			while true do
-				array[#array + 1] = parseValue()
-
-				skip()
-
-				local d = text:sub(pos, pos)
-
-				pos += 1
-
-				if d == "]" then
-					return array
-				elseif d ~= "," then
-					error("expected ',' or ']'")
-				end
-			end
-		elseif c == '"' then
-			return parseString()
-		elseif text:sub(pos, pos + 3) == "true" then
-			pos += 4
-			return true
-		elseif text:sub(pos, pos + 4) == "false" then
-			pos += 5
-			return false
-		elseif text:sub(pos, pos + 3) == "null" then
-			pos += 4
-			return nil
-		end
-
-		local number = text:match("^-?%d+%.?%d*[eE]?[+-]?%d*", pos)
-
-		if number == nil or number == "" then
-			error("unexpected character at " .. pos)
-		end
-
-		pos += #number
-
-		return tonumber(number)
-	end
-
-	return parseValue()
-end
-
---------------------------------------------------------------------------------
--- Small helpers
---------------------------------------------------------------------------------
-
-local function hexToColor(hex)
-	local r, g, b = tostring(hex):match("^#?(%x%x)(%x%x)(%x%x)$")
-
-	if r == nil then
-		return nil
-	end
-
-	return Color3.fromRGB(tonumber(r, 16), tonumber(g, 16), tonumber(b, 16))
-end
-
-local function normalizeHex(text)
-	local r, g, b = tostring(text):match("^%s*#?(%x%x)(%x%x)(%x%x)%s*$")
-
-	if r == nil then
-		return nil
-	end
-
-	return string.upper("#" .. r .. g .. b)
-end
-
-local function fmt(number)
-	return string.format("%g", math.floor(number * 100 + 0.5) / 100)
-end
-
-local function joinPath(parent, name)
-	local last = parent:sub(-1)
-
-	if last == "/" or last == "\\" then
-		return parent .. name
-	end
-
-	return parent .. (parent:find("\\") and "\\" or "/") .. name
-end
-
-local function toastMessage(kind, title, message)
-	pcall(function()
-		UI.toast("uieditor", {
-			type = kind,
-			title = title,
-			message = message,
-			details = "",
-			detailsTitle = "",
-			backgroundTransparency = 0.4,
-			blur = true,
-			duration = 5,
-		})
-	end)
-end
-
-local function setProps(gui, props)
-	for key, value in pairs(props) do
-		pcall(function()
-			gui[key] = value
-		end)
-	end
-end
-
---------------------------------------------------------------------------------
--- Scene model
---------------------------------------------------------------------------------
-
-local function newNode(id, class, name)
-	local def = CLASSES[class]
-
-	return {
-		id = id,
-		class = class,
-		name = name,
-		x = 0,
-		y = 0,
-		w = def.w,
-		h = def.h,
-		color = def.color,
-		transparency = def.transparency,
-		radius = 0,
-		text = def.text or "",
-		textColor = "#FFFFFF",
-		textSize = 14,
-		image = "",
-		children = {},
-		parent = nil,
-	}
-end
-
-local function defaultRoot()
-	local node = newNode(0, "Frame", "Screen")
-
-	node.w, node.h = 640, 360
-	node.color = "#1F2229"
-
-	return node
-end
-
-local function toData(node)
-	local data = { id = node.id, class = node.class, name = node.name, children = {} }
-
-	for _, key in ipairs(NUMBER_KEYS) do
-		data[key] = node[key]
-	end
-
-	for _, key in ipairs(STRING_KEYS) do
-		data[key] = node[key]
-	end
-
-	for index, child in ipairs(node.children) do
-		data.children[index] = toData(child)
-	end
-
-	return data
-end
-
-local function fromData(data, parent)
-	local class = CLASSES[data.class] and data.class or "Frame"
-	local node = newNode(tonumber(data.id) or 0, class, tostring(data.name or class))
-
-	for _, key in ipairs(NUMBER_KEYS) do
-		node[key] = tonumber(data[key]) or node[key]
-	end
-
-	for _, key in ipairs(STRING_KEYS) do
-		if type(data[key]) == "string" then
-			node[key] = data[key]
-		end
-	end
-
-	node.parent = parent
-
-	for _, childData in ipairs(data.children or {}) do
-		node.children[#node.children + 1] = fromData(childData, node)
-	end
-
-	return node
-end
-
-local function absolutePosition(node)
-	local x, y = 0, 0
-	local current = node
-
-	while current.parent ~= nil do
-		x += current.x
-		y += current.y
-		current = current.parent
-	end
-
-	return x, y
-end
-
-local function findById(node, id)
-	if node.id == id then
-		return node
-	end
-
-	for _, child in ipairs(node.children) do
-		local found = findById(child, id)
-
-		if found ~= nil then
-			return found
-		end
-	end
-
-	return nil
-end
-
-local function maxId(node)
-	local highest = node.id
-
-	for _, child in ipairs(node.children) do
-		highest = math.max(highest, maxId(child))
-	end
-
-	return highest
-end
-
-local function hitTest(node, ox, oy, px, py)
-	for index = #node.children, 1, -1 do
-		local child = node.children[index]
-		local hit = hitTest(child, ox + child.x, oy + child.y, px, py)
-
-		if hit ~= nil then
-			return hit
-		end
-	end
-
-	if px >= ox and px <= ox + node.w and py >= oy and py <= oy + node.h then
-		return node
-	end
-
-	return nil
-end
-
---------------------------------------------------------------------------------
--- Luau export: a script that rebuilds the scene with Instance.new
---------------------------------------------------------------------------------
-
-local function colorLiteral(hex)
-	local r, g, b = tostring(hex):match("^#(%x%x)(%x%x)(%x%x)$")
-
-	return string.format(
-		"Color3.fromRGB(%d, %d, %d)",
-		tonumber(r or "0", 16),
-		tonumber(g or "0", 16),
-		tonumber(b or "0", 16)
-	)
-end
-
-local function generateLua(sceneRoot)
-	local lines = {
-		"-- Generated by the UI Editor. Edit the " .. SCENE_EXT .. " file and re-export; changes here are lost.",
-		"return function(parent)",
-		"\tlocal function make(class, props, parent)",
-		"\t\tlocal object = Instance.new(class)",
-		"\t\tfor key, value in pairs(props) do",
-		"\t\t\tobject[key] = value",
-		"\t\tend",
-		"\t\tobject.Parent = parent",
-		"\t\treturn object",
-		"\tend",
-		"",
-	}
-
-	local function emit(node, parentVar, depth)
-		local def = CLASSES[node.class]
-		local isRoot = node.parent == nil
-		local var = isRoot and "root" or ("node" .. depth)
-		local pad = string.rep("\t", depth)
-
-		local props = {
-			string.format("Name = %q", node.name),
-			string.format("Size = UDim2.fromOffset(%s, %s)", fmt(node.w), fmt(node.h)),
-			"BackgroundColor3 = " .. colorLiteral(node.color),
-			"BackgroundTransparency = " .. fmt(node.transparency),
-			"BorderSizePixel = 0",
-		}
-
-		if not isRoot then
-			table.insert(props, 2, string.format("Position = UDim2.fromOffset(%s, %s)", fmt(node.x), fmt(node.y)))
-		end
-
-		if def.hasText then
-			props[#props + 1] = string.format("Text = %q", node.text)
-			props[#props + 1] = "TextColor3 = " .. colorLiteral(node.textColor)
-			props[#props + 1] = "TextSize = " .. fmt(node.textSize)
-		end
-
-		if def.hasImage then
-			props[#props + 1] = string.format("Image = %q", node.image)
-		end
-
-		if not isRoot then
-			lines[#lines + 1] = pad .. "do"
-			pad ..= "\t"
-		end
-
-		lines[#lines + 1] = string.format(
-			"%slocal %s = make(%q, { %s }, %s)",
-			pad,
-			var,
-			node.class,
-			table.concat(props, ", "),
-			parentVar
-		)
-
-		if node.radius > 0 and not isRoot then
-			lines[#lines + 1] =
-				string.format('%smake("UICorner", { CornerRadius = UDim.new(0, %s) }, %s)', pad, fmt(node.radius), var)
-		end
-
-		for _, child in ipairs(node.children) do
-			emit(child, var, depth + 1)
-		end
-
-		if not isRoot then
-			lines[#lines + 1] = string.rep("\t", depth) .. "end"
-		end
-	end
-
-	emit(sceneRoot, "parent", 1)
-
-	lines[#lines + 1] = "\treturn root"
-	lines[#lines + 1] = "end"
-
-	return table.concat(lines, "\n") .. "\n"
-end
-
---------------------------------------------------------------------------------
--- File IO (the only place that guesses at your Project API)
---------------------------------------------------------------------------------
-
-local function writeText(path, text)
-	local attempts = {
-		function()
-			return Project:WriteFile(path, text)
-		end,
-		function()
-			return Project:SetFileContents(path, text)
-		end,
-	}
-
-	for _, attempt in ipairs(attempts) do
-		local ok, result = pcall(attempt)
-
-		if ok and result ~= false then
-			return true
-		end
-	end
-
-	return false
-end
-
-local function readText(path)
-	local attempts = {
-		function()
-			return Project:ReadFile(path)
-		end,
-		function()
-			return Project:GetFileContents(path)
-		end,
-	}
-
-	for _, attempt in ipairs(attempts) do
-		local ok, result = pcall(attempt)
-
-		if ok and type(result) == "string" then
-			return result
-		end
-	end
-
-	return nil
-end
-
-local function ensureFile(directory, name)
-	local ok, entries = pcall(function()
-		return Project:GetProjectEntries(directory)
-	end)
-
-	if ok and type(entries) == "table" then
-		for _, entry in ipairs(entries) do
-			if entry.Name == name then
-				return joinPath(directory, name)
-			end
-		end
-	end
-
-	local created
-	ok, created = pcall(function()
-		return Project:CreateFile(directory, name)
-	end)
-
-	if ok and type(created) == "string" and created ~= "" then
-		return created
-	end
-
-	return nil
-end
-
---------------------------------------------------------------------------------
--- Inspector field definitions
---------------------------------------------------------------------------------
-
-local function always()
-	return true
-end
-
-local function notRoot(node)
-	return node.parent ~= nil
-end
-
-local function hasText(node)
-	return CLASSES[node.class].hasText == true
-end
-
-local function hasImage(node)
-	return CLASSES[node.class].hasImage == true
-end
-
-local FIELDS = {
-	{ key = "name", label = "Name", kind = "string", applies = always },
-	{ key = "x", label = "X", kind = "number", applies = notRoot },
-	{ key = "y", label = "Y", kind = "number", applies = notRoot },
-	{ key = "w", label = "Width", kind = "number", min = MIN_SIZE, applies = always },
-	{ key = "h", label = "Height", kind = "number", min = MIN_SIZE, applies = always },
-	{ key = "color", label = "Color", kind = "color", applies = always },
-	{ key = "transparency", label = "Transparency", kind = "number", min = 0, max = 1, applies = always },
-	{ key = "radius", label = "Corner", kind = "number", min = 0, applies = notRoot },
-	{ key = "text", label = "Text", kind = "string", applies = hasText },
-	{ key = "textSize", label = "Text Size", kind = "number", min = 1, applies = hasText },
-	{ key = "textColor", label = "Text Color", kind = "color", applies = hasText },
-	{ key = "image", label = "Image", kind = "string", applies = hasImage },
+local ARROWS = {
+	[Enum.KeyCode.Left] = Vector2.new(-1, 0),
+	[Enum.KeyCode.Right] = Vector2.new(1, 0),
+	[Enum.KeyCode.Up] = Vector2.new(0, -1),
+	[Enum.KeyCode.Down] = Vector2.new(0, 1),
 }
 
-local function formatValue(field, value)
-	if field.kind == "number" then
-		return fmt(value)
+local Editor = {}
+Editor.__index = Editor
+
+local function shiftUDim(u, deltaPx, span)
+	if u.Scale ~= 0 and u.Offset == 0 and span > 0 then
+		return UDim.new(u.Scale + deltaPx / span, 0)
 	end
 
-	return tostring(value)
+	return UDim.new(u.Scale, math.floor(u.Offset + deltaPx + 0.5))
 end
 
---------------------------------------------------------------------------------
--- Panel
---------------------------------------------------------------------------------
-
-----------------------------------------------------------------------------
--- Window
-----------------------------------------------------------------------------
-
-local WINDOW_MIN_W, WINDOW_MIN_H = 560, 340
-local headerHeight = UI.metrics.windowHeader or 26
-
-local gui = Instance.new("ScreenGui")
-gui.RenderOnTop = true
-gui.Parent = game.CoreGui
-
-local windowFrame = UI.create("Frame", {
-	Position = UDim2.fromOffset(80, 60),
-	Size = UDim2.fromOffset(900, 560),
-	BackgroundColor3 = tokens.color.surface,
-	BackgroundTransparency = 0.05,
-	BorderSizePixel = 0,
-	ClipsDescendants = true,
-	Active = true,
-	ZIndex = 900,
-	Visible = true,
-}, gui)
-
-UI.corner(windowFrame, tokens.radius.md)
-
-local header = UI.create("Frame", {
-	Position = UDim2.fromOffset(0, 0),
-	Size = UDim2.new(1, 0, 0, headerHeight),
-	BackgroundColor3 = tokens.color.input,
-	BackgroundTransparency = 0.25,
-	BorderSizePixel = 0,
-	Active = true,
-}, windowFrame)
-
-local titleLabel = UI.label(
-	header,
-	"UI Editor",
-	UDim2.fromOffset(10, math.floor((headerHeight - 17) / 2)),
-	UDim2.new(1, -(headerHeight + 16), 0, 17),
-	tokens.type.small,
-	tokens.color.text
-)
-
-local content = UI.create("Frame", {
-	Position = UDim2.fromOffset(0, headerHeight),
-	Size = UDim2.new(1, 0, 1, -headerHeight),
-	BackgroundTransparency = 1,
-	BorderSizePixel = 0,
-	Active = false,
-}, windowFrame)
-
-local resizeGrip = UI.create("Frame", {
-	Position = UDim2.new(1, -14, 1, -14),
-	Size = UDim2.fromOffset(14, 14),
-	BackgroundColor3 = tokens.color.subtext,
-	BackgroundTransparency = 0.6,
-	BorderSizePixel = 0,
-	Active = true,
-	ZIndex = 10,
-}, windowFrame)
-
-local root = defaultRoot()
-
-local nextId = 1
-local selected = nil
-local sceneName = "Scene"
-
-local zoom, panX, panY = 1, 20, 20
-
-local undoStack, redoStack = {}, {}
-local drag = nil
-
-local treeDirty, inspectorDirty = true, true
-local inspectorFields = {}
-
-local handleRects = {}
-local HANDLE_DIRS = {
-	{ -1, -1 },
-	{ 0, -1 },
-	{ 1, -1 },
-	{ 1, 0 },
-	{ 1, 1 },
-	{ 0, 1 },
-	{ -1, 1 },
-	{ -1, 0 },
-}
-
-local applyNode
-local rebuildCanvas
-local updateOverlay
-local selectNode
-
-local windowDrag = nil
-
-local function mouseOverWindow()
-	if not windowFrame.Visible then
-		return false
-	end
-
-	local mouse = UserInputService:GetMouseLocation()
-	local position = windowFrame.AbsolutePosition
-	local size = windowFrame.AbsoluteSize
-
-	return mouse.X >= position.X
-		and mouse.X <= position.X + size.X
-		and mouse.Y >= position.Y
-		and mouse.Y <= position.Y + size.Y
+local function udim2(x, y)
+	return UDim2.new(x.Scale, x.Offset, y.Scale, y.Offset)
 end
 
-local function setWindowVisible(visible)
-	windowFrame.Visible = visible
-
-	if not visible then
-		drag = nil
-		windowDrag = nil
-	else
-		treeDirty = true
-		inspectorDirty = true
-	end
+local function snapValue(value, origin, step)
+	return math.floor((value - origin) / step + 0.5) * step + origin
 end
 
-UI.button(
-	header,
-	"x",
-	UDim2.new(1, -headerHeight, 0, 2),
-	UDim2.fromOffset(headerHeight - 4, headerHeight - 4),
-	function()
-		setWindowVisible(false)
-	end,
-	{
-		color = tokens.color.input,
-		hoverColor = tokens.color.hover,
-		radius = tokens.radius.sm,
-		border = false,
-	}
-)
+function Editor.new(options)
+	options = options or {}
 
-header.InputBegan:Connect(function(input)
-	if input.UserInputType ~= Enum.UserInputType.MouseButton1 then
-		return
+	local self = setmetatable({}, Editor)
+
+	self.overlay = options.overlay
+	self.getTool = options.getTool or function()
+		return "Select"
 	end
-
-	local mouse = UserInputService:GetMouseLocation()
-
-	windowDrag = {
-		mode = "move",
-		sx = mouse.X,
-		sy = mouse.Y,
-		px = windowFrame.Position.X.Offset,
-		py = windowFrame.Position.Y.Offset,
-	}
-end)
-
-resizeGrip.InputBegan:Connect(function(input)
-	if input.UserInputType ~= Enum.UserInputType.MouseButton1 then
-		return
+	self.getSnap = options.getSnap or function()
+		return true
 	end
+	self.snapStep = options.snapStep or 4
+	self.rotateSnap = options.rotateSnap or 15
+	self.canPick = options.canPick == true
+	self.enabled = true
+	self.target = nil
+	self.drag = nil
+	self.connections = {}
 
-	local mouse = UserInputService:GetMouseLocation()
-
-	windowDrag = {
-		mode = "resize",
-		sx = mouse.X,
-		sy = mouse.Y,
-		w = windowFrame.Size.X.Offset,
-		h = windowFrame.Size.Y.Offset,
-	}
-end)
-
-UserInputService.InputChanged:Connect(function(input)
-	if windowDrag == nil or input.UserInputType ~= Enum.UserInputType.MouseMovement then
-		return
-	end
-
-	local mouse = UserInputService:GetMouseLocation()
-	local dx = mouse.X - windowDrag.sx
-	local dy = mouse.Y - windowDrag.sy
-
-	if windowDrag.mode == "move" then
-		windowFrame.Position = UDim2.fromOffset(windowDrag.px + dx, math.max(0, windowDrag.py + dy))
-	else
-		windowFrame.Size =
-			UDim2.fromOffset(math.max(WINDOW_MIN_W, windowDrag.w + dx), math.max(WINDOW_MIN_H, windowDrag.h + dy))
-	end
-end)
-
-UserInputService.InputEnded:Connect(function(input)
-	if windowDrag ~= nil and input.UserInputType == Enum.UserInputType.MouseButton1 then
-		windowDrag = nil
-	end
-end)
-
-local function snap(value)
-	return math.floor(value + 0.5)
-end
-
-local function markTree()
-	treeDirty = true
-end
-
-local function markInspector()
-	inspectorDirty = true
-end
-
-----------------------------------------------------------------------------
--- Layout
-----------------------------------------------------------------------------
-
-local rowHeight = UI.metrics.inputHeight
-local row1Y = 6
-local row2Y = row1Y + rowHeight + 4
-local bodyTop = row2Y + rowHeight + 6
-
-local function makeScroll(position, size)
-	local l = UI.create("ScrollingFrame", {
-		Position = position,
-		Size = size,
-
-		BackgroundColor3 = tokens.color.surface,
-		BackgroundTransparency = 0.5,
+	self.hit = UI.create("TextButton", {
+		Name = "GuiEditorHit",
+		Text = "",
+		Size = UDim2.fromScale(1, 1),
+		BackgroundTransparency = 1,
 		BorderSizePixel = 0,
+		AutoButtonColor = false,
+		Active = true,
+		InputSink = false,
+		ZIndex = 0,
+		Visible = self.canPick,
+	}, self.overlay)
 
-		CanvasPosition = Vector2.new(0, 0),
-		CanvasSize = UDim2.new(1, 0, 0, 0),
-
-		ScrollingEnabled = true,
-		VirtualizedScrolling = true,
-		ScrollSpeed = 38,
-		SmoothScrollingEnabled = true,
-		ScrollSmoothness = 18,
-
-		ScrollBarThickness = 5,
-		ScrollBarImageColor3 = tokens.color.subtext,
-		ScrollBarImageTransparency = 0.4,
-		ScrollBarAutoHide = true,
-		ScrollBarMinimumHandleSize = 24,
-
-		ClipsDescendants = true,
+	self.box = UI.create("TextButton", {
+		Name = "GuiEditorBox",
+		Text = "",
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		BackgroundTransparency = 1,
+		BorderSizePixel = 0,
+		AutoButtonColor = false,
 		Active = true,
 		InputSink = true,
-	}, content)
-
-	UI.corner(l, tokens.radius.md)
-
-	return l
-end
-
-local treeList = makeScroll(UDim2.fromOffset(inset, bodyTop), UDim2.new(0, TREE_W, 1, -(bodyTop + 6)))
-
-local inspectorList =
-	makeScroll(UDim2.new(1, -(inset + INSPECTOR_W), 0, bodyTop), UDim2.new(0, INSPECTOR_W, 1, -(bodyTop + 6)))
-
-local viewFrame = UI.create("Frame", {
-	Position = UDim2.fromOffset(inset + TREE_W + 4, bodyTop),
-	Size = UDim2.new(1, -(inset * 2 + TREE_W + INSPECTOR_W + 8), 1, -(bodyTop + 6)),
-	BackgroundColor3 = tokens.color.input,
-	BackgroundTransparency = 0.3,
-	BorderSizePixel = 0,
-	ClipsDescendants = true,
-	Active = true,
-}, content)
-
-UI.corner(viewFrame, tokens.radius.md)
-
-local screenFrame = UI.create("Frame", {
-	Position = UDim2.fromOffset(panX, panY),
-	Size = UDim2.fromOffset(root.w, root.h),
-	BackgroundColor3 = hexToColor(root.color),
-	BorderSizePixel = 0,
-	Active = false,
-}, viewFrame)
-
-root.gui = screenFrame
-
-local edges, handles = {}, {}
-
-for index = 1, 4 do
-	edges[index] = UI.create("Frame", {
-		BackgroundColor3 = colors.selection,
-		BorderSizePixel = 0,
-		Active = false,
-		ZIndex = 5000,
 		Visible = false,
-		Size = UDim2.fromOffset(2, 2),
-	}, viewFrame)
-end
+		ZIndex = Z,
+	}, self.overlay)
 
-for index = 1, 8 do
-	handles[index] = UI.create("Frame", {
+	UI.stroke(self.box, colors.accent, 1, 0)
+
+	self.handles = {}
+
+	for _, definition in ipairs(RESIZE_HANDLES) do
+		local handle = UI.create("TextButton", {
+			Name = "Handle" .. definition.name,
+			Text = "",
+			AnchorPoint = Vector2.new(0.5, 0.5),
+			Position = UDim2.fromScale(definition.x, definition.y),
+			Size = UDim2.fromOffset(HANDLE_SIZE, HANDLE_SIZE),
+			BackgroundColor3 = Color3.new(1, 1, 1),
+			BorderSizePixel = 0,
+			AutoButtonColor = false,
+			Active = true,
+			InputSink = true,
+			ZIndex = Z + 1,
+		}, self.box)
+
+		UI.stroke(handle, colors.accent, 1, 0)
+
+		handle.MouseButton1Down:Connect(function()
+			self:beginDrag("resize", definition)
+		end)
+
+		self.handles[definition.name] = handle
+	end
+
+	self.rotateStem = UI.create("Frame", {
+		Name = "RotateStem",
+		AnchorPoint = Vector2.new(0.5, 1),
+		Position = UDim2.new(0.5, 0, 0, 0),
+		Size = UDim2.fromOffset(1, 18),
+		BackgroundColor3 = colors.accent,
+		BorderSizePixel = 0,
+		ZIndex = Z + 1,
+		Visible = false,
+	}, self.box)
+
+	self.rotateHandle = UI.create("TextButton", {
+		Name = "RotateHandle",
+		Text = "",
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.new(0.5, 0, 0, -24),
+		Size = UDim2.fromOffset(12, 12),
 		BackgroundColor3 = Color3.new(1, 1, 1),
 		BorderSizePixel = 0,
-		Active = false,
-		ZIndex = 5001,
+		AutoButtonColor = false,
+		Active = true,
+		InputSink = true,
+		ZIndex = Z + 2,
 		Visible = false,
-		Size = UDim2.fromOffset(HANDLE, HANDLE),
-	}, viewFrame)
-end
+	}, self.box)
 
-local zoomLabel = UI.label(
-	content,
-	"100%",
-	UDim2.new(1, -(inset + 56), 0, row2Y + 2),
-	UDim2.fromOffset(56, 16),
-	tokens.type.small,
-	tokens.color.muted
-)
+	UI.corner(self.rotateHandle, 6)
+	UI.stroke(self.rotateHandle, colors.accent, 1, 0)
 
-----------------------------------------------------------------------------
--- Canvas rendering
-----------------------------------------------------------------------------
+	self.readout =
+		UI.label(self.overlay, "", UDim2.fromOffset(0, 0), UDim2.fromOffset(170, 16), tokens.type.caption, colors.text)
+	self.readout.BackgroundColor3 = colors.secondary
+	self.readout.BackgroundTransparency = 0.15
+	self.readout.ZIndex = Z + 3
+	self.readout.Visible = false
+	UI.corner(self.readout, tokens.radius.xs)
 
-applyNode = function(node)
-	local gui = node.gui
-
-	if gui == nil or not UI.isAlive(gui) then
-		return
-	end
-
-	local def = CLASSES[node.class]
-
-	if node.parent == nil then
-		setProps(gui, {
-			Position = UDim2.fromOffset(panX, panY),
-			Size = UDim2.fromOffset(node.w * zoom, node.h * zoom),
-		})
-	else
-		setProps(gui, {
-			Position = UDim2.fromOffset(node.x * zoom, node.y * zoom),
-			Size = UDim2.fromOffset(node.w * zoom, node.h * zoom),
-		})
-	end
-
-	setProps(gui, {
-		BackgroundColor3 = hexToColor(node.color) or Color3.new(0, 0, 0),
-		BackgroundTransparency = node.transparency,
-		BorderSizePixel = 0,
-		Active = false,
-	})
-
-	if def.hasText then
-		setProps(gui, {
-			Text = node.text,
-			TextColor3 = hexToColor(node.textColor) or Color3.new(1, 1, 1),
-			TextSize = math.max(1, math.floor(node.textSize * zoom + 0.5)),
-			TextWrapped = true,
-		})
-	end
-
-	if def.hasImage then
-		setProps(gui, { Image = node.image })
-	end
-
-	if node.corner ~= nil then
-		setProps(node.corner, { CornerRadius = UDim.new(0, node.radius * zoom) })
-	end
-end
-
-local function realize(node, parentGui, depth, index)
-	local gui = UI.create(node.class, { ZIndex = depth * 50 + index }, parentGui)
-
-	node.gui = gui
-	node.corner = nil
-
-	local ok, corner = pcall(function()
-		local c = Instance.new("UICorner")
-
-		c.Name = "EditorCorner"
-		c.Parent = gui
-
-		return c
+	self.box.MouseButton1Down:Connect(function()
+		self:beginDrag("move")
 	end)
 
-	if ok then
-		node.corner = corner
-	end
+	self.rotateHandle.MouseButton1Down:Connect(function()
+		self:beginDrag("rotate")
+	end)
 
-	applyNode(node)
+	self.hit.MouseButton1Down:Connect(function(x, y)
+		self:pickAt(Vector2.new(x, y))
+	end)
 
-	for childIndex, child in ipairs(node.children) do
-		realize(child, gui, depth + 1, childIndex)
-	end
-end
-
-rebuildCanvas = function()
-	UI.clear(screenFrame)
-
-	root.gui = screenFrame
-	root.corner = nil
-
-	applyNode(root)
-
-	for index, child in ipairs(root.children) do
-		realize(child, screenFrame, 1, index)
-	end
-
-	updateOverlay()
-
-	zoomLabel.Text = string.format("%d%%", math.floor(zoom * 100 + 0.5))
-end
-
-updateOverlay = function()
-	local node = selected
-
-	if node == nil then
-		for _, piece in ipairs(edges) do
-			piece.Visible = false
-		end
-
-		for _, piece in ipairs(handles) do
-			piece.Visible = false
-		end
-
-		return
-	end
-
-	local ax, ay = absolutePosition(node)
-
-	local x = panX + ax * zoom
-	local y = panY + ay * zoom
-	local w = node.w * zoom
-	local h = node.h * zoom
-
-	local rects = {
-		{ x, y, w, 2 },
-		{ x, y + h - 2, w, 2 },
-		{ x, y, 2, h },
-		{ x + w - 2, y, 2, h },
-	}
-
-	for index, rect in ipairs(rects) do
-		edges[index].Visible = true
-		edges[index].Position = UDim2.fromOffset(rect[1], rect[2])
-		edges[index].Size = UDim2.fromOffset(math.max(2, rect[3]), math.max(2, rect[4]))
-	end
-
-	local anchors = {
-		{ x, y },
-		{ x + w / 2, y },
-		{ x + w, y },
-		{ x + w, y + h / 2 },
-		{ x + w, y + h },
-		{ x + w / 2, y + h },
-		{ x, y + h },
-		{ x, y + h / 2 },
-	}
-
-	for index, anchor in ipairs(anchors) do
-		handleRects[index] = anchor
-
-		handles[index].Visible = node.parent ~= nil
-		handles[index].Position = UDim2.fromOffset(anchor[1] - HANDLE / 2, anchor[2] - HANDLE / 2)
-	end
-end
-
-----------------------------------------------------------------------------
--- History
-----------------------------------------------------------------------------
-
-local function checkpoint()
-	undoStack[#undoStack + 1] = json.encode(toData(root))
-
-	if #undoStack > HISTORY_LIMIT then
-		table.remove(undoStack, 1)
-	end
-
-	redoStack = {}
-end
-
-local function restore(state, selectedId)
-	local ok, data = pcall(json.decode, state)
-
-	if not ok or type(data) ~= "table" then
-		toastMessage("error", "Could not restore", "The saved scene state was invalid.")
-		return false
-	end
-
-	root = fromData(data, nil)
-	nextId = maxId(root) + 1
-	selected = selectedId and findById(root, selectedId) or nil
-
-	rebuildCanvas()
-	markTree()
-	markInspector()
-
-	return true
-end
-
-local function undo()
-	if #undoStack == 0 then
-		return
-	end
-
-	redoStack[#redoStack + 1] = json.encode(toData(root))
-
-	restore(table.remove(undoStack), selected and selected.id or nil)
-end
-
-local function redo()
-	if #redoStack == 0 then
-		return
-	end
-
-	undoStack[#undoStack + 1] = json.encode(toData(root))
-
-	restore(table.remove(redoStack), selected and selected.id or nil)
-end
-
-----------------------------------------------------------------------------
--- Selection and tree
-----------------------------------------------------------------------------
-
-selectNode = function(node)
-	selected = node
-
-	updateOverlay()
-	markTree()
-	markInspector()
-end
-
-local function refreshTree()
-	local oldPosition = treeList.CanvasPosition
-
-	UI.clear(treeList)
-
-	local y = 1
-
-	local function walk(node, depth)
-		local isSelected = node == selected
-
-		local row = UI.button(treeList, "", UDim2.fromOffset(1, y), UDim2.new(1, -2, 0, UI.metrics.treeRow), function()
-			selectNode(node)
-		end, {
-			color = isSelected and colors.selection or tokens.color.rowEven,
-			hoverColor = isSelected and colors.selection or colors.hover,
-			radius = isSelected and tokens.radius.sm or 0,
-			border = false,
-		})
-
-		row.BackgroundTransparency = isSelected and 0 or 0.12
-
-		local indent = 6 + depth * 14
-
-		UI.image(row, CLASSES[node.class].icon, UDim2.fromOffset(indent, 3), UDim2.fromOffset(14, 14))
-
-		UI.label(
-			row,
-			node.name,
-			UDim2.fromOffset(indent + 19, 2),
-			UDim2.new(1, -(indent + 22), 0, 17),
-			tokens.type.small,
-			isSelected and tokens.color.text or colors.text
-		)
-
-		y += UI.metrics.treeRow
-
-		for _, child in ipairs(node.children) do
-			walk(child, depth + 1)
-		end
-	end
-
-	walk(root, 0)
-
-	treeList.CanvasSize = UDim2.new(1, 0, 0, y + 4)
-	treeList.CanvasPosition = oldPosition
-end
-
-----------------------------------------------------------------------------
--- Inspector
-----------------------------------------------------------------------------
-
-local function refreshInspectorValues()
-	if selected == nil then
-		return
-	end
-
-	for _, field in ipairs(FIELDS) do
-		local box = inspectorFields[field.key]
-
-		if box ~= nil and UI.isAlive(box) then
-			local focused = false
-
-			pcall(function()
-				focused = box:IsFocused()
-			end)
-
-			if not focused then
-				box.Text = formatValue(field, selected[field.key])
+	table.insert(
+		self.connections,
+		UserInputService.InputChanged:Connect(function(input)
+			if self.drag and input.UserInputType == Enum.UserInputType.MouseMovement then
+				self:applyDrag(UserInputService:GetMouseLocation())
 			end
-		end
-	end
-end
-
-local function commitField(field, box, input)
-	local node = selected
-
-	if node == nil then
-		return
-	end
-
-	local function revert()
-		box.Text = formatValue(field, node[field.key])
-	end
-
-	if input ~= nil and input.KeyCode == Enum.KeyCode.Escape then
-		revert()
-		return
-	end
-
-	local value
-
-	if field.kind == "number" then
-		value = tonumber(box.Text)
-
-		if value == nil then
-			revert()
-			return
-		end
-
-		if field.min ~= nil then
-			value = math.max(field.min, value)
-		end
-
-		if field.max ~= nil then
-			value = math.min(field.max, value)
-		end
-	elseif field.kind == "color" then
-		value = normalizeHex(box.Text)
-
-		if value == nil then
-			toastMessage("warning", "Invalid color", "Use a hex color like #3A3F4B.")
-			revert()
-			return
-		end
-	else
-		value = box.Text
-
-		if field.key == "name" and value == "" then
-			revert()
-			return
-		end
-	end
-
-	if value == node[field.key] then
-		revert()
-		return
-	end
-
-	checkpoint()
-
-	node[field.key] = value
-
-	applyNode(node)
-	updateOverlay()
-
-	box.Text = formatValue(field, value)
-
-	if field.key == "name" then
-		markTree()
-	end
-end
-
-local function refreshInspector()
-	UI.clear(inspectorList)
-
-	inspectorFields = {}
-
-	if selected == nil then
-		UI.label(
-			inspectorList,
-			"Nothing selected",
-			UDim2.fromOffset(8, 8),
-			UDim2.new(1, -16, 0, 18),
-			tokens.type.small,
-			tokens.color.muted
-		)
-
-		inspectorList.CanvasSize = UDim2.new(1, 0, 0, 40)
-
-		return
-	end
-
-	local y = 6
-
-	UI.label(
-		inspectorList,
-		selected.class,
-		UDim2.fromOffset(6, y),
-		UDim2.new(1, -12, 0, 16),
-		tokens.type.small,
-		tokens.color.muted
+		end)
 	)
 
-	y += 22
+	table.insert(
+		self.connections,
+		UserInputService.InputEnded:Connect(function(input)
+			if input.UserInputType == Enum.UserInputType.MouseButton1 then
+				self.drag = nil
+				self.readout.Visible = false
+			end
+		end)
+	)
 
-	for _, field in ipairs(FIELDS) do
-		if field.applies(selected) then
-			UI.label(
-				inspectorList,
-				field.label,
-				UDim2.fromOffset(6, y + 3),
-				UDim2.fromOffset(64, 16),
-				tokens.type.small,
-				tokens.color.subtext
-			)
+	table.insert(
+		self.connections,
+		UserInputService.InputBegan:Connect(function(input)
+			local direction = ARROWS[input.KeyCode]
 
-			local box = UI.input(
-				inspectorList,
-				"",
-				UDim2.fromOffset(72, y),
-				UDim2.new(1, -80, 0, rowHeight),
-				{ textSize = tokens.type.small, color = tokens.color.input }
-			)
+			if not direction or not self.enabled or not self.target then
+				return
+			end
 
-			box.Text = formatValue(field, selected[field.key])
-
-			inspectorFields[field.key] = box
-
-			box.FocusLost:Connect(function(_, input)
-				commitField(field, box, input)
+			local ok, focused = pcall(function()
+				return UserInputService:GetFocusedTextBox()
 			end)
 
-			y += rowHeight + 4
-		end
-	end
-
-	inspectorList.CanvasSize = UDim2.new(1, 0, 0, y + 6)
-end
-
-----------------------------------------------------------------------------
--- Scene operations
-----------------------------------------------------------------------------
-
-local function indexInParent(node)
-	if node.parent == nil then
-		return nil
-	end
-
-	return table.find(node.parent.children, node)
-end
-
-local function uniqueName(parent, base)
-	local used = {}
-
-	for _, child in ipairs(parent.children) do
-		used[child.name] = true
-	end
-
-	if not used[base] then
-		return base
-	end
-
-	for index = 2, 999 do
-		local candidate = base .. index
-
-		if not used[candidate] then
-			return candidate
-		end
-	end
-
-	return base
-end
-
-local function addNode(class)
-	if CLASSES[class] == nil then
-		return
-	end
-
-	local parent = selected or root
-
-	if parent.class ~= "Frame" then
-		parent = parent.parent or root
-	end
-
-	checkpoint()
-
-	local node = newNode(nextId, class, uniqueName(parent, class))
-
-	nextId += 1
-
-	local offset = (#parent.children % 8) * 10
-
-	node.x = 12 + offset
-	node.y = 12 + offset
-	node.parent = parent
-
-	table.insert(parent.children, node)
-
-	rebuildCanvas()
-	selectNode(node)
-end
-
-local function deleteSelected()
-	if selected == nil or selected.parent == nil then
-		return
-	end
-
-	checkpoint()
-
-	local parent = selected.parent
-	local index = indexInParent(selected)
-
-	if index ~= nil then
-		table.remove(parent.children, index)
-	end
-
-	rebuildCanvas()
-	selectNode(parent)
-end
-
-local function duplicateSelected()
-	if selected == nil or selected.parent == nil then
-		return
-	end
-
-	checkpoint()
-
-	local parent = selected.parent
-	local copy = fromData(toData(selected), parent)
-
-	local function reassign(node)
-		node.id = nextId
-		nextId += 1
-
-		for _, child in ipairs(node.children) do
-			reassign(child)
-		end
-	end
-
-	reassign(copy)
-
-	copy.name = uniqueName(parent, selected.name)
-	copy.x += 8
-	copy.y += 8
-
-	table.insert(parent.children, (indexInParent(selected) or #parent.children) + 1, copy)
-
-	rebuildCanvas()
-	selectNode(copy)
-end
-
-local function reorderSelected(delta)
-	if selected == nil or selected.parent == nil then
-		return
-	end
-
-	local siblings = selected.parent.children
-	local index = indexInParent(selected)
-	local target = index + delta
-
-	if target < 1 or target > #siblings then
-		return
-	end
-
-	checkpoint()
-
-	siblings[index], siblings[target] = siblings[target], siblings[index]
-
-	rebuildCanvas()
-	markTree()
-end
-
-local function indentSelected()
-	if selected == nil or selected.parent == nil then
-		return
-	end
-
-	local siblings = selected.parent.children
-	local index = indexInParent(selected)
-
-	if index <= 1 then
-		return
-	end
-
-	local newParent = siblings[index - 1]
-
-	checkpoint()
-
-	table.remove(siblings, index)
-
-	selected.x -= newParent.x
-	selected.y -= newParent.y
-	selected.parent = newParent
-
-	table.insert(newParent.children, selected)
-
-	rebuildCanvas()
-	markTree()
-	markInspector()
-end
-
-local function outdentSelected()
-	if selected == nil or selected.parent == nil or selected.parent.parent == nil then
-		return
-	end
-
-	local parent = selected.parent
-	local grandparent = parent.parent
-
-	checkpoint()
-
-	table.remove(parent.children, indexInParent(selected))
-
-	selected.x += parent.x
-	selected.y += parent.y
-	selected.parent = grandparent
-
-	table.insert(grandparent.children, (indexInParent(parent) or #grandparent.children) + 1, selected)
-
-	rebuildCanvas()
-	markTree()
-	markInspector()
-end
-
-local function nudgeSelected(dx, dy)
-	if selected == nil or selected.parent == nil then
-		return
-	end
-
-	checkpoint()
-
-	selected.x += dx
-	selected.y += dy
-
-	applyNode(selected)
-	updateOverlay()
-	refreshInspectorValues()
-end
-
-----------------------------------------------------------------------------
--- Save / load / export
-----------------------------------------------------------------------------
-
-local nameBox
-local currentPath = nil
-
-local function sceneStem(path)
-	local name = path:match("([^/\\]+)$") or "Scene"
-
-	return (name:gsub("%.kui$", ""))
-end
-
-local function updateTitle()
-	titleLabel.Text = "UI Editor - " .. sceneName .. SCENE_EXT
-end
-
-local function projectRoot()
-	local project = Project:GetActiveProject()
-
-	return project and project.Path or nil
-end
-
-local function saveScene()
-	local path = currentPath
-
-	if path == nil then
-		local directory = projectRoot()
-
-		if directory == nil then
-			toastMessage("warning", "No active project", "Open a project before saving a scene.")
-			return
-		end
-
-		path = ensureFile(directory, sceneName .. SCENE_EXT)
-	end
-
-	if path ~= nil and writeText(path, json.encode(toData(root))) then
-		currentPath = path
-
-		toastMessage("success", "Scene saved", sceneStem(path) .. SCENE_EXT)
-	else
-		toastMessage(
-			"error",
-			"Could not save",
-			"Project has no working write API. Adapt writeText() at the top of the file."
-		)
-	end
-end
-
-local function exportLua()
-	local directory = currentPath and currentPath:match("^(.*)[/\\][^/\\]*$") or projectRoot()
-
-	if directory == nil then
-		toastMessage("warning", "No active project", "Open a project before exporting.")
-		return
-	end
-
-	local path = ensureFile(directory, sceneName .. LUA_EXT)
-
-	if path ~= nil and writeText(path, generateLua(root)) then
-		toastMessage("success", "Exported", sceneName .. LUA_EXT)
-	else
-		toastMessage(
-			"error",
-			"Could not export",
-			"Project has no working write API. Adapt writeText() at the top of the file."
-		)
-	end
-end
-
-local function resetView()
-	panX, panY, zoom = 20, 20, 1
-end
-
-local function newScene()
-	checkpoint()
-
-	root = defaultRoot()
-	nextId = 1
-	selected = nil
-	sceneName = "Scene"
-	currentPath = nil
-
-	resetView()
-
-	if nameBox ~= nil then
-		nameBox.Text = sceneName
-	end
-
-	updateTitle()
-	rebuildCanvas()
-	markTree()
-	markInspector()
-end
-
-local function loadScene(path)
-	local text = path and readText(path)
-
-	if text == nil then
-		toastMessage("error", "Could not open", "Failed to read the scene file.")
-		return
-	end
-
-	local data
-
-	if text:match("^%s*$") then
-		data = toData(defaultRoot())
-	else
-		local ok, decoded = pcall(json.decode, text)
-
-		if not ok or type(decoded) ~= "table" then
-			toastMessage("error", "Could not open", "That file is not a valid .kui scene.")
-			return
-		end
-
-		data = decoded
-	end
-
-	checkpoint()
-
-	root = fromData(data, nil)
-	nextId = maxId(root) + 1
-	selected = nil
-	currentPath = path
-	sceneName = sceneStem(path)
-
-	resetView()
-
-	if nameBox ~= nil then
-		nameBox.Text = sceneName
-	end
-
-	updateTitle()
-	rebuildCanvas()
-	markTree()
-	markInspector()
-end
-
-local function openDialog()
-	local file = dialog:PickFile()
-
-	if file then
-		loadScene(file)
-	end
-end
-
-----------------------------------------------------------------------------
--- Toolbar
-----------------------------------------------------------------------------
-
-local buttonOptions = {
-	color = tokens.color.input,
-	hoverColor = tokens.color.hover,
-	radius = tokens.radius.sm,
-	border = false,
-}
-
-local row1Buttons = {
-	{ "New", 38, newScene },
-	{ "Open", 44, openDialog },
-	{ "Save", 44, saveScene },
-	{ "Export", 52, exportLua },
-}
-
-local row1Width = 0
-
-for _, item in ipairs(row1Buttons) do
-	row1Width += item[2] + 4
-end
-
-nameBox = UI.input(
-	content,
-	"Scene name",
-	UDim2.fromOffset(inset, row1Y),
-	UDim2.new(1, -(inset * 2 + row1Width), 0, rowHeight)
-)
-
-nameBox.Text = sceneName
-
-nameBox.FocusLost:Connect(function()
-	local cleaned = nameBox.Text:gsub("[^%w_%-]", "")
-
-	sceneName = cleaned ~= "" and cleaned or "Scene"
-	nameBox.Text = sceneName
-
-	if currentPath ~= nil and sceneStem(currentPath) ~= sceneName then
-		currentPath = nil
-	end
-
-	updateTitle()
-end)
-
-local rightX = inset
-
-for index = #row1Buttons, 1, -1 do
-	local item = row1Buttons[index]
-
-	UI.button(
-		content,
-		item[1],
-		UDim2.new(1, -(rightX + item[2]), 0, row1Y),
-		UDim2.fromOffset(item[2], rowHeight),
-		item[3],
-		buttonOptions
+			if ok and focused then
+				return
+			end
+
+			local shift = UserInputService:IsKeyDown(Enum.KeyCode.LeftShift)
+				or UserInputService:IsKeyDown(Enum.KeyCode.RightShift)
+
+			self:nudge(direction * (shift and 10 or 1))
+		end)
 	)
 
-	rightX += item[2] + 4
-end
-
-local addItems = {}
-
-for _, class in ipairs(CLASS_ORDER) do
-	addItems[#addItems + 1] = { label = class, value = class, icon = CLASSES[class].icon }
-end
-
-UI.dropdown(content, "", UDim2.fromOffset(inset, row2Y), UDim2.fromOffset(26, rowHeight), nil, {
-	items = addItems,
-	searchPlaceholder = "Add node...",
-
-	icon = "builtin://global-icons/plus.svg",
-	iconSize = 14,
-	backdrop = true,
-
-	color = tokens.color.input,
-	hoverColor = tokens.color.hover,
-	closeOnOutsideClick = false,
-	menuWidth = 150,
-	itemBgTransparency = 1,
-	BackgroundTransparency = 0.5,
-
-	menuPosition = function()
-		local mouse = UserInputService:GetMouseLocation()
-
-		return UDim2.fromOffset(mouse.X, mouse.Y)
-	end,
-
-	maxVisibleItems = #addItems,
-	itemHeight = rowHeight,
-
-	onChanged = function(value)
-		addNode(value)
-	end,
-})
-
-local toolbar = {
-	{ "Del", 32, deleteSelected },
-	{ "Dup", 32, duplicateSelected },
-	{
-		"Up",
-		30,
-		function()
-			reorderSelected(-1)
-		end,
-	},
-	{
-		"Down",
-		40,
-		function()
-			reorderSelected(1)
-		end,
-	},
-	{ "In", 26, indentSelected },
-	{ "Out", 30, outdentSelected },
-	{ "Undo", 38, undo },
-	{ "Redo", 38, redo },
-}
-
-local toolbarX = inset + 26 + 4
-
-for _, item in ipairs(toolbar) do
-	UI.button(
-		content,
-		item[1],
-		UDim2.fromOffset(toolbarX, row2Y),
-		UDim2.fromOffset(item[2], rowHeight),
-		item[3],
-		buttonOptions
+	table.insert(
+		self.connections,
+		Selection.SelectionChanged:Connect(function()
+			self:refresh()
+		end)
 	)
 
-	toolbarX += item[2] + 4
+	self:refresh()
+
+	return self
 end
 
-----------------------------------------------------------------------------
--- Canvas input
-----------------------------------------------------------------------------
+function Editor:screenGuiOf(obj)
+	local screenGui = obj:FindFirstAncestorWhichIsA("ScreenGui")
 
-local function mouseLocal()
-	local mouse = UserInputService:GetMouseLocation()
-	local origin = viewFrame.AbsolutePosition
-
-	return mouse.X - origin.X, mouse.Y - origin.Y
-end
-
-local function toDesign(mx, my)
-	return (mx - panX) / zoom, (my - panY) / zoom
-end
-
-local function handleAt(mx, my)
-	for index, anchor in ipairs(handleRects) do
-		if math.abs(mx - anchor[1]) <= HANDLE / 2 + 2 and math.abs(my - anchor[2]) <= HANDLE / 2 + 2 then
-			return index
-		end
+	if screenGui and screenGui.Parent == StarterGui then
+		return screenGui
 	end
 
 	return nil
 end
 
-local function releaseTextFocus()
-	pcall(function()
-		local focused = UserInputService:GetFocusedTextBox()
+function Editor:parentInfo(obj)
+	local parent = obj.Parent
 
-		if focused ~= nil then
-			focused:ReleaseFocus()
+	if parent and parent:IsA("GuiBase2d") then
+		local size = parent.AbsoluteSize
+
+		if parent:IsA("ScreenGui") and (size.X <= 0 or size.Y <= 0) then
+			size = parent.Size
 		end
-	end)
+
+		return Vector2.new(math.max(size.X, 1), math.max(size.Y, 1)), parent.AbsolutePosition
+	end
+
+	return Vector2.new(1, 1), Vector2.zero
 end
 
-viewFrame.InputBegan:Connect(function(input)
-	local kind = input.UserInputType
-
-	releaseTextFocus()
-
-	local mx, my = mouseLocal()
-
-	if kind == Enum.UserInputType.MouseButton2 or kind == Enum.UserInputType.MouseButton3 then
-		drag = { mode = "pan", sx = mx, sy = my, panX = panX, panY = panY, moved = true }
-		return
-	end
-
-	if kind ~= Enum.UserInputType.MouseButton1 then
-		return
-	end
-
-	if selected ~= nil and selected.parent ~= nil then
-		local handle = handleAt(mx, my)
-
-		if handle ~= nil then
-			drag = {
-				mode = "resize",
-				node = selected,
-				handle = handle,
-				sx = mx,
-				sy = my,
-				rect = { x = selected.x, y = selected.y, w = selected.w, h = selected.h },
-				moved = false,
-			}
-
-			return
-		end
-	end
-
-	local px, py = toDesign(mx, my)
-	local hit = hitTest(root, 0, 0, px, py)
-
-	selectNode(hit)
-
-	if hit ~= nil and hit.parent ~= nil then
-		drag = {
-			mode = "move",
-			node = hit,
-			sx = mx,
-			sy = my,
-			rect = { x = hit.x, y = hit.y, w = hit.w, h = hit.h },
-			moved = false,
-		}
-	end
-end)
-
-viewFrame.InputChanged:Connect(function(input)
-	if input.UserInputType ~= Enum.UserInputType.MouseWheel then
-		return
-	end
-
-	local mx, my = mouseLocal()
-	local px, py = toDesign(mx, my)
-
-	local factor = input.Position.Z > 0 and 1.1 or 1 / 1.1
-	local newZoom = math.clamp(math.floor(zoom * factor * 100 + 0.5) / 100, MIN_ZOOM, MAX_ZOOM)
-
-	if newZoom == zoom then
-		return
-	end
-
-	zoom = newZoom
-	panX = mx - px * zoom
-	panY = my - py * zoom
-
-	rebuildCanvas()
-end)
-
-UserInputService.InputChanged:Connect(function(input)
-	if drag == nil or input.UserInputType ~= Enum.UserInputType.MouseMovement then
-		return
-	end
-
-	local mx, my = mouseLocal()
-
-	if drag.mode == "pan" then
-		panX = drag.panX + (mx - drag.sx)
-		panY = drag.panY + (my - drag.sy)
-
-		applyNode(root)
-		updateOverlay()
-
-		return
-	end
-
-	local dxPx = mx - drag.sx
-	local dyPx = my - drag.sy
-
-	if not drag.moved then
-		if math.sqrt(dxPx * dxPx + dyPx * dyPx) < 3 then
-			return
-		end
-
-		drag.moved = true
-
-		checkpoint()
-	end
-
-	local dx = dxPx / zoom
-	local dy = dyPx / zoom
-
-	local node = drag.node
-	local rect = drag.rect
-
-	if drag.mode == "move" then
-		node.x = snap(rect.x + dx)
-		node.y = snap(rect.y + dy)
-	else
-		local dir = HANDLE_DIRS[drag.handle]
-
-		local nx, ny, nw, nh = rect.x, rect.y, rect.w, rect.h
-
-		if dir[1] == -1 then
-			nw = math.max(MIN_SIZE, snap(rect.w - dx))
-			nx = rect.x + rect.w - nw
-		elseif dir[1] == 1 then
-			nw = math.max(MIN_SIZE, snap(rect.w + dx))
-		end
-
-		if dir[2] == -1 then
-			nh = math.max(MIN_SIZE, snap(rect.h - dy))
-			ny = rect.y + rect.h - nh
-		elseif dir[2] == 1 then
-			nh = math.max(MIN_SIZE, snap(rect.h + dy))
-		end
-
-		node.x, node.y, node.w, node.h = nx, ny, nw, nh
-	end
-
-	applyNode(node)
-	updateOverlay()
-	refreshInspectorValues()
-end)
-
-UserInputService.InputEnded:Connect(function(input)
-	local kind = input.UserInputType
-
-	if
-		drag ~= nil
-		and (
-			kind == Enum.UserInputType.MouseButton1
-			or kind == Enum.UserInputType.MouseButton2
-			or kind == Enum.UserInputType.MouseButton3
-		)
-	then
-		drag = nil
-	end
-end)
-
-----------------------------------------------------------------------------
--- Keyboard
-----------------------------------------------------------------------------
-
-local function ctrlDown()
-	return UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) or UserInputService:IsKeyDown(Enum.KeyCode.RightControl)
+function Editor:originOf(screenGui)
+	return screenGui.RenderOffset - self.overlay.AbsolutePosition
 end
 
-local function shiftDown()
-	return UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) or UserInputService:IsKeyDown(Enum.KeyCode.RightShift)
+function Editor:snapping()
+	if UserInputService:IsKeyDown(Enum.KeyCode.LeftAlt) then
+		return false
+	end
+
+	return self.getSnap() == true
 end
 
-UserInputService.InputBegan:Connect(function(input, gameProcessed)
-	if gameProcessed or not mouseOverWindow() then
-		return
+function Editor:refresh()
+	local selected = Selection:Get()
+	local obj = selected and selected[1]
+
+	local newTarget = nil
+
+	if obj and obj:IsA("GuiObject") and self:screenGuiOf(obj) then
+		newTarget = obj
 	end
 
-	if input.UserInputType ~= Enum.UserInputType.Keyboard then
-		return
+	if newTarget ~= self.target then
+		self.drag = nil
+		self.readout.Visible = false
 	end
 
-	if UserInputService:GetFocusedTextBox() ~= nil then
-		return
+	self.target = newTarget
+end
+
+function Editor:SetEnabled(value)
+	self.enabled = value == true
+end
+
+function Editor:IsDragging()
+	return self.drag ~= nil
+end
+
+local function isVisibleChain(obj)
+	local current = obj
+
+	while current and current:IsA("GuiObject") do
+		if not current.Visible then
+			return false
+		end
+
+		current = current.Parent
 	end
 
-	local key = input.KeyCode
+	return true
+end
 
-	if ctrlDown() then
-		if key == Enum.KeyCode.Z then
-			if shiftDown() then
-				redo()
-			else
-				undo()
+local function depthOf(obj)
+	local depth = 0
+	local current = obj.Parent
+
+	while current do
+		depth += 1
+		current = current.Parent
+	end
+
+	return depth
+end
+
+function Editor:pickAt(point)
+	local best, bestZ, bestDepth, bestOrder = nil, -math.huge, -1, -1
+	local order = 0
+
+	for _, screenGui in ipairs(StarterGui:GetChildren()) do
+		if screenGui:IsA("ScreenGui") and screenGui.Enabled ~= false then
+			local origin = screenGui.RenderOffset
+
+			for _, obj in ipairs(screenGui:GetDescendants()) do
+				if obj:IsA("GuiObject") then
+					order += 1
+
+					if isVisibleChain(obj) then
+						local size = obj.AbsoluteSize
+						local center = obj.AbsolutePosition + origin + size / 2
+						local v = point - center
+						local r = math.rad(-obj.Rotation)
+						local lx = v.X * math.cos(r) - v.Y * math.sin(r)
+						local ly = v.X * math.sin(r) + v.Y * math.cos(r)
+
+						if math.abs(lx) <= size.X / 2 and math.abs(ly) <= size.Y / 2 then
+							local z = obj.ZIndex
+							local depth = depthOf(obj)
+
+							if
+								z > bestZ
+								or (z == bestZ and depth > bestDepth)
+								or (z == bestZ and depth == bestDepth and order > bestOrder)
+							then
+								best, bestZ, bestDepth, bestOrder = obj, z, depth, order
+							end
+						end
+					end
+				end
 			end
-		elseif key == Enum.KeyCode.Y then
-			redo()
-		elseif key == Enum.KeyCode.S then
-			saveScene()
-		elseif key == Enum.KeyCode.D then
-			duplicateSelected()
-		end
-
-		return
-	end
-
-	local step = shiftDown() and 10 or 1
-
-	if key == Enum.KeyCode.Delete then
-		deleteSelected()
-	elseif key == Enum.KeyCode.Escape then
-		selectNode(nil)
-	elseif key == Enum.KeyCode.Left then
-		nudgeSelected(-step, 0)
-	elseif key == Enum.KeyCode.Right then
-		nudgeSelected(step, 0)
-	elseif key == Enum.KeyCode.Up then
-		nudgeSelected(0, -step)
-	elseif key == Enum.KeyCode.Down then
-		nudgeSelected(0, step)
-	end
-end)
-
-rebuildCanvas()
-
-renderer.Pool.new("2d", function()
-	if not windowFrame.Visible then
-		return
-	end
-
-	if treeDirty then
-		treeDirty = false
-		refreshTree()
-	end
-
-	if inspectorDirty then
-		inspectorDirty = false
-		refreshInspector()
-	end
-end)
-
-updateTitle()
-
-local api = {
-	Open = function()
-		setWindowVisible(true)
-	end,
-
-	Close = function()
-		setWindowVisible(false)
-	end,
-
-	Toggle = function()
-		setWindowVisible(not windowFrame.Visible)
-	end,
-
-	OpenScene = function(path)
-		setWindowVisible(true)
-		loadScene(path)
-	end,
-
-	HasFocus = mouseOverWindow,
-
-	GetSceneName = function()
-		return sceneName
-	end,
-}
-
-UserInputService.InputBegan:Connect(function(input, gameProcessed)
-	if gameProcessed or input.UserInputType ~= Enum.UserInputType.Keyboard then
-		return
-	end
-
-	if input.KeyCode == Enum.KeyCode.U and ctrlDown() and shiftDown() then
-		if UserInputService:GetFocusedTextBox() == nil then
-			api.Toggle()
 		end
 	end
-end)
 
-return api
+	pcall(function()
+		Selection:Set(best and { best } or {})
+	end)
+
+	self:refresh()
+
+	if best and self.target == best then
+		local tool = self.getTool()
+
+		if tool == "Select" or tool == "Move" then
+			self:beginDrag("move")
+		end
+	end
+end
+
+function Editor:beginDrag(mode, handle)
+	local obj = self.target
+
+	if not obj or not self.enabled then
+		return
+	end
+
+	local screenGui = self:screenGuiOf(obj)
+
+	if not screenGui then
+		return
+	end
+
+	local parentSize, parentAbs = self:parentInfo(obj)
+	local pos, size = obj.AbsolutePosition, obj.AbsoluteSize
+
+	self.drag = {
+		mode = mode,
+		handle = handle,
+		mouse = UserInputService:GetMouseLocation(),
+		pos = pos,
+		size = size,
+		position = obj.Position,
+		sizeValue = obj.Size,
+		rotation = obj.Rotation,
+		anchor = obj.AnchorPoint,
+		parentSize = parentSize,
+		parentAbs = parentAbs,
+		center = pos + size / 2 + screenGui.RenderOffset,
+	}
+end
+
+function Editor:applyDrag(mouse)
+	local d = self.drag
+	local obj = self.target
+
+	if not d or not obj or not UI.isAlive(obj) then
+		self.drag = nil
+		return
+	end
+
+	local snap = self:snapping()
+	local step = self.snapStep
+	local pa = d.parentAbs
+
+	if d.mode == "rotate" then
+		local v0 = d.mouse - d.center
+		local v1 = mouse - d.center
+		local delta = math.deg(math.atan2(v1.Y, v1.X) - math.atan2(v0.Y, v0.X))
+		local rotation = d.rotation + delta
+
+		if snap then
+			rotation = math.floor(rotation / self.rotateSnap + 0.5) * self.rotateSnap
+		end
+
+		obj.Rotation = rotation % 360
+		return
+	end
+
+	local dx, dy = mouse.X - d.mouse.X, mouse.Y - d.mouse.Y
+
+	local left, top = d.pos.X, d.pos.Y
+	local right, bottom = left + d.size.X, top + d.size.Y
+
+	if d.mode == "move" then
+		left += dx
+		top += dy
+
+		if snap then
+			left = snapValue(left, pa.X, step)
+			top = snapValue(top, pa.Y, step)
+		end
+
+		right = left + d.size.X
+		bottom = top + d.size.Y
+	else
+		local h = d.handle
+
+		if h.l then
+			left += dx
+		end
+		if h.r then
+			right += dx
+		end
+		if h.t then
+			top += dy
+		end
+		if h.b then
+			bottom += dy
+		end
+
+		if snap then
+			if h.l then
+				left = snapValue(left, pa.X, step)
+			end
+			if h.r then
+				right = snapValue(right, pa.X, step)
+			end
+			if h.t then
+				top = snapValue(top, pa.Y, step)
+			end
+			if h.b then
+				bottom = snapValue(bottom, pa.Y, step)
+			end
+		end
+
+		if right - left < MIN_SIZE then
+			if h.l then
+				left = right - MIN_SIZE
+			else
+				right = left + MIN_SIZE
+			end
+		end
+
+		if bottom - top < MIN_SIZE then
+			if h.t then
+				top = bottom - MIN_SIZE
+			else
+				bottom = top + MIN_SIZE
+			end
+		end
+	end
+
+	local newW, newH = right - left, bottom - top
+	local a = d.anchor
+
+	local dPosX = (left + a.X * newW) - (d.pos.X + a.X * d.size.X)
+	local dPosY = (top + a.Y * newH) - (d.pos.Y + a.Y * d.size.Y)
+
+	obj.Position = udim2(shiftUDim(d.position.X, dPosX, d.parentSize.X), shiftUDim(d.position.Y, dPosY, d.parentSize.Y))
+
+	if d.mode == "resize" then
+		obj.Size = udim2(
+			shiftUDim(d.sizeValue.X, newW - d.size.X, d.parentSize.X),
+			shiftUDim(d.sizeValue.Y, newH - d.size.Y, d.parentSize.Y)
+		)
+	end
+end
+
+function Editor:nudge(direction)
+	local obj = self.target
+
+	if not obj or not UI.isAlive(obj) then
+		return
+	end
+
+	local parentSize = self:parentInfo(obj)
+	local p = obj.Position
+
+	obj.Position = udim2(shiftUDim(p.X, direction.X, parentSize.X), shiftUDim(p.Y, direction.Y, parentSize.Y))
+end
+
+function Editor:Update()
+	local obj = self.target
+
+	if obj and (not UI.isAlive(obj) or not self:screenGuiOf(obj)) then
+		self.target = nil
+		self.drag = nil
+		obj = nil
+	end
+
+	self.hit.Visible = self.enabled and self.canPick
+
+	local show = self.enabled and obj ~= nil
+	self.box.Visible = show
+
+	if not show then
+		self.readout.Visible = false
+		return
+	end
+
+	local screenGui = self:screenGuiOf(obj)
+	local origin = self:originOf(screenGui)
+	local size = obj.AbsoluteSize
+	local pos = obj.AbsolutePosition + origin
+	local center = pos + size / 2
+	local rotation = obj.Rotation
+
+	local tool = self.getTool()
+	local r = rotation % 360
+	local unrotated = r < 0.01 or r > 359.99
+
+	local canMove = tool == "Select" or tool == "Move"
+	local canSize = (tool == "Select" or tool == "Size") and unrotated
+	local canRotate = tool == "Rotate"
+
+	self.box.Position = UDim2.fromOffset(center.X, center.Y)
+	self.box.Size = UDim2.fromOffset(math.max(size.X, 1), math.max(size.Y, 1))
+	self.box.Rotation = rotation
+	self.box.Active = canMove
+	self.box.InputSink = canMove
+
+	for _, handle in pairs(self.handles) do
+		handle.Visible = canSize
+	end
+
+	self.rotateHandle.Visible = canRotate
+	self.rotateStem.Visible = canRotate
+
+	if self.drag then
+		local _, parentAbs = self:parentInfo(obj)
+		local local_ = obj.AbsolutePosition - parentAbs
+
+		self.readout.Text = string.format(
+			"%d, %d   %d × %d   %d°",
+			math.floor(local_.X + 0.5),
+			math.floor(local_.Y + 0.5),
+			math.floor(size.X + 0.5),
+			math.floor(size.Y + 0.5),
+			math.floor(rotation + 0.5)
+		)
+
+		local bounds = self.overlay.AbsoluteSize
+		local x = math.clamp(center.X - 85, 0, math.max(bounds.X - 170, 0))
+		local y = math.clamp(pos.Y + size.Y + 10, 0, math.max(bounds.Y - 16, 0))
+
+		self.readout.Position = UDim2.fromOffset(x, y)
+		self.readout.Visible = true
+	else
+		self.readout.Visible = false
+	end
+end
+
+function Editor:Destroy()
+	for _, connection in ipairs(self.connections) do
+		connection:Disconnect()
+	end
+
+	self.connections = {}
+
+	UI.forgetButtons(self.hit)
+	UI.forgetButtons(self.box)
+
+	self.hit:Destroy()
+	self.box:Destroy()
+	self.readout:Destroy()
+end
+
+return Editor

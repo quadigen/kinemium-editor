@@ -6070,6 +6070,7 @@ function UI.dropdown(parent, value, position, size, chevronIcon, options)
 
 			local desiredRows = math.min(#items, maxVisibleItems)
 			desiredRows = math.max(1, desiredRows)
+
 			local visibleRows = desiredRows
 			local menuWidth = options.menuWidth or 140
 			local menuHeight = visibleRows * rowHeight
@@ -6077,10 +6078,7 @@ function UI.dropdown(parent, value, position, size, chevronIcon, options)
 			local showSearch = options.showSearch ~= false
 			local searchHeight = showSearch and 34 or 0
 
-			local fixedMenuPosition = options.menuPosition
-			if type(fixedMenuPosition) == "function" then
-				fixedMenuPosition = fixedMenuPosition()
-			end
+			local fixedMenuPosition = options.menuPosition()
 
 			if fixedMenuPosition then
 				local overlay = UI.RootOverlay()
