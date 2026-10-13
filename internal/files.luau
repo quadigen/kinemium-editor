@@ -272,6 +272,7 @@ local import_confirmation, _, prompt_controller = UI.prompt({
 		},
 	},
 })
+import_confirmation.Parent = game.CoreGui
 prompt_controller:Close()
 
 registerFileType({
