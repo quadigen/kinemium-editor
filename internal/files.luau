@@ -228,7 +228,7 @@ registerFileType({
 	name = "KINE",
 	extensions = { "kine" },
 	icon = "builtin://global-icons/KinemiumWhite.png",
-	thumbnail = true,
+	thumbnail = false,
 
 	onDrop = function(ctx)
 		local parent = selectedObject()
