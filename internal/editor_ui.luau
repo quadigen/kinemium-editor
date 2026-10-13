@@ -6089,6 +6089,7 @@ function UI.dropdown(parent, value, position, size, chevronIcon, options)
 
 				local totalHeight = menuHeight + searchHeight
 
+				print(screen)
 				totalHeight = math.min(totalHeight, math.max(screen.Y - edge * 2, 1))
 				local clampedWidth = math.min(menuWidth, math.max(screen.X - edge * 2, 1))
 
