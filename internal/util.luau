@@ -30,9 +30,7 @@ local function parent(sourceDataModel)
 		end
 	else
 		local object = selectedObject()
-		if object then
-			sourceDataModel.Parent = object
-		end
+		sourceDataModel.Parent = object or workspace
 	end
 end
 

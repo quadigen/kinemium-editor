@@ -587,7 +587,6 @@ refreshPreviewStyle = function()
 		p.highlight.FillColor = cfg.previewColor
 		p.highlight.FillTransparency = cfg.previewTransparency
 		p.highlight.OutlineColor = cfg.previewColor
-		p.highlight.OutlineTransparency = 0.3
 	end
 end
 
