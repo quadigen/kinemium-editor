@@ -228,30 +228,12 @@ registerFileType({
 
 local function importKine(ctx)
 	local imported = export_service:ImportFile(ctx.Path)
+
 	if imported then
 		util.parent(imported)
-
-		UI.toast("creation", {
-			type = "success",
-			title = "Successfully imported!",
-			message = `Successfully imported {ctx.Path}`,
-			details = `Wow.`,
-			detailsTitle = "",
-			backgroundTransparency = 0.4,
-			blur = true,
-			duration = 5,
-		})
+		toastMessage("success", "Successfully imported!", `Imported {ctx.Name}`)
 	else
-		UI.toast("import", {
-			type = "error",
-			title = "Importing faliure",
-			message = `Did not import project successfully.`,
-			details = ``,
-			detailsTitle = "",
-			backgroundTransparency = 0.4,
-			blur = true,
-			duration = 5,
-		})
+		toastMessage("error", "Import failure", `Could not import {ctx.Name}.`)
 	end
 end
 
@@ -260,15 +242,8 @@ registerFileType({
 	extensions = { "kine" },
 	icon = "builtin://global-icons/KinemiumWhite.png",
 	thumbnail = false,
-
-	onDrop = function(ctx)
-		importKine(ctx)
-	end,
-
-	onOpen = function(ctx)
-		importKine(ctx)
-	end,
-
+	onDrop = importKine,
+	onOpen = importKine,
 	contextItems = {
 		{ label = "Import as Model", icon = "builtin://global-icons/KinemiumWhite.png", callback = importKine },
 	},
@@ -359,6 +334,8 @@ return function(content, windowControls)
 
 	local drag = nil
 	local dragLayer = nil
+
+	local matchCache = {}
 
 	local openContextMenu
 	local closeContextMenu
@@ -503,6 +480,14 @@ return function(content, windowControls)
 		return entry ~= nil and entry.Type == "Directory"
 	end
 
+	local function findRegistered(path)
+		if wideMode then
+			return rightRowRegistry[path] or leftRowRegistry[path]
+		end
+
+		return rowRegistry[path]
+	end
+
 	local function isDirectoryPath(path)
 		if path == nil then
 			return false
@@ -512,11 +497,7 @@ return function(content, windowControls)
 			return true
 		end
 
-		local registered = rowRegistry[path]
-
-		if registered == nil and wideMode then
-			registered = rightRowRegistry[path] or leftRowRegistry[path]
-		end
+		local registered = findRegistered(path)
 
 		return registered ~= nil and entryIsDirectory(registered.entry)
 	end
@@ -530,10 +511,6 @@ return function(content, windowControls)
 
 		if fileType ~= nil and fileType.icon ~= nil then
 			return fileType.icon
-		end
-
-		if string.find(entry.Name, "loki") then
-			return "builtin://global-icons/loki.png"
 		end
 
 		return "builtin://icons/File.svg"
@@ -591,27 +568,28 @@ return function(content, windowControls)
 			return true
 		end
 
+		local cached = matchCache[entry.Path]
+
+		if cached ~= nil then
+			return cached
+		end
+
+		local result = false
+
 		if string.find(string.lower(entry.Name), filter, 1, true) then
-			return true
-		end
-
-		if not entryIsDirectory(entry) then
-			return false
-		end
-
-		local entries = readEntries(entry.Path)
-
-		if entries == nil then
-			return false
-		end
-
-		for _, child in ipairs(entries) do
-			if subtreeMatches(child) then
-				return true
+			result = true
+		elseif entryIsDirectory(entry) then
+			for _, child in ipairs(readEntries(entry.Path) or {}) do
+				if subtreeMatches(child) then
+					result = true
+					break
+				end
 			end
 		end
 
-		return false
+		matchCache[entry.Path] = result
+
+		return result
 	end
 
 	local function treeHash(directory)
@@ -791,16 +769,24 @@ return function(content, windowControls)
 	end
 
 	local function moveEntry(source, target)
+		local name = nameOf(source)
+
+		for _, other in ipairs(readEntries(target) or {}) do
+			if string.lower(other.Name) == string.lower(name) then
+				toastMessage("warning", "Could not move", `"{name}" already exists in {nameOf(target)}.`)
+				return
+			end
+		end
+
 		local ok, moved = pcall(function()
 			return Project:MovePath(source, target)
 		end)
 
 		if ok and moved then
 			expanded[target] = true
-			selectedPath = joinPath(target, nameOf(source))
+			selectedPath = joinPath(target, name)
 
 			animateNext = true
-
 			lastHash = ""
 		end
 	end
@@ -818,24 +804,27 @@ return function(content, windowControls)
 	end
 
 	local function animateDrop(reparent)
-		local source = drag.source
-		local target = drag.target
+		local source, target, layer = drag.source, drag.target, dragLayer
 
-		local function apply()
-			disposeDrag()
-			clearDropHighlight()
+		drag = nil
+		dragLayer = nil
 
-			if reparent and source ~= nil and target ~= nil and canReparent(source, target) then
-				moveEntry(source, target)
-			end
+		viewport.SetDropHighlight(false)
+		clearDropHighlight()
+
+		if reparent and source ~= nil and target ~= nil and canReparent(source, target) then
+			moveEntry(source, target)
 		end
 
-		if dragLayer == nil then
-			apply()
+		if layer == nil then
 			return
 		end
 
-		local layer = dragLayer
+		local function destroyLayer()
+			if UI.isAlive(layer) then
+				layer:Destroy()
+			end
+		end
 
 		local goal = { BackgroundTransparency = 1 }
 
@@ -846,13 +835,11 @@ return function(content, windowControls)
 		local played = tween(layer, goal, 0.14, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
 
 		if played == nil then
-			apply()
+			destroyLayer()
 			return
 		end
 
-		played.Completed:Once(function()
-			apply()
-		end)
+		played.Completed:Once(destroyLayer)
 	end
 
 	local function attachRowInput(row, entry, pane)
@@ -871,6 +858,10 @@ return function(content, windowControls)
 			end
 
 			if input.UserInputType ~= Enum.UserInputType.MouseButton1 then
+				return
+			end
+
+			if UI.isAlive(renaming) and renamedPath == entry.Path then
 				return
 			end
 
@@ -1013,7 +1004,7 @@ return function(content, windowControls)
 
 		UI.image(row, iconFor(entry), UDim2.fromOffset(indent + 16, 3), UDim2.fromOffset(14, 14))
 
-		UI.label(
+		local label = UI.label(
 			row,
 			entry.Name,
 			UDim2.fromOffset(indent + 31, 2),
@@ -1021,6 +1012,8 @@ return function(content, windowControls)
 			tokens.type.small,
 			isSelected and tokens.color.text or colors.text
 		)
+
+		rowRegistryVar[entry.Path].label = label
 
 		return y + UI.metrics.treeRow
 	end
@@ -1179,6 +1172,8 @@ return function(content, windowControls)
 			isSelected and tokens.color.text or colors.text
 		)
 
+		rightRowRegistry[entry.Path].label = label
+
 		pcall(function()
 			label.TextXAlignment = Enum.TextXAlignment.Center
 			label.TextYAlignment = Enum.TextYAlignment.Top
@@ -1262,6 +1257,7 @@ return function(content, windowControls)
 		end
 
 		rebuilding = true
+		matchCache = {}
 
 		animating = animateNext
 		animateNext = false
@@ -1419,6 +1415,10 @@ return function(content, windowControls)
 			selectedPath = nil
 		end
 
+		if clipboard ~= nil and isSameOrDescendantOf(clipboard, path) then
+			clipboard = nil
+		end
+
 		if wideFolder ~= nil and isSameOrDescendantOf(wideFolder, path) then
 			wideFolder = nil
 			animateNext = true
@@ -1472,26 +1472,20 @@ return function(content, windowControls)
 	end
 
 	beginRename = function(path)
-		if path == nil or path == rootPath then
+		if path == nil or path == rootPath or UI.isAlive(renaming) then
 			return
 		end
 
-		if UI.isAlive(renaming) then
-			return
-		end
-
-		local registered = rowRegistry[path]
-
-		if registered == nil and wideMode then
-			registered = rightRowRegistry[path] or leftRowRegistry[path]
-		end
+		local registered = findRegistered(path)
 
 		if registered == nil or not UI.isAlive(registered.row) then
 			return
 		end
 
-		local renamePosition
-		local renameSize
+		local isDir = isDirectoryPath(path)
+		local label = registered.label
+
+		local renamePosition, renameSize
 
 		if registered.pane == "right" then
 			renamePosition = UDim2.fromOffset(2, TILE_H - 26)
@@ -1503,7 +1497,7 @@ return function(content, windowControls)
 			renameSize = UDim2.new(1, -(indent + 36), 0, 18)
 		end
 
-		renaming = UI.input(
+		local box = UI.input(
 			registered.row,
 			nameOf(path),
 			renamePosition,
@@ -1511,13 +1505,20 @@ return function(content, windowControls)
 			{ textSize = tokens.type.small, color = tokens.color.input, selectAllOnFocus = true }
 		)
 
-		renaming.Text = nameOf(path)
+		renaming = box
+		renamedPath = path
+		box.Text = nameOf(path)
+
+		if label ~= nil and UI.isAlive(label) then
+			label.Visible = false
+		end
 
 		pcall(function()
-			renaming:SelectAll()
+			box:CaptureFocus()
 		end)
-
-		renamedPath = path
+		pcall(function()
+			box:SelectAll()
+		end)
 
 		local committed = false
 
@@ -1527,29 +1528,64 @@ return function(content, windowControls)
 			end
 
 			committed = true
-
 			renameCommit = nil
 			renamedPath = nil
 
-			local text = renaming.Text
+			local text = ""
 
-			if renaming ~= nil and UI.isAlive(renaming) then
-				renaming:Destroy()
+			if UI.isAlive(box) then
+				text = (box.Text or ""):match("^%s*(.-)%s*$")
+				box:Destroy()
 			end
 
-			renaming = nil
+			if renaming == box then
+				renaming = nil
+			end
 
-			if apply and text ~= nil and text ~= "" and text ~= nameOf(path) then
+			if label ~= nil and UI.isAlive(label) then
+				label.Visible = true
+			end
+
+			if apply and text ~= "" and text ~= nameOf(path) then
 				local parent = parentOf(path)
+				local problem = nil
 
-				local ok, renamed = pcall(function()
-					return Project:RenamePath(path, text)
-				end)
+				if text:find("[/\\]") then
+					problem = "Names cannot contain slashes."
+				else
+					for _, other in ipairs(readEntries(parent) or {}) do
+						if other.Path ~= path and string.lower(other.Name) == string.lower(text) then
+							problem = `"{text}" already exists here.`
+							break
+						end
+					end
+				end
 
-				if ok and renamed then
-					viewport.CloseFile(path)
+				if problem ~= nil then
+					toastMessage("warning", "Could not rename", problem)
+				else
+					closeDocumentsUnder(path, isDir)
 
-					selectedPath = joinPath(parent, text)
+					local ok, renamed = pcall(function()
+						return Project:RenamePath(path, text)
+					end)
+
+					if ok and renamed then
+						local newPath = joinPath(parent, text)
+
+						if expanded[path] then
+							expanded[path] = nil
+							expanded[newPath] = true
+						end
+
+						if wideFolder ~= nil and isSameOrDescendantOf(wideFolder, path) then
+							wideFolder = newPath .. wideFolder:sub(#path + 1)
+						end
+
+						selectedPath = newPath
+					else
+						toastMessage("error", "Could not rename", `Failed to rename {nameOf(path)}.`)
+					end
 				end
 			end
 
@@ -1557,18 +1593,17 @@ return function(content, windowControls)
 
 			if pendingRebuild then
 				pendingRebuild = false
-
 				rebuild()
 			end
 		end
 
 		renameCommit = finish
 
-		renaming.FocusLost:Connect(function()
-			finish(true)
+		box.FocusLost:Connect(function(_, input)
+			finish(not (input and input.KeyCode == Enum.KeyCode.Escape))
 		end)
 
-		renaming.TextSubmitted:Connect(function()
+		box.TextSubmitted:Connect(function()
 			finish(true)
 		end)
 	end
@@ -1676,6 +1711,13 @@ return function(content, windowControls)
 	local function createNamed(directory, name, isFolder, onCreated)
 		if directory == nil or name == nil then
 			return
+		end
+
+		commitRename()
+
+		if filter ~= "" then
+			filter = ""
+			searchField.Text = ""
 		end
 
 		local unique = uniqueNameFor(directory, name)
@@ -2432,6 +2474,11 @@ return function(content, windowControls)
 		local newWideMode = explorerWidth >= outputWidth and outputWidth > 0
 
 		if newWideMode ~= wideMode then
+			commitRename()
+
+			rowRegistry, leftRowRegistry, rightRowRegistry = {}, {}, {}
+			visibleRows, leftVisibleRows, rightVisibleRows = {}, {}, {}
+
 			wideMode = newWideMode
 
 			if wideMode then
@@ -2508,6 +2555,8 @@ return function(content, windowControls)
 			.. (wideMode and (wideFolder or "") or "")
 			.. "#"
 			.. (wideMode and gridColumns() or 0)
+			.. "#"
+			.. (wideMode and treeHash(wideFolder or rootPath) or "")
 
 		if hash ~= lastHash then
 			lastHash = hash
