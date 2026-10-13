@@ -9,6 +9,7 @@ local Project = game:GetService("Project")
 local dialog = game:GetService("DialogService")
 
 local StudioThemeService = game:GetService("StudioThemeService")
+local Selection = game:GetService("Selection")
 local theme = StudioThemeService.SelectedTheme
 
 local UserInputService = game:GetService("UserInputService")
@@ -25,6 +26,12 @@ local LEFT_WIDTH = 150
 local TILE_W, TILE_H, TILE_GAP = 76, 84, 6
 
 local MAX_THUMBNAILS = 150
+
+local function selectedObject()
+	local selected = Selection:Get()
+	local object = selected and selected[1]
+	return object
+end
 
 local function imageSource(path)
 	return ImageViewer.ImageSource(path)
@@ -113,6 +120,10 @@ registerFileType({
 	name = "Audio",
 	extensions = { "wav", "mp3", "ogg" },
 	icon = "builtin://icons/Sound.svg",
+
+	contextItems = {
+		{ label = "Import as Sound", icon = "builtin://icons/Sound.svg", callback = openImageViewer },
+	},
 })
 
 registerFileType({
@@ -133,6 +144,30 @@ registerFileType({
 
 	contextItems = {
 		{ label = "Open in Image Viewer", icon = "builtin://icons/ImageLabel.svg", callback = openImageViewer },
+		{
+			label = "Import as ImageLabel",
+			icon = "builtin://icons/ImageLabel.svg",
+			callback = function(ctx)
+				local parent = selectedObject()
+				if parent then
+					local new = Instance.new("ImageLabel")
+					new.Image = ctx.Path
+					new.Parent = parent
+				end
+			end,
+		},
+		{
+			label = "Import as Decal",
+			icon = "builtin://icons/Decal.svg",
+			callback = function(ctx)
+				local parent = selectedObject()
+				if parent then
+					local new = Instance.new("Decal")
+					new.Image = ctx.Path
+					new.Parent = parent
+				end
+			end,
+		},
 	},
 })
 
