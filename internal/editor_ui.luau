@@ -6083,13 +6083,36 @@ function UI.dropdown(parent, value, position, size, chevronIcon, options)
 			end
 
 			if fixedMenuPosition then
+				local overlay = UI.RootOverlay()
+				local screen = overlay.AbsoluteSize
+				local edge = options.menuMargin or 4
+
+				local totalHeight = menuHeight + searchHeight
+
+				totalHeight = math.min(totalHeight, math.max(screen.Y - edge * 2, 1))
+				local clampedWidth = math.min(menuWidth, math.max(screen.X - edge * 2, 1))
+
+				local px = fixedMenuPosition.X.Scale * screen.X + fixedMenuPosition.X.Offset
+				local py = fixedMenuPosition.Y.Scale * screen.Y + fixedMenuPosition.Y.Offset
+
+				if px + clampedWidth > screen.X - edge then
+					px = px - clampedWidth
+				end
+				if py + totalHeight > screen.Y - edge then
+					py = py - totalHeight
+				end
+
+				px = math.clamp(px, edge, math.max(edge, screen.X - clampedWidth - edge))
+				py = math.clamp(py, edge, math.max(edge, screen.Y - totalHeight - edge))
+
 				local menu = UI.frame(
-					UI.RootOverlay(),
-					fixedMenuPosition,
-					UDim2.fromOffset(menuWidth, menuHeight + searchHeight),
+					overlay,
+					UDim2.fromOffset(px, py),
+					UDim2.fromOffset(clampedWidth, totalHeight),
 					options.menuColor or colors.panelRaised,
 					options.radius or UI.tokens.radius.sm
 				)
+
 				if options.backdrop then
 					UI.create("UIBackdrop", {
 						Enabled = true,
@@ -6269,14 +6292,8 @@ function UI.dropdown(parent, value, position, size, chevronIcon, options)
 				return
 			end
 
-			local containingWindow = findContainingWindow(button)
-
-			local boundsPosition
-
-			local boundsSize
-
-			boundsPosition = Vector2.new(0, 0)
-			boundsSize = Vector2.new(1920, 1080)
+			local boundsPosition = Vector2.new(0, 0)
+			local boundsSize = UI.RootOverlay().AbsoluteSize
 
 			if not boundsPosition or not boundsSize then
 				return
