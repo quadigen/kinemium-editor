@@ -19,6 +19,11 @@ local ReflectionService = game:GetService("ReflectionService")
 local colors = UI.colors
 local tokens = UI.tokens
 
+local gui = Instance.new("ScreenGui")
+gui.Name = "Explorer"
+gui.RenderOnTop = true
+gui.Parent = game.CoreGui
+
 local panel, _, _, windowControls =
 	UI.window("Explorer", theme.ExplorerCoordinates.Position, theme.ExplorerCoordinates.Size, "Explorer", {
 		tabs = {
@@ -27,6 +32,7 @@ local panel, _, _, windowControls =
 		},
 		selectedTab = "Explorer",
 	})
+panel.Parent = gui
 
 local content = windowControls.pages.Explorer
 local filesPage = windowControls.pages.Files
