@@ -233,34 +233,31 @@ registerFileType({
 	thumbnail = false,
 
 	onDrop = function(ctx)
-		local file = dialog:PickFile()
-		if file then
-			local imported = export_service:ImportFile(file)
-			if imported then
-				util.parent(imported)
+		local imported = export_service:ImportFile(ctx.Path)
+		if imported then
+			util.parent(imported)
 
-				UI.toast("creation", {
-					type = "success",
-					title = "Successfully imported!",
-					message = `Successfully imported {file}`,
-					details = `Wow.`,
-					detailsTitle = "",
-					backgroundTransparency = 0.4,
-					blur = true,
-					duration = 5,
-				})
-			else
-				UI.toast("import", {
-					type = "error",
-					title = "Importing faliure",
-					message = `Did not import project successfully.`,
-					details = ``,
-					detailsTitle = "",
-					backgroundTransparency = 0.4,
-					blur = true,
-					duration = 5,
-				})
-			end
+			UI.toast("creation", {
+				type = "success",
+				title = "Successfully imported!",
+				message = `Successfully imported {ctx.Path}`,
+				details = `Wow.`,
+				detailsTitle = "",
+				backgroundTransparency = 0.4,
+				blur = true,
+				duration = 5,
+			})
+		else
+			UI.toast("import", {
+				type = "error",
+				title = "Importing faliure",
+				message = `Did not import project successfully.`,
+				details = ``,
+				detailsTitle = "",
+				backgroundTransparency = 0.4,
+				blur = true,
+				duration = 5,
+			})
 		end
 	end,
 
