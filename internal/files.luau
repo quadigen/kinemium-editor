@@ -7,6 +7,8 @@ local viewport = require("@internal/viewport")
 
 local Project = game:GetService("Project")
 local dialog = game:GetService("DialogService")
+local export_service = game:GetService("ExportService")
+local util = require("@internal/util")
 
 local StudioThemeService = game:GetService("StudioThemeService")
 local Selection = game:GetService("Selection")
@@ -231,16 +233,35 @@ registerFileType({
 	thumbnail = false,
 
 	onDrop = function(ctx)
-		local parent = selectedObject()
+		local file = dialog:PickFile()
+		if file then
+			local imported = export_service:ImportFile(file)
+			if imported then
+				util.parent(imported)
 
-		if parent == nil then
-			toastMessage("warning", "Nothing selected", "Select an object to drop the image onto.")
-			return
+				UI.toast("creation", {
+					type = "success",
+					title = "Successfully imported!",
+					message = `Successfully imported {file}`,
+					details = `Wow.`,
+					detailsTitle = "",
+					backgroundTransparency = 0.4,
+					blur = true,
+					duration = 5,
+				})
+			else
+				UI.toast("import", {
+					type = "error",
+					title = "Importing faliure",
+					message = `Did not import project successfully.`,
+					details = ``,
+					detailsTitle = "",
+					backgroundTransparency = 0.4,
+					blur = true,
+					duration = 5,
+				})
+			end
 		end
-
-		local new = Instance.new("ImageLabel")
-		new.Image = ctx.Path
-		new.Parent = parent
 	end,
 
 	onOpen = function(ctx)
