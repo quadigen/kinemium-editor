@@ -26,13 +26,6 @@ window.Parent = gui
 UI.root().Enabled = false
 UI.RootOverlay().Enabled = false
 
-local dropdowns = Instance.new("ScreenGui")
-dropdowns.RenderOnTop = true
-dropdowns.Name = "Dropdowns"
-dropdowns.Parent = game.CoreGui
-
-shared.rootDropdown = dropdowns
-
 project_manager(windowControls.pages.Projects, windowControls, gui)
 plugin_marketplace(windowControls.pages.Marketplace, windowControls, gui)
 credits_page(windowControls.pages.Credits, windowControls, gui)

@@ -224,6 +224,34 @@ registerFileType({
 	},
 })
 
+registerFileType({
+	name = "KINE",
+	extensions = { "kine" },
+	icon = "builtin://global-icons/KinemiumWhite.png",
+	thumbnail = true,
+
+	onDrop = function(ctx)
+		local parent = selectedObject()
+
+		if parent == nil then
+			toastMessage("warning", "Nothing selected", "Select an object to drop the image onto.")
+			return
+		end
+
+		local new = Instance.new("ImageLabel")
+		new.Image = ctx.Path
+		new.Parent = parent
+	end,
+
+	onOpen = function(ctx)
+		openImageViewer(ctx)
+	end,
+
+	contextItems = {
+		{ label = "Import as Model", icon = "builtin://global-icons/KinemiumWhite.png", callback = openImageViewer },
+	},
+})
+
 local templates = {
 	{
 		label = "Folder",

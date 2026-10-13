@@ -6083,7 +6083,7 @@ function UI.dropdown(parent, value, position, size, chevronIcon, options)
 			end
 
 			if fixedMenuPosition then
-				local overlay = shared.rootDropdown
+				local overlay = UI.RootOverlay()
 				local screen = workspace:GetWindowDimensions()
 				local edge = options.menuMargin or 4
 
