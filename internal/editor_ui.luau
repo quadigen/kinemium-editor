@@ -7718,38 +7718,7 @@ function UI.contextMenu(options)
 				end)
 
 				row.MouseButton1Click:Connect(function()
-					row.MouseButton1Down:Connect(function()
-						record.pressed = true
-					end)
-
-					row.MouseButton1Up:Connect(function()
-						if record.pressed then
-							record.pressed = false
-							if not enabled then
-								return
-							end
-							if entry.children then
-								openChild()
-							else
-								choose(entry)
-							end
-						end
-					end)
-
-					row.MouseButton1Click:Connect(function()
-						-- Fallback for MouseButton1Click (may be triggered by keyboard or other input)
-						if not enabled then
-							return
-						end
-						if entry.children then
-							openChild()
-						else
-							choose(entry)
-						end
-					end)
-					if not enabled then
-						return
-					end
+					print("hello world")
 
 					if entry.children then
 						openChild()
