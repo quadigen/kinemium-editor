@@ -206,10 +206,10 @@ local function ShowEngineUpdatePrompt(report)
 			local info = UI.label(
 				content,
 				string.format(
-					"%s  •  %s%s",
+					"%s    %s%s",
 					formatBytes(latest.asset_size),
 					staged and staged.ready and "Ready to install" or "Update staged",
-					latest.published and ("  •  " .. latest.published) or ""
+					latest.published and ("    " .. latest.published) or ""
 				),
 				UDim2.fromOffset(0, y),
 				UDim2.new(1, 0, 0, 20),

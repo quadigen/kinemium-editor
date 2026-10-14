@@ -220,7 +220,7 @@ return function(page, windowControls, gui)
 		stats.Position = UDim2.new(1, -14, 1, -28)
 		stats.Size = UDim2.new(0, 220, 0, 18)
 
-		stats.Text = "↓ 0   ♥ 0   " .. string.sub(plugin.UpdatedAt or plugin.GeneratedAt or "", 1, 10)
+		stats.Text = " 0    0   " .. string.sub(plugin.UpdatedAt or plugin.GeneratedAt or "", 1, 10)
 
 		stats.TextColor3 = tokens.color.subtext
 		stats.TextSize = 12
@@ -306,7 +306,7 @@ return function(page, windowControls, gui)
 		metadata.BackgroundTransparency = 1
 		metadata.Position = UDim2.new(0, 10, 0, THUMBNAIL_HEIGHT + 34)
 		metadata.Size = UDim2.new(1, -20, 0, 18)
-		metadata.Text = "by " .. (manifest.Author or "unknown") .. "  •  v" .. (manifest.Version or "?")
+		metadata.Text = "by " .. (manifest.Author or "unknown") .. "    v" .. (manifest.Version or "?")
 		metadata.TextColor3 = tokens.color.subtext
 		metadata.TextSize = 12
 		metadata.TextXAlignment = Enum.TextXAlignment.Left
@@ -320,7 +320,7 @@ return function(page, windowControls, gui)
 		stats.BackgroundTransparency = 1
 		stats.Position = UDim2.new(0, 10, 1, -27)
 		stats.Size = UDim2.new(1, -20, 0, 18)
-		stats.Text = "↓ 0    ♥ 0    " .. string.sub(plugin.UpdatedAt or plugin.GeneratedAt or "", 1, 10)
+		stats.Text = " 0     0    " .. string.sub(plugin.UpdatedAt or plugin.GeneratedAt or "", 1, 10)
 		stats.TextColor3 = tokens.color.subtext
 		stats.TextSize = 12
 		stats.TextXAlignment = Enum.TextXAlignment.Left

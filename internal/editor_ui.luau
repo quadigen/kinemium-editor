@@ -3,7 +3,7 @@
 local StudioThemeService = game:GetService("StudioThemeService")
 local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
-local shared = { buttons = {}, root = nil, background = nil, windows = {}, windowControllers = {}, overlayRoot = nil }
+local shared = { buttons = {}, root = nil, background = nil, windows = {}, windowControllers = {} }
 local MIN_SPAN = 0.0005
 local MAX_TICKS = 16
 
@@ -587,7 +587,7 @@ function UI.prompt(options)
 				}
 			)
 		else
-			closeButton = UI.button(header, "Ã—", UDim2.new(1, -31, 0.5, -11), UDim2.fromOffset(22, 22), function()
+			closeButton = UI.button(header, "", UDim2.new(1, -31, 0.5, -11), UDim2.fromOffset(22, 22), function()
 				controller:Close("close")
 			end, {
 				color = options.closeColor or colors.panelRaised,
@@ -2402,7 +2402,7 @@ function UI.toast(text, options)
 			if messagePrefix ~= "" then
 				summaryLabel.Text = messagePrefix
 			else
-				summaryLabel.Text = "Click Ã— to close."
+				summaryLabel.Text = "Click  to close."
 			end
 
 			return
@@ -3773,7 +3773,7 @@ function UI.graph(parent, position, size, options)
 		local width = (right - left) / pw * (state.xMax - state.xMin)
 
 		selLabel.Visible = true
-		selLabel.Text = "Î” " .. formatValue(width)
+		selLabel.Text = " " .. formatValue(width)
 		selLabel.Position = UDim2.fromOffset(
 			math.clamp((left + right) / 2 - 60, 0, math.max(pw - 120, 0)),
 			math.clamp(top + 4, 0, math.max(ph - 20, 0))
@@ -7502,9 +7502,7 @@ function UI.contextMenu(options)
 	end
 
 	local function place(menu)
-		local root = UI.RootOverlay()\nlocal root = UI.RootOverlay();
-local root = UI.RootOverlay();
-local screen = root and root.AbsoluteSize or Vector2.new()
+		local screen = UI.RootOverlay().AbsoluteSize
 		local anchor = menu.anchor
 		local x, y
 
@@ -7737,9 +7735,7 @@ local screen = root and root.AbsoluteSize or Vector2.new()
 
 		menu.contentHeight = math.max(y, rowHeight)
 
-		local root = UI.RootOverlay()\nlocal root = UI.RootOverlay();
-local root = UI.RootOverlay();
-local screen = root and root.AbsoluteSize or Vector2.new()
+		local screen = UI.RootOverlay().AbsoluteSize
 		local available = math.max(screen.Y - edge * 2 - padding * 2 - menu.searchHeight, rowHeight)
 		local visible = math.min(menu.contentHeight, maxVisibleItems * rowHeight, available)
 
@@ -7848,9 +7844,7 @@ local screen = root and root.AbsoluteSize or Vector2.new()
 	end
 
 	local function toPoint(position)
-		local root = UI.RootOverlay()\nlocal root = UI.RootOverlay();
-local root = UI.RootOverlay();
-local screen = root and root.AbsoluteSize or Vector2.new()
+		local screen = UI.RootOverlay().AbsoluteSize
 
 		local ok, scaleX = pcall(function()
 			return position.X.Scale
@@ -8081,10 +8075,9 @@ function UI.RootOverlay()
 		IgnoreGuiInset = true,
 	}, game.CoreGui)
 
-	if root then
-		root.RenderOnTop = true
-		shared.overlayRoot = root
-	end
+	root.RenderOnTop = true
+
+	shared.overlayRoot = root
 
 	return root
 end
@@ -8809,10 +8802,3 @@ function UI.shared()
 end
 
 return UI
-
-
-
-
-
-
-

@@ -226,7 +226,7 @@ local function MetaText()
 		table.insert(parts, setInfo.author)
 	end
 
-	return table.concat(parts, "  •  ")
+	return table.concat(parts, "    ")
 end
 
 local function PaintTile(name, tile)

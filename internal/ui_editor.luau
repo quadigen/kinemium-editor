@@ -2429,9 +2429,9 @@ function Editor:tickBox(dt)
 		local text
 
 		if mode == "rotate" then
-			text = string.format("%d°", round(obj.Rotation))
+			text = string.format("%d", round(obj.Rotation))
 		elseif mode == "resize" then
-			text = string.format("%d × %d", round(size.X), round(size.Y))
+			text = string.format("%d  %d", round(size.X), round(size.Y))
 		else
 			text = string.format("%d, %d", round(rel.X), round(rel.Y))
 		end

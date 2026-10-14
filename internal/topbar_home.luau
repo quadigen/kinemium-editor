@@ -174,7 +174,7 @@ return {
 				rotation_frame.Size = UDim2.new(0, 22, 0, 22)
 				rotation_frame.LayoutOrder = -10
 
-				local rotation = UI.input(rotationContainer, "30°", UDim2.fromOffset(0, 0), UDim2.new(1, 0, 1, 0), {})
+				local rotation = UI.input(rotationContainer, "30", UDim2.fromOffset(0, 0), UDim2.new(1, 0, 1, 0), {})
 
 				studInput.FocusLost:Connect(function()
 					local value = tonumber(studInput.Text)
@@ -189,7 +189,7 @@ return {
 
 					viewport.SetSnap("archandles", tonumber(rotation.Text))
 					rotation.Text = ""
-					rotation.PlaceholderText = `{value}°`
+					rotation.PlaceholderText = `{value}`
 				end)
 
 				return panel
