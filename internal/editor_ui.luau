@@ -7359,7 +7359,15 @@ function UI.root()
 	return root
 end
 
-function UI.contextMenu(options)
+function UI.contextMenu(parent, value, position, size, chevronIcon, options)
+	-- Backwards compatible with the legacy dropdown-style signature
+	-- UI.contextMenu(parent, value, position, size, chevronIcon, options).
+	-- The menu is built in its own overlay and placed from options.menuPosition,
+	-- so only the trailing options table is used.
+	if options == nil then
+		options = parent
+	end
+
 	options = options or {}
 
 	local colors = UI.tokens.color
@@ -7718,12 +7726,9 @@ function UI.contextMenu(options)
 				end)
 
 				row.MouseButton1Click:Connect(function()
-					print("hello world")
-
 					if entry.children then
 						openChild()
 					else
-						print("chose")
 						choose(entry)
 					end
 				end)
