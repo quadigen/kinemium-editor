@@ -7723,6 +7723,7 @@ function UI.contextMenu(options)
 					if entry.children then
 						openChild()
 					else
+						print("chose")
 						choose(entry)
 					end
 				end)
