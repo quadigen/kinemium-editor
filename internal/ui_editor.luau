@@ -52,6 +52,21 @@ local ANCHORS = {
 	{ "Bottom Right", Vector2.new(1, 1) },
 }
 
+local function toastMessage(kind, title, message)
+	pcall(function()
+		UI.toast("files", {
+			type = kind,
+			title = title,
+			message = message,
+			details = "",
+			detailsTitle = "",
+			backgroundTransparency = 0.4,
+			blur = true,
+			duration = 5,
+		})
+	end)
+end
+
 local Editor = {}
 Editor.__index = Editor
 
@@ -231,8 +246,6 @@ function Editor.new(options)
 	self.hv = newRect()
 	self.dragAlpha = 0
 	self.readoutAlpha = 0
-	self.statusAlpha = 0
-	self.statusTimer = 0
 
 	local overlay = self.overlay
 
@@ -373,19 +386,6 @@ function Editor.new(options)
 	self.readout.ZIndex = Z + 3
 	self.readout.Visible = false
 	UI.corner(self.readout, 4)
-
-	self.status =
-		UI.label(overlay, "", UDim2.new(0.5, 0, 0, 10), UDim2.fromOffset(160, 24), tokens.type.small, colors.text)
-	self.status.AnchorPoint = Vector2.new(0.5, 0)
-	self.status.BackgroundColor3 = colors.secondary
-	self.status.BackgroundTransparency = 1
-	self.status.TextTransparency = 1
-	self.status.TextXAlignment = Enum.TextXAlignment.Center
-	self.status.TextYAlignment = Enum.TextYAlignment.Center
-	self.status.ZIndex = Z + 3
-	self.status.Visible = false
-	UI.corner(self.status, 5)
-	self.statusStroke = UI.stroke(self.status, colors.line, 1, 1)
 
 	self.catcher = UI.create("TextButton", {
 		Name = "GuiEditorMenuCatcher",
@@ -592,9 +592,7 @@ end
 function Editor:Update() end
 
 function Editor:Notify(text)
-	self.status.Text = tostring(text)
-	self.status.Size = UDim2.fromOffset(#self.status.Text * 6.6 + 28, 24)
-	self.statusTimer = 1.8
+	toastMessage("success", "Notification", text)
 end
 
 Editor.notify = Editor.Notify
@@ -2574,26 +2572,6 @@ function Editor:tickGuides()
 	end
 end
 
-function Editor:tickChips(dt)
-	self.statusTimer = math.max(self.statusTimer - dt, 0)
-
-	local target = self.statusTimer > 0 and 1 or 0
-
-	self.statusAlpha = damp(self.statusAlpha, target, 16, dt)
-
-	if math.abs(self.statusAlpha - target) < 0.01 then
-		self.statusAlpha = target
-	end
-
-	local a = self.statusAlpha
-
-	self.status.Visible = a > 0.02
-	self.status.BackgroundTransparency = 1 - 0.92 * a
-	self.status.TextTransparency = 1 - a
-	self.statusStroke.Transparency = 1 - a
-	self.status.Position = UDim2.new(0.5, 0, 0, 6 + 6 * a)
-end
-
 function Editor:tickMenus(dt)
 	for _, menu in ipairs(self.menus) do
 		menu.cur = damp(menu.cur, menu.h, 24, dt)
@@ -2627,7 +2605,6 @@ function Editor:Destroy()
 	self.hover:Destroy()
 	self.box:Destroy()
 	self.readout:Destroy()
-	self.status:Destroy()
 	self.catcher:Destroy()
 
 	for _, frame in ipairs(self.guideFrames) do
