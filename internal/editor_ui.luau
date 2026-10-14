@@ -7366,7 +7366,7 @@ function UI.widgetOverlay()
 
 	local root = UI.create(
 		"ScreenGui",
-		{ Name = "Widgets", DisplayOrder = 1001, IgnoreGuiInset = true, RenderOnTop = true },
+		{ Name = "Widgets", DisplayOrder = 1001, IgnoreGuiInset = true, RenderOnTop = true, Enabled = true },
 		game.CoreGui
 	)
 
