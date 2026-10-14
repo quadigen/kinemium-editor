@@ -7364,7 +7364,11 @@ function UI.widgetOverlay()
 		return shared.widgetOverlay
 	end
 
-	local root = UI.create("ScreenGui", { Name = "Widgets", DisplayOrder = 1001, IgnoreGuiInset = true }, game.CoreGui)
+	local root = UI.create(
+		"ScreenGui",
+		{ Name = "Widgets", DisplayOrder = 1001, IgnoreGuiInset = true, RenderOnTop = true },
+		game.CoreGui
+	)
 
 	shared.widgetOverlay = root
 

@@ -93,10 +93,7 @@ local function mouseOver(gui)
 end
 
 local function createWindow(title, onGone)
-	local gui = Instance.new("ScreenGui")
-	gui.Name = "ImageViewer"
-	gui.RenderOnTop = true
-	gui.Parent = game.CoreGui
+	local gui = UI.widgetOverlay()
 
 	local ok, window, pageContent, _, controls = pcall(
 		UI.window,
