@@ -7771,7 +7771,7 @@ function UI.contextMenu(options)
 		)
 
 		inner.Name = "Panel"
-		inner.BackgroundTransparency = options.BackgroundTransparency or 0
+		inner.BackgroundTransparency = 1
 		inner.ZIndex = z + 1
 
 		UI.backdrop(shell, 15, Color3.new(0, 0, 0))
