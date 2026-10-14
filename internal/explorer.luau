@@ -19,7 +19,11 @@ local ReflectionService = game:GetService("ReflectionService")
 local colors = UI.colors
 local tokens = UI.tokens
 
-local gui = UI.widgetOverlay()
+local gui = Instance.new("ScreenGui")
+gui.DisplayOrder = 5000
+gui.Name = "Explorer"
+gui.RenderOnTop = true
+gui.Parent = game.CoreGui
 
 local panel, _, _, windowControls =
 	UI.window("Explorer", theme.ExplorerCoordinates.Position, theme.ExplorerCoordinates.Size, "Explorer", {
@@ -945,9 +949,6 @@ local function mouseInList()
 end
 
 local function updateDragTarget()
-	-- Read the cursor once. The previous version called GetMouseLocation() (and
-	-- ran a full canReparent ancestry walk) for every visible row on every
-	-- mouse-move, which made dragging crawl on large trees.
 	local mouse = UserInputService:GetMouseLocation()
 
 	local best = nil
