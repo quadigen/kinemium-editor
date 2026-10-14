@@ -7717,16 +7717,15 @@ function UI.contextMenu(options)
 					record.hovered = false
 				end)
 
-				row.MouseEnter:Connect(function()
-					print("ROW HOVER:", entry.text)
-				end)
-
-				row.MouseButton1Down:Connect(function()
-					print("ROW DOWN:", entry.text)
-				end)
-
 				row.MouseButton1Click:Connect(function()
-					print("ROW CLICK:", entry.text)
+					print("hello world")
+
+					if entry.children then
+						openChild()
+					else
+						print("chose")
+						choose(entry)
+					end
 				end)
 
 				y += rowHeight
@@ -7739,9 +7738,9 @@ function UI.contextMenu(options)
 		local available = math.max(screen.Y - edge * 2 - padding * 2 - menu.searchHeight, rowHeight)
 		local visible = math.min(menu.contentHeight, maxVisibleItems * rowHeight, available)
 
-		menu.list.CanvasSize = menu.contentHeight
+		menu.list.CanvasSize = UDim2.new(1, 0, 0, menu.contentHeight)
 		menu.list.Size = UDim2.new(1, 0, 0, visible)
-		menu.list.ScrollBarVisible = menu.contentHeight > visible
+		menu.list.ScrollingEnabled = menu.contentHeight > visible
 
 		menu.height = menu.searchHeight + visible + padding * 2
 		menu.inner.Size = UDim2.fromOffset(menuWidth, menu.height)
@@ -7816,13 +7815,11 @@ function UI.contextMenu(options)
 			Size = UDim2.new(1, 0, 0, 10),
 			BackgroundTransparency = 1,
 			BorderSizePixel = 0,
+			CanvasPosition = Vector2.new(0, 0),
+			CanvasSize = UDim2.new(1, 0, 0, 0),
+			ScrollBarThickness = 5,
 			ScrollBarImageColor3 = colors.subtext,
 			ScrollBarImageTransparency = 0.4,
-			CanvasPosition = 0,
-			CanvasSize = 0,
-			ScrollBarThickness = 5,
-			ScrollBarColor3 = colors.subtext,
-			ScrollBarTransparency = 0.4,
 			ScrollBarAutoHide = true,
 			ClipsDescendants = true,
 			ZIndex = z + 2,
@@ -7894,40 +7891,6 @@ function UI.contextMenu(options)
 			UserInputService.InputBegan:Connect(function(input)
 				if input.KeyCode == Enum.KeyCode.Escape then
 					controller:Close("escape")
-					return
-				end
-
-				if options.closeOnOutsideClick == false then
-					return
-				end
-
-				local isLeft = input.UserInputType == Enum.UserInputType.MouseButton1
-				local isRight = input.UserInputType == Enum.UserInputType.MouseButton2
-
-				if not isLeft and not isRight then
-					return
-				end
-
-				local position = Vector2.new(input.Position.X, input.Position.Y)
-
-				for _, menu in ipairs(stack) do
-					local menuPosition = menu.shell.AbsolutePosition
-					local menuSize = menu.shell.AbsoluteSize
-
-					local inside = position.X >= menuPosition.X
-						and position.X <= menuPosition.X + menuSize.X
-						and position.Y >= menuPosition.Y
-						and position.Y <= menuPosition.Y + menuSize.Y
-
-					if inside then
-						return
-					end
-				end
-
-				controller:Close("outside")
-
-				if isRight and options.onOutsideRightClick then
-					options.onOutsideRightClick(position, context)
 				end
 			end)
 		)
