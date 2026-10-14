@@ -7900,6 +7900,7 @@ function UI.contextMenu(options)
 				ZIndex = baseZ - 1,
 			}, UI.contextMenuOverlay())
 
+			--[[
 			catcher.MouseButton1Down:Connect(function()
 				controller:Close("outside")
 			end)
@@ -7911,6 +7912,7 @@ function UI.contextMenu(options)
 					options.onOutsideRightClick(Vector2.new(x, y), context)
 				end
 			end)
+			--]]
 		end
 
 		table.insert(
