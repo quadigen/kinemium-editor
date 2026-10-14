@@ -366,8 +366,6 @@ rebuildFlyout = function()
 					if definition.callback then
 						definition.callback(item)
 					end
-
-					setExpanded(false)
 				end),
 			})
 
