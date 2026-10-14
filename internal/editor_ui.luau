@@ -7360,10 +7360,6 @@ function UI.root()
 end
 
 function UI.contextMenu(parent, value, position, size, chevronIcon, options)
-	-- Backwards compatible with the legacy dropdown-style signature
-	-- UI.contextMenu(parent, value, position, size, chevronIcon, options).
-	-- The menu is built in its own overlay and placed from options.menuPosition,
-	-- so only the trailing options table is used.
 	if options == nil then
 		options = parent
 	end
@@ -7392,12 +7388,25 @@ function UI.contextMenu(parent, value, position, size, chevronIcon, options)
 	local hoverColor = options.hoverColor or colors.accent
 	local chevronIcon = options.chevronIcon or "builtin://global-icons/chevron-down.svg"
 
+	-- New animation options
+	local fadeSpeed = options.fadeSpeed or 22 -- panel fade in/out
+	local rowSpeed = options.rowSpeed or 22 -- row entrance
+	local rowStagger = options.rowStagger or 0.02 -- seconds between rows
+	local maxStagger = options.maxStagger or 0.18
+	local slideDistance = options.slideDistance or 8 -- panel slide on open/close
+	local rowSlide = options.rowSlide or 10 -- row slide-in distance
+	local hoverNudge = options.hoverNudge or 2 -- label shifts right on hover
+	local pressDarken = options.pressDarken or 0.08
+	local panelTransparency = options.BackgroundTransparency or 0.5
+
 	local items = options.items
 	local categories = options.categories
 
 	local controller = {}
 	local stack = {}
+	local dying = {} -- menus fading out
 	local connections = {}
+	local heartbeat = nil
 	local catcher = nil
 	local open = false
 	local context = nil
@@ -7497,15 +7506,45 @@ function UI.contextMenu(parent, value, position, size, chevronIcon, options)
 		return out
 	end
 
-	local function closeFrom(level)
+	-- Records an object's current transparency property so it can be faded
+	-- relative to its original value.
+	local function track(list, obj, prop)
+		table.insert(list, { obj = obj, prop = prop, base = obj[prop] })
+	end
+
+	local function applyFades(list, a)
+		for _, f in ipairs(list) do
+			f.obj[f.prop] = 1 - (1 - f.base) * a
+		end
+	end
+
+	-- Closes menus from `level` upward. Animated unless `instant` is true.
+	local function closeFrom(level, instant)
 		for i = #stack, level, -1 do
 			local menu = stack[i]
+			stack[i] = nil
+
+			if menu.shell then
+				if instant or not animate then
+					menu.shell:Destroy()
+				else
+					menu.closing = true
+					menu.alphaTarget = 0
+					table.insert(dying, menu)
+				end
+			end
+		end
+	end
+
+	local function flushDying()
+		for i = #dying, 1, -1 do
+			local menu = dying[i]
 
 			if menu.shell then
 				menu.shell:Destroy()
 			end
 
-			stack[i] = nil
+			dying[i] = nil
 		end
 	end
 
@@ -7555,7 +7594,20 @@ function UI.contextMenu(parent, value, position, size, chevronIcon, options)
 		x = math.clamp(x, edge, math.max(edge, screen.X - menuWidth - edge))
 		y = math.clamp(y, edge, math.max(edge, screen.Y - menu.height - edge))
 
-		menu.shell.Position = UDim2.fromOffset(math.floor(x + 0.5), math.floor(y + 0.5))
+		-- Slide direction: submenus slide sideways, root menu slides vertically.
+		-- Slide in away from the anchor side.
+		menu.baseX = math.floor(x + 0.5)
+		menu.baseY = math.floor(y + 0.5)
+
+		if anchor.rowRect then
+			menu.slideX = (menu.baseX >= anchor.rowRect.right - 4) and -1 or 1
+			menu.slideY = 0
+		else
+			menu.slideX = 0
+			menu.slideY = (anchor.point.Y + menu.height > screen.Y - edge) and 1 or -1
+		end
+
+		menu.shell.Position = UDim2.fromOffset(menu.baseX, menu.baseY)
 	end
 
 	local renderRows
@@ -7573,19 +7625,23 @@ function UI.contextMenu(parent, value, position, size, chevronIcon, options)
 		end
 	end
 
-	renderRows = function(menu)
+	renderRows = function(menu, stagger)
 		local query = menu.search and string.lower(menu.search.Text or "") or ""
 		local entries = menu.source(query)
 
 		UI.clear(menu.list)
 
 		menu.rows = {}
+		menu.statics = {}
 
 		local z = menu.z + 3
 		local rowWidth = menuWidth - padding * 2
 		local y = 0
+		local index = 0
 
 		for _, entry in ipairs(entries) do
+			index += 1
+
 			if entry.header then
 				local header = UI.label(
 					menu.list,
@@ -7599,6 +7655,8 @@ function UI.contextMenu(parent, value, position, size, chevronIcon, options)
 				header.TextXAlignment = Enum.TextXAlignment.Left
 				header.ZIndex = z + 1
 
+				track(menu.statics, header, "TextTransparency")
+
 				y += rowHeight
 			elseif entry.separator then
 				local line = UI.separator(
@@ -7609,6 +7667,8 @@ function UI.contextMenu(parent, value, position, size, chevronIcon, options)
 				)
 
 				line.ZIndex = z
+
+				track(menu.statics, line, "BackgroundTransparency")
 
 				y += separatorHeight
 			else
@@ -7629,6 +7689,22 @@ function UI.contextMenu(parent, value, position, size, chevronIcon, options)
 
 				UI.corner(row, options.itemRadius or UI.tokens.radius.sm)
 
+				local record = {
+					button = row,
+					hover = 0,
+					hovered = false,
+					pressed = 0,
+					isPressed = false,
+					enabled = enabled,
+					baseY = y,
+					fades = {},
+					appear = (animate and stagger) and 0 or 1,
+					age = 0,
+					delay = math.min(index * rowStagger, maxStagger),
+					labelX = 24,
+					lastA = -1,
+				}
+
 				local labelX = 24
 
 				if entry.icon then
@@ -7641,6 +7717,8 @@ function UI.contextMenu(parent, value, position, size, chevronIcon, options)
 
 					icon.ZIndex = z + 1
 
+					track(record.fades, icon, "ImageTransparency")
+
 					labelX = 7 + iconSize + 7
 				elseif entry.check then
 					local dot = UI.frame(
@@ -7652,7 +7730,11 @@ function UI.contextMenu(parent, value, position, size, chevronIcon, options)
 					)
 
 					dot.ZIndex = z + 1
+
+					track(record.fades, dot, "BackgroundTransparency")
 				end
+
+				record.labelX = labelX
 
 				local label = UI.label(
 					row,
@@ -7667,6 +7749,9 @@ function UI.contextMenu(parent, value, position, size, chevronIcon, options)
 				label.TextYAlignment = Enum.TextYAlignment.Center
 				label.ZIndex = z + 1
 
+				record.label = label
+				track(record.fades, label, "TextTransparency")
+
 				if entry.shortcut then
 					local hint = UI.label(
 						row,
@@ -7680,6 +7765,8 @@ function UI.contextMenu(parent, value, position, size, chevronIcon, options)
 					hint.TextXAlignment = Enum.TextXAlignment.Right
 					hint.TextYAlignment = Enum.TextYAlignment.Center
 					hint.ZIndex = z + 1
+
+					track(record.fades, hint, "TextTransparency")
 				end
 
 				if entry.children then
@@ -7687,14 +7774,17 @@ function UI.contextMenu(parent, value, position, size, chevronIcon, options)
 
 					arrow.Rotation = -90
 					arrow.ZIndex = z + 1
-				end
 
-				local record = { button = row, hover = 0, hovered = false, enabled = enabled }
+					record.arrow = arrow
+					track(record.fades, arrow, "ImageTransparency")
+				end
 
 				table.insert(menu.rows, record)
 
 				local function openChild()
 					local position = row.AbsolutePosition
+
+					record.childOpen = true
 
 					openLevel(menu.level + 1, function()
 						return childEntries(entry.children)
@@ -7714,6 +7804,10 @@ function UI.contextMenu(parent, value, position, size, chevronIcon, options)
 						return
 					end
 
+					for _, other in ipairs(menu.rows) do
+						other.childOpen = false
+					end
+
 					if entry.children then
 						openChild()
 					else
@@ -7723,6 +7817,17 @@ function UI.contextMenu(parent, value, position, size, chevronIcon, options)
 
 				row.MouseLeave:Connect(function()
 					record.hovered = false
+					record.isPressed = false
+				end)
+
+				row.MouseButton1Down:Connect(function()
+					if enabled then
+						record.isPressed = true
+					end
+				end)
+
+				row.MouseButton1Up:Connect(function()
+					record.isPressed = false
 				end)
 
 				row.MouseButton1Click:Connect(function()
@@ -7751,6 +7856,129 @@ function UI.contextMenu(parent, value, position, size, chevronIcon, options)
 		menu.inner.Size = UDim2.fromOffset(menuWidth, menu.height)
 	end
 
+	-- Per-frame update for a single menu (open, hover, press, entrance, exit).
+	local function updateMenu(menu, dt)
+		-- Panel fade
+		if animate then
+			menu.alpha = tooltipSmoothTowards(menu.alpha, menu.alphaTarget, fadeSpeed, dt)
+
+			if math.abs(menu.alpha - menu.alphaTarget) < 0.01 then
+				menu.alpha = menu.alphaTarget
+			end
+		else
+			menu.alpha = menu.alphaTarget
+		end
+
+		local a = menu.alpha
+
+		-- Height (skip while closing so it fades without collapsing)
+		if not menu.closing then
+			if animate then
+				menu.cur = tooltipSmoothTowards(menu.cur, menu.height, animationSpeed, dt)
+
+				if math.abs(menu.cur - menu.height) < 0.5 then
+					menu.cur = menu.height
+				end
+			else
+				menu.cur = menu.height
+			end
+		end
+
+		menu.shell.Size = UDim2.fromOffset(menuWidth, math.floor(menu.cur + 0.5))
+
+		-- Slide + panel fade
+		if menu.baseX then
+			local inv = 1 - a
+
+			menu.shell.Position = UDim2.fromOffset(
+				math.floor(menu.baseX + menu.slideX * slideDistance * inv + 0.5),
+				math.floor(menu.baseY + menu.slideY * slideDistance * inv + 0.5)
+			)
+		end
+
+		menu.inner.BackgroundTransparency = 1 - (1 - panelTransparency) * a
+
+		applyFades(menu.statics, a)
+
+		-- Rows
+		for _, row in ipairs(menu.rows) do
+			-- Staggered entrance
+			if row.appear < 1 then
+				row.age += dt
+
+				if row.age >= row.delay then
+					row.appear = tooltipSmoothTowards(row.appear, 1, rowSpeed, dt)
+
+					if row.appear > 0.995 then
+						row.appear = 1
+					end
+				end
+			end
+
+			local hoverTarget = (row.hovered and row.enabled) and 1 or 0
+			local pressTarget = row.isPressed and 1 or 0
+
+			row.hover = tooltipSmoothTowards(row.hover, hoverTarget, 26, dt)
+			row.pressed = tooltipSmoothTowards(row.pressed, pressTarget, 40, dt)
+
+			row.button.BackgroundColor3 = baseColor:Lerp(hoverColor, row.hover)
+			row.button.BackgroundTransparency = math.clamp(
+				itemBgTransparency + (hoverTransparency - itemBgTransparency) * row.hover - pressDarken * row.pressed,
+				0,
+				1
+			)
+
+			-- Row slides in from the left while fading
+			local slide = (1 - row.appear) * -rowSlide
+			row.button.Position = UDim2.fromOffset(padding + slide, row.baseY)
+
+			-- Label nudges right on hover, arrow nudges on hover / while child open
+			if row.label then
+				row.label.Position = UDim2.fromOffset(row.labelX + hoverNudge * row.hover, 0)
+			end
+
+			if row.arrow then
+				local lit = math.max(row.hover, row.childOpen and 1 or 0)
+
+				row.arrow.Position = UDim2.new(1, -18 + 3 * lit, 0.5, -5)
+			end
+
+			-- Fade contents (entrance * panel alpha)
+			local fa = row.appear * a
+
+			if fa ~= row.lastA then
+				row.lastA = fa
+				applyFades(row.fades, fa)
+			end
+		end
+	end
+
+	local function step(dt)
+		for _, menu in ipairs(stack) do
+			updateMenu(menu, dt)
+		end
+
+		for i = #dying, 1, -1 do
+			local menu = dying[i]
+
+			updateMenu(menu, dt)
+
+			if menu.alpha <= 0.02 then
+				if menu.shell then
+					menu.shell:Destroy()
+				end
+
+				table.remove(dying, i)
+			end
+		end
+
+		-- Stop the loop once everything has finished closing
+		if not open and #dying == 0 and heartbeat then
+			heartbeat:Disconnect()
+			heartbeat = nil
+		end
+	end
+
 	openLevel = function(level, source, anchor)
 		closeFrom(level)
 
@@ -7775,7 +8003,7 @@ function UI.contextMenu(parent, value, position, size, chevronIcon, options)
 		)
 
 		inner.Name = "Panel"
-		inner.BackgroundTransparency = options.BackgroundTransparency or 0.5
+		inner.BackgroundTransparency = animate and 1 or panelTransparency
 		inner.ZIndex = z + 1
 
 		UI.backdrop(inner, 15, Color3.new(0, 0, 0))
@@ -7798,8 +8026,14 @@ function UI.contextMenu(parent, value, position, size, chevronIcon, options)
 			source = source,
 			anchor = anchor,
 			rows = {},
+			statics = {},
 			height = 0,
 			cur = 0,
+			alpha = animate and 0 or 1,
+			alphaTarget = 1,
+			closing = false,
+			slideX = 0,
+			slideY = 0,
 			searchHeight = (level == 1 and showSearch) and 34 or 0,
 		}
 
@@ -7832,7 +8066,7 @@ function UI.contextMenu(parent, value, position, size, chevronIcon, options)
 
 		table.insert(stack, menu)
 
-		renderRows(menu)
+		renderRows(menu, true) -- stagger rows on first render
 		place(menu)
 
 		menu.cur = animate and 0 or menu.height
@@ -7840,7 +8074,7 @@ function UI.contextMenu(parent, value, position, size, chevronIcon, options)
 
 		if menu.search then
 			menu.search.TextChanged:Connect(function()
-				renderRows(menu)
+				renderRows(menu, false) -- no stagger while typing
 				place(menu)
 			end)
 		end
@@ -7900,34 +8134,10 @@ function UI.contextMenu(parent, value, position, size, chevronIcon, options)
 			end)
 		)
 
-		table.insert(
-			connections,
-			RunService.Heartbeat:Connect(function(dt)
-				for _, menu in ipairs(stack) do
-					if animate then
-						menu.cur = tooltipSmoothTowards(menu.cur, menu.height, animationSpeed, dt)
-
-						if math.abs(menu.cur - menu.height) < 0.5 then
-							menu.cur = menu.height
-						end
-					else
-						menu.cur = menu.height
-					end
-
-					menu.shell.Size = UDim2.fromOffset(menuWidth, math.floor(menu.cur + 0.5))
-
-					for _, row in ipairs(menu.rows) do
-						local target = (row.hovered and row.enabled) and 1 or 0
-
-						row.hover = tooltipSmoothTowards(row.hover, target, 26, dt)
-
-						row.button.BackgroundColor3 = baseColor:Lerp(hoverColor, row.hover)
-						row.button.BackgroundTransparency = itemBgTransparency
-							+ (hoverTransparency - itemBgTransparency) * row.hover
-					end
-				end
-			end)
-		)
+		-- Single update loop; reused if a previous close is still fading out
+		if not heartbeat then
+			heartbeat = RunService.Heartbeat:Connect(step)
+		end
 
 		open = true
 		shared.activeContextMenu = controller
@@ -7948,7 +8158,13 @@ function UI.contextMenu(parent, value, position, size, chevronIcon, options)
 
 		open = false
 
-		closeFrom(1)
+		local instant = reason == "destroy" or reason == "reopen"
+
+		closeFrom(1, instant)
+
+		if instant then
+			flushDying()
+		end
 
 		if catcher then
 			catcher:Destroy()
@@ -7960,6 +8176,12 @@ function UI.contextMenu(parent, value, position, size, chevronIcon, options)
 		end
 
 		connections = {}
+
+		-- Heartbeat stays alive until the fade-out finishes (step() stops it)
+		if (instant or not animate) and heartbeat then
+			heartbeat:Disconnect()
+			heartbeat = nil
+		end
 
 		if shared.activeContextMenu == controller then
 			shared.activeContextMenu = nil
@@ -8024,6 +8246,12 @@ function UI.contextMenu(parent, value, position, size, chevronIcon, options)
 
 	function controller:Destroy()
 		controller:Close("destroy")
+		flushDying()
+
+		if heartbeat then
+			heartbeat:Disconnect()
+			heartbeat = nil
+		end
 	end
 
 	return controller
