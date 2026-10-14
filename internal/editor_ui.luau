@@ -6085,8 +6085,6 @@ function UI.dropdown(parent, value, position, size, chevronIcon, options)
 				local screen = workspace:GetWindowDimensions()
 				local edge = options.menuMargin or 4
 
-				print(screen)
-
 				local totalHeight = menuHeight + searchHeight
 
 				totalHeight = math.min(totalHeight, math.max(screen.Y - edge * 2, 1))
@@ -7504,7 +7502,7 @@ function UI.contextMenu(options)
 	end
 
 	local function place(menu)
-		local screen = UI.RootOverlay().AbsoluteSize
+		local screen = workspace:GetWindowDimensions()
 		local anchor = menu.anchor
 		local x, y
 
