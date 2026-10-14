@@ -7368,29 +7368,6 @@ function UI.widgetOverlay()
 
 	shared.widgetOverlay = root
 
-	shared.widgetOverlayBg = UI.create("TextButton", {
-
-		Name = "EditorBackground",
-
-		Text = "",
-
-		Position = UDim2.fromOffset(0, 0),
-
-		Size = UDim2.new(1, 0, 1, 0),
-
-		BackgroundColor3 = UI.tokens.color.canvas,
-
-		BorderSizePixel = 0,
-
-		Active = true,
-
-		InputSink = false,
-
-		AutoButtonColor = false,
-
-		ZIndex = -100000,
-	}, root)
-
 	return root
 end
 
