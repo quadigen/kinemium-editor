@@ -242,7 +242,7 @@ function Editor.new(options)
 		Size = UDim2.fromScale(0.97, 1),
 		AnchorPoint = Vector2.new(1, 0),
 		Position = UDim2.new(1, 0, 0, 0),
-		BackgroundTransparency = 0,
+		BackgroundTransparency = 1,
 		BorderSizePixel = 0,
 		AutoButtonColor = false,
 		Active = true,
