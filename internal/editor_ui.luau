@@ -7735,7 +7735,7 @@ function UI.contextMenu(options)
 
 		menu.contentHeight = math.max(y, rowHeight)
 
-		local screen = UI.RootOverlay().AbsoluteSize
+		local screen = workspace:GetWindowDimensions()
 		local available = math.max(screen.Y - edge * 2 - padding * 2 - menu.searchHeight, rowHeight)
 		local visible = math.min(menu.contentHeight, maxVisibleItems * rowHeight, available)
 
