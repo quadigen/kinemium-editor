@@ -1891,7 +1891,6 @@ return function(content, windowControls)
 				menuWidth = 180,
 				itemHeight = UI.metrics.inputHeight,
 				maxVisibleItems = 12,
-				showSearch = false,
 				closeOnOutsideClick = false,
 				menuPosition = function()
 					return UDim2.fromOffset(0, 0)
@@ -2009,7 +2008,7 @@ return function(content, windowControls)
 	end
 
 	local dropdown =
-		UI.contextMenu(content, "", UDim2.new(1, -32, 0, 6), UDim2.fromOffset(26, UI.metrics.inputHeight), nil, {
+		UI.dropdown(content, "", UDim2.new(1, -32, 0, 6), UDim2.fromOffset(26, UI.metrics.inputHeight), nil, {
 			items = templates,
 
 			searchPlaceholder = "Search files to create...",

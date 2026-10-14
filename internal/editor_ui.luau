@@ -7898,7 +7898,7 @@ function UI.contextMenu(options)
 				Active = true,
 				InputSink = true,
 				ZIndex = baseZ - 1,
-			}, UI.RootOverlay())
+			}, UI.contextMenuOverlay())
 
 			catcher.MouseButton1Down:Connect(function()
 				controller:Close("outside")
