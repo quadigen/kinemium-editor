@@ -888,8 +888,14 @@ openContextMenu = function(instance, screenPoint)
 			end,
 		}
 
-		local _, _, controller =
-			UI.dropdown(content, "", UDim2.fromOffset(-400, -400), UDim2.fromOffset(1, 1), nil, contextMenuOptions)
+		local _, _, controller = UI.contextMenu(
+			UI.widgetOverlay(),
+			"",
+			UDim2.fromOffset(-400, -400),
+			UDim2.fromOffset(1, 1),
+			nil,
+			contextMenuOptions
+		)
 
 		contextMenu = controller
 	end
