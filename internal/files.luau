@@ -1,4 +1,4 @@
-if (IsServer or IsClient) or IsPlaytest then
+﻿if (IsServer or IsClient) or IsPlaytest then
 	return nil
 end
 
@@ -1947,7 +1947,7 @@ return function(content, windowControls)
 				end,
 			}
 
-			local _, _, controller =
+			local controller =
 				UI.dropdown(content, "", UDim2.fromOffset(-400, -400), UDim2.fromOffset(1, 1), nil, contextMenuOptions)
 
 			contextMenu = controller
@@ -2621,3 +2621,7 @@ return function(content, windowControls)
 		end,
 	}
 end
+
+
+
+

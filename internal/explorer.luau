@@ -894,7 +894,7 @@ openContextMenu = function(instance, screenPoint)
 			end,
 		}
 
-		local _, _, controller = UI.contextMenu(
+		local controller = UI.contextMenu(
 			UI.contextMenuOverlay(),
 			"",
 			UDim2.fromOffset(-400, -400),
