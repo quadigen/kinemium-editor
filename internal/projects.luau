@@ -85,6 +85,7 @@ return function(page, windowControls, gui)
 
 						gui.Enabled = false
 						UI.root().Enabled = true
+						UI.widgetOverlay().Enabled = true
 						UI.RootOverlay().Enabled = true
 
 						Explorer.filesController.Refresh()
@@ -368,6 +369,7 @@ return function(page, windowControls, gui)
 				gui.Enabled = false
 
 				UI.root().Enabled = true
+				UI.widgetOverlay().Enabled = true
 				UI.RootOverlay().Enabled = true
 			end,
 			{

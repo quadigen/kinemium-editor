@@ -7369,7 +7369,6 @@ function UI.widgetOverlay()
 		{ Name = "Widgets", DisplayOrder = 1001, IgnoreGuiInset = true, RenderOnTop = true, Enabled = true },
 		game.CoreGui
 	)
-	root.Enabled = true
 
 	shared.widgetOverlay = root
 
