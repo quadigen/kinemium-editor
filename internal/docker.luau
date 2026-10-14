@@ -32,6 +32,8 @@ local HiddenSignal = Signal.new()
 local overlay = Instance.new("ScreenGui")
 overlay.RenderOnTop = true
 overlay.IgnoreGuiInset = true
+overlay.DisplayOrder = 2000
+overlay.RenderOnTop = true
 overlay.Name = "DockingOverlay"
 overlay.Parent = game.CoreGui
 
