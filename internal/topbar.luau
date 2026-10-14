@@ -17,7 +17,13 @@ local studioCategory = require("@internal/topbar_studio")
 local StudioThemeService = game:GetService("StudioThemeService")
 local theme = StudioThemeService.SelectedTheme
 
-local root = UI.RootOverlay()
+local root = Instance.new("ScreenGui")
+root.RenderOnTop = true
+root.IgnoreGuiInset = true
+root.DisplayOrder = 2001
+root.RenderOnTop = true
+root.Name = "Topbar"
+root.Parent = game.CoreGui
 
 local tokens = UI.tokens
 
