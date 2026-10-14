@@ -1891,7 +1891,6 @@ return function(content, windowControls)
 				menuWidth = 180,
 				itemHeight = UI.metrics.inputHeight,
 				maxVisibleItems = 12,
-				itemBgTransparency = 1,
 				showSearch = false,
 				closeOnOutsideClick = false,
 				menuPosition = function()
@@ -2017,7 +2016,6 @@ return function(content, windowControls)
 
 			icon = "builtin://global-icons/plus.svg",
 			iconSize = 14,
-			backdrop = true,
 
 			color = tokens.color.input,
 			hoverColor = tokens.color.hover,
@@ -2025,7 +2023,6 @@ return function(content, windowControls)
 			menuWidth = 180,
 			menuSide = "left",
 			itemBgTransparency = 1,
-			BackgroundTransparency = 0.5,
 			menuPosition = function()
 				local coordinates = theme.ExplorerCoordinates
 
