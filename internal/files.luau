@@ -1,4 +1,4 @@
-﻿if (IsServer or IsClient) or IsPlaytest then
+if (IsServer or IsClient) or IsPlaytest then
 	return nil
 end
 

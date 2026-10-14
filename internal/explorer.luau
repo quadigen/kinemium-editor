@@ -19,11 +19,7 @@ local ReflectionService = game:GetService("ReflectionService")
 local colors = UI.colors
 local tokens = UI.tokens
 
-local gui = Instance.new("ScreenGui")
-gui.DisplayOrder = 5000
-gui.Name = "Explorer"
-gui.RenderOnTop = true
-gui.Parent = game.CoreGui
+local gui = UI.widgetOverlay()
 
 local panel, _, _, windowControls =
 	UI.window("Explorer", theme.ExplorerCoordinates.Position, theme.ExplorerCoordinates.Size, "Explorer", {
