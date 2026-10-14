@@ -7360,15 +7360,15 @@ function UI.root()
 end
 
 function UI.widgetOverlay()
-	if shared.root then
-		return shared.root
+	if shared.widgetOverlay then
+		return shared.widgetOverlay
 	end
 
 	local root = UI.create("ScreenGui", { Name = "Widgets", DisplayOrder = 1000, IgnoreGuiInset = true }, game.CoreGui)
 
-	shared.root = root
+	shared.widgetOverlay = root
 
-	shared.background = UI.create("TextButton", {
+	shared.widgetOverlayBg = UI.create("TextButton", {
 
 		Name = "EditorBackground",
 
@@ -7391,7 +7391,7 @@ function UI.widgetOverlay()
 		ZIndex = -100000,
 	}, root)
 
-	shared.background.MouseButton1Click:Connect(function()
+	shared.widgetOverlayBg.MouseButton1Click:Connect(function()
 		local active = shared.activeDropdown
 
 		if active and closeActiveDropdown and active.closeOnOutsideClick ~= false then
