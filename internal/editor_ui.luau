@@ -6291,7 +6291,7 @@ function UI.dropdown(parent, value, position, size, chevronIcon, options)
 			end
 
 			local boundsPosition = Vector2.new(0, 0)
-			local boundsSize = UI.RootOverlay().AbsoluteSize
+			local boundsSize = workspace:GetWindowDimensions()
 
 			if not boundsPosition or not boundsSize then
 				return
@@ -7849,7 +7849,7 @@ function UI.contextMenu(parent, value, position, size, chevronIcon, options)
 	end
 
 	local function toPoint(position)
-		local screen = UI.RootOverlay().AbsoluteSize
+		local screen = workspace:GetWindowDimensions()
 
 		local ok, scaleX = pcall(function()
 			return position.X.Scale
@@ -7886,7 +7886,6 @@ function UI.contextMenu(parent, value, position, size, chevronIcon, options)
 		if position ~= nil then
 			point = toPoint(position)
 		elseif options.menuPosition then
-			print(options.menuPosition())
 			point = toPoint(options.menuPosition())
 		else
 			point = UserInputService:GetMouseLocation()
