@@ -7756,7 +7756,7 @@ function UI.contextMenu(options)
 		local shell = UI.create("Frame", {
 			Name = "ContextMenu" .. level,
 			Size = UDim2.fromOffset(menuWidth, 0),
-			BackgroundTransparency = 1,
+			BackgroundTransparency = 0.5,
 			BorderSizePixel = 0,
 			ClipsDescendants = true,
 			ZIndex = z,
@@ -7774,6 +7774,7 @@ function UI.contextMenu(options)
 		inner.BackgroundTransparency = options.BackgroundTransparency or 0
 		inner.ZIndex = z + 1
 
+		UI.backdrop(shell, 15, Color3.new(0, 0, 0))
 		UI.stroke(inner, options.borderColor or colors.borderStrong, 1, options.borderTransparency or 0)
 
 		if options.backdrop then
