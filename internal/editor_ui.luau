@@ -7891,40 +7891,6 @@ function UI.contextMenu(options)
 			UserInputService.InputBegan:Connect(function(input)
 				if input.KeyCode == Enum.KeyCode.Escape then
 					controller:Close("escape")
-					return
-				end
-
-				if options.closeOnOutsideClick == false then
-					return
-				end
-
-				local isLeft = input.UserInputType == Enum.UserInputType.MouseButton1
-				local isRight = input.UserInputType == Enum.UserInputType.MouseButton2
-
-				if not isLeft and not isRight then
-					return
-				end
-
-				local position = Vector2.new(input.Position.X, input.Position.Y)
-
-				for _, menu in ipairs(stack) do
-					local menuPosition = menu.shell.AbsolutePosition
-					local menuSize = menu.shell.AbsoluteSize
-
-					local inside = position.X >= menuPosition.X
-						and position.X <= menuPosition.X + menuSize.X
-						and position.Y >= menuPosition.Y
-						and position.Y <= menuPosition.Y + menuSize.Y
-
-					if inside then
-						return
-					end
-				end
-
-				controller:Close("outside")
-
-				if isRight and options.onOutsideRightClick then
-					options.onOutsideRightClick(position, context)
 				end
 			end)
 		)
@@ -7978,6 +7944,11 @@ function UI.contextMenu(options)
 		open = false
 
 		closeFrom(1)
+
+		if catcher then
+			catcher:Destroy()
+			catcher = nil
+		end
 
 		for _, connection in ipairs(connections) do
 			connection:Disconnect()
