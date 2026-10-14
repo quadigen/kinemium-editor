@@ -31,7 +31,7 @@ local rootOverlay = UI.RootOverlay()
 
 local scriptLayer = UI.create("ScreenGui", {
 	Name = "ScriptEditorLayer",
-	DisplayOrder = 2000,
+	DisplayOrder = 1000,
 	IgnoreGuiInset = true,
 }, game.CoreGui)
 
