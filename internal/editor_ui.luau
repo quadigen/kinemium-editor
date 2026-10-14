@@ -1,4 +1,4 @@
-﻿local UI = {}
+local UI = {}
 
 local StudioThemeService = game:GetService("StudioThemeService")
 local UserInputService = game:GetService("UserInputService")
