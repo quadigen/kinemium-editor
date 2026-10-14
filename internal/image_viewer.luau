@@ -116,8 +116,6 @@ local function createWindow(title, onGone)
 	UI.backdrop(pageContent, 15, Color3.new(0, 0, 0))
 
 	if not ok then
-		gui:Destroy()
-
 		error(window, 0)
 	end
 
@@ -125,17 +123,7 @@ local function createWindow(title, onGone)
 
 	local content = controls and controls.pages and controls.pages.Viewer or pageContent or window
 
-	pcall(function()
-		window.Destroying:Connect(onGone)
-	end)
-
 	return gui, window, content
-end
-
-local function destroyGui(gui)
-	if gui ~= nil and UI.isAlive(gui) then
-		gui:Destroy()
-	end
 end
 
 function ImageViewer.ImageSource(path)
@@ -195,14 +183,10 @@ function ImageViewer.Open(ctx)
 
 	local function close()
 		cleanup()
-
-		destroyGui(gui)
 	end
 
 	local function windowGone()
 		cleanup()
-
-		destroyGui(gui)
 	end
 
 	handle.close = close
@@ -211,8 +195,6 @@ function ImageViewer.Open(ctx)
 	gui, window, content = createWindow(ctx.Name, windowGone)
 
 	if closed then
-		destroyGui(gui)
-
 		return
 	end
 
