@@ -7614,7 +7614,7 @@ function UI.contextMenu(options)
 					BackgroundTransparency = itemBgTransparency,
 					BorderSizePixel = 0,
 					AutoButtonColor = false,
-					Active = enabled,
+					Active = true,
 					InputSink = true,
 					ZIndex = z,
 				}, menu.list)
