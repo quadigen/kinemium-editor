@@ -320,7 +320,9 @@ end
 
 local uiEditor = UIEditor.new({
 	overlay = viewportOverlay,
-	canPick = renderer.Dimension == "2D",
+	canPick = true,
+	clearOnEmpty = renderer.Dimension == "2D",
+	contextOnEmpty = renderer.Dimension == "2D",
 	getTool = function()
 		return activeTool
 	end,
@@ -329,6 +331,9 @@ local uiEditor = UIEditor.new({
 	end,
 	snapStep = 4,
 	rotateSnap = 15,
+	smoothDrag = true,
+	guides = true,
+	shortcuts = true,
 })
 
 for index, definition in ipairs(renderer.Dimension == "2D" and tools2D or tools3D) do
