@@ -7750,7 +7750,7 @@ function UI.contextMenu(options)
 	openLevel = function(level, source, anchor)
 		closeFrom(level)
 
-		local overlay = UI.RootOverlay()
+		local overlay = UI.contextMenuOverlay()
 		local z = baseZ + level * 10
 
 		local shell = UI.create("Frame", {
