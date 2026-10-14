@@ -1154,7 +1154,10 @@ UserInputService.InputBegan:Connect(function(input: InputObject, gameProcessed: 
 	end
 
 	if input.UserInputType == Enum.UserInputType.MouseButton1 then
-		if not mouseInList() then
+		local mouse = UserInputService:GetMouseLocation()
+		local overMenu = contextMenu ~= nil and contextMenu:ContainsPoint(mouse.X, mouse.Y)
+
+		if not mouseInList() and not overMenu then
 			closeContextMenu()
 			commitRename()
 		end

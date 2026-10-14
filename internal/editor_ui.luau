@@ -7984,6 +7984,27 @@ function UI.contextMenu(parent, value, position, size, chevronIcon, options)
 		return open
 	end
 
+	function controller:ContainsPoint(x, y)
+		for _, menu in ipairs(stack) do
+			local shell = menu.shell
+
+			if shell and UI.isAlive(shell) then
+				local position = shell.AbsolutePosition
+
+				if
+					x >= position.X
+					and x <= position.X + menuWidth
+					and y >= position.Y
+					and y <= position.Y + menu.height
+				then
+					return true
+				end
+			end
+		end
+
+		return false
+	end
+
 	function controller:SetItems(newItems)
 		items = newItems
 		categories = nil
