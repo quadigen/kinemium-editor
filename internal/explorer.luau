@@ -219,8 +219,13 @@ for _, item in ipairs(classItems) do
 	end
 end
 
-local dropdown =
-	UI.contextMenu(content, "", UDim2.new(1, -32, 0, 6), UDim2.fromOffset(26, UI.metrics.inputHeight), nil, {
+local dropdown = UI.contextMenu(
+	UI.contextMenuOverlay(),
+	"",
+	UDim2.new(1, -32, 0, 6),
+	UDim2.fromOffset(26, UI.metrics.inputHeight),
+	nil,
+	{
 		items = classItems,
 		categories = categories,
 
@@ -269,7 +274,8 @@ local dropdown =
 				object,
 			})
 		end,
-	})
+	}
+)
 
 local serviceOrder = {
 	Workspace = 1,
@@ -889,7 +895,7 @@ openContextMenu = function(instance, screenPoint)
 		}
 
 		local _, _, controller = UI.contextMenu(
-			UI.widgetOverlay(),
+			UI.contextMenuOverlay(),
 			"",
 			UDim2.fromOffset(-400, -400),
 			UDim2.fromOffset(1, 1),

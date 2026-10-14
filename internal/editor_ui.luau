@@ -8045,6 +8045,22 @@ function UI.widgetOverlay()
 	return root
 end
 
+function UI.contextMenuOverlay()
+	if shared.contextMenuOverlay then
+		return shared.contextMenuOverlay
+	end
+
+	local root = UI.create(
+		"ScreenGui",
+		{ Name = "Menus", DisplayOrder = 4000, IgnoreGuiInset = true, RenderOnTop = true, Enabled = true },
+		game.CoreGui
+	)
+
+	shared.contextMenuOverlay = root
+
+	return root
+end
+
 function UI.RootOverlay()
 	if shared.overlayRoot then
 		return shared.overlayRoot
