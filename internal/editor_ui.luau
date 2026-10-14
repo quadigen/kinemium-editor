@@ -7359,6 +7359,676 @@ function UI.root()
 	return root
 end
 
+function UI.contextMenu(options)
+	options = options or {}
+
+	local colors = UI.tokens.color
+
+	local rowHeight = options.itemHeight or UI.metrics.inputHeight
+	local separatorHeight = options.separatorHeight or 9
+	local padding = options.padding or 4
+	local menuWidth = options.menuWidth or 200
+	local maxVisibleItems = options.maxVisibleItems or 12
+	local edge = options.menuMargin or 4
+	local baseZ = options.menuZIndex or 100050
+	local textSize = options.textSize or UI.tokens.type.small
+	local textColor = options.textColor or colors.text
+	local iconSize = options.iconSize or 14
+	local showSearch = options.showSearch == true
+	local preferLeft = options.menuSide == "left"
+	local itemBgTransparency = options.itemBgTransparency or 1
+	local hoverTransparency = options.hoverTransparency or 0.1
+	local animationSpeed = options.animationSpeed or 24
+	local animate = options.animate ~= false
+	local baseColor = options.itemColor or options.menuColor or colors.panelRaised
+	local hoverColor = options.hoverColor or colors.accent
+	local chevronIcon = options.chevronIcon or "builtin://global-icons/chevron-down.svg"
+
+	local items = options.items
+	local categories = options.categories
+
+	local controller = {}
+	local stack = {}
+	local connections = {}
+	local catcher = nil
+	local open = false
+	local context = nil
+
+	local function evaluate(value, ...)
+		if type(value) == "function" then
+			return value(...)
+		end
+
+		return value
+	end
+
+	local function normalize(raw)
+		if type(raw) ~= "table" then
+			return { text = tostring(raw), value = raw, enabled = true }
+		end
+
+		if raw.separator == true or raw.type == "separator" then
+			return { separator = true }
+		end
+
+		local value = raw.value
+
+		if value == nil then
+			value = raw[1]
+		end
+
+		return {
+			text = tostring(raw.label or raw.text or raw.name or value or ""),
+			value = value,
+			icon = raw.icon,
+			shortcut = raw.shortcut,
+			enabled = evaluate(raw.enabled, context) ~= false,
+			check = evaluate(raw.check, context) == true,
+			callback = raw.callback or raw.onClick,
+			children = raw.submenu or raw.children or raw.items,
+			raw = raw,
+		}
+	end
+
+	local function matches(entry, query)
+		if query == "" then
+			return true
+		end
+
+		if entry.separator then
+			return false
+		end
+
+		return string.find(string.lower(entry.text or ""), query, 1, true) ~= nil
+	end
+
+	local function topEntries(query)
+		local out = {}
+		local cats = evaluate(categories, context)
+
+		if cats then
+			for _, category in ipairs(cats) do
+				local matched = {}
+
+				for _, raw in ipairs(category.items or {}) do
+					local entry = normalize(raw)
+
+					if matches(entry, query) then
+						table.insert(matched, entry)
+					end
+				end
+
+				if #matched > 0 then
+					table.insert(out, { header = category.name })
+
+					for _, entry in ipairs(matched) do
+						table.insert(out, entry)
+					end
+				end
+			end
+		else
+			for _, raw in ipairs(evaluate(items, context) or {}) do
+				local entry = normalize(raw)
+
+				if matches(entry, query) then
+					table.insert(out, entry)
+				end
+			end
+		end
+
+		return out
+	end
+
+	local function childEntries(list)
+		local out = {}
+
+		for _, raw in ipairs(evaluate(list, context) or {}) do
+			table.insert(out, normalize(raw))
+		end
+
+		return out
+	end
+
+	local function closeFrom(level)
+		for i = #stack, level, -1 do
+			local menu = stack[i]
+
+			if menu.shell then
+				menu.shell:Destroy()
+			end
+
+			stack[i] = nil
+		end
+	end
+
+	local function place(menu)
+		local screen = UI.RootOverlay().AbsoluteSize
+		local anchor = menu.anchor
+		local x, y
+
+		if anchor.rowRect then
+			local rect = anchor.rowRect
+
+			if preferLeft then
+				x = rect.left - menuWidth + 2
+
+				if x < edge then
+					x = rect.right - 2
+				end
+			else
+				x = rect.right - 2
+
+				if x + menuWidth > screen.X - edge then
+					x = rect.left - menuWidth + 2
+				end
+			end
+
+			y = rect.top - padding
+		else
+			local point = anchor.point
+
+			x = preferLeft and (point.X - menuWidth) or point.X
+
+			if x + menuWidth > screen.X - edge then
+				x = point.X - menuWidth
+			end
+
+			if x < edge then
+				x = point.X
+			end
+
+			y = point.Y
+
+			if y + menu.height > screen.Y - edge then
+				y = point.Y - menu.height
+			end
+		end
+
+		x = math.clamp(x, edge, math.max(edge, screen.X - menuWidth - edge))
+		y = math.clamp(y, edge, math.max(edge, screen.Y - menu.height - edge))
+
+		menu.shell.Position = UDim2.fromOffset(math.floor(x + 0.5), math.floor(y + 0.5))
+	end
+
+	local renderRows
+	local openLevel
+
+	local function choose(entry)
+		controller:Close("select")
+
+		if entry.callback then
+			entry.callback(entry.value, entry.raw, context)
+		end
+
+		if options.onChanged then
+			options.onChanged(entry.value, entry.raw, context)
+		end
+	end
+
+	renderRows = function(menu)
+		local query = menu.search and string.lower(menu.search.Text or "") or ""
+		local entries = menu.source(query)
+
+		UI.clear(menu.list)
+
+		menu.rows = {}
+
+		local z = menu.z + 3
+		local rowWidth = menuWidth - padding * 2
+		local y = 0
+
+		for _, entry in ipairs(entries) do
+			if entry.header then
+				local header = UI.label(
+					menu.list,
+					entry.header,
+					UDim2.fromOffset(10, y + 3),
+					UDim2.new(1, -20, 0, rowHeight - 4),
+					options.categoryTextSize or 10,
+					colors.muted
+				)
+
+				header.TextXAlignment = Enum.TextXAlignment.Left
+				header.ZIndex = z + 1
+
+				y += rowHeight
+			elseif entry.separator then
+				local line = UI.separator(
+					menu.list,
+					UDim2.fromOffset(padding + 6, y + math.floor(separatorHeight / 2)),
+					UDim2.fromOffset(menuWidth - (padding + 6) * 2, 1),
+					colors.border
+				)
+
+				line.ZIndex = z
+
+				y += separatorHeight
+			else
+				local enabled = entry.enabled ~= false
+
+				local row = UI.create("TextButton", {
+					Text = "",
+					Position = UDim2.fromOffset(padding, y),
+					Size = UDim2.fromOffset(rowWidth, rowHeight),
+					BackgroundColor3 = baseColor,
+					BackgroundTransparency = itemBgTransparency,
+					BorderSizePixel = 0,
+					AutoButtonColor = false,
+					Active = enabled,
+					InputSink = true,
+					ZIndex = z,
+				}, menu.list)
+
+				UI.corner(row, options.itemRadius or UI.tokens.radius.sm)
+
+				local labelX = 24
+
+				if entry.icon then
+					local icon = UI.image(
+						row,
+						entry.icon,
+						UDim2.fromOffset(7, math.floor((rowHeight - iconSize) / 2)),
+						UDim2.fromOffset(iconSize, iconSize)
+					)
+
+					icon.ZIndex = z + 1
+
+					labelX = 7 + iconSize + 7
+				elseif entry.check then
+					local dot = UI.frame(
+						row,
+						UDim2.fromOffset(10, math.floor(rowHeight / 2) - 3),
+						UDim2.fromOffset(6, 6),
+						colors.accent,
+						3
+					)
+
+					dot.ZIndex = z + 1
+				end
+
+				local label = UI.label(
+					row,
+					entry.text,
+					UDim2.fromOffset(labelX, 0),
+					UDim2.new(1, -(labelX + (entry.shortcut and 84 or 22)), 1, 0),
+					textSize,
+					enabled and textColor or colors.muted
+				)
+
+				label.TextXAlignment = Enum.TextXAlignment.Left
+				label.TextYAlignment = Enum.TextYAlignment.Center
+				label.ZIndex = z + 1
+
+				if entry.shortcut then
+					local hint = UI.label(
+						row,
+						entry.shortcut,
+						UDim2.new(1, -90, 0, 0),
+						UDim2.fromOffset(82, rowHeight),
+						UI.tokens.type.caption,
+						colors.muted
+					)
+
+					hint.TextXAlignment = Enum.TextXAlignment.Right
+					hint.TextYAlignment = Enum.TextYAlignment.Center
+					hint.ZIndex = z + 1
+				end
+
+				if entry.children then
+					local arrow = UI.image(row, chevronIcon, UDim2.new(1, -18, 0.5, -5), UDim2.fromOffset(10, 10))
+
+					arrow.Rotation = -90
+					arrow.ZIndex = z + 1
+				end
+
+				local record = { button = row, hover = 0, hovered = false, enabled = enabled }
+
+				table.insert(menu.rows, record)
+
+				local function openChild()
+					local position = row.AbsolutePosition
+
+					openLevel(menu.level + 1, function()
+						return childEntries(entry.children)
+					end, {
+						rowRect = {
+							left = position.X,
+							right = position.X + row.AbsoluteSize.X + padding,
+							top = position.Y,
+						},
+					})
+				end
+
+				row.MouseEnter:Connect(function()
+					record.hovered = true
+
+					if not enabled then
+						return
+					end
+
+					if entry.children then
+						openChild()
+					else
+						closeFrom(menu.level + 1)
+					end
+				end)
+
+				row.MouseLeave:Connect(function()
+					record.hovered = false
+				end)
+
+				row.MouseButton1Click:Connect(function()
+					if not enabled then
+						return
+					end
+
+					if entry.children then
+						openChild()
+					else
+						choose(entry)
+					end
+				end)
+
+				y += rowHeight
+			end
+		end
+
+		menu.contentHeight = math.max(y, rowHeight)
+
+		local screen = UI.RootOverlay().AbsoluteSize
+		local available = math.max(screen.Y - edge * 2 - padding * 2 - menu.searchHeight, rowHeight)
+		local visible = math.min(menu.contentHeight, maxVisibleItems * rowHeight, available)
+
+		menu.list.CanvasSize = UDim2.new(1, 0, 0, menu.contentHeight)
+		menu.list.Size = UDim2.new(1, 0, 0, visible)
+		menu.list.ScrollingEnabled = menu.contentHeight > visible
+
+		menu.height = menu.searchHeight + visible + padding * 2
+		menu.inner.Size = UDim2.fromOffset(menuWidth, menu.height)
+	end
+
+	openLevel = function(level, source, anchor)
+		closeFrom(level)
+
+		local overlay = UI.RootOverlay()
+		local z = baseZ + level * 10
+
+		local shell = UI.create("Frame", {
+			Name = "ContextMenu" .. level,
+			Size = UDim2.fromOffset(menuWidth, 0),
+			BackgroundTransparency = 1,
+			BorderSizePixel = 0,
+			ClipsDescendants = true,
+			ZIndex = z,
+		}, overlay)
+
+		local inner = UI.frame(
+			shell,
+			UDim2.fromOffset(0, 0),
+			UDim2.fromOffset(menuWidth, 10),
+			options.menuColor or colors.panelRaised,
+			options.radius or UI.tokens.radius.md
+		)
+
+		inner.Name = "Panel"
+		inner.BackgroundTransparency = options.BackgroundTransparency or 0
+		inner.ZIndex = z + 1
+
+		UI.stroke(inner, options.borderColor or colors.borderStrong, 1, options.borderTransparency or 0)
+
+		if options.backdrop then
+			UI.create("UIBackdrop", {
+				Enabled = true,
+				BlurRadius = options.backdropBlur or 18,
+				TintColor3 = options.backdropColor or colors.panelRaised,
+				TintTransparency = options.backdropTransparency or options.BackgroundTransparency or 0.85,
+			}, inner)
+		end
+
+		local menu = {
+			level = level,
+			z = z,
+			shell = shell,
+			inner = inner,
+			source = source,
+			anchor = anchor,
+			rows = {},
+			height = 0,
+			cur = 0,
+			searchHeight = (level == 1 and showSearch) and 34 or 0,
+		}
+
+		if menu.searchHeight > 0 then
+			menu.search = UI.input(
+				inner,
+				options.searchPlaceholder or "Search...",
+				UDim2.fromOffset(5, 5),
+				UDim2.new(1, -10, 0, 24),
+				{ textSize = textSize }
+			)
+
+			menu.search.ZIndex = z + 2
+		end
+
+		menu.list = UI.create("ScrollingFrame", {
+			Position = UDim2.fromOffset(0, menu.searchHeight + padding),
+			Size = UDim2.new(1, 0, 0, 10),
+			BackgroundTransparency = 1,
+			BorderSizePixel = 0,
+			CanvasPosition = Vector2.new(0, 0),
+			CanvasSize = UDim2.new(1, 0, 0, 0),
+			ScrollBarThickness = 5,
+			ScrollBarImageColor3 = colors.subtext,
+			ScrollBarImageTransparency = 0.4,
+			ScrollBarAutoHide = true,
+			ClipsDescendants = true,
+			ZIndex = z + 2,
+		}, inner)
+
+		table.insert(stack, menu)
+
+		renderRows(menu)
+		place(menu)
+
+		menu.cur = animate and 0 or menu.height
+		shell.Size = UDim2.fromOffset(menuWidth, math.floor(menu.cur + 0.5))
+
+		if menu.search then
+			menu.search.TextChanged:Connect(function()
+				renderRows(menu)
+				place(menu)
+			end)
+		end
+
+		return menu
+	end
+
+	local function toPoint(position)
+		local screen = UI.RootOverlay().AbsoluteSize
+
+		local ok, scaleX = pcall(function()
+			return position.X.Scale
+		end)
+
+		if ok and scaleX ~= nil then
+			return Vector2.new(
+				position.X.Scale * screen.X + position.X.Offset,
+				position.Y.Scale * screen.Y + position.Y.Offset
+			)
+		end
+
+		return position
+	end
+
+	function controller:Open(position, newContext)
+		if open then
+			controller:Close("reopen")
+		end
+
+		if shared.activeContextMenu and shared.activeContextMenu ~= controller then
+			shared.activeContextMenu:Close("replaced")
+		end
+
+		if closeActiveDropdown then
+			closeActiveDropdown()
+		end
+
+		context = newContext
+		controller.context = newContext
+
+		local point
+
+		if position ~= nil then
+			point = toPoint(position)
+		elseif options.menuPosition then
+			point = toPoint(options.menuPosition())
+		else
+			point = UserInputService:GetMouseLocation()
+		end
+
+		if options.closeOnOutsideClick ~= false then
+			catcher = UI.create("TextButton", {
+				Name = "ContextMenuCatcher",
+				Text = "",
+				Size = UDim2.fromScale(1, 1),
+				BackgroundTransparency = 1,
+				BorderSizePixel = 0,
+				AutoButtonColor = false,
+				Active = true,
+				InputSink = true,
+				ZIndex = baseZ - 1,
+			}, UI.RootOverlay())
+
+			catcher.MouseButton1Down:Connect(function()
+				controller:Close("outside")
+			end)
+
+			catcher.MouseButton2Down:Connect(function(x, y)
+				controller:Close("outside")
+
+				if options.onOutsideRightClick then
+					options.onOutsideRightClick(Vector2.new(x, y), context)
+				end
+			end)
+		end
+
+		table.insert(
+			connections,
+			UserInputService.InputBegan:Connect(function(input)
+				if input.KeyCode == Enum.KeyCode.Escape then
+					controller:Close("escape")
+				end
+			end)
+		)
+
+		table.insert(
+			connections,
+			RunService.Heartbeat:Connect(function(dt)
+				for _, menu in ipairs(stack) do
+					if animate then
+						menu.cur = tooltipSmoothTowards(menu.cur, menu.height, animationSpeed, dt)
+
+						if math.abs(menu.cur - menu.height) < 0.5 then
+							menu.cur = menu.height
+						end
+					else
+						menu.cur = menu.height
+					end
+
+					menu.shell.Size = UDim2.fromOffset(menuWidth, math.floor(menu.cur + 0.5))
+
+					for _, row in ipairs(menu.rows) do
+						local target = (row.hovered and row.enabled) and 1 or 0
+
+						row.hover = tooltipSmoothTowards(row.hover, target, 26, dt)
+
+						row.button.BackgroundColor3 = baseColor:Lerp(hoverColor, row.hover)
+						row.button.BackgroundTransparency = itemBgTransparency
+							+ (hoverTransparency - itemBgTransparency) * row.hover
+					end
+				end
+			end)
+		)
+
+		open = true
+		shared.activeContextMenu = controller
+
+		openLevel(1, topEntries, { point = point })
+
+		if options.onOpen then
+			options.onOpen(context)
+		end
+
+		return true
+	end
+
+	function controller:Close(reason)
+		if not open then
+			return false
+		end
+
+		open = false
+
+		closeFrom(1)
+
+		if catcher then
+			catcher:Destroy()
+			catcher = nil
+		end
+
+		for _, connection in ipairs(connections) do
+			connection:Disconnect()
+		end
+
+		connections = {}
+
+		if shared.activeContextMenu == controller then
+			shared.activeContextMenu = nil
+		end
+
+		if options.onClose then
+			options.onClose(reason or "closed", context)
+		end
+
+		return true
+	end
+
+	function controller:Toggle(position, newContext)
+		if open then
+			return controller:Close("toggle")
+		end
+
+		return controller:Open(position, newContext)
+	end
+
+	function controller:IsOpen()
+		return open
+	end
+
+	function controller:SetItems(newItems)
+		items = newItems
+		categories = nil
+
+		if open then
+			controller:Close("items")
+		end
+	end
+
+	function controller:SetCategories(newCategories)
+		categories = newCategories
+
+		if open then
+			controller:Close("items")
+		end
+	end
+
+	function controller:Destroy()
+		controller:Close("destroy")
+	end
+
+	return controller
+end
+
 function UI.widgetOverlay()
 	if shared.widgetOverlay then
 		return shared.widgetOverlay
