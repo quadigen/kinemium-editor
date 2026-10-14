@@ -7717,15 +7717,16 @@ function UI.contextMenu(options)
 					record.hovered = false
 				end)
 
-				row.MouseButton1Click:Connect(function()
-					print("hello world")
+				row.MouseEnter:Connect(function()
+					print("ROW HOVER:", entry.text)
+				end)
 
-					if entry.children then
-						openChild()
-					else
-						print("chose")
-						choose(entry)
-					end
+				row.MouseButton1Down:Connect(function()
+					print("ROW DOWN:", entry.text)
+				end)
+
+				row.MouseButton1Click:Connect(function()
+					print("ROW CLICK:", entry.text)
 				end)
 
 				y += rowHeight
@@ -7738,9 +7739,9 @@ function UI.contextMenu(options)
 		local available = math.max(screen.Y - edge * 2 - padding * 2 - menu.searchHeight, rowHeight)
 		local visible = math.min(menu.contentHeight, maxVisibleItems * rowHeight, available)
 
-		menu.list.CanvasSize = UDim2.new(1, 0, 0, menu.contentHeight)
+		menu.list.CanvasSize = menu.contentHeight
 		menu.list.Size = UDim2.new(1, 0, 0, visible)
-		menu.list.ScrollingEnabled = menu.contentHeight > visible
+		menu.list.ScrollBarVisible = menu.contentHeight > visible
 
 		menu.height = menu.searchHeight + visible + padding * 2
 		menu.inner.Size = UDim2.fromOffset(menuWidth, menu.height)
@@ -7815,11 +7816,13 @@ function UI.contextMenu(options)
 			Size = UDim2.new(1, 0, 0, 10),
 			BackgroundTransparency = 1,
 			BorderSizePixel = 0,
-			CanvasPosition = Vector2.new(0, 0),
-			CanvasSize = UDim2.new(1, 0, 0, 0),
-			ScrollBarThickness = 5,
 			ScrollBarImageColor3 = colors.subtext,
 			ScrollBarImageTransparency = 0.4,
+			CanvasPosition = 0,
+			CanvasSize = 0,
+			ScrollBarThickness = 5,
+			ScrollBarColor3 = colors.subtext,
+			ScrollBarTransparency = 0.4,
 			ScrollBarAutoHide = true,
 			ClipsDescendants = true,
 			ZIndex = z + 2,
