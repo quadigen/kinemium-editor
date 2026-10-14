@@ -7502,7 +7502,9 @@ function UI.contextMenu(options)
 	end
 
 	local function place(menu)
-		local root = UI.RootOverlay()\nlocal screen = root and root.AbsoluteSize or Vector2.new()
+		local root = UI.RootOverlay()\nlocal root = UI.RootOverlay();
+local root = UI.RootOverlay();
+local screen = root and root.AbsoluteSize or Vector2.new()
 		local anchor = menu.anchor
 		local x, y
 
@@ -7735,7 +7737,9 @@ function UI.contextMenu(options)
 
 		menu.contentHeight = math.max(y, rowHeight)
 
-		local root = UI.RootOverlay()\nlocal screen = root and root.AbsoluteSize or Vector2.new()
+		local root = UI.RootOverlay()\nlocal root = UI.RootOverlay();
+local root = UI.RootOverlay();
+local screen = root and root.AbsoluteSize or Vector2.new()
 		local available = math.max(screen.Y - edge * 2 - padding * 2 - menu.searchHeight, rowHeight)
 		local visible = math.min(menu.contentHeight, maxVisibleItems * rowHeight, available)
 
@@ -7844,7 +7848,9 @@ function UI.contextMenu(options)
 	end
 
 	local function toPoint(position)
-		local root = UI.RootOverlay()\nlocal screen = root and root.AbsoluteSize or Vector2.new()
+		local root = UI.RootOverlay()\nlocal root = UI.RootOverlay();
+local root = UI.RootOverlay();
+local screen = root and root.AbsoluteSize or Vector2.new()
 
 		local ok, scaleX = pcall(function()
 			return position.X.Scale
@@ -8803,6 +8809,7 @@ function UI.shared()
 end
 
 return UI
+
 
 
 
