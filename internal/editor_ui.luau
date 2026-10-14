@@ -7391,14 +7391,6 @@ function UI.widgetOverlay()
 		ZIndex = -100000,
 	}, root)
 
-	shared.widgetOverlayBg.MouseButton1Click:Connect(function()
-		local active = shared.activeDropdown
-
-		if active and closeActiveDropdown and active.closeOnOutsideClick ~= false then
-			closeActiveDropdown()
-		end
-	end)
-
 	return root
 end
 
