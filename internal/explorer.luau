@@ -219,7 +219,7 @@ for _, item in ipairs(classItems) do
 	end
 end
 
-local dropdown = UI.contextMenu(
+local dropdown = UI.dropdown(
 	UI.contextMenuOverlay(),
 	"",
 	UDim2.new(1, -32, 0, 6),
