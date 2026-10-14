@@ -571,7 +571,7 @@ local function makePreview(className, partShape)
 	end
 
 	local highlight = Instance.new("Highlight")
-	highlight.OutlineTransparency = 1
+	highlight.OutlineTransparency = 0
 	highlight.Parent = part
 
 	return { part = part, highlight = highlight }
@@ -587,6 +587,7 @@ refreshPreviewStyle = function()
 		p.highlight.FillColor = cfg.previewColor
 		p.highlight.FillTransparency = cfg.previewTransparency
 		p.highlight.OutlineColor = cfg.previewColor
+		p.highlight.OutlineTransparency = 0.3
 	end
 end
 

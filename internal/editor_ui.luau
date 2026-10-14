@@ -7359,6 +7359,49 @@ function UI.root()
 	return root
 end
 
+function UI.widgetOverlay()
+	if shared.root then
+		return shared.root
+	end
+
+	local root = UI.create("ScreenGui", { Name = "Widgets", DisplayOrder = 1000, IgnoreGuiInset = true }, game.CoreGui)
+
+	shared.root = root
+
+	shared.background = UI.create("TextButton", {
+
+		Name = "EditorBackground",
+
+		Text = "",
+
+		Position = UDim2.fromOffset(0, 0),
+
+		Size = UDim2.new(1, 0, 1, 0),
+
+		BackgroundColor3 = UI.tokens.color.canvas,
+
+		BorderSizePixel = 0,
+
+		Active = true,
+
+		InputSink = false,
+
+		AutoButtonColor = false,
+
+		ZIndex = -100000,
+	}, root)
+
+	shared.background.MouseButton1Click:Connect(function()
+		local active = shared.activeDropdown
+
+		if active and closeActiveDropdown and active.closeOnOutsideClick ~= false then
+			closeActiveDropdown()
+		end
+	end)
+
+	return root
+end
+
 function UI.RootOverlay()
 	if shared.overlayRoot then
 		return shared.overlayRoot

@@ -109,10 +109,7 @@ local function ImageFor(name, size)
 	return SVG_PREFIX .. SvgFor(name, size)
 end
 
-local gui = Instance.new("ScreenGui")
-gui.Name = "Lucide"
-gui.RenderOnTop = true
-gui.Parent = game.CoreGui
+local gui = UI.widgetOverlay()
 
 local panel, content =
 	UI.window("Lucide", UDim2.fromOffset(120, 120), UDim2.fromOffset(380, 540), "Icon Library (Lucide)", {

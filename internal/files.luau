@@ -2154,7 +2154,7 @@ return function(content, windowControls)
 			BorderSizePixel = 0,
 			Active = false,
 			ZIndex = 5000,
-		}, UI.root())
+		}, UI.widgetOverlay())
 
 		UI.corner(dragLayer, tokens.radius.sm)
 

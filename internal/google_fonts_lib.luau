@@ -103,10 +103,7 @@ local function LoadFace(family)
 	return face
 end
 
-local gui = Instance.new("ScreenGui")
-gui.Name = "Fonts"
-gui.RenderOnTop = true
-gui.Parent = game.CoreGui
+local gui = UI.widgetOverlay()
 
 local panel, content =
 	UI.window("Fonts", UDim2.fromOffset(120, 120), UDim2.fromOffset(320, 480), "Fonts Library (Google)", {
