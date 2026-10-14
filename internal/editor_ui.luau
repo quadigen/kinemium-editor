@@ -7886,37 +7886,45 @@ function UI.contextMenu(options)
 			point = UserInputService:GetMouseLocation()
 		end
 
-		if options.closeOnOutsideClick ~= false then
-			catcher = UI.create("TextButton", {
-				Name = "ContextMenuCatcher",
-				Text = "",
-				Size = UDim2.fromScale(1, 1),
-				BackgroundTransparency = 1,
-				BorderSizePixel = 0,
-				AutoButtonColor = false,
-				Active = true,
-				InputSink = true,
-				ZIndex = baseZ - 1,
-			}, UI.contextMenuOverlay())
-
-			catcher.MouseButton1Down:Connect(function()
-				controller:Close("outside")
-			end)
-
-			catcher.MouseButton2Down:Connect(function(x, y)
-				controller:Close("outside")
-
-				if options.onOutsideRightClick then
-					options.onOutsideRightClick(Vector2.new(x, y), context)
-				end
-			end)
-		end
-
 		table.insert(
 			connections,
 			UserInputService.InputBegan:Connect(function(input)
 				if input.KeyCode == Enum.KeyCode.Escape then
 					controller:Close("escape")
+					return
+				end
+
+				if options.closeOnOutsideClick == false then
+					return
+				end
+
+				local isLeft = input.UserInputType == Enum.UserInputType.MouseButton1
+				local isRight = input.UserInputType == Enum.UserInputType.MouseButton2
+
+				if not isLeft and not isRight then
+					return
+				end
+
+				local position = Vector2.new(input.Position.X, input.Position.Y)
+
+				for _, menu in ipairs(stack) do
+					local menuPosition = menu.shell.AbsolutePosition
+					local menuSize = menu.shell.AbsoluteSize
+
+					local inside = position.X >= menuPosition.X
+						and position.X <= menuPosition.X + menuSize.X
+						and position.Y >= menuPosition.Y
+						and position.Y <= menuPosition.Y + menuSize.Y
+
+					if inside then
+						return
+					end
+				end
+
+				controller:Close("outside")
+
+				if isRight and options.onOutsideRightClick then
+					options.onOutsideRightClick(position, context)
 				end
 			end)
 		)
@@ -7970,11 +7978,6 @@ function UI.contextMenu(options)
 		open = false
 
 		closeFrom(1)
-
-		if catcher then
-			catcher:Destroy()
-			catcher = nil
-		end
 
 		for _, connection in ipairs(connections) do
 			connection:Disconnect()
