@@ -2257,7 +2257,6 @@ function Editor:tick(dt)
 	self:tickExtras()
 	self:tickHover(dt)
 	self:tickGuides()
-	self:tickChips(dt)
 	self:tickMenus(dt)
 end
 
