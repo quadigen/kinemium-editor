@@ -320,11 +320,10 @@ end
 
 local uiEditor = UIEditor.new({
 	overlay = viewportOverlay,
-	canPick = false,
+	canPick = true,
 	clearOnEmpty = renderer.Dimension == "2D",
 	contextOnEmpty = renderer.Dimension == "2D",
 	getTool = function()
-		print(activeTool)
 		return activeTool
 	end,
 	getSnap = function()
