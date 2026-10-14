@@ -7886,6 +7886,7 @@ function UI.contextMenu(parent, value, position, size, chevronIcon, options)
 		if position ~= nil then
 			point = toPoint(position)
 		elseif options.menuPosition then
+			print(options.menuPosition())
 			point = toPoint(options.menuPosition())
 		else
 			point = UserInputService:GetMouseLocation()
