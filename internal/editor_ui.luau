@@ -6082,8 +6082,10 @@ function UI.dropdown(parent, value, position, size, chevronIcon, options)
 
 			if fixedMenuPosition then
 				local overlay = UI.RootOverlay()
-				local screen = overlay.Size
+				local screen = workspace:GetWindowDimensions()
 				local edge = options.menuMargin or 4
+
+				print(screen)
 
 				local totalHeight = menuHeight + searchHeight
 
