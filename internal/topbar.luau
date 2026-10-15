@@ -531,6 +531,10 @@ for _, category in ipairs(engineCategories) do
 		}
 	)
 
+	button.MouseEnter:Connect(function()
+		menu:Open()
+	end)
+
 	button.Name = categoryName .. "Menu"
 	button.BackgroundTransparency = 0.5
 
