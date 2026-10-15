@@ -296,6 +296,11 @@ local COMPRESS = { "None", "Fast", "Best" }
 local WEB_COMPRESS = { "None", "Gzip", "Brotli" }
 local DESKTOP_ARCH = { "x86_64", "arm64" }
 
+local OS_TAG = { Windows = "windows", Linux = "linux", MacOS = "macos" }
+local ARCH_TAG = { x86_64 = "amd64", arm64 = "arm64", Universal = "arm64" }
+local EXT = { Windows = ".exe", Linux = "", MacOS = "" }
+local NATIVE_PLATFORMS = { Windows = true, Linux = true, MacOS = true }
+
 local ENABLED_FIELD = {
 	key = "enabled",
 	label = "Enabled",
@@ -856,12 +861,21 @@ local function buildConfig(name)
 
 	config.platform = name
 	config.output = resolveOutput(name)
+	config.os_name = OS_TAG[name]
+	config.arch_name = ARCH_TAG[values[name].arch] or values[name].arch
+	config.ext = EXT[name]
 	config.general = table.clone(values.General)
 
 	return config
 end
 
 local function exportPlatform(name, config)
+	if not NATIVE_PLATFORMS[name] then
+		print("Skipping native export for", name, "(not a native-binary template)")
+		sleep(0.6)
+		return
+	end
+
 	if SIMULATE_EXPORT then
 		print("Exporting for", name)
 		for key, value in pairs(config) do
@@ -873,7 +887,42 @@ local function exportPlatform(name, config)
 		return
 	end
 
-	error("exportPlatform() isn't hooked up to ExportService yet.")
+	if not config.os_name then
+		error("Unknown platform " .. name .. ": no OS tag mapping")
+	end
+
+	local buildFolder = Project:GetActiveProject().Path .. "/build"
+	local platformFolder = buildFolder .. "/" .. string.lower(name)
+	local gameFile = buildFolder .. "/game.kine"
+
+	local ok = Filesystem:PathExists(platformFolder)
+	if not ok then
+		local created = Filesystem:CreateFolder(buildFolder, string.lower(name))
+		if created == "" then
+			error("Could not create platform build folder: " .. platformFolder)
+		end
+	end
+
+	local exeName = "KinemiumServer" .. config.ext
+	local destination = platformFolder .. "/" .. exeName
+
+	local success, err = pcall(function()
+		ExporterService:ExportExecutable(
+			"Both",
+			platformFolder,
+			"127.0.0.1",
+			8080,
+			gameFile,
+			config.os_name,
+			config.arch_name
+		)
+	end)
+
+	if not success then
+		error("ExporterService:ExportExecutable failed for " .. name .. ": " .. tostring(err))
+	end
+
+	print("Exported " .. name .. " to " .. destination)
 end
 
 local function setProgress(value, instant)
@@ -940,25 +989,24 @@ local function runExport(names)
 
 	local failures = {}
 
+	local project = Project:GetActiveProject().Path
+
+	local buildFolder = project .. "/build"
+	local gameFile = buildFolder .. "/game.kine"
+
+	if not Filesystem:PathExists(buildFolder) then
+		local created = Filesystem:CreateFolder(project, "build")
+		if created == "" then
+			error("Could not create build folder: " .. buildFolder)
+		end
+	end
+
+	ExportService:ExportToFile(gameFile)
+
 	for i, name in ipairs(names) do
 		statusLabel.TextColor3 = tokens.color.subtext
 		statusLabel.Text = string.format("Exporting %s (%d/%d)...", name, i, #names)
 		setProgress((i - 1) / #names)
-
-		local project = Project:GetActiveProject().Path
-
-		local buildFolder = project .. "/build"
-		local gameFile = buildFolder .. "/game.kine"
-
-		if not Filesystem:PathExists(buildFolder) then
-			local created = Filesystem:CreateFolder(project, "build")
-			if created == "" then
-				error("Could not create build folder: " .. buildFolder)
-			end
-		end
-
-		ExportService:ExportToFile(gameFile)
-		ExporterService:ExportExecutable("Both", buildFolder, "127.0.0.1", 8080, gameFile)
 
 		local success, err = pcall(exportPlatform, name, configs[i])
 
