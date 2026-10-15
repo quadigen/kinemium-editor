@@ -945,8 +945,15 @@ local function runExport(names)
 
 		local project = Project:GetActiveProject().Path
 
-		local buildFolder = Filesystem:CreateFolder(project, "build")
-		local gameFile = Filesystem:CreateFile(buildFolder, "game.kine")
+		local buildFolder = project .. "/build"
+		local gameFile = buildFolder .. "/game.kine"
+
+		if not Filesystem:PathExists(buildFolder) then
+			local created = Filesystem:CreateFolder(project, "build")
+			if created == "" then
+				error("Could not create build folder: " .. buildFolder)
+			end
+		end
 
 		ExportService:ExportToFile(gameFile)
 		TemplateService:ExportServerExe(buildFolder, "127.0.0.1", 8080, "Game", gameFile)
