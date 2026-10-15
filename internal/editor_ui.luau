@@ -7900,6 +7900,11 @@ function UI.contextMenu(parent, value, position, size, chevronIcon, options)
 
 		applyFades(menu.statics, a)
 
+		-- Border stroke fades with the panel
+		for _, st in ipairs(menu.strokes) do
+			st.obj.Transparency = 1 - (1 - st.base) * a
+		end
+
 		-- Backdrop: blur radius grows with alpha, tint fades from fully transparent
 		for _, b in ipairs(menu.backdrops) do
 			if b.blur ~= nil then
@@ -8043,8 +8048,25 @@ function UI.contextMenu(parent, value, position, size, chevronIcon, options)
 			end
 		end
 
+		local strokes = {}
+
+		-- Registers a stroke so its transparency can be lerped with the panel alpha.
+		local function trackStroke(obj)
+			if obj == nil or type(obj) == "number" then
+				return
+			end
+
+			local ok, base = pcall(function()
+				return obj.Transparency
+			end)
+
+			if ok and type(base) == "number" then
+				table.insert(strokes, { obj = obj, base = base })
+			end
+		end
+
 		trackBackdrop(UI.backdrop(inner, 15, Color3.new(0, 0, 0)))
-		UI.stroke(inner, options.borderColor or colors.borderStrong, 1, options.borderTransparency or 0)
+		trackStroke(UI.stroke(inner, options.borderColor or colors.borderStrong, 1, options.borderTransparency or 0))
 
 		if options.backdrop then
 			trackBackdrop(UI.create("UIBackdrop", {
@@ -8065,6 +8087,7 @@ function UI.contextMenu(parent, value, position, size, chevronIcon, options)
 			rows = {},
 			statics = {},
 			backdrops = backdrops,
+			strokes = strokes,
 			height = 0,
 			cur = 0,
 			alpha = animate and 0 or 1,
