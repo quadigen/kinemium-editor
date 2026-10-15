@@ -105,6 +105,7 @@ local function selectedPart()
 end
 
 local function updateGizmos()
+	print("[vp] updateGizmos start")
 	local adornee = selectedPart()
 	local is3D = renderer.Dimension == "3D"
 
@@ -226,6 +227,7 @@ if PlaytestService["StartSinglePlayer"] then
 	end)
 end
 
+print("[vp] after checkbox")
 local toolbar = UI.group(
 	viewportOverlay,
 	UDim2.fromOffset(renderer.Dimension == "2D" and 22 or 8, 8),
@@ -310,6 +312,7 @@ end
 colorPicker, colorPickerController =
 	UI.colorPicker(viewportOverlay, UDim2.fromOffset(48, 99), UDim2.fromOffset(226, 286), selectedColor(), applyColor)
 
+print("[vp] after colorPicker")
 local function updateTools()
 	for name, record in pairs(toolButtons) do
 		local active = activeTool == name or (name == "Snap" and snapEnabled)
@@ -318,6 +321,7 @@ local function updateTools()
 	end
 end
 
+print("[vp] before UIEditor.new")
 local uiEditor = UIEditor.new({
 	overlay = viewportOverlay,
 	canPick = true,
@@ -336,6 +340,7 @@ local uiEditor = UIEditor.new({
 	shortcuts = true,
 })
 
+print("[vp] before toolbar loop")
 for index, definition in ipairs(renderer.Dimension == "2D" and tools2D or tools3D) do
 	local current = definition
 
@@ -380,6 +385,7 @@ for index, definition in ipairs(renderer.Dimension == "2D" and tools2D or tools3
 	end
 end
 
+print("[vp] after toolbar loop")
 updateTools()
 
 local breadcrumb = UI.group(viewportOverlay, UDim2.new(0, 8, 1, -30), UDim2.new(1, -16, 0, 26), {
@@ -392,7 +398,9 @@ breadcrumb.Name = "ViewportBreadcrumb"
 breadcrumb.Visible = renderer.Dimension == "3D"
 breadcrumb.ClipsDescendants = true
 
+print("[vp] before CodeEditor.new")
 local editor = CodeEditor.new(scriptRoot)
+print("[vp] after CodeEditor.new")
 
 local function rebuildBreadcrumb(path)
 	UI.clear(breadcrumb)
@@ -449,7 +457,9 @@ local function rebuildBreadcrumb(path)
 	end
 end
 
+print("[vp] before rebuildBreadcrumb")
 rebuildBreadcrumb("Workspace.Part")
+print("[vp] after rebuildBreadcrumb")
 
 local lastPath = ""
 
@@ -458,7 +468,9 @@ Selection.SelectionChanged:Connect(function()
 	updateGizmos()
 end)
 
+print("[vp] before updateGizmos")
 updateGizmos()
+print("[vp] after updateGizmos")
 
 renderer.Pool.new("2d", function()
 	theme = StudioThemeService.SelectedTheme
@@ -617,6 +629,7 @@ renderer.Pool.new("2da", function()
 	uiEditor:Update()
 end)
 
+print("[vp] end")
 return {
 	OpenScript = function(instance)
 		editor:OpenScript(instance)

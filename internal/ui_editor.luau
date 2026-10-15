@@ -201,6 +201,7 @@ local function snapAxis(values, cands)
 end
 
 function Editor.new(options)
+	print("[uied] new start")
 	options = options or {}
 
 	local self = setmetatable({}, Editor)
@@ -240,14 +241,18 @@ function Editor.new(options)
 	self.menu = nil
 	self.menuContext = { point = Vector2.zero, over = false }
 	self.connections = {}
+	print("[uied] A")
 
 	self.view = newRect()
 	self.hv = newRect()
 	self.dragAlpha = 0
 	self.readoutAlpha = 0
+	print("[uied] B")
 
 	local overlay = self.overlay
 
+	print("[uied] C before hit")
+	print("[uied] C before hit")
 	self.hit = UI.create("TextButton", {
 		Name = "GuiEditorHit",
 		Text = "",
@@ -262,6 +267,7 @@ function Editor.new(options)
 		ZIndex = 0,
 		Visible = self.canPick,
 	}, overlay)
+	print("[uied] D after hit")
 
 	self.hover = UI.create("Frame", {
 		Name = "GuiEditorHover",
@@ -333,6 +339,7 @@ function Editor.new(options)
 		self.handleStrokes[definition.name] = UI.stroke(handle, colors.accent, 1, 0)
 		self.handleState[definition.name] = state
 	end
+	print("[uied] E handles")
 
 	self.rotateStem = UI.create("Frame", {
 		Name = "RotateStem",
@@ -385,6 +392,7 @@ function Editor.new(options)
 	self.readout.ZIndex = Z + 3
 	self.readout.Visible = false
 	UI.corner(self.readout, 4)
+	print("[uied] F readout")
 
 	self.catcher = UI.create("TextButton", {
 		Name = "GuiEditorMenuCatcher",
@@ -485,7 +493,9 @@ function Editor.new(options)
 		end)
 	)
 
+	print("[uied] before refresh")
 	self:refresh()
+	print("[uied] after refresh")
 
 	return self
 end
@@ -549,7 +559,9 @@ function Editor:setSelection(list)
 		Selection:Set(list)
 	end)
 
+	print("[uied] before refresh")
 	self:refresh()
+	print("[uied] after refresh")
 end
 
 function Editor:refresh()
@@ -2408,6 +2420,7 @@ function Editor:Destroy()
 	end
 
 	self.connections = {}
+	print("[uied] A")
 
 	self:closeMenus()
 

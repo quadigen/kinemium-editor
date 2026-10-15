@@ -973,6 +973,7 @@ end
 local CodeEditor = {}
 CodeEditor.__index = CodeEditor
 function CodeEditor.new(parent)
+	print("[ce] new start")
 	local self = setmetatable({}, CodeEditor)
 
 	self.documents = {}
