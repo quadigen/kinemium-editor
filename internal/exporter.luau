@@ -115,7 +115,7 @@ local setAllEnabled
 
 local panel, content, _, windowControls =
 	UI.window("Export Game", UDim2.new(0.5, 0, 0.5, 0), UDim2.new(0.4, 0, 0.6, 0), "Export Game", { closable = true })
-panel.AnchorPoint = UDim2.new(0.5, 0, 0.5, 0)
+panel.AnchorPoint = Vector2.new(0.5, 0.5)
 panel.Visible = false
 panel.Parent = gui
 
