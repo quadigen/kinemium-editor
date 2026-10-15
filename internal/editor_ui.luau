@@ -7900,6 +7900,17 @@ function UI.contextMenu(parent, value, position, size, chevronIcon, options)
 
 		applyFades(menu.statics, a)
 
+		-- Backdrop: blur radius grows with alpha, tint fades from fully transparent
+		for _, b in ipairs(menu.backdrops) do
+			if b.blur ~= nil then
+				b.obj.BlurRadius = b.blur * a
+			end
+
+			if b.tint ~= nil then
+				b.obj.TintTransparency = 1 - (1 - b.tint) * a
+			end
+		end
+
 		-- Rows
 		for _, row in ipairs(menu.rows) do
 			-- Staggered entrance
@@ -8006,16 +8017,42 @@ function UI.contextMenu(parent, value, position, size, chevronIcon, options)
 		inner.BackgroundTransparency = animate and 1 or panelTransparency
 		inner.ZIndex = z + 1
 
-		UI.backdrop(inner, 15, Color3.new(0, 0, 0))
+		local backdrops = {}
+
+		-- Registers a backdrop so its blur and tint can be lerped with the panel alpha.
+		-- Reads are guarded in case the object lacks one of the properties.
+		local function trackBackdrop(obj)
+			if obj == nil or type(obj) == "number" then
+				return
+			end
+
+			local okBlur, blur = pcall(function()
+				return obj.BlurRadius
+			end)
+
+			local okTint, tint = pcall(function()
+				return obj.TintTransparency
+			end)
+
+			if okBlur or okTint then
+				table.insert(backdrops, {
+					obj = obj,
+					blur = okBlur and blur or nil,
+					tint = okTint and tint or nil,
+				})
+			end
+		end
+
+		trackBackdrop(UI.backdrop(inner, 15, Color3.new(0, 0, 0)))
 		UI.stroke(inner, options.borderColor or colors.borderStrong, 1, options.borderTransparency or 0)
 
 		if options.backdrop then
-			UI.create("UIBackdrop", {
+			trackBackdrop(UI.create("UIBackdrop", {
 				Enabled = true,
 				BlurRadius = options.backdropBlur or 18,
 				TintColor3 = options.backdropColor or colors.panelRaised,
 				TintTransparency = options.backdropTransparency or options.BackgroundTransparency or 0.85,
-			}, inner)
+			}, inner))
 		end
 
 		local menu = {
@@ -8027,6 +8064,7 @@ function UI.contextMenu(parent, value, position, size, chevronIcon, options)
 			anchor = anchor,
 			rows = {},
 			statics = {},
+			backdrops = backdrops,
 			height = 0,
 			cur = 0,
 			alpha = animate and 0 or 1,
