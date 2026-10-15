@@ -1,21 +1,9 @@
 local UI = require("@internal/editor_ui")
-local viewport = require("@internal/viewport")
-
-local Project = game:GetService("Project")
-local dialog = game:GetService("DialogService")
-local export_service = game:GetService("ExportService")
-local filesystem = game:GetService("Filesystem")
-local util = require("@internal/util")
-
-local StudioThemeService = game:GetService("StudioThemeService")
-local Selection = game:GetService("Selection")
-local theme = StudioThemeService.SelectedTheme
-
-local UserInputService = game:GetService("UserInputService")
-local TweenService = game:GetService("TweenService")
 local RunService = game:GetService("RunService")
-
-local colors = UI.colors
+local TemplateService = game:GetService("TemplateService")
+local ExportService = game:GetService("ExportService")
+local Project = game:GetService("Project")
+local Filesystem = game:GetService("Filesystem")
 local tokens = UI.tokens
 
 local gui = UI.widgetOverlay()
@@ -955,6 +943,15 @@ local function runExport(names)
 			statusLabel.TextColor3 = tokens.color.subtext
 			statusLabel.Text = string.format("Exporting %s (%d/%d)...", name, i, #names)
 			setProgress((i - 1) / #names)
+
+			local project = Project:GetActiveProject()
+			local buildFolder = project .. "/build"
+			local gameFile = buildFolder .. "/game.kine"
+			Filesystem:CreateFolder(buildFolder, true)
+			Filesystem:CreateFile(gameFile, true)
+			ExportService:ExportToFile(gameFile)
+			TemplateService:ExportServerExe(buildFolder, "127.0.0.1", 8080, "Game", gameFile)
+			TemplateService:ExportClientExe(buildFolder, "127.0.0.1", 8080, "Game", gameFile)
 
 			local success, err = pcall(exportPlatform, name, configs[i])
 
