@@ -1,4 +1,4 @@
-local UI = require("@internal/editor_ui")
+local UI = require("./editor_ui")
 local viewport = require("@internal/viewport")
 
 local Project = game:GetService("Project")
@@ -37,11 +37,11 @@ targetsLayout.FillDirection = Enum.FillDirection.Vertical
 targetsLayout.Padding = UDim.new(0, 5)
 targetsLayout.Parent = targetsScroll
 
-UI.iconButton(
+UI.button(
 	targetsScroll,
-	"builtin://global-icons/windows.png",
+	"Windows",
 	UDim2.new(0, 0, 0, 0),
-	UDim2.new(1, 0, 0, 30),
+	UDim2.new(0, 0, 0, 0),
 	function() end,
-	{}
+	{ icon = "builtin://global-icons/windows.png" }
 )
