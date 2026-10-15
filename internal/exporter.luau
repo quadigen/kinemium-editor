@@ -22,7 +22,13 @@ end
 
 local panel, content, _, windowControls =
 	UI.window("Export Game", UDim2.new(0.5, 0, 0.5, 0), UDim2.new(0.4, 0, 0.5, 0), "Export Game", {})
+content.BackgroundTransparency = 1
+panel.Visible = false
+panel.BackgroundTransparency = 0.5
+panel.ClipsDescendants = true
 panel.Parent = gui
+
+UI.backdrop(panel, 15, Color3.new(0, 0, 0))
 
 local scroll = Instance.new("ScrollingFrame")
 scroll.Name = "Targets"
