@@ -113,17 +113,10 @@ local progress
 local progressTarget, progressShown = 0, 0
 local setAllEnabled
 
-local screen = workspace:GetWindowDimensions()
-local winW = math.max(460, math.floor(screen.X * 0.4))
-local winH = math.max(560, math.floor(screen.Y * 0.6))
-
-local panel, content, _, windowControls = UI.window(
-	"Export Game",
-	UDim2.fromOffset(math.floor((screen.X - winW) / 2), math.floor((screen.Y - winH) / 2)),
-	UDim2.fromOffset(winW, winH),
-	"Export Game",
-	{ closable = true }
-)
+local panel, content, _, windowControls =
+	UI.window("Export Game", UDim2.new(0.5, 0, 0.5, 0), UDim2.new(0.4, 0, 0.6, 0), "Export Game", { closable = true })
+panel.AnchorPoint = UDim2.new(0.5, 0, 0.5, 0)
+panel.Visible = false
 panel.Parent = gui
 
 local scroll = Instance.new("ScrollingFrame")
@@ -1133,3 +1126,17 @@ end)
 panel.Destroying:Connect(function()
 	heartbeat:Disconnect()
 end)
+
+return {
+	Enable = function()
+		panel.Visible = true
+	end,
+
+	Disable = function()
+		panel.Visible = false
+	end,
+
+	Toggle = function()
+		panel.Visible = not panel.Visible
+	end,
+}
