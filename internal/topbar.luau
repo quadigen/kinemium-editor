@@ -452,7 +452,7 @@ for _, category in ipairs(engineCategories) do
 
 	local button
 	button, label, record =
-		UI.dropdown(headerSurface, categoryName, UDim2.fromOffset(headerX, 4), UDim2.fromOffset(width, 24), nil, {
+		UI.contextMenu(headerSurface, categoryName, UDim2.fromOffset(headerX, 4), UDim2.fromOffset(width, 24), nil, {
 			items = items,
 
 			format = function()

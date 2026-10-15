@@ -1897,7 +1897,6 @@ return function(content, windowControls)
 					return UDim2.fromOffset(0, 0)
 				end,
 				onChanged = function(action)
-					print("changed")
 					local path = contextTarget
 					contextTarget = nil
 
