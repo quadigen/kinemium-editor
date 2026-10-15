@@ -4769,226 +4769,463 @@ end
 
 function UI.colorPicker(parent, position, size, initialColor, callback)
 	local colors = UI.tokens.color
-	local picker = UI.frame(parent, position, size or UDim2.fromOffset(226, 286), colors.panel, UI.tokens.radius.md)
+	local borderColor = colors.border or colors.borderStrong
+	local PAD = 14
+	local GRID_COLS, GRID_ROWS = 16, 9
+	local MAX_SAVED = 8
+
+	local picker = UI.frame(
+		parent,
+		position,
+		size or UDim2.fromOffset(260, 324),
+		colors.panel,
+		UI.tokens.radius.lg or UI.tokens.radius.md
+	)
 	picker.Name = "ColorPicker"
 	picker.ZIndex = 100000
 	UI.stroke(picker, colors.borderStrong, 1, 0)
 
-	local title =
-		UI.label(picker, "Color", UDim2.fromOffset(10, 7), UDim2.new(1, -20, 0, 18), UI.tokens.type.small, colors.text)
-	title.TextXAlignment = Enum.TextXAlignment.Left
-
+	-- state
 	local color = initialColor or Color3.new(1, 1, 1)
+	local alpha = 1
 	local hue, saturation, value = color:ToHSV()
-	local draggingSquare, draggingHue = false, false
+	local format = "Hex"
+	local draggingAlpha = false
+	local saved = {
+		Color3.fromRGB(22, 163, 74),
+		Color3.fromRGB(37, 99, 235),
+		Color3.fromRGB(79, 70, 229),
+		Color3.fromRGB(147, 51, 234),
+		Color3.fromRGB(192, 38, 211),
+		Color3.fromRGB(219, 39, 119),
+		Color3.fromRGB(220, 38, 38),
+		Color3.fromRGB(234, 88, 12),
+	}
 	local redraw
 
-	local square = UI.frame(
+	local function toByte(n)
+		return math.clamp(math.floor(n * 255 + 0.5), 0, 255)
+	end
+
+	local function emit()
+		if callback then
+			callback(color, alpha)
+		end
+	end
+
+	local function setFromColor(nextColor)
+		color = nextColor
+		hue, saturation, value = color:ToHSV()
+	end
+
+	-- header label is also used as the font reference for text boxes
+	local fontRef = UI.label(
 		picker,
-		UDim2.fromOffset(10, 30),
-		UDim2.new(1, -20, 0, 142),
-		Color3.fromHSV(hue, 1, 1),
-		UI.tokens.radius.xs
+		"Opacity",
+		UDim2.fromOffset(PAD, 168),
+		UDim2.new(1, -PAD * 2, 0, 16),
+		UI.tokens.type.small,
+		colors.text
 	)
-	square.ClipsDescendants = true
-	UI.create("UIGradient", {
-		Color = ColorSequence.new(Color3.new(1, 1, 1)),
-		Transparency = NumberSequence.new(0, 1),
-		Rotation = 0,
-	}, square)
-	UI.create("UIGradient", {
-		Color = ColorSequence.new(Color3.new(0, 0, 0)),
-		Transparency = NumberSequence.new(1, 0),
-		Rotation = 90,
-	}, square)
-	local squareInput = UI.create("TextButton", {
-		Text = "",
-		Position = UDim2.fromScale(0, 0),
-		Size = UDim2.fromScale(1, 1),
-		BackgroundTransparency = 1,
-		BorderSizePixel = 0,
-		AutoButtonColor = false,
-		Active = true,
-		InputSink = true,
-	}, square)
-	local squareCursor = UI.frame(square, UDim2.fromOffset(0, 0), UDim2.fromOffset(12, 12), Color3.new(1, 1, 1), 6)
-	UI.stroke(squareCursor, Color3.new(0, 0, 0), 1, 0)
+	fontRef.TextXAlignment = Enum.TextXAlignment.Left
+	local font = fontRef.Font
 
-	local hueBar =
-		UI.frame(picker, UDim2.fromOffset(10, 180), UDim2.new(1, -20, 0, 14), colors.input, UI.tokens.radius.xs)
-	for index = 0, 23 do
-		local segment = UI.frame(
-			hueBar,
-			UDim2.new(index / 24, 0, 0, 0),
-			UDim2.new(1 / 24, 1, 1, 0),
-			Color3.fromHSV(index / 24, 1, 1),
-			0
-		)
-		segment.BorderSizePixel = 0
-	end
-	UI.create("UIGradient", {
-		Color = ColorSequence.new({
-			ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 0, 0)),
-			ColorSequenceKeypoint.new(1 / 6, Color3.fromRGB(255, 255, 0)),
-			ColorSequenceKeypoint.new(2 / 6, Color3.fromRGB(0, 255, 0)),
-			ColorSequenceKeypoint.new(3 / 6, Color3.fromRGB(0, 255, 255)),
-			ColorSequenceKeypoint.new(4 / 6, Color3.fromRGB(0, 0, 255)),
-			ColorSequenceKeypoint.new(5 / 6, Color3.fromRGB(255, 0, 255)),
-			ColorSequenceKeypoint.new(1, Color3.fromRGB(255, 0, 0)),
-		}),
-		Rotation = 0,
-	}, hueBar)
-	local hueInput = UI.create("TextButton", {
-		Text = "",
-		Position = UDim2.fromScale(0, 0),
-		Size = UDim2.fromScale(1, 1),
-		BackgroundTransparency = 1,
-		BorderSizePixel = 0,
-		AutoButtonColor = false,
-		Active = true,
-		InputSink = true,
-	}, hueBar)
-	local hueCursor = UI.frame(hueBar, UDim2.fromOffset(0, -2), UDim2.fromOffset(4, 18), colors.text, 2)
+	---------------------------------------------------------------------------
+	-- Palette grid
+	---------------------------------------------------------------------------
+	local grid =
+		UI.frame(picker, UDim2.fromOffset(PAD, PAD), UDim2.new(1, -PAD * 2, 0, 140), colors.panel, UI.tokens.radius.xs)
+	grid.ClipsDescendants = true
 
-	local hexLabel = UI.label(picker, "HEX", UDim2.fromOffset(10, 208), UDim2.fromOffset(28, 20), 11, colors.subtext)
-	hexLabel.TextXAlignment = Enum.TextXAlignment.Left
-	local hexInput = UI.input(picker, "#FFFFFF", UDim2.fromOffset(42, 205), UDim2.new(1, -52, 0, 24), {
-		text = string.format("#%02X%02X%02X", color.R * 255, color.G * 255, color.B * 255),
-		maxLength = 7,
-		textSize = 12,
-	})
-	local function applyHex()
-		local raw = string.gsub(hexInput.Text, "#", "")
-		if #raw == 6 then
-			local red, green, blue =
-				tonumber(string.sub(raw, 1, 2), 16),
-				tonumber(string.sub(raw, 3, 4), 16),
-				tonumber(string.sub(raw, 5, 6), 16)
-			if red and green and blue then
-				color = Color3.fromRGB(red, green, blue)
-				hue, saturation, value = color:ToHSV()
+	local rowSat = { 0.1, 0.28, 0.5, 0.75, 0.95, 1, 1, 1, 1 }
+	local rowVal = { 1, 1, 1, 1, 0.96, 0.82, 0.64, 0.46, 0.28 }
+
+	local gridMarker = UI.frame(grid, UDim2.fromOffset(0, 0), UDim2.fromOffset(14, 14), Color3.new(1, 1, 1), 4)
+	gridMarker.BackgroundTransparency = 1
+	UI.stroke(gridMarker, Color3.new(1, 1, 1), 2, 0)
+	gridMarker.Visible = false
+
+	for row = 0, GRID_ROWS - 1 do
+		for col = 0, GRID_COLS - 1 do
+			-- starts at lime, walks through the spectrum and ends at yellow
+			local cellHue = ((80 + col * (360 / GRID_COLS)) % 360) / 360
+			local cellColor = Color3.fromHSV(cellHue, rowSat[row + 1], rowVal[row + 1])
+			local cell = UI.create("TextButton", {
+				Text = "",
+				Position = UDim2.new(col / GRID_COLS, 0, row / GRID_ROWS, 0),
+				Size = UDim2.new(1 / GRID_COLS, 1, 1 / GRID_ROWS, 1),
+				BackgroundColor3 = cellColor,
+				BorderSizePixel = 0,
+				AutoButtonColor = false,
+				Active = true,
+				InputSink = true,
+			}, grid)
+			cell.MouseButton1Click:Connect(function()
+				setFromColor(cellColor)
 				redraw()
-				if callback then
-					callback(color)
-				end
-			end
-		end
-	end
-	hexInput.FocusLost:Connect(function()
-		applyHex()
-	end)
-	local swatches = UI.frame(picker, UDim2.fromOffset(10, 240), UDim2.new(1, -20, 0, 34), colors.panel, 0)
-	local presetColors = {
-		Color3.fromRGB(255, 255, 255),
-		Color3.fromRGB(0, 0, 0),
-		Color3.fromRGB(231, 76, 60),
-		Color3.fromRGB(241, 196, 15),
-		Color3.fromRGB(46, 204, 113),
-		Color3.fromRGB(52, 152, 219),
-		Color3.fromRGB(155, 89, 182),
-		Color3.fromRGB(149, 165, 166),
-	}
-
-	redraw = function()
-		square.BackgroundColor3 = Color3.fromHSV(hue, 1, 1)
-		squareCursor.Position = UDim2.new(saturation, -6, 1 - value, -6)
-		hueCursor.Position = UDim2.new(hue, -2, 0, -2)
-		hexInput.Text = string.format("#%02X%02X%02X", color.R * 255, color.G * 255, color.B * 255)
-	end
-
-	local function updateColor(notify)
-		color = Color3.fromHSV(hue, saturation, value)
-		redraw()
-		if notify and callback then
-			callback(color)
+				gridMarker.Position = UDim2.new((col + 0.5) / GRID_COLS, -7, (row + 0.5) / GRID_ROWS, -7)
+				gridMarker.Visible = true
+				emit()
+			end)
 		end
 	end
 
-	local function setSquareFromPoint(x, y)
-		local p, s = square.AbsolutePosition, square.AbsoluteSize
-		if not p or not s or s.X <= 0 or s.Y <= 0 then
-			return
+	---------------------------------------------------------------------------
+	-- Opacity slider
+	---------------------------------------------------------------------------
+	local sliderHolder = UI.frame(picker, UDim2.fromOffset(PAD, 186), UDim2.new(1, -PAD * 2, 0, 20), colors.panel, 0)
+	sliderHolder.BackgroundTransparency = 1
+
+	local track = UI.frame(sliderHolder, UDim2.fromOffset(0, 4), UDim2.new(1, 0, 0, 12), colors.panel, 6)
+	track.ClipsDescendants = true
+
+	local CHECKS = 40
+	for index = 0, CHECKS - 1 do
+		for row = 0, 1 do
+			local shade = ((index + row) % 2 == 0) and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(214, 214, 214)
+			UI.frame(track, UDim2.new(index / CHECKS, 0, row * 0.5, 0), UDim2.new(1 / CHECKS, 1, 0.5, 0), shade, 0)
 		end
-		saturation = math.clamp((x - p.X) / s.X, 0, 1)
-		value = 1 - math.clamp((y - p.Y) / s.Y, 0, 1)
-		updateColor(true)
 	end
 
-	local function setHueFromPoint(x)
-		local p, s = hueBar.AbsolutePosition, hueBar.AbsoluteSize
+	local overlay = UI.frame(track, UDim2.fromScale(0, 0), UDim2.fromScale(1, 1), color, 6)
+	UI.create("UIGradient", {
+		Transparency = NumberSequence.new(1, 0),
+		Rotation = 0,
+	}, overlay)
+
+	local thumb = UI.frame(sliderHolder, UDim2.new(1, -9, 0.5, -9), UDim2.fromOffset(18, 18), Color3.new(1, 1, 1), 9)
+	UI.stroke(thumb, borderColor, 1, 0)
+
+	local sliderInput = UI.create("TextButton", {
+		Text = "",
+		Position = UDim2.fromScale(0, 0),
+		Size = UDim2.fromScale(1, 1),
+		BackgroundTransparency = 1,
+		BorderSizePixel = 0,
+		AutoButtonColor = false,
+		Active = true,
+		InputSink = true,
+	}, sliderHolder)
+
+	local function setAlphaFromPoint(x)
+		local p, s = track.AbsolutePosition, track.AbsoluteSize
 		if not p or not s or s.X <= 0 then
 			return
 		end
-		hue = math.clamp((x - p.X) / s.X, 0, 1)
-		updateColor(true)
+		alpha = math.clamp((x - p.X) / s.X, 0, 1)
+		redraw()
+		emit()
 	end
 
-	squareInput.MouseButton1Down:Connect(function(x, y)
-		draggingSquare = true
-		setSquareFromPoint(x, y)
+	sliderInput.MouseButton1Down:Connect(function(x)
+		draggingAlpha = true
+		setAlphaFromPoint(x)
 	end)
-	squareInput.MouseMoved:Connect(function(x, y)
-		if draggingSquare then
-			setSquareFromPoint(x, y)
+	sliderInput.MouseMoved:Connect(function(x)
+		if draggingAlpha then
+			setAlphaFromPoint(x)
 		end
 	end)
-	squareInput.MouseButton1Up:Connect(function()
-		draggingSquare = false
+	sliderInput.MouseButton1Up:Connect(function()
+		draggingAlpha = false
 	end)
-	hueInput.MouseButton1Down:Connect(function(x)
-		draggingHue = true
-		setHueFromPoint(x)
-	end)
-	hueInput.MouseMoved:Connect(function(x)
-		if draggingHue then
-			setHueFromPoint(x)
+
+	---------------------------------------------------------------------------
+	-- Format dropdown + value / opacity inputs
+	---------------------------------------------------------------------------
+	local ROW_Y, ROW_H, FORMAT_W = 216, 32, 78
+
+	local formatBox = UI.frame(
+		picker,
+		UDim2.fromOffset(PAD, ROW_Y),
+		UDim2.fromOffset(FORMAT_W, ROW_H),
+		colors.panel,
+		UI.tokens.radius.md
+	)
+	UI.stroke(formatBox, borderColor, 1, 0)
+	local formatLabel =
+		UI.label(formatBox, "Hex", UDim2.fromOffset(10, 0), UDim2.new(1, -30, 1, 0), UI.tokens.type.small, colors.text)
+	formatLabel.TextXAlignment = Enum.TextXAlignment.Left
+	UI.label(formatBox, "v", UDim2.new(1, -22, 0, 0), UDim2.fromOffset(16, ROW_H), 11, colors.subtext)
+	local formatButton = UI.create("TextButton", {
+		Text = "",
+		Position = UDim2.fromScale(0, 0),
+		Size = UDim2.fromScale(1, 1),
+		BackgroundTransparency = 1,
+		BorderSizePixel = 0,
+		AutoButtonColor = false,
+		Active = true,
+		InputSink = true,
+	}, formatBox)
+
+	local valueBox = UI.frame(
+		picker,
+		UDim2.fromOffset(PAD + FORMAT_W + 8, ROW_Y),
+		UDim2.new(1, -(PAD * 2 + FORMAT_W + 8), 0, ROW_H),
+		colors.panel,
+		UI.tokens.radius.md
+	)
+	UI.stroke(valueBox, borderColor, 1, 0)
+
+	local dot = UI.frame(valueBox, UDim2.fromOffset(10, 9), UDim2.fromOffset(14, 14), color, 7)
+	UI.stroke(dot, borderColor, 1, 0)
+
+	local function makeTextBox(props)
+		props.BackgroundTransparency = 1
+		props.BorderSizePixel = 0
+		props.ClearTextOnFocus = false
+		props.TextColor3 = colors.text
+		props.TextSize = 12
+		props.Font = font
+		return UI.create("TextBox", props, valueBox)
+	end
+
+	local valueInput = makeTextBox({
+		Text = "",
+		PlaceholderText = "#FFFFFF",
+		Position = UDim2.fromOffset(30, 0),
+		Size = UDim2.new(1, -30 - 56, 1, 0),
+		TextXAlignment = Enum.TextXAlignment.Left,
+	})
+	local divider = UI.frame(valueBox, UDim2.new(1, -56, 0, 0), UDim2.new(0, 1, 1, 0), borderColor, 0)
+	local alphaInput = makeTextBox({
+		Text = "100%",
+		PlaceholderText = "100%",
+		Position = UDim2.new(1, -55, 0, 0),
+		Size = UDim2.fromOffset(55, ROW_H),
+		TextXAlignment = Enum.TextXAlignment.Center,
+	})
+
+	local function formatColor()
+		if format == "RGB" then
+			return string.format("%d, %d, %d", toByte(color.R), toByte(color.G), toByte(color.B))
+		elseif format == "HSB" then
+			return string.format(
+				"%d, %d, %d",
+				math.floor(hue * 360 + 0.5),
+				math.floor(saturation * 100 + 0.5),
+				math.floor(value * 100 + 0.5)
+			)
 		end
-	end)
-	hueInput.MouseButton1Up:Connect(function()
-		draggingHue = false
-	end)
-	for index, preset in ipairs(presetColors) do
-		local swatchButton = UI.create("TextButton", {
-			Text = "",
-			Position = UDim2.fromOffset((index - 1) * 25, 0),
-			Size = UDim2.fromOffset(20, 20),
-			BackgroundColor3 = preset,
-			BorderSizePixel = 0,
-			AutoButtonColor = false,
-			Active = true,
-			InputSink = true,
-		}, swatches)
-		UI.corner(swatchButton, 2)
-		swatchButton.MouseButton1Click:Connect(function()
-			color = preset
-			hue, saturation, value = color:ToHSV()
-			redraw()
-			if callback then
-				callback(color)
+		return string.format("#%02X%02X%02X", toByte(color.R), toByte(color.G), toByte(color.B))
+	end
+
+	local function parseValue(text)
+		if format == "Hex" then
+			local raw = (string.gsub(string.gsub(text, "#", ""), "%s", ""))
+			if #raw == 3 then
+				raw = string.gsub(raw, ".", "%0%0")
 			end
-		end)
+			if #raw == 6 then
+				local r, g, b =
+					tonumber(string.sub(raw, 1, 2), 16),
+					tonumber(string.sub(raw, 3, 4), 16),
+					tonumber(string.sub(raw, 5, 6), 16)
+				if r and g and b then
+					return Color3.fromRGB(r, g, b)
+				end
+			end
+		elseif format == "RGB" then
+			local r, g, b = string.match(text, "(%d+)%D+(%d+)%D+(%d+)")
+			if r and g and b then
+				return Color3.fromRGB(
+					math.clamp(tonumber(r), 0, 255),
+					math.clamp(tonumber(g), 0, 255),
+					math.clamp(tonumber(b), 0, 255)
+				)
+			end
+		else
+			local h, s, v = string.match(text, "(%d+)%D+(%d+)%D+(%d+)")
+			if h and s and v then
+				return Color3.fromHSV(
+					math.clamp(tonumber(h), 0, 360) / 360,
+					math.clamp(tonumber(s), 0, 100) / 100,
+					math.clamp(tonumber(v), 0, 100) / 100
+				)
+			end
+		end
+		return nil
 	end
 
-	local function setZIndex()
-		for _, child in ipairs(picker:GetDescendants()) do
+	valueInput.FocusLost:Connect(function()
+		local parsed = parseValue(valueInput.Text)
+		if parsed then
+			setFromColor(parsed)
+			redraw()
+			emit()
+		else
+			redraw()
+		end
+	end)
+
+	alphaInput.FocusLost:Connect(function()
+		local number = tonumber(string.match(alphaInput.Text, "%d+%.?%d*"))
+		if number then
+			alpha = math.clamp(number / 100, 0, 1)
+			redraw()
+			emit()
+		else
+			redraw()
+		end
+	end)
+
+	---------------------------------------------------------------------------
+	-- Saved colors
+	---------------------------------------------------------------------------
+	local savedLabel = UI.label(
+		picker,
+		"Saved",
+		UDim2.fromOffset(PAD, 262),
+		UDim2.fromOffset(60, 18),
+		UI.tokens.type.small,
+		colors.text
+	)
+	savedLabel.TextXAlignment = Enum.TextXAlignment.Left
+
+	local addButton = UI.create("TextButton", {
+		Text = "+ Add",
+		Position = UDim2.new(1, -PAD - 56, 0, 262),
+		Size = UDim2.fromOffset(56, 18),
+		BackgroundTransparency = 1,
+		BorderSizePixel = 0,
+		AutoButtonColor = false,
+		Active = true,
+		InputSink = true,
+		TextColor3 = colors.subtext,
+		TextSize = 12,
+		Font = font,
+		TextXAlignment = Enum.TextXAlignment.Right,
+	}, picker)
+
+	local savedHolder = UI.frame(picker, UDim2.fromOffset(PAD, 288), UDim2.new(1, -PAD * 2, 0, 22), colors.panel, 0)
+	savedHolder.BackgroundTransparency = 1
+
+	local function setZIndex(root)
+		for _, child in ipairs(root:GetDescendants()) do
 			if child:IsA("GuiObject") then
 				child.ZIndex = 100001
 			end
 		end
 	end
-	setZIndex()
+
+	local function rebuildSaved()
+		for _, child in ipairs(savedHolder:GetChildren()) do
+			child:Destroy()
+		end
+		for index, savedColor in ipairs(saved) do
+			local swatch = UI.create("TextButton", {
+				Text = "",
+				Position = UDim2.fromOffset((index - 1) * 28, 1),
+				Size = UDim2.fromOffset(20, 20),
+				BackgroundColor3 = savedColor,
+				BorderSizePixel = 0,
+				AutoButtonColor = false,
+				Active = true,
+				InputSink = true,
+			}, savedHolder)
+			UI.corner(swatch, 10)
+			swatch.MouseButton1Click:Connect(function()
+				setFromColor(savedColor)
+				redraw()
+				emit()
+			end)
+		end
+		setZIndex(savedHolder)
+	end
+
+	addButton.MouseButton1Click:Connect(function()
+		for _, existing in ipairs(saved) do
+			if existing == color then
+				return
+			end
+		end
+		table.insert(saved, color)
+		while #saved > MAX_SAVED do
+			table.remove(saved, 1)
+		end
+		rebuildSaved()
+	end)
+
+	---------------------------------------------------------------------------
+	-- Format dropdown list (built last so it sits above everything)
+	---------------------------------------------------------------------------
+	local formats = { "Hex", "RGB", "HSB" }
+	local list = UI.frame(
+		picker,
+		UDim2.fromOffset(PAD, ROW_Y + ROW_H + 4),
+		UDim2.fromOffset(FORMAT_W, #formats * 26 + 8),
+		colors.panel,
+		UI.tokens.radius.md
+	)
+	UI.stroke(list, borderColor, 1, 0)
+	list.Visible = false
+
+	for index, name in ipairs(formats) do
+		local option = UI.create("TextButton", {
+			Text = name,
+			Position = UDim2.fromOffset(4, 4 + (index - 1) * 26),
+			Size = UDim2.new(1, -8, 0, 26),
+			BackgroundTransparency = 1,
+			BorderSizePixel = 0,
+			AutoButtonColor = false,
+			Active = true,
+			InputSink = true,
+			TextColor3 = colors.text,
+			TextSize = 12,
+			Font = font,
+			TextXAlignment = Enum.TextXAlignment.Left,
+		}, list)
+		UI.create("UIPadding", { PaddingLeft = UDim.new(0, 6) }, option)
+		option.MouseButton1Click:Connect(function()
+			format = name
+			formatLabel.Text = name
+			list.Visible = false
+			redraw()
+		end)
+	end
+
+	formatButton.MouseButton1Click:Connect(function()
+		list.Visible = not list.Visible
+	end)
+
+	---------------------------------------------------------------------------
+	-- Redraw
+	---------------------------------------------------------------------------
+	redraw = function()
+		gridMarker.Visible = false
+		overlay.BackgroundColor3 = color
+		thumb.Position = UDim2.new(alpha, -9, 0.5, -9)
+		dot.BackgroundColor3 = color
+		dot.BackgroundTransparency = math.clamp(1 - alpha, 0, 0.9)
+		valueInput.Text = formatColor()
+		alphaInput.Text = tostring(math.floor(alpha * 100 + 0.5)) .. "%"
+	end
+
+	setZIndex(picker)
+	for _, child in ipairs(list:GetDescendants()) do
+		if child:IsA("GuiObject") then
+			child.ZIndex = 100011
+		end
+	end
+	list.ZIndex = 100010
+	rebuildSaved()
 	redraw()
 
 	local controller = { frame = picker }
 	function controller:GetColor()
 		return color
 	end
-	function controller:SetColor(nextColor, silent)
-		color = nextColor or Color3.new(1, 1, 1)
-		hue, saturation, value = color:ToHSV()
+	function controller:GetAlpha()
+		return alpha
+	end
+	function controller:SetColor(nextColor, silent, nextAlpha)
+		setFromColor(nextColor or Color3.new(1, 1, 1))
+		if nextAlpha ~= nil then
+			alpha = math.clamp(nextAlpha, 0, 1)
+		end
 		redraw()
-		if not silent and callback then
-			callback(color)
+		if not silent then
+			emit()
 		end
 	end
 
@@ -7388,14 +7625,13 @@ function UI.contextMenu(parent, value, position, size, chevronIcon, options)
 	local hoverColor = options.hoverColor or colors.accent
 	local chevronIcon = options.chevronIcon or "builtin://global-icons/chevron-down.svg"
 
-	-- New animation options
-	local fadeSpeed = options.fadeSpeed or 22 -- panel fade in/out
-	local rowSpeed = options.rowSpeed or 22 -- row entrance
-	local rowStagger = options.rowStagger or 0.02 -- seconds between rows
+	local fadeSpeed = options.fadeSpeed or 22
+	local rowSpeed = options.rowSpeed or 22
+	local rowStagger = options.rowStagger or 0.02
 	local maxStagger = options.maxStagger or 0.18
-	local slideDistance = options.slideDistance or 8 -- panel slide on open/close
-	local rowSlide = options.rowSlide or 10 -- row slide-in distance
-	local hoverNudge = options.hoverNudge or 2 -- label shifts right on hover
+	local slideDistance = options.slideDistance or 8
+	local rowSlide = options.rowSlide or 10
+	local hoverNudge = options.hoverNudge or 2
 	local pressDarken = options.pressDarken or 0.08
 	local panelTransparency = options.BackgroundTransparency or 0.5
 
@@ -7404,7 +7640,7 @@ function UI.contextMenu(parent, value, position, size, chevronIcon, options)
 
 	local controller = {}
 	local stack = {}
-	local dying = {} -- menus fading out
+	local dying = {}
 	local connections = {}
 	local heartbeat = nil
 	local catcher = nil
@@ -7506,8 +7742,6 @@ function UI.contextMenu(parent, value, position, size, chevronIcon, options)
 		return out
 	end
 
-	-- Records an object's current transparency property so it can be faded
-	-- relative to its original value.
 	local function track(list, obj, prop)
 		table.insert(list, { obj = obj, prop = prop, base = obj[prop] })
 	end
@@ -7518,7 +7752,6 @@ function UI.contextMenu(parent, value, position, size, chevronIcon, options)
 		end
 	end
 
-	-- Closes menus from `level` upward. Animated unless `instant` is true.
 	local function closeFrom(level, instant)
 		for i = #stack, level, -1 do
 			local menu = stack[i]
@@ -7594,8 +7827,6 @@ function UI.contextMenu(parent, value, position, size, chevronIcon, options)
 		x = math.clamp(x, edge, math.max(edge, screen.X - menuWidth - edge))
 		y = math.clamp(y, edge, math.max(edge, screen.Y - menu.height - edge))
 
-		-- Slide direction: submenus slide sideways, root menu slides vertically.
-		-- Slide in away from the anchor side.
 		menu.baseX = math.floor(x + 0.5)
 		menu.baseY = math.floor(y + 0.5)
 
@@ -7856,9 +8087,7 @@ function UI.contextMenu(parent, value, position, size, chevronIcon, options)
 		menu.inner.Size = UDim2.fromOffset(menuWidth, menu.height)
 	end
 
-	-- Per-frame update for a single menu (open, hover, press, entrance, exit).
 	local function updateMenu(menu, dt)
-		-- Panel fade
 		if animate then
 			menu.alpha = tooltipSmoothTowards(menu.alpha, menu.alphaTarget, fadeSpeed, dt)
 
@@ -7871,7 +8100,6 @@ function UI.contextMenu(parent, value, position, size, chevronIcon, options)
 
 		local a = menu.alpha
 
-		-- Height (skip while closing so it fades without collapsing)
 		if not menu.closing then
 			if animate then
 				menu.cur = tooltipSmoothTowards(menu.cur, menu.height, animationSpeed, dt)
@@ -7886,7 +8114,6 @@ function UI.contextMenu(parent, value, position, size, chevronIcon, options)
 
 		menu.shell.Size = UDim2.fromOffset(menuWidth, math.floor(menu.cur + 0.5))
 
-		-- Slide + panel fade
 		if menu.baseX then
 			local inv = 1 - a
 
@@ -7900,7 +8127,6 @@ function UI.contextMenu(parent, value, position, size, chevronIcon, options)
 
 		applyFades(menu.statics, a)
 
-		-- Border stroke fades with the panel
 		for _, st in ipairs(menu.strokes) do
 			st.obj.Transparency = 1 - (1 - st.base) * a
 		end
@@ -7915,9 +8141,7 @@ function UI.contextMenu(parent, value, position, size, chevronIcon, options)
 			end
 		end
 
-		-- Rows
 		for _, row in ipairs(menu.rows) do
-			-- Staggered entrance
 			if row.appear < 1 then
 				row.age += dt
 
@@ -7943,11 +8167,9 @@ function UI.contextMenu(parent, value, position, size, chevronIcon, options)
 				1
 			)
 
-			-- Row slides in from the left while fading
 			local slide = (1 - row.appear) * -rowSlide
 			row.button.Position = UDim2.fromOffset(padding + slide, row.baseY)
 
-			-- Label nudges right on hover, arrow nudges on hover / while child open
 			if row.label then
 				row.label.Position = UDim2.fromOffset(row.labelX + hoverNudge * row.hover, 0)
 			end
@@ -7958,7 +8180,6 @@ function UI.contextMenu(parent, value, position, size, chevronIcon, options)
 				row.arrow.Position = UDim2.new(1, -18 + 3 * lit, 0.5, -5)
 			end
 
-			-- Fade contents (entrance * panel alpha)
 			local fa = row.appear * a
 
 			if fa ~= row.lastA then
@@ -7987,7 +8208,6 @@ function UI.contextMenu(parent, value, position, size, chevronIcon, options)
 			end
 		end
 
-		-- Stop the loop once everything has finished closing
 		if not open and #dying == 0 and heartbeat then
 			heartbeat:Disconnect()
 			heartbeat = nil
@@ -8023,8 +8243,6 @@ function UI.contextMenu(parent, value, position, size, chevronIcon, options)
 
 		local backdrops = {}
 
-		-- Registers a backdrop so its blur and tint can be lerped with the panel alpha.
-		-- Reads are guarded in case the object lacks one of the properties.
 		local function trackBackdrop(obj)
 			if obj == nil or type(obj) == "number" then
 				return
@@ -8049,7 +8267,6 @@ function UI.contextMenu(parent, value, position, size, chevronIcon, options)
 
 		local strokes = {}
 
-		-- Registers a stroke so its transparency can be lerped with the panel alpha.
 		local function trackStroke(obj)
 			if obj == nil or type(obj) == "number" then
 				return
@@ -8126,7 +8343,7 @@ function UI.contextMenu(parent, value, position, size, chevronIcon, options)
 
 		table.insert(stack, menu)
 
-		renderRows(menu, true) -- stagger rows on first render
+		renderRows(menu, true)
 		place(menu)
 
 		menu.cur = animate and 0 or menu.height
@@ -8134,7 +8351,7 @@ function UI.contextMenu(parent, value, position, size, chevronIcon, options)
 
 		if menu.search then
 			menu.search.TextChanged:Connect(function()
-				renderRows(menu, false) -- no stagger while typing
+				renderRows(menu, false)
 				place(menu)
 			end)
 		end
@@ -8194,7 +8411,6 @@ function UI.contextMenu(parent, value, position, size, chevronIcon, options)
 			end)
 		)
 
-		-- Single update loop; reused if a previous close is still fading out
 		if not heartbeat then
 			heartbeat = RunService.Heartbeat:Connect(step)
 		end
@@ -8237,7 +8453,6 @@ function UI.contextMenu(parent, value, position, size, chevronIcon, options)
 
 		connections = {}
 
-		-- Heartbeat stays alive until the fade-out finishes (step() stops it)
 		if (instant or not animate) and heartbeat then
 			heartbeat:Disconnect()
 			heartbeat = nil

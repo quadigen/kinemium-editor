@@ -12,7 +12,7 @@ local HANDLE_SIZE = 7
 local MIN_SIZE = 4
 local Z = 10
 local MENU_Z = 50000
-local ROW_H, SEP_H, PAD, MENU_W = 24, 9, 4, 214
+local ROW_H, MENU_W = 24, 214
 local GUIDE_THRESHOLD = 6
 local WHITE = Color3.new(1, 1, 1)
 local GUIDE_COLOR = Color3.fromRGB(255, 82, 170)
@@ -20,7 +20,6 @@ local NONE = {}
 local LOCK_ATTR = "GuiEditorLocked"
 local SNAP_PROPS = { "Name", "Position", "Size", "AnchorPoint", "Rotation", "ZIndex", "Visible", "Parent" }
 local INSERTABLE = { "Frame", "TextLabel", "TextButton", "TextBox", "ImageLabel", "ImageButton", "ScrollingFrame" }
-local CHEVRON = "builtin://global-icons/chevron-down.svg"
 
 local RESIZE_HANDLES = {
 	{ name = "NW", x = 0, y = 0, l = true, t = true, corner = true },
@@ -238,7 +237,7 @@ function Editor.new(options)
 	self.redoStack = {}
 	self.clipboard = {}
 	self.pasteCount = 0
-	self.menus = {}
+	self.menu = nil
 	self.menuContext = { point = Vector2.zero, over = false }
 	self.connections = {}
 
@@ -1760,7 +1759,7 @@ function Editor:onKey(input)
 	end
 
 	if key == Enum.KeyCode.Escape then
-		if #self.menus > 0 then
+		if self:isMenuOpen() then
 			self:closeMenus()
 		elseif self.drag then
 			self:cancelDrag()
@@ -1771,7 +1770,7 @@ function Editor:onKey(input)
 
 	local direction = ARROWS[key]
 
-	if direction and self.target and #self.menus == 0 and not self.drag then
+	if direction and self.target and not self:isMenuOpen() and not self.drag then
 		self:nudge(direction * (isShift() and 10 or 1))
 		return
 	end
@@ -1842,7 +1841,7 @@ function Editor:onRightClick(point)
 
 	self.menuContext = { point = point, over = over }
 
-	self:openMenu(self:contextItems(over), point, 1, nil)
+	self:openMenu(self:contextItems(over), point)
 end
 
 function Editor:contextItems(over)
@@ -2045,208 +2044,40 @@ function Editor:contextItems(over)
 	return items
 end
 
-function Editor:closeMenus(fromLevel)
-	fromLevel = fromLevel or 1
-
-	for i = #self.menus, fromLevel, -1 do
-		local menu = self.menus[i]
-
-		menu.shell:Destroy()
-
-		self.menus[i] = nil
-	end
-
-	if #self.menus == 0 then
-		self.catcher.Visible = false
-	end
+function Editor:isMenuOpen()
+	return self.menu ~= nil and self.menu:IsOpen()
 end
 
-function Editor:openMenu(items, point, level, rowRect)
-	self:closeMenus(level)
-
-	local overlay = self.overlay
-	local origin = overlay.AbsolutePosition
-	local bounds = overlay.AbsoluteSize
-
-	local height = PAD * 2
-
-	for _, entry in ipairs(items) do
-		height += entry.separator and SEP_H or ROW_H
+function Editor:closeMenus()
+	if self.menu ~= nil then
+		self.menu:Close()
 	end
 
-	local x, y
+	self.catcher.Visible = false
+end
 
-	if rowRect then
-		x = rowRect.right - 2
+function Editor:openMenu(items, point)
+	local controller = self.menu
 
-		if x + MENU_W > bounds.X - 4 then
-			x = rowRect.left - MENU_W + 2
-		end
+	if controller == nil then
+		controller = UI.contextMenu(UI.contextMenuOverlay(), "", UDim2.fromOffset(-400, -400), UDim2.fromOffset(1, 1), nil, {
+			items = {},
+			menuWidth = MENU_W,
+			itemHeight = ROW_H,
+			onClose = function()
+				if self.catcher ~= nil then
+					self.catcher.Visible = false
+				end
+			end,
+		})
 
-		y = rowRect.top - PAD
-	else
-		x, y = point.X - origin.X, point.Y - origin.Y
-
-		if x + MENU_W > bounds.X - 4 then
-			x -= MENU_W
-		end
+		self.menu = controller
 	end
 
-	x = math.clamp(x, 4, math.max(4, bounds.X - MENU_W - 4))
-	y = math.clamp(y, 4, math.max(4, bounds.Y - height - 4))
+	controller:SetItems(items)
+	controller:Open(point, self.menuContext)
 
-	local z = MENU_Z + level * 10
-
-	local shell = UI.create("Frame", {
-		Name = "GuiEditorMenu" .. level,
-		Position = UDim2.fromOffset(round(x), round(y)),
-		Size = UDim2.fromOffset(MENU_W, 0),
-		BackgroundTransparency = 1,
-		BorderSizePixel = 0,
-		ClipsDescendants = true,
-		ZIndex = z,
-	}, overlay)
-
-	local inner = UI.frame(shell, UDim2.fromOffset(0, 0), UDim2.fromOffset(MENU_W, height), colors.secondary, 6)
-
-	inner.BackgroundTransparency = 0.08
-	inner.ZIndex = z + 1
-
-	UI.stroke(inner, colors.line, 1, 0)
-	UI.backdrop(inner)
-
-	local menu = { shell = shell, inner = inner, level = level, cur = 0, h = height, rows = {} }
-
-	table.insert(self.menus, menu)
 	self.catcher.Visible = true
-
-	local cursorY = PAD
-
-	for _, entry in ipairs(items) do
-		if entry.separator then
-			local line = UI.separator(
-				inner,
-				UDim2.fromOffset(PAD + 6, cursorY + math.floor(SEP_H / 2)),
-				UDim2.fromOffset(MENU_W - (PAD + 6) * 2, 1),
-				colors.line
-			)
-
-			line.ZIndex = z + 2
-
-			cursorY += SEP_H
-		else
-			local enabled = entry.enabled ~= false
-
-			local row = UI.create("TextButton", {
-				Text = "",
-				Position = UDim2.fromOffset(PAD, cursorY),
-				Size = UDim2.fromOffset(MENU_W - PAD * 2, ROW_H),
-				BackgroundColor3 = colors.accent,
-				BackgroundTransparency = 1,
-				BorderSizePixel = 0,
-				AutoButtonColor = false,
-				Active = enabled,
-				InputSink = true,
-				ZIndex = z + 2,
-			}, inner)
-
-			UI.corner(row, 4)
-
-			local label = UI.label(
-				row,
-				entry.text,
-				UDim2.fromOffset(24, 0),
-				UDim2.new(1, -24 - (entry.shortcut and 84 or 22), 1, 0),
-				tokens.type.small,
-				enabled and colors.text or colors.muted
-			)
-
-			label.TextXAlignment = Enum.TextXAlignment.Left
-			label.TextYAlignment = Enum.TextYAlignment.Center
-			label.ZIndex = z + 3
-
-			if entry.check then
-				local dot = UI.frame(
-					row,
-					UDim2.fromOffset(10, math.floor(ROW_H / 2) - 3),
-					UDim2.fromOffset(6, 6),
-					colors.accent,
-					3
-				)
-
-				dot.ZIndex = z + 3
-			end
-
-			if entry.shortcut then
-				local hint = UI.label(
-					row,
-					entry.shortcut,
-					UDim2.new(1, -90, 0, 0),
-					UDim2.fromOffset(82, ROW_H),
-					tokens.type.caption,
-					colors.muted
-				)
-
-				hint.TextXAlignment = Enum.TextXAlignment.Right
-				hint.TextYAlignment = Enum.TextYAlignment.Center
-				hint.ZIndex = z + 3
-			end
-
-			if entry.submenu then
-				local arrow = UI.image(row, CHEVRON, UDim2.new(1, -18, 0.5, -5), UDim2.fromOffset(10, 10))
-
-				arrow.Rotation = -90
-				arrow.ZIndex = z + 3
-			end
-
-			local record = { button = row, hover = 0, hovered = false, enabled = enabled }
-
-			table.insert(menu.rows, record)
-
-			local function openSub()
-				local position = row.AbsolutePosition - origin
-
-				self:openMenu(entry.submenu, nil, level + 1, {
-					left = position.X,
-					right = position.X + row.AbsoluteSize.X + PAD,
-					top = position.Y,
-				})
-			end
-
-			row.MouseEnter:Connect(function()
-				record.hovered = true
-
-				if not enabled then
-					return
-				end
-
-				if entry.submenu then
-					openSub()
-				else
-					self:closeMenus(level + 1)
-				end
-			end)
-
-			row.MouseLeave:Connect(function()
-				record.hovered = false
-			end)
-
-			row.MouseButton1Click:Connect(function()
-				if not enabled then
-					return
-				end
-
-				if entry.submenu then
-					openSub()
-				elseif entry.callback then
-					self:closeMenus()
-					entry.callback()
-				end
-			end)
-
-			cursorY += ROW_H
-		end
-	end
 end
 
 function Editor:tick(dt)
@@ -2257,7 +2088,6 @@ function Editor:tick(dt)
 	self:tickExtras()
 	self:tickHover(dt)
 	self:tickGuides()
-	self:tickMenus(dt)
 end
 
 function Editor:tickGoals(dt)
@@ -2497,7 +2327,7 @@ end
 function Editor:tickHover(dt)
 	local obj = self.hoverObj
 
-	if obj and (not UI.isAlive(obj) or obj == self.target or self.drag or not self.enabled or #self.menus > 0) then
+	if obj and (not UI.isAlive(obj) or obj == self.target or self.drag or not self.enabled or self:isMenuOpen()) then
 		obj = nil
 	end
 
@@ -2571,23 +2401,6 @@ function Editor:tickGuides()
 	end
 end
 
-function Editor:tickMenus(dt)
-	for _, menu in ipairs(self.menus) do
-		menu.cur = damp(menu.cur, menu.h, 24, dt)
-
-		if math.abs(menu.cur - menu.h) < 0.5 then
-			menu.cur = menu.h
-		end
-
-		menu.shell.Size = UDim2.fromOffset(MENU_W, round(menu.cur))
-
-		for _, row in ipairs(menu.rows) do
-			row.hover = damp(row.hover, (row.hovered and row.enabled) and 1 or 0, 26, dt)
-			row.button.BackgroundTransparency = 1 - 0.9 * row.hover
-		end
-	end
-end
-
 function Editor:Destroy()
 	for _, connection in ipairs(self.connections) do
 		connection:Disconnect()
@@ -2596,6 +2409,11 @@ function Editor:Destroy()
 	self.connections = {}
 
 	self:closeMenus()
+
+	if self.menu ~= nil then
+		self.menu:Destroy()
+		self.menu = nil
+	end
 
 	UI.forgetButtons(self.hit)
 	UI.forgetButtons(self.box)
