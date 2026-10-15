@@ -22,7 +22,7 @@ local SECTION_INSET = LIST_PAD * 2 + SCROLLBAR
 local ANIM_SPEED = 14
 local CHEVRON = "builtin://global-icons/chevron-down.svg"
 
-local SIMULATE_EXPORT = true
+local SIMULATE_EXPORT = false
 
 local function smooth(current, target, speed, dt)
 	return current + (target - current) * (1 - math.exp(-speed * dt))
