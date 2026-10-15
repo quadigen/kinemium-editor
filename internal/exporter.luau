@@ -41,7 +41,7 @@ UI.button(
 	targetsScroll,
 	"Windows",
 	UDim2.new(0, 0, 0, 0),
-	UDim2.new(0, 0, 0, 0),
+	UDim2.new(1, 0, 0, 30),
 	function() end,
 	{ icon = "builtin://global-icons/windows.png" }
 )
