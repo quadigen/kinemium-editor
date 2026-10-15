@@ -945,6 +945,7 @@ local function runExport(names)
 			setProgress((i - 1) / #names)
 
 			local project = Project:GetActiveProject()
+			print(project)
 			local buildFolder = project .. "/build"
 			local gameFile = buildFolder .. "/game.kine"
 			Filesystem:CreateFolder(buildFolder, true)
