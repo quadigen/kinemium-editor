@@ -35,13 +35,54 @@ targetsScroll.Parent = content
 local targetsLayout = Instance.new("UIListLayout")
 targetsLayout.FillDirection = Enum.FillDirection.Vertical
 targetsLayout.Padding = UDim.new(0, 5)
+targetsLayout.PaddingTop = UDim.new(0, 10)
+targetsLayout.PaddingLeft = UDim.new(0, 10)
 targetsLayout.Parent = targetsScroll
 
-UI.button(
-	targetsScroll,
-	"Windows",
-	UDim2.new(0, 0, 0, 0),
-	UDim2.new(1, 0, 0, 30),
-	function() end,
-	{ icon = "builtin://global-icons/windows.png" }
-)
+local pages = {
+	{
+		Name = "Windows",
+		Icon = "builtin://global-icons/windows.png",
+		OpenCallback = function() end,
+		CloseCallback = function() end,
+	},
+
+	{
+		Name = "Linux",
+		Icon = "builtin://global-icons/linux.png",
+		OpenCallback = function() end,
+		CloseCallback = function() end,
+	},
+
+	{
+		Name = "MacOS",
+		Icon = "builtin://global-icons/apple.png",
+		OpenCallback = function() end,
+		CloseCallback = function() end,
+	},
+
+	{
+		Name = "Android",
+		Icon = "builtin://global-icons/android.png",
+		OpenCallback = function() end,
+		CloseCallback = function() end,
+	},
+
+	{
+		Name = "Emscripten",
+		Icon = "builtin://global-icons/emscripten.png",
+		OpenCallback = function() end,
+		CloseCallback = function() end,
+	},
+}
+
+for _, entry in pairs(pages) do
+	UI.button(
+		targetsScroll,
+		entry.Name,
+		UDim2.new(0, 0, 0, 0),
+		UDim2.new(1, 0, 0, 30),
+		function() end,
+		{ icon = entry.Icon }
+	)
+end
