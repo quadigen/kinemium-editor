@@ -4,6 +4,8 @@ local TemplateService = game:GetService("TemplateService")
 local ExportService = game:GetService("ExportService")
 local Project = game:GetService("Project")
 local Filesystem = game:GetService("Filesystem")
+local ExporterService = game:GetService("ExporterService")
+
 local tokens = UI.tokens
 
 local gui = UI.widgetOverlay()
@@ -956,8 +958,7 @@ local function runExport(names)
 		end
 
 		ExportService:ExportToFile(gameFile)
-		TemplateService:ExportServerExe(buildFolder, "127.0.0.1", 8080, "Game", gameFile)
-		TemplateService:ExportClientExe(buildFolder, "127.0.0.1", 8080, "Game", gameFile)
+		ExporterService:ExportExecutable("Both", buildFolder, "127.0.0.1", 8080, gameFile)
 
 		local success, err = pcall(exportPlatform, name, configs[i])
 
