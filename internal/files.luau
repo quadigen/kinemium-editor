@@ -696,7 +696,7 @@ return function(content, windowControls)
 	end
 
 	local function copyPathWindow(path)
-		:CopyPathWindow(path)
+		Project:CopyPathWindow(path)
 	end
 
 	local function clickFile(entry)
