@@ -19,18 +19,18 @@ local tokens = UI.tokens
 
 local gui = UI.widgetOverlay()
 
-local panel, _, _, windowControls =
+local panel, content, _, windowControls =
 	UI.window("Export Game", UDim2.new(0.5, 0, 0.5, 0), UDim2.new(0.4, 0, 0.5, 0), "Export Game", {})
 panel.Parent = gui
 
 local listLayout = Instance.new("UIListLayout")
 listLayout.FillDirection = Enum.FillDirection.Horizontal
-listLayout.Parent = panel
+listLayout.Parent = content
 
 local targetsScroll = Instance.new("ScrollingFrame")
 targetsScroll.Size = UDim2.new(0.5, 0, 1, 0)
 targetsScroll.BackgroundTransparency = 1
-targetsScroll.Parent = panel
+targetsScroll.Parent = content
 
 local targetsLayout = Instance.new("UIListLayout")
 targetsLayout.FillDirection = Enum.FillDirection.Vertical
