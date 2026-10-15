@@ -2060,16 +2060,17 @@ function Editor:openMenu(items, point)
 	local controller = self.menu
 
 	if controller == nil then
-		controller = UI.contextMenu(UI.contextMenuOverlay(), "", UDim2.fromOffset(-400, -400), UDim2.fromOffset(1, 1), nil, {
-			items = {},
-			menuWidth = MENU_W,
-			itemHeight = ROW_H,
-			onClose = function()
-				if self.catcher ~= nil then
-					self.catcher.Visible = false
-				end
-			end,
-		})
+		controller =
+			UI.contextMenu(UI.contextMenuOverlay(), "", UDim2.fromOffset(-400, -400), UDim2.fromOffset(1, 1), nil, {
+				items = {},
+				menuWidth = MENU_W,
+				itemHeight = ROW_H,
+				onClose = function()
+					if self.catcher ~= nil then
+						self.catcher.Visible = false
+					end
+				end,
+			})
 
 		self.menu = controller
 	end
