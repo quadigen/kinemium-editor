@@ -19,6 +19,108 @@ local ReflectionService = game:GetService("ReflectionService")
 local colors = UI.colors
 local tokens = UI.tokens
 
+local ANIM = {
+	fast = TweenInfo.new(0.1, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+	select = TweenInfo.new(0.16, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+	arrow = TweenInfo.new(0.16, Enum.EasingStyle.Back, Enum.EasingDirection.Out),
+	scroll = TweenInfo.new(0.22, Enum.EasingStyle.Quint, Enum.EasingDirection.Out),
+	pop = TweenInfo.new(0.14, Enum.EasingStyle.Back, Enum.EasingDirection.Out),
+	dropOut = TweenInfo.new(0.14, Enum.EasingStyle.Quad, Enum.EasingDirection.In),
+	deleteOut = TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.In),
+}
+
+local ENTRANCE_TIME = 0.18
+local ENTRANCE_SLIDE = 10
+local ENTRANCE_STAGGER = 0.015
+local ENTRANCE_MAX_STAGGER = 12
+local ENTRANCE_MAX_ROWS = 40
+
+local function tween(object, info, props)
+	if object == nil or not UI.isAlive(object) then
+		return nil
+	end
+
+	local ok, created = pcall(function()
+		return TweenService:Create(object, info, props)
+	end)
+
+	if not ok or not created then
+		return nil
+	end
+
+	created:Play()
+
+	return created
+end
+
+local TRANSPARENCY_PROPS = { "ImageTransparency", "TextTransparency", "BackgroundTransparency" }
+
+local function readTransparencies(object)
+	local props = {}
+
+	for _, name in ipairs(TRANSPARENCY_PROPS) do
+		local ok, value = pcall(function()
+			return object[name]
+		end)
+
+		if ok and type(value) == "number" then
+			props[name] = value
+		end
+	end
+
+	return props
+end
+
+local function fadeInChildren(parent, info)
+	for _, child in ipairs(parent:GetChildren()) do
+		local props = readTransparencies(child)
+
+		if next(props) ~= nil then
+			for name in pairs(props) do
+				pcall(function()
+					child[name] = 1
+				end)
+			end
+
+			tween(child, info, props)
+		end
+	end
+end
+
+local function fadeOutTree(object, info)
+	local goal = {}
+
+	for _, name in ipairs(TRANSPARENCY_PROPS) do
+		local ok, value = pcall(function()
+			return object[name]
+		end)
+
+		if ok and type(value) == "number" then
+			goal[name] = 1
+		end
+	end
+
+	tween(object, info, goal)
+
+	for _, child in ipairs(object:GetChildren()) do
+		local childGoal = {}
+
+		for _, name in ipairs(TRANSPARENCY_PROPS) do
+			local ok, value = pcall(function()
+				return child[name]
+			end)
+
+			if ok and type(value) == "number" then
+				childGoal[name] = 1
+			end
+		end
+
+		if next(childGoal) ~= nil then
+			tween(child, info, childGoal)
+		end
+	end
+end
+
 local gui = UI.widgetOverlay()
 
 local panel, _, _, windowControls =
@@ -360,6 +462,12 @@ local commitRename
 local cancelRename
 local closeContextMenu
 
+local previousVisible = {}
+local newRowCount = 0
+local lastAnimatedSelection = nil
+local lastToggled = nil
+local scrollTween = nil
+
 local function isDescendantOf(candidate, ancestor)
 	local current = candidate
 
@@ -391,8 +499,6 @@ local function canReparent(instance, newParent)
 		return false
 	end
 
-	-- A service can never be the thing being moved, and nothing can go into the
-	-- DataModel root.
 	if isProtected(instance) or isRoot(newParent) then
 		return false
 	end
@@ -405,7 +511,6 @@ local function canReparent(instance, newParent)
 		return false
 	end
 
-	-- Dropping a node into its own subtree would detach the branch entirely.
 	if isDescendantOf(newParent, instance) then
 		return false
 	end
@@ -417,8 +522,8 @@ local function clearDropHighlight()
 	for _, entry in pairs(rowRegistry) do
 		local row = entry.row
 
-		if UI.isAlive(row) then
-			row.BackgroundTransparency = entry.baseTransparency
+		if entry.dropTarget and UI.isAlive(row) then
+			tween(row, ANIM.fast, { BackgroundTransparency = entry.baseTransparency })
 		end
 
 		entry.dropTarget = false
@@ -454,6 +559,29 @@ local function finishDrop(reparent)
 	end
 end
 
+local function animateRowEntrance(row, finalTransparency, order)
+	local delay = math.min(order, ENTRANCE_MAX_STAGGER) * ENTRANCE_STAGGER
+
+	local info = TweenInfo.new(ENTRANCE_TIME, Enum.EasingStyle.Quad, Enum.EasingDirection.Out, 0, false, delay)
+
+	local finalPosition = row.Position
+
+	row.BackgroundTransparency = 1
+	row.Position = UDim2.new(
+		finalPosition.X.Scale,
+		finalPosition.X.Offset - ENTRANCE_SLIDE,
+		finalPosition.Y.Scale,
+		finalPosition.Y.Offset
+	)
+
+	tween(row, info, {
+		BackgroundTransparency = finalTransparency,
+		Position = finalPosition,
+	})
+
+	fadeInChildren(row, info)
+end
+
 local function addRow(instance, depth, y)
 	local children = sortedChildren(instance)
 
@@ -471,6 +599,8 @@ local function addRow(instance, depth, y)
 		if #children > 0 then
 			expanded[instance] = not expanded[instance]
 
+			lastToggled = instance
+
 			lastHash = ""
 		end
 	end, {
@@ -484,7 +614,6 @@ local function addRow(instance, depth, y)
 	})
 
 	row.Activated:Connect(function(input, clickCount)
-		-- double click
 		if clickCount == 2 then
 			if instance:IsA("Script") or instance:IsA("ModuleScript") or instance:IsA("LocalScript") then
 				viewport.OpenScript(instance)
@@ -496,8 +625,6 @@ local function addRow(instance, depth, y)
 
 	row.InputBegan:Connect(function(input)
 		if input.UserInputType == Enum.UserInputType.MouseButton2 then
-			-- Commit any in-flight rename and dismiss the previous menu before
-			-- opening a new one, so neither outlives the interaction.
 			commitRename()
 			closeContextMenu()
 
@@ -514,8 +641,6 @@ local function addRow(instance, depth, y)
 			return
 		end
 
-		-- Clicking any row dismisses an open context menu and commits an
-		-- in-flight rename; neither should survive the interaction.
 		closeContextMenu()
 
 		if UI.isAlive(renaming) and not isDescendantOf(instance, renamedInstance) then
@@ -528,6 +653,7 @@ local function addRow(instance, depth, y)
 			startX = input.Position.X,
 			startY = input.Position.Y,
 			active = false,
+			dropping = false,
 		}
 	end)
 
@@ -546,12 +672,24 @@ local function addRow(instance, depth, y)
 	local indent = 7 + depth * 16
 
 	if #children > 0 then
-		UI.image(
-			row,
-			"builtin://icons/" .. (expanded[instance] and "ArrowDown.svg" or "ArrowRight.svg"),
-			UDim2.fromOffset(indent, 4),
-			UDim2.fromOffset(12, 12)
-		)
+		local arrow =
+			UI.image(row, "builtin://icons/ArrowRight.svg", UDim2.fromOffset(indent, 4), UDim2.fromOffset(12, 12))
+
+		local targetRotation = expanded[instance] and 90 or 0
+
+		if lastToggled == instance then
+			lastToggled = nil
+
+			pcall(function()
+				arrow.Rotation = expanded[instance] and 0 or 90
+			end)
+
+			tween(arrow, ANIM.arrow, { Rotation = targetRotation })
+		else
+			pcall(function()
+				arrow.Rotation = targetRotation
+			end)
+		end
 	end
 
 	UI.image(row, iconPathFor(instance), UDim2.fromOffset(indent + 16, 3), UDim2.fromOffset(14, 14))
@@ -565,11 +703,35 @@ local function addRow(instance, depth, y)
 		isSelected and tokens.color.text or colors.text
 	)
 
+	local isNew = not previousVisible[instance]
+
+	if isNew then
+		newRowCount += 1
+
+		if newRowCount <= ENTRANCE_MAX_ROWS then
+			animateRowEntrance(row, row.BackgroundTransparency, newRowCount - 1)
+		end
+	end
+
+	if isSelected then
+		if lastAnimatedSelection ~= instance then
+			lastAnimatedSelection = instance
+
+			if not isNew then
+				row.BackgroundColor3 = rowColor
+				row.BackgroundTransparency = 0.12
+
+				tween(row, ANIM.select, {
+					BackgroundColor3 = colors.selection,
+					BackgroundTransparency = 0,
+				})
+			end
+		end
+	end
+
 	return y + UI.metrics.treeRow
 end
 
--- True when `instance` or anything beneath it matches the active search, so a
--- filtered tree keeps the ancestors of a hit visible for context.
 local function subtreeMatches(instance, depth)
 	if filter == "" then
 		return true
@@ -605,8 +767,6 @@ rebuild = function()
 		return
 	end
 
-	-- A live rename box lives inside a row, so rebuilding would destroy the
-	-- field mid-edit. Defer until the rename finishes.
 	if UI.isAlive(renaming) then
 		pendingRebuild = true
 		return
@@ -619,12 +779,25 @@ rebuild = function()
 	UI.clear(list)
 
 	rowIndex = 0
+	newRowCount = 0
 
 	rowRegistry = {}
 
 	visibleRows = {}
 
 	local finalY = walk(game, 0, 1)
+
+	local nowVisible = {}
+
+	for _, instance in ipairs(visibleRows) do
+		nowVisible[instance] = true
+	end
+
+	previousVisible = nowVisible
+
+	if selectedObject() == nil then
+		lastAnimatedSelection = nil
+	end
 
 	list.CanvasSize = UDim2.new(1, 0, 0, finalY + 4)
 
@@ -643,10 +816,55 @@ searchField.TextChanged:Connect(function()
 	rebuild()
 end)
 
+local function playDeleteGhost(instance)
+	local entry = rowRegistry[instance]
+
+	if entry == nil or not UI.isAlive(entry.row) then
+		return
+	end
+
+	local row = entry.row
+
+	local ok, ghost = pcall(function()
+		return row:Clone()
+	end)
+
+	if not ok or not ghost then
+		return
+	end
+
+	local position = row.AbsolutePosition
+	local size = row.AbsoluteSize
+
+	ghost.Active = false
+	ghost.ZIndex = 4000
+	ghost.Position = UDim2.fromOffset(position.X, position.Y)
+	ghost.Size = UDim2.fromOffset(size.X, size.Y)
+	ghost.Parent = UI.root()
+
+	fadeOutTree(ghost, ANIM.deleteOut)
+
+	local slide = tween(ghost, ANIM.deleteOut, {
+		Position = UDim2.fromOffset(position.X + 24, position.Y),
+	})
+
+	if slide then
+		slide.Completed:Once(function()
+			if UI.isAlive(ghost) then
+				ghost:Destroy()
+			end
+		end)
+	else
+		ghost:Destroy()
+	end
+end
+
 local function deleteInstance(instance)
 	if isProtected(instance) then
 		return
 	end
+
+	playDeleteGhost(instance)
 
 	viewport.CloseScript(instance)
 
@@ -708,8 +926,10 @@ local function beginRename(instance, row)
 
 	renaming.Text = instance.Name
 
-	-- Preselecting is cosmetic; a runtime that rejects the native call must not
-	-- take the whole rename down with it.
+	pcall(function()
+		fadeInChildren(entry.row, ANIM.fast)
+	end)
+
 	pcall(function()
 		renaming:SelectAll()
 	end)
@@ -760,8 +980,6 @@ local function beginRename(instance, row)
 	end)
 end
 
--- Applies the pending rename, if any. Clicking elsewhere in the tree should
--- keep whatever was typed rather than silently discarding it.
 commitRename = function()
 	local commit = renameCommit
 
@@ -802,9 +1020,20 @@ local function selectAndReveal(index)
 	local entry = rowRegistry[instance]
 
 	if entry ~= nil then
-		local target = math.max(0, entry.y - list.AbsoluteSize.Y / 2)
+		local maxScroll = math.max(0, list.CanvasSize.Y.Offset - list.AbsoluteSize.Y)
+		local target = math.clamp(entry.y - list.AbsoluteSize.Y / 2, 0, maxScroll)
 
-		list.CanvasPosition = Vector2.new(0, target)
+		if scrollTween ~= nil then
+			scrollTween:Cancel()
+		end
+
+		scrollTween = tween(list, ANIM.scroll, {
+			CanvasPosition = Vector2.new(0, target),
+		})
+
+		if scrollTween == nil then
+			list.CanvasPosition = Vector2.new(0, target)
+		end
 	end
 end
 
@@ -932,6 +1161,7 @@ closeContextMenu = function()
 end
 
 local DRAG_THRESHOLD = 4
+local DRAG_GHOST_WIDTH = 180
 
 local function mouseInList()
 	local mouse = UserInputService:GetMouseLocation()
@@ -962,8 +1192,6 @@ local function updateDragTarget()
 		local size = row.AbsoluteSize
 		local offset = mouse.Y - position.Y
 
-		-- Cheap vertical reject before any ancestry work: only rows the cursor
-		-- is actually near can win.
 		if offset < -size.Y or offset > size.Y * 2 then
 			continue
 		end
@@ -972,8 +1200,6 @@ local function updateDragTarget()
 			continue
 		end
 
-		-- The top half reparents as a sibling, the bottom half as a child,
-		-- which is the behaviour the Roblox explorer uses.
 		local target = offset > size.Y / 2 and instance or instance.Parent
 
 		if target ~= nil and canReparent(source, target) then
@@ -987,12 +1213,10 @@ local function updateDragTarget()
 	end
 
 	if best ~= drag.target then
-		-- Only the previously highlighted row needs resetting, rather than
-		-- walking the whole registry.
 		local previous = drag.target and rowRegistry[drag.target]
 
 		if previous ~= nil and UI.isAlive(previous.row) then
-			previous.row.BackgroundTransparency = previous.baseTransparency
+			tween(previous.row, ANIM.fast, { BackgroundTransparency = previous.baseTransparency })
 			previous.dropTarget = false
 		end
 
@@ -1001,7 +1225,7 @@ local function updateDragTarget()
 		local entry = best and rowRegistry[best]
 
 		if entry ~= nil and UI.isAlive(entry.row) then
-			entry.row.BackgroundTransparency = 0
+			tween(entry.row, ANIM.fast, { BackgroundTransparency = 0 })
 			entry.dropTarget = true
 		end
 	end
@@ -1014,9 +1238,9 @@ local function beginDragVisual()
 
 	dragLayer = UI.create("Frame", {
 		Position = UDim2.fromOffset(drag.startX + 10, drag.startY),
-		Size = UDim2.fromOffset(180, UI.metrics.treeRow),
+		Size = UDim2.fromOffset(DRAG_GHOST_WIDTH - 30, UI.metrics.treeRow),
 		BackgroundColor3 = colors.selection,
-		BackgroundTransparency = 0.2,
+		BackgroundTransparency = 1,
 		BorderSizePixel = 0,
 		Active = false,
 		ZIndex = 5000,
@@ -1032,6 +1256,13 @@ local function beginDragVisual()
 		tokens.type.small,
 		tokens.color.text
 	)
+
+	tween(dragLayer, ANIM.pop, {
+		Size = UDim2.fromOffset(DRAG_GHOST_WIDTH, UI.metrics.treeRow),
+		BackgroundTransparency = 0.2,
+	})
+
+	fadeInChildren(dragLayer, ANIM.pop)
 end
 
 local function moveDragVisual()
@@ -1039,20 +1270,16 @@ local function moveDragVisual()
 		return
 	end
 
-	-- Follow the cursor directly. Tweening the ghost spawned a new TweenService
-	-- tween on every mouse-move, each one stepping the VM for the rest of its
-	-- duration, which made dragging visibly laggy. The drop still animates, so
-	-- the gesture keeps its polish without the per-frame cost.
 	local mouse = UserInputService:GetMouseLocation()
 
 	dragLayer.Position = UDim2.fromOffset(mouse.X + 10, mouse.Y)
 end
 
 local function animateDrop(reparent)
-	-- Capture the drag now: finishDrop runs from the tween's Completed callback
-	-- ~0.12s later, by which point `drag` may describe a different gesture.
 	local source = drag.source
 	local target = drag.target
+
+	drag.dropping = true
 
 	local function apply()
 		disposeDrag()
@@ -1078,19 +1305,25 @@ local function animateDrop(reparent)
 
 	local layer = dragLayer
 
-	local tween = TweenService:Create(layer, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
+	fadeOutTree(layer, ANIM.dropOut)
+
+	local tweenOut = tween(layer, ANIM.dropOut, {
 		BackgroundTransparency = 1,
+		Size = UDim2.fromOffset(DRAG_GHOST_WIDTH - 40, UI.metrics.treeRow),
 	})
 
-	tween.Completed:Once(function()
+	if tweenOut == nil then
+		apply()
+		return
+	end
+
+	tweenOut.Completed:Once(function()
 		apply()
 	end)
-
-	tween:Play()
 end
 
 UserInputService.InputChanged:Connect(function(input: InputObject)
-	if drag == nil then
+	if drag == nil or drag.dropping then
 		return
 	end
 
@@ -1126,7 +1359,7 @@ UserInputService.InputChanged:Connect(function(input: InputObject)
 end)
 
 UserInputService.InputEnded:Connect(function(input: InputObject)
-	if drag == nil or input.UserInputType ~= Enum.UserInputType.MouseButton1 then
+	if drag == nil or drag.dropping or input.UserInputType ~= Enum.UserInputType.MouseButton1 then
 		return
 	end
 
@@ -1162,9 +1395,6 @@ UserInputService.InputBegan:Connect(function(input: InputObject, gameProcessed: 
 			commitRename()
 		end
 
-		-- A mouse InputObject carries no meaningful KeyCode. Without this guard
-		-- the click falls through to the keyboard handling below and can match
-		-- Delete/Backspace, destroying the selected object on every click.
 		return
 	end
 
@@ -1172,15 +1402,18 @@ UserInputService.InputBegan:Connect(function(input: InputObject, gameProcessed: 
 		return
 	end
 
-	-- The Files tab registers its own keyboard handling for the same window, so
-	-- only the selected tab may consume keys.
 	if not explorerTabActive() then
 		return
 	end
 
 	if input.KeyCode == Enum.KeyCode.Escape then
 		if drag ~= nil then
-			finishDrop(false)
+			if drag.dropping then
+				return
+			end
+
+			drag.target = nil
+			animateDrop(false)
 		elseif UI.isAlive(renaming) then
 			cancelRename()
 		elseif contextMenu ~= nil then
@@ -1233,6 +1466,8 @@ UserInputService.InputBegan:Connect(function(input: InputObject, gameProcessed: 
 		if selected ~= nil and not expanded[selected] and #selected:GetChildren() > 0 then
 			expanded[selected] = true
 
+			lastToggled = selected
+
 			lastHash = ""
 		end
 
@@ -1243,6 +1478,8 @@ UserInputService.InputBegan:Connect(function(input: InputObject, gameProcessed: 
 		if selected ~= nil then
 			if expanded[selected] then
 				expanded[selected] = nil
+
+				lastToggled = selected
 
 				lastHash = ""
 			elseif selected.Parent ~= nil and selected.Parent ~= game then

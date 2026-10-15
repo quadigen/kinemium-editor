@@ -7905,7 +7905,6 @@ function UI.contextMenu(parent, value, position, size, chevronIcon, options)
 			st.obj.Transparency = 1 - (1 - st.base) * a
 		end
 
-		-- Backdrop: blur radius grows with alpha, tint fades from fully transparent
 		for _, b in ipairs(menu.backdrops) do
 			if b.blur ~= nil then
 				b.obj.BlurRadius = b.blur * a

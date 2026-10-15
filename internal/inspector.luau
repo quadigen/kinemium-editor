@@ -82,7 +82,6 @@ local readonlyProperties = {
 	AbsolutePosition = true,
 	AbsoluteSize = true,
 	SelectedText = true,
-	CFrame = true,
 }
 
 local panel, content =
@@ -136,7 +135,9 @@ local list = UI.create("ScrollingFrame", {
 local collapsed = {}
 local activeEditors = {}
 
-local lastSignature = ""
+local renderedControllers = {}
+
+local lastStructure = ""
 local signatureClock = 0
 
 local SIGNATURE_INTERVAL = 6
@@ -155,8 +156,8 @@ local outerLayout = UI.create("UIListLayout", {
 	Padding = UDim.new(0, BUBBLE_GAP),
 }, list)
 
-local animations = {} -- category -> { bubble, target, full, tween }
-local heights = {} -- category -> height before the last rebuild
+local animations = {}
+local heights = {}
 local canvasTween
 local lastObject
 
@@ -216,10 +217,6 @@ local function propertyValue(object, property)
 	end
 
 	return nil
-end
-
-local function includeInSignature(propertyName)
-	return propertyName ~= "CFrame" and propertyName ~= "Position" and propertyName ~= "Orientation"
 end
 
 local function displayValue(value)
@@ -285,6 +282,39 @@ local function propertyMatchesSearch(propertyName, value, query)
 		or string.find(datatype, query, 1, true) ~= nil
 end
 
+local function buildStructure(object, searchQuery)
+	if not object then
+		return nil, "none|search=" .. searchQuery
+	end
+
+	local visible = {}
+
+	local pieces = {
+		object:GetFullName(),
+
+		"search=" .. searchQuery,
+	}
+
+	for _, name in ipairs(propertiesFor(object)) do
+		local value = propertyValue(object, name)
+
+		if propertyMatchesSearch(name, value, searchQuery) then
+			local datatype = typeof(value)
+
+			table.insert(visible, {
+				name = name,
+				value = value,
+				datatype = datatype,
+				category = categories[name] or "Uncategorized",
+			})
+
+			table.insert(pieces, name .. ":" .. datatype)
+		end
+	end
+
+	return visible, table.concat(pieces, "|")
+end
+
 local function watchEditor(field, commit)
 	table.insert(activeEditors, {
 		field = field,
@@ -315,10 +345,6 @@ local function setProperty(object, propertyName, value)
 	local ok = pcall(function()
 		object[propertyName] = value
 	end)
-
-	if ok then
-		lastSignature = ""
-	end
 
 	return ok
 end
@@ -455,7 +481,6 @@ local function openEnumDropdownFor(field, object, property)
 				setProperty(object, property.name, item)
 
 				closeEnumDropdown()
-				lastSignature = ""
 			end,
 			{
 				color = selected and tokens.color.selection or tokens.color.panelRaised,
@@ -488,7 +513,6 @@ local function openEnumDropdownFor(field, object, property)
 	}
 end
 
--- Close the floating enum menu when clicking anywhere outside it.
 UserInputService.InputBegan:Connect(function(event)
 	if not openEnumDropdown then
 		return
@@ -565,8 +589,6 @@ local function readonlyField(row, value, options)
 	return valueField(row, displayValue(value), options)
 end
 
--- Each scalar has its own TextBox.
--- The component name is a separate label and is not part of TextBox.Text.
 local function componentField(row, label, value, index, count, line)
 	line = line or 0
 
@@ -598,6 +620,30 @@ local function componentField(row, label, value, index, count, line)
 
 		size = UDim2.new(slotScale, -(11 + labelWidth), 0, 18),
 	})
+end
+
+local function textFieldController(field, formatter)
+	return {
+		refresh = function(value)
+			if not field:IsFocused() then
+				field.Text = formatter(value)
+			end
+		end,
+	}
+end
+
+local function componentController(fields, formatter)
+	return {
+		refresh = function(value)
+			local parts = formatter(value)
+
+			for index, field in ipairs(fields) do
+				if not field:IsFocused() then
+					field.Text = parts[index]
+				end
+			end
+		end,
+	}
 end
 
 local function parseComponent(text)
@@ -647,7 +693,7 @@ local function readonlyAdapter(height)
 		height = height or PROPERTY_HEIGHT,
 
 		render = function(row, object, property)
-			return readonlyField(row, property.value)
+			return textFieldController(readonlyField(row, property.value), displayValue)
 		end,
 	}
 end
@@ -659,7 +705,7 @@ registerAdapter("string", {
 
 	render = function(row, object, property)
 		if readonlyProperties[property.name] then
-			return readonlyField(row, property.value)
+			return textFieldController(readonlyField(row, property.value), displayValue)
 		end
 
 		local field = valueField(row, property.value)
@@ -668,7 +714,9 @@ registerAdapter("string", {
 			return text
 		end)
 
-		return field
+		return textFieldController(field, function(value)
+			return tostring(value or "")
+		end)
 	end,
 })
 
@@ -677,14 +725,14 @@ registerAdapter("number", {
 
 	render = function(row, object, property)
 		if readonlyProperties[property.name] then
-			return readonlyField(row, property.value)
+			return textFieldController(readonlyField(row, property.value), displayValue)
 		end
 
 		local field = valueField(row, formatNumber(property.value))
 
 		watchValueField(field, object, property.name, tonumber)
 
-		return field
+		return textFieldController(field, formatNumber)
 	end,
 })
 
@@ -695,7 +743,7 @@ registerAdapter("boolean", {
 		local value = property.value
 
 		if readonlyProperties[property.name] then
-			return readonlyField(row, value and "true" or "false")
+			return textFieldController(readonlyField(row, value and "true" or "false"), displayValue)
 		end
 
 		local container, controller
@@ -720,7 +768,17 @@ registerAdapter("boolean", {
 			}
 		)
 
-		return container
+		return {
+			refresh = function(newValue)
+				local boolean = newValue == true
+
+				if controller:GetValue() ~= boolean then
+					controller:SetValue(boolean, true)
+
+					controller.label.Text = boolean and "Enabled" or "Disabled"
+				end
+			end,
+		}
 	end,
 })
 
@@ -730,9 +788,9 @@ registerAdapter("EnumItem", {
 	render = function(row, object, property)
 		local value = property.value
 
-		local field
+		local field, label
 
-		field = UI.button(row, value.Name, UDim2.new(0.45, 6, 0, 2), UDim2.new(0.55, -12, 0, 18), function()
+		field, label = UI.button(row, value.Name, UDim2.new(0.45, 6, 0, 2), UDim2.new(0.55, -12, 0, 18), function()
 			openEnumDropdownFor(field, object, property)
 		end, {
 			color = tokens.color.input,
@@ -758,7 +816,13 @@ registerAdapter("EnumItem", {
 
 		UI.image(field, "builtin://icons/ArrowDown.svg", UDim2.new(1, -16, 0.5, -5), UDim2.fromOffset(10, 10))
 
-		return field
+		return {
+			refresh = function(newValue)
+				if typeof(newValue) == "EnumItem" and label.Text ~= newValue.Name then
+					label.Text = newValue.Name
+				end
+			end,
+		}
 	end,
 })
 
@@ -769,7 +833,7 @@ registerAdapter("Vector2", {
 
 	render = function(row, object, property)
 		if readonlyProperties[property.name] then
-			return readonlyField(row, property.value)
+			return textFieldController(readonlyField(row, property.value), displayValue)
 		end
 
 		local value = property.value
@@ -798,7 +862,9 @@ registerAdapter("Vector2", {
 			end
 		)
 
-		return xField
+		return componentController({ xField, yField }, function(newValue)
+			return { formatNumber(newValue.X), formatNumber(newValue.Y) }
+		end)
 	end,
 })
 
@@ -807,7 +873,7 @@ local vector3Adapter = {
 
 	render = function(row, object, property)
 		if readonlyProperties[property.name] then
-			return readonlyField(row, property.value)
+			return textFieldController(readonlyField(row, property.value), displayValue)
 		end
 
 		local value = property.value
@@ -841,13 +907,14 @@ local vector3Adapter = {
 			end
 		)
 
-		return xField
+		return componentController({ xField, yField, zField }, function(newValue)
+			return { formatNumber(newValue.X), formatNumber(newValue.Y), formatNumber(newValue.Z) }
+		end)
 	end,
 }
 
 registerAdapter("Vector3", vector3Adapter)
 
--- Kinemium uses Luau's native vector value for Vector3 in some paths.
 registerAdapter("vector", vector3Adapter)
 
 registerAdapter("UDim", {
@@ -855,7 +922,7 @@ registerAdapter("UDim", {
 
 	render = function(row, object, property)
 		if readonlyProperties[property.name] then
-			return readonlyField(row, property.value)
+			return textFieldController(readonlyField(row, property.value), displayValue)
 		end
 
 		local value = property.value
@@ -884,7 +951,9 @@ registerAdapter("UDim", {
 			end
 		)
 
-		return scaleField
+		return componentController({ scaleField, offsetField }, function(newValue)
+			return { formatNumber(newValue.Scale), formatNumber(newValue.Offset) }
+		end)
 	end,
 })
 
@@ -893,7 +962,7 @@ registerAdapter("UDim2", {
 
 	render = function(row, object, property)
 		if readonlyProperties[property.name] then
-			return readonlyField(row, property.value)
+			return textFieldController(readonlyField(row, property.value), displayValue)
 		end
 
 		local value = property.value
@@ -932,7 +1001,17 @@ registerAdapter("UDim2", {
 			end
 		)
 
-		return xs
+		return componentController({ xs, xo, ys, yo }, function(newValue)
+			return {
+				formatNumber(newValue.X.Scale),
+
+				formatNumber(newValue.X.Offset),
+
+				formatNumber(newValue.Y.Scale),
+
+				formatNumber(newValue.Y.Offset),
+			}
+		end)
 	end,
 })
 
@@ -947,7 +1026,17 @@ registerAdapter("Color3", {
 		UI.stroke(swatch, tokens.color.borderStrong, 1, 0)
 
 		if readonlyProperties[property.name] then
-			return readonlyField(row, string.format("%.3f, %.3f, %.3f", value.R, value.G, value.B))
+			local field = readonlyField(row, string.format("%.3f, %.3f, %.3f", value.R, value.G, value.B))
+
+			return {
+				refresh = function(newValue)
+					if not field:IsFocused() then
+						field.Text = string.format("%.3f, %.3f, %.3f", newValue.R, newValue.G, newValue.B)
+					end
+
+					swatch.BackgroundColor3 = newValue
+				end,
+			}
 		end
 
 		local rField = componentField(row, "R", value.R, 1, 3)
@@ -979,7 +1068,17 @@ registerAdapter("Color3", {
 			end
 		)
 
-		return rField
+		local refreshFields = componentController({ rField, gField, bField }, function(newValue)
+			return { formatNumber(newValue.R), formatNumber(newValue.G), formatNumber(newValue.B) }
+		end).refresh
+
+		return {
+			refresh = function(newValue)
+				swatch.BackgroundColor3 = newValue
+
+				refreshFields(newValue)
+			end,
+		}
 	end,
 })
 
@@ -988,7 +1087,7 @@ registerAdapter("Quaternion", {
 
 	render = function(row, object, property)
 		if readonlyProperties[property.name] then
-			return readonlyField(row, property.value)
+			return textFieldController(readonlyField(row, property.value), displayValue)
 		end
 
 		local value = property.value
@@ -1027,7 +1126,17 @@ registerAdapter("Quaternion", {
 			end
 		)
 
-		return x
+		return componentController({ x, y, z, w }, function(newValue)
+			return {
+				formatNumber(newValue.X),
+
+				formatNumber(newValue.Y),
+
+				formatNumber(newValue.Z),
+
+				formatNumber(newValue.W),
+			}
+		end)
 	end,
 })
 
@@ -1036,7 +1145,7 @@ registerAdapter("CFrame", {
 
 	render = function(row, object, property)
 		if readonlyProperties[property.name] then
-			return readonlyField(row, property.value)
+			return textFieldController(readonlyField(row, property.value), displayValue)
 		end
 
 		local value = property.value
@@ -1096,7 +1205,17 @@ registerAdapter("CFrame", {
 			)
 		end)
 
-		return fields[1]
+		return componentController(fields, function(newValue)
+			local parts = { newValue:GetComponents() }
+
+			local formatted = {}
+
+			for index = 1, 12 do
+				formatted[index] = formatNumber(parts[index])
+			end
+
+			return formatted
+		end)
 	end,
 })
 
@@ -1105,7 +1224,7 @@ registerAdapter("Vector3int16", {
 
 	render = function(row, object, property)
 		if readonlyProperties[property.name] then
-			return readonlyField(row, property.value)
+			return textFieldController(readonlyField(row, property.value), displayValue)
 		end
 
 		local value = property.value
@@ -1143,7 +1262,9 @@ registerAdapter("Vector3int16", {
 			end
 		)
 
-		return x
+		return componentController({ x, y, z }, function(newValue)
+			return { formatNumber(newValue.X), formatNumber(newValue.Y), formatNumber(newValue.Z) }
+		end)
 	end,
 })
 
@@ -1152,7 +1273,7 @@ registerAdapter("NumberRange", {
 
 	render = function(row, object, property)
 		if readonlyProperties[property.name] then
-			return readonlyField(row, property.value)
+			return textFieldController(readonlyField(row, property.value), displayValue)
 		end
 
 		local value = property.value
@@ -1181,7 +1302,9 @@ registerAdapter("NumberRange", {
 			end
 		)
 
-		return minField
+		return componentController({ minField, maxField }, function(newValue)
+			return { formatNumber(newValue.Min), formatNumber(newValue.Max) }
+		end)
 	end,
 })
 
@@ -1248,7 +1371,7 @@ end
 local function createCategoryBubble(parent, object, category, group, order)
 	local isCollapsed = collapsed[category] == true
 
-	local fullHeight = CATEGORY_HEADER_HEIGHT + 1 -- header + separator
+	local fullHeight = CATEGORY_HEADER_HEIGHT + 1
 
 	for _, property in ipairs(group) do
 		fullHeight += propertyEditorHeight(property)
@@ -1358,7 +1481,11 @@ local function createCategoryBubble(parent, object, category, group, order)
 			tokens.color.border
 		)
 
-		renderPropertyAdapter(row, object, property)
+		local controller = renderPropertyAdapter(row, object, property)
+
+		if controller then
+			renderedControllers[property.name] = controller
+		end
 	end
 
 	if startHeight ~= targetHeight then
@@ -1383,7 +1510,7 @@ local function createEmptyMessage(text)
 	setListCanvasHeight(48)
 end
 
-local function rebuild()
+local function rebuild(object, visible)
 	if rebuilding then
 		return
 	end
@@ -1394,7 +1521,6 @@ local function rebuild()
 
 	local oldCanvasPosition = list.CanvasPosition
 
-	-- Remember where each bubble was, then stop its tween
 	for category, anim in pairs(animations) do
 		heights[category] = anim.bubble.Size.Y.Offset
 
@@ -1410,12 +1536,10 @@ local function rebuild()
 
 	animations = {}
 	activeEditors = {}
+	renderedControllers = {}
 
 	UI.clear(list, { [outerLayout] = true })
 
-	local object = selectedObject()
-
-	-- A different selection shouldn't animate from the previous object's heights
 	if object ~= lastObject then
 		heights = {}
 		lastObject = object
@@ -1430,33 +1554,23 @@ local function rebuild()
 		return
 	end
 
-	local searchQuery = getSearchQuery()
-
-	local grouped = {}
-
-	for _, name in ipairs(propertiesFor(object)) do
-		local value = propertyValue(object, name)
-
-		if propertyMatchesSearch(name, value, searchQuery) then
-			local category = categories[name] or "Uncategorized"
-
-			grouped[category] = grouped[category] or {}
-
-			table.insert(grouped[category], {
-				name = name,
-				value = value,
-				datatype = typeof(value),
-			})
-		end
-	end
-
-	if next(grouped) == nil then
+	if not visible or #visible == 0 then
 		createEmptyMessage("No matching properties.")
 
 		list.CanvasPosition = Vector2.new(oldCanvasPosition.X, 0)
 
 		rebuilding = false
 		return
+	end
+
+	local grouped = {}
+
+	for _, property in ipairs(visible) do
+		local category = property.category
+
+		grouped[category] = grouped[category] or {}
+
+		table.insert(grouped[category], property)
 	end
 
 	local groupNames = {}
@@ -1502,8 +1616,22 @@ local function rebuild()
 	rebuilding = false
 end
 
+local function refreshValueControllers(visible)
+	if not visible then
+		return
+	end
+
+	for _, property in ipairs(visible) do
+		local controller = renderedControllers[property.name]
+
+		if controller and controller.refresh then
+			pcall(controller.refresh, property.value)
+		end
+	end
+end
+
 Selection.SelectionChanged:Connect(function()
-	lastSignature = ""
+	lastStructure = ""
 
 	signatureClock = SIGNATURE_INTERVAL
 end)
@@ -1519,8 +1647,6 @@ renderer.Pool.new("2d", function()
 	updateEditors()
 	updateEnumDropdownPosition()
 
-	local object = selectedObject()
-
 	signatureClock += 1
 
 	if signatureClock < SIGNATURE_INTERVAL then
@@ -1529,28 +1655,16 @@ renderer.Pool.new("2d", function()
 
 	signatureClock = 0
 
-	local searchQuery = getSearchQuery()
+	local object = selectedObject()
 
-	local pieces = {
-		object and object:GetFullName() or "none",
+	local visible, structure = buildStructure(object, getSearchQuery())
 
-		"search=" .. searchQuery,
-	}
+	if structure ~= lastStructure then
+		lastStructure = structure
 
-	if object then
-		for _, property in ipairs(propertiesFor(object)) do
-			if includeInSignature(property) then
-				local value = propertyValue(object, property)
-				table.insert(pieces, property .. ":" .. typeof(value) .. "=" .. displayValue(value))
-			end
-		end
+		rebuild(object, visible)
+		return
 	end
 
-	local signature = table.concat(pieces, "|")
-
-	if signature ~= lastSignature then
-		lastSignature = signature
-
-		rebuild()
-	end
+	refreshValueControllers(visible)
 end)
