@@ -936,69 +936,67 @@ local function runExport(names)
 	setBusy(true)
 	setProgress(0, true)
 
-	coroutine.wrap(function()
-		local failures = {}
+	local failures = {}
 
-		for i, name in ipairs(names) do
-			statusLabel.TextColor3 = tokens.color.subtext
-			statusLabel.Text = string.format("Exporting %s (%d/%d)...", name, i, #names)
-			setProgress((i - 1) / #names)
+	for i, name in ipairs(names) do
+		statusLabel.TextColor3 = tokens.color.subtext
+		statusLabel.Text = string.format("Exporting %s (%d/%d)...", name, i, #names)
+		setProgress((i - 1) / #names)
 
-			local project = Project:GetActiveProject().Path
+		local project = Project:GetActiveProject().Path
 
-			local buildFolder = project .. "/build"
-			local gameFile = buildFolder .. "/game.kine"
-			Filesystem:CreateFolder(buildFolder, true)
-			Filesystem:CreateFile(gameFile, true)
-			ExportService:ExportToFile(gameFile)
-			TemplateService:ExportServerExe(buildFolder, "127.0.0.1", 8080, "Game", gameFile)
-			TemplateService:ExportClientExe(buildFolder, "127.0.0.1", 8080, "Game", gameFile)
+		local buildFolder = project .. "/build"
+		local gameFile = buildFolder .. "/game.kine"
+		Filesystem:CreateFolder(buildFolder, true)
+		Filesystem:CreateFile(gameFile, true)
+		ExportService:ExportToFile(gameFile)
+		TemplateService:ExportServerExe(buildFolder, "127.0.0.1", 8080, "Game", gameFile)
+		TemplateService:ExportClientExe(buildFolder, "127.0.0.1", 8080, "Game", gameFile)
 
-			local success, err = pcall(exportPlatform, name, configs[i])
+		local success, err = pcall(exportPlatform, name, configs[i])
 
-			if not success then
-				table.insert(failures, name .. ": " .. tostring(err))
-			end
-
-			setProgress(i / #names)
+		if not success then
+			table.insert(failures, name .. ": " .. tostring(err))
 		end
 
-		exporting = false
-		setBusy(false)
+		setProgress(i / #names)
+	end
 
-		if #failures == 0 then
-			statusLabel.TextColor3 = tokens.color.success
-			statusLabel.Text = string.format("Exported %d platform%s.", #names, #names == 1 and "" or "s")
+	exporting = false
+	setBusy(false)
 
-			UI.toast("Export finished", {
-				type = "success",
-				title = "Export",
-				message = string.format("Exported %d platform%s.", #names, #names == 1 and "" or "s"),
-				duration = 5,
-			})
+	if #failures == 0 then
+		statusLabel.TextColor3 = tokens.color.success
+		statusLabel.Text = string.format("Exported %d platform%s.", #names, #names == 1 and "" or "s")
 
-			if values.General.openFolder then
-			end
-		else
-			statusLabel.TextColor3 = tokens.color.error
-			statusLabel.Text = string.format("%d of %d exports failed.", #failures, #names)
+		UI.toast("Export finished", {
+			type = "success",
+			title = "Export",
+			message = string.format("Exported %d platform%s.", #names, #names == 1 and "" or "s"),
+			duration = 5,
+		})
 
-			UI.toast("Export failed", {
-				type = "error",
-				title = "Export",
-				message = string.format("%d of %d exports failed.", #failures, #names),
-				details = table.concat(failures, "\n"),
-				duration = 0,
-			})
+		if values.General.openFolder then
 		end
+	else
+		statusLabel.TextColor3 = tokens.color.error
+		statusLabel.Text = string.format("%d of %d exports failed.", #failures, #names)
 
-		sleep(2.5)
+		UI.toast("Export failed", {
+			type = "error",
+			title = "Export",
+			message = string.format("%d of %d exports failed.", #failures, #names),
+			details = table.concat(failures, "\n"),
+			duration = 0,
+		})
+	end
 
-		if not exporting then
-			setProgress(0)
-			updateStatus()
-		end
-	end)()
+	sleep(2.5)
+
+	if not exporting then
+		setProgress(0)
+		updateStatus()
+	end
 end
 
 local function exportSelected()
