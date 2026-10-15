@@ -944,8 +944,8 @@ local function runExport(names)
 			statusLabel.Text = string.format("Exporting %s (%d/%d)...", name, i, #names)
 			setProgress((i - 1) / #names)
 
-			local project = Project:GetActiveProject()
-			print(project)
+			local project = Project:GetActiveProject().Path
+
 			local buildFolder = project .. "/build"
 			local gameFile = buildFolder .. "/game.kine"
 			Filesystem:CreateFolder(buildFolder, true)
