@@ -1,4 +1,4 @@
-local UI = require("./editor_ui")
+local UI = require("@internal/editor_ui")
 local viewport = require("@internal/viewport")
 
 local Project = game:GetService("Project")
