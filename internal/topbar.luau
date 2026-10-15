@@ -434,52 +434,91 @@ flyoutStroke = UI.stroke(flyout, initialColors.border, 1, 0.55)
 
 local headerX = 35
 
+local UserInputService = game:GetService("UserInputService")
+
+local openEngineMenu = nil
+
+local function closeEngineMenu()
+	if openEngineMenu ~= nil then
+		openEngineMenu:Close()
+		openEngineMenu = nil
+	end
+end
+
 for _, category in ipairs(engineCategories) do
 	local current = category
 	local categoryName = current.name
 	local width = #categoryName * 8 + 20
-	local items = {}
 
-	for _, definition in ipairs(current.buttons) do
-		if definition.type ~= "separator" then
+	local items = {}
+	local lookup = {}
+
+	for index, definition in ipairs(current.buttons) do
+		if definition.type ~= "separator" and definition.type ~= "custom" then
+			local value = "item:" .. index
+
+			lookup[value] = definition
+
 			table.insert(items, {
-				value = definition,
 				label = definition.name,
+				value = value,
 				icon = definition.icon,
 			})
 		end
 	end
 
-	local button
-	button, label, record =
-		UI.contextMenu(headerSurface, categoryName, UDim2.fromOffset(headerX, 4), UDim2.fromOffset(width, 24), nil, {
-			items = items,
+	local button, label, record
 
-			format = function()
-				return categoryName
-			end,
-			keepLabel = true,
+	local menu = UI.contextMenu(root, "", UDim2.fromOffset(-400, -400), UDim2.fromOffset(1, 1), nil, {
+		items = {},
+		menuWidth = 180,
+		itemHeight = 28,
+		maxVisibleItems = 8,
+		closeOnOutsideClick = false,
 
-			onChanged = function(definition)
-				if type(definition) ~= "table" then
-					return
+		menuPosition = function()
+			return UDim2.fromOffset(button.AbsolutePosition.X, button.AbsolutePosition.Y + button.AbsoluteSize.Y + 2)
+		end,
+
+		onChanged = function(value)
+			openEngineMenu = nil
+
+			local definition = lookup[value]
+
+			if definition == nil then
+				return
+			end
+
+			safeAction(function()
+				fireRoute(definition.route)
+
+				if definition.callback then
+					definition.callback()
 				end
+			end)()
 
-				safeAction(function()
-					fireRoute(definition.route)
+			setExpanded(false)
+		end,
+	})
 
-					if definition.callback then
-						definition.callback()
-					end
-				end)()
+	menu:SetItems(items)
 
-				setExpanded(false)
-			end,
+	button, label, record = UI.button(
+		headerSurface,
+		categoryName,
+		UDim2.fromOffset(headerX, 4),
+		UDim2.fromOffset(width, 24),
+		function()
+			if openEngineMenu == menu then
+				closeEngineMenu()
+				return
+			end
 
-			BackgroundTransparency = 0.5,
-			itemBgTransparency = 1,
-			backdrop = true,
-
+			closeEngineMenu()
+			menu:Open()
+			openEngineMenu = menu
+		end,
+		{
 			color = initialColors.panel,
 			hoverColor = initialColors.raised,
 			pressedColor = initialColors.input,
@@ -488,21 +527,9 @@ for _, category in ipairs(engineCategories) do
 			textY = 3,
 			paddingX = 8,
 			border = false,
-			showSearch = false,
 			radius = buttonRadius(),
-			menuWidth = 180,
-			menuColor = initialColors.surface,
-			borderColor = initialColors.border,
-			menuPosition = function()
-				return UDim2.fromOffset(
-					button.AbsolutePosition.X,
-					button.AbsolutePosition.Y + button.AbsoluteSize.Y + 2
-				)
-			end,
-			itemHeight = 28,
-			maxVisibleItems = 8,
-			chevronSize = 8,
-		})
+		}
+	)
 
 	button.Name = categoryName .. "Menu"
 	button.BackgroundTransparency = 0.5
@@ -512,6 +539,25 @@ for _, category in ipairs(engineCategories) do
 
 	headerX += width + 2
 end
+
+UserInputService.InputBegan:Connect(function(input)
+	if input.UserInputType ~= Enum.UserInputType.MouseButton1 or openEngineMenu == nil then
+		return
+	end
+
+	local mouse = UserInputService:GetMouseLocation()
+
+	if openEngineMenu:ContainsPoint(mouse.X, mouse.Y) then
+		return
+	end
+
+	local p, s = headerSurface.AbsolutePosition, headerSurface.AbsoluteSize
+	if mouse.Y >= p.Y and mouse.Y <= p.Y + s.Y then
+		return
+	end
+
+	closeEngineMenu()
+end)
 
 selectedIndicator = UI.frame(
 	headerSurface,
