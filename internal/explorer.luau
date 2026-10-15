@@ -293,9 +293,7 @@ local serviceOrder = {
 }
 
 local function sortedChildren(parent)
-	print("[explorer] GetChildren start", parent.ClassName)
 	local children = parent:GetChildren()
-	print("[explorer] GetChildren done", parent.ClassName, #children)
 
 	table.sort(children, function(a, b)
 		local ao = serviceOrder[a.Name] or math.huge
@@ -308,7 +306,6 @@ local function sortedChildren(parent)
 
 		return a.Name < b.Name
 	end)
-	print("[explorer] sort done", parent.ClassName)
 
 	return children
 end
@@ -589,14 +586,10 @@ local function subtreeMatches(instance, depth)
 	return false
 end
 
-local walkCount = 0
 local function walk(parent, depth, y)
 	for _, child in ipairs(sortedChildren(parent)) do
-		if walkCount < 60 then walkCount += 1; print("[explorer] walk", depth, child.ClassName, child.Name) end
 		if subtreeMatches(child, 1) then
-			print("[explorer] addRow", child.Name)
 			y = addRow(child, depth, y)
-			print("[explorer] addRow done", child.Name)
 
 			if expanded[child] or filter ~= "" then
 				y = walk(child, depth + 1, y)
@@ -631,9 +624,7 @@ rebuild = function()
 
 	visibleRows = {}
 
-	print("[explorer] rebuild walk begin")
 	local finalY = walk(game, 0, 1)
-	print("[explorer] rebuild walk end", finalY)
 
 	list.CanvasSize = UDim2.new(1, 0, 0, finalY + 4)
 
