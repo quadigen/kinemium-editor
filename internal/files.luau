@@ -8,6 +8,7 @@ local viewport = require("@internal/viewport")
 local Project = game:GetService("Project")
 local dialog = game:GetService("DialogService")
 local export_service = game:GetService("ExportService")
+local filesystem = game:GetService("Filesystem")
 local util = require("@internal/util")
 
 local StudioThemeService = game:GetService("StudioThemeService")
@@ -695,7 +696,7 @@ return function(content, windowControls)
 	end
 
 	local function copyPathWindow(path)
-		Project:CopyPathWindow(path)
+		:CopyPathWindow(path)
 	end
 
 	local function clickFile(entry)
@@ -803,7 +804,7 @@ return function(content, windowControls)
 		end
 
 		local ok, moved = pcall(function()
-			return Project:MovePath(source, target)
+			return filesystem:MovePath(source, target)
 		end)
 
 		if ok and moved then
@@ -1417,7 +1418,7 @@ return function(content, windowControls)
 		closeDocumentsUnder(path, isDirectoryPath(path))
 
 		local ok, deleted = pcall(function()
-			return Project:DeletePath(path)
+			return filesystem:DeletePath(path)
 		end)
 
 		if not ok or not deleted then
@@ -1461,7 +1462,7 @@ return function(content, windowControls)
 		local parent = parentOf(path)
 
 		local ok, newPath = pcall(function()
-			return Project:CopyPath(path, parent)
+			return filesystem:CopyPath(path, parent)
 		end)
 
 		if ok and type(newPath) == "string" and newPath ~= "" then
@@ -1484,7 +1485,7 @@ return function(content, windowControls)
 		end
 
 		local ok, newPath = pcall(function()
-			return Project:CopyPath(clipboard, directory)
+			return filesystem:CopyPath(clipboard, directory)
 		end)
 
 		if ok and type(newPath) == "string" and newPath ~= "" then
@@ -1591,7 +1592,7 @@ return function(content, windowControls)
 					closeDocumentsUnder(path, isDir)
 
 					local ok, renamed = pcall(function()
-						return Project:RenamePath(path, text)
+						return filesystem:RenamePath(path, text)
 					end)
 
 					if ok and renamed then
@@ -1748,10 +1749,10 @@ return function(content, windowControls)
 
 		local ok, created = pcall(function()
 			if isFolder then
-				return Project:CreateFolder(directory, unique)
+				return filesystem:CreateFolder(directory, unique)
 			end
 
-			return Project:CreateFile(directory, unique)
+			return filesystem:CreateFile(directory, unique)
 		end)
 
 		if not ok or type(created) ~= "string" or created == "" then
@@ -1840,7 +1841,7 @@ return function(content, windowControls)
 		end
 
 		local ok, newPath = pcall(function()
-			return Project:CopyPath(file, directory)
+			return filesystem:CopyPath(file, directory)
 		end)
 
 		if ok and type(newPath) == "string" and newPath ~= "" then
