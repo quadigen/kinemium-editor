@@ -13,6 +13,7 @@ local testCategory = require("@internal/topbar_test")
 local viewCategory = require("@internal/topbar_view")
 local pluginsCategory = require("@internal/topbar_plugins")
 local studioCategory = require("@internal/topbar_studio")
+local menuBarController
 
 local StudioThemeService = game:GetService("StudioThemeService")
 local theme = StudioThemeService.SelectedTheme
@@ -44,8 +45,6 @@ local selectedIndicator
 local collapseButton
 local collapseIcon
 
-local engineButtonRecords = {}
-local engineButtonLabels = {}
 local categoryLabels = {}
 
 local rebuildFlyout
@@ -307,8 +306,14 @@ local function applyTheme()
 		collapseButton.BackgroundColor3 = colors.panel
 	end
 
-	for _, label in ipairs(engineButtonLabels) do
-		label.TextColor3 = colors.subtext
+	if menuBarController then
+		menuBarController:SetColors({
+			bar = colors.panel,
+			border = colors.border,
+			hover = colors.raised,
+			text = colors.text,
+			subtext = colors.subtext,
+		})
 	end
 
 	for category, label in pairs(categoryLabels) do
@@ -434,134 +439,71 @@ flyoutStroke = UI.stroke(flyout, initialColors.border, 1, 0.55)
 
 local headerX = 35
 
-local UserInputService = game:GetService("UserInputService")
-
-local openEngineMenu = nil
-
-local function closeEngineMenu()
-	if openEngineMenu ~= nil then
-		openEngineMenu:Close()
-		openEngineMenu = nil
+local function iconPath(icon)
+	if not icon or icon == "" then
+		return nil
 	end
+
+	if string.find(icon, "://", 1, true) then
+		return icon
+	end
+
+	return "builtin://icons/" .. icon
 end
 
-for _, category in ipairs(engineCategories) do
-	local current = category
-	local categoryName = current.name
-	local width = #categoryName * 8 + 20
-
+local function buildMenuItems(category)
 	local items = {}
-	local lookup = {}
 
-	for index, definition in ipairs(current.buttons) do
-		if definition.type ~= "separator" and definition.type ~= "custom" then
-			local value = "item:" .. index
-
-			lookup[value] = definition
-
+	for _, definition in ipairs(category.buttons) do
+		if definition.type == "separator" then
+			table.insert(items, { separator = true })
+		elseif definition.type ~= "custom" then
 			table.insert(items, {
 				label = definition.name,
-				value = value,
-				icon = definition.icon,
+				icon = iconPath(definition.icon),
+				shortcut = definition.shortcut,
+				submenu = definition.submenu,
+				enabled = definition.enabled,
+				callback = safeAction(function()
+					fireRoute(definition.route)
+
+					if definition.callback then
+						definition.callback()
+					end
+				end),
 			})
 		end
 	end
 
-	local button, label, record
-
-	local menu = UI.contextMenu(root, "", UDim2.fromOffset(-400, -400), UDim2.fromOffset(1, 1), nil, {
-		items = {},
-		menuWidth = 180,
-		itemHeight = 28,
-		maxVisibleItems = 8,
-		closeOnOutsideClick = false,
-
-		menuPosition = function()
-			return UDim2.fromOffset(button.AbsolutePosition.X, button.AbsolutePosition.Y + button.AbsoluteSize.Y + 2)
-		end,
-
-		onChanged = function(value)
-			openEngineMenu = nil
-
-			local definition = lookup[value]
-
-			if definition == nil then
-				return
-			end
-
-			safeAction(function()
-				fireRoute(definition.route)
-
-				if definition.callback then
-					definition.callback()
-				end
-			end)()
-
-			setExpanded(false)
-		end,
-	})
-
-	menu:SetItems(items)
-
-	button, label, record = UI.button(
-		headerSurface,
-		categoryName,
-		UDim2.fromOffset(headerX, 4),
-		UDim2.fromOffset(width, 24),
-		function()
-			if openEngineMenu == menu then
-				closeEngineMenu()
-				return
-			end
-
-			closeEngineMenu()
-			menu:Open()
-			openEngineMenu = menu
-		end,
-		{
-			color = initialColors.panel,
-			hoverColor = initialColors.raised,
-			pressedColor = initialColors.input,
-			textColor = initialColors.subtext,
-			textSize = tokens.type.small,
-			textY = 3,
-			paddingX = 8,
-			border = false,
-			radius = buttonRadius(),
-		}
-	)
-
-	button.MouseEnter:Connect(function()
-		menu:Open()
-	end)
-
-	button.Name = categoryName .. "Menu"
-	button.BackgroundTransparency = 0.5
-
-	table.insert(engineButtonRecords, record)
-	table.insert(engineButtonLabels, label)
-
-	headerX += width + 2
+	return items
 end
 
-UserInputService.InputBegan:Connect(function(input)
-	if input.UserInputType ~= Enum.UserInputType.MouseButton1 or openEngineMenu == nil then
-		return
-	end
+local menuDefinitions = {}
 
-	local mouse = UserInputService:GetMouseLocation()
+for _, category in ipairs(engineCategories) do
+	table.insert(menuDefinitions, {
+		name = category.name,
+		items = function()
+			return buildMenuItems(category)
+		end,
+	})
+end
 
-	if openEngineMenu:ContainsPoint(mouse.X, mouse.Y) then
-		return
-	end
+local menuBar
+menuBar, menuBarController = UI.menuBar(headerSurface, UDim2.fromOffset(headerX, 3), nil, menuDefinitions, {
+	height = baseHeaderHeight() - 6,
+	inset = 2,
+	radius = buttonRadius() + 2,
+	triggerRadius = buttonRadius(),
+	color = initialColors.panel,
+	borderColor = initialColors.border,
+	hoverColor = initialColors.raised,
+	textColor = initialColors.text,
+	subtextColor = initialColors.subtext,
+	menuWidth = 200,
+})
 
-	local p, s = headerSurface.AbsolutePosition, headerSurface.AbsoluteSize
-	if mouse.Y >= p.Y and mouse.Y <= p.Y + s.Y then
-		return
-	end
-
-	closeEngineMenu()
-end)
+headerX += menuBarController:GetWidth() + 6
 
 selectedIndicator = UI.frame(
 	headerSurface,
@@ -673,18 +615,6 @@ local function refreshTheme()
 	end
 
 	local colors = palette()
-
-	for _, record in ipairs(engineButtonRecords) do
-		record.color = colors.panel
-		record.defaultColor = colors.panel
-		record.hoverColor = colors.raised
-		record.defaultHoverColor = colors.raised
-		record.pressedColor = colors.input
-
-		if UI.isAlive(record.gui) then
-			record.gui.BackgroundColor3 = colors.panel
-		end
-	end
 
 	if collapseRecord then
 		collapseRecord.color = colors.panel
