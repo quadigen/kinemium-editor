@@ -15,7 +15,8 @@ gui.Parent = game.CoreGui
 
 DiscordRPC:SetPresence({
 	Details = "Running Kinemium",
-	State = "hello",
+	State = _RUNTIME.version.display,
+	LargeText = _RUNTIME.url,
 })
 
 local window, _, _, windowControls = UI.window("Projects", UDim2.new(0, 15, 0, 15), UDim2.new(1, -30, 1, -30), "Home", {
