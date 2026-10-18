@@ -250,7 +250,7 @@ function UI.create(className, properties, parent)
 end
 
 function UI.corner(parent, radius)
-	return UI.create("UICorner", { CornerRadius = UDim.new(0, radius or UI.tokens.radius.sm) }, parent)
+	return UI.create("UISquircle", { CornerRadius = UDim.new(0, radius or UI.tokens.radius.sm) }, parent)
 end
 
 function UI.backdrop(parent, radius, TintColor3)
