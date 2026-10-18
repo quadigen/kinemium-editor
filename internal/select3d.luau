@@ -5,7 +5,6 @@ end
 local RunService = game:GetService("RunService")
 local Selection = game:GetService("Selection")
 local UserInputService = game:GetService("UserInputService")
-local ChangeHistoryService = game:GetService("ChangeHistoryService")
 
 local editor_ui = require("@internal/editor_ui")
 local accent = editor_ui.tokens.color.accent
@@ -46,8 +45,6 @@ local drag = {
 	lastMode = nil :: string?,
 }
 
-local recording = nil
-
 local highlight = Instance.new("Highlight")
 highlight.Name = "SelectionHighlight"
 highlight.FillTransparency = 1
@@ -55,55 +52,100 @@ highlight.OutlineColor = accent
 highlight.Enabled = false
 highlight.Parent = workspace
 
-local hud: TextLabel? = nil
-pcall(function()
-	local gui = Instance.new("ScreenGui")
-	gui.Name = "SelectionToolHud"
-	gui.ResetOnSpawn = false
-	gui.DisplayOrder = 100
+local hud = nil
 
-	local label = Instance.new("TextLabel")
-	label.AnchorPoint = Vector2.new(0.5, 1)
-	label.Position = UDim2.new(0.5, 0, 1, -12)
-	label.AutomaticSize = Enum.AutomaticSize.XY
-	label.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-	label.BackgroundTransparency = 0.25
-	label.TextColor3 = Color3.new(1, 1, 1)
-	label.Font = Enum.Font.BuilderSansMedium
-	label.TextSize = 14
-	label.Text = ""
-	label.Visible = false
-	label.Parent = gui
+local HUD_HEIGHT = 22
+local HUD_Z = 5900
 
-	local padding = Instance.new("UIPadding")
-	padding.PaddingLeft = UDim.new(0, 10)
-	padding.PaddingRight = UDim.new(0, 10)
-	padding.PaddingTop = UDim.new(0, 5)
-	padding.PaddingBottom = UDim.new(0, 5)
-	padding.Parent = label
+local HUD_HINTS = {
+	{ key = "vertical", text = "Shift: vertical" },
+	{ key = "snapToggle", text = "Ctrl: toggle snap" },
+	{ key = "rotate", text = "R: rotate 90" },
+	{ key = "cancel", text = "Esc: cancel" },
+}
 
-	local corner = Instance.new("UICorner")
-	corner.CornerRadius = UDim.new(0, 6)
-	corner.Parent = label
+local function createHud()
+	local tokens = editor_ui.tokens
+	local colors = tokens.color
 
-	gui.Parent = game:GetService("CoreGui")
-	hud = label
-end)
+	local bar = editor_ui.frame(
+		editor_ui.widgetOverlay(),
+		UDim2.new(0.5, 0, 1, -12),
+		UDim2.fromOffset(0, HUD_HEIGHT + 8),
+		colors.panelRaised,
+		tokens.radius.md
+	)
+	bar.Name = "SelectionToolHud"
+	bar.AnchorPoint = Vector2.new(0.5, 1)
+	bar.BackgroundTransparency = 0.1
+	bar.AutomaticSize = Enum.AutomaticSize.X
+	bar.ZIndex = HUD_Z
+	bar.Visible = false
+	pcall(function()
+		bar.InputSink = false
+	end)
+	editor_ui.stroke(bar, colors.borderStrong, 1, 0.25)
+
+	editor_ui.create("UIListLayout", {
+		FillDirection = Enum.FillDirection.Horizontal,
+		SortOrder = Enum.SortOrder.LayoutOrder,
+		VerticalAlignment = Enum.VerticalAlignment.Center,
+		Padding = UDim.new(0, 14),
+	}, bar)
+
+	editor_ui.create("UIPadding", {
+		PaddingLeft = UDim.new(0, 12),
+		PaddingRight = UDim.new(0, 12),
+	}, bar)
+
+	local parts = { bar = bar }
+	local order = 0
+
+	local function makeLabel(key, text, color)
+		order += 1
+		local label = editor_ui.label(
+			bar,
+			text,
+			UDim2.fromOffset(0, 0),
+			UDim2.fromOffset(0, HUD_HEIGHT),
+			tokens.type.small,
+			color
+		)
+		label.Name = key
+		label.AutomaticSize = Enum.AutomaticSize.X
+		label.LayoutOrder = order
+		label.ZIndex = HUD_Z + 1
+		parts[key] = label
+		return label
+	end
+
+	makeLabel("mode", "MOVE MODE", colors.accent)
+	makeLabel("snap", "", colors.text)
+
+	for _, hint in ipairs(HUD_HINTS) do
+		makeLabel(hint.key, hint.text, colors.muted)
+	end
+
+	return parts
+end
 
 local function updateHud()
 	if not hud then
-		return
+		local ok, result = pcall(createHud)
+		if not ok then
+			return
+		end
+		hud = result
 	end
+
 	if not state.moveMode then
-		hud.Visible = false
+		hud.bar.Visible = false
 		return
 	end
+
 	local grid = GRID_SIZES[state.gridIndex]
-	local snapText = state.snapEnabled and ("Snap: " .. grid .. " studs") or "Snap: off"
-	hud.Text = "MOVE MODE  |  "
-		.. snapText
-		.. "  |  Shift: vertical  |  Ctrl: toggle snap  |  R: rotate 90  |  Esc: cancel"
-	hud.Visible = true
+	hud.snap.Text = state.snapEnabled and ("Snap: " .. grid .. " studs") or "Snap: off"
+	hud.bar.Visible = true
 end
 
 local AXIS_COLORS = {
@@ -388,29 +430,6 @@ local function collectMovableParts(): { BasePart }
 	return list
 end
 
-local function beginRecording()
-	local ok, id = pcall(function()
-		return ChangeHistoryService:TryBeginRecording("Move parts")
-	end)
-	recording = ok and id or nil
-end
-
-local function finishRecording(commit: boolean)
-	if recording then
-		pcall(function()
-			ChangeHistoryService:FinishRecording(
-				recording,
-				commit and Enum.FinishRecordingOperation.Commit or Enum.FinishRecordingOperation.Cancel
-			)
-		end)
-		recording = nil
-	elseif commit then
-		pcall(function()
-			ChangeHistoryService:SetWaypoint("Move parts")
-		end)
-	end
-end
-
 local function intersectPlane(ray: Ray, origin: Vector3, normal: Vector3): Vector3?
 	local denom = ray.Direction:Dot(normal)
 	if math.abs(denom) < 1e-3 then
@@ -446,8 +465,6 @@ local function beginDrag()
 	drag.rotY = 0
 	drag.lastPoint = nil
 	drag.lastMode = nil
-
-	beginRecording()
 
 	highlight.FillColor = DRAG_COLOR
 	highlight.OutlineColor = DRAG_COLOR
@@ -530,7 +547,6 @@ local function endDrag(commit: boolean)
 			end
 		end
 	end
-	finishRecording(commit)
 
 	drag.active = false
 	drag.pending = false
