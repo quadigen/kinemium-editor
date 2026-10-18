@@ -23,25 +23,6 @@ local KEY_TOGGLE_SNAP = Enum.KeyCode.N
 local KEY_ROTATE = Enum.KeyCode.R
 local KEY_CANCEL = Enum.KeyCode.Escape
 
-local orbiting = false
-
-local function stopOrbit()
-	if not orbiting then
-		return
-	end
-	orbiting = false
-	local camera = workspace.CurrentCamera
-	camera.CameraSubject = nil
-	camera.CameraType = Enum.CameraType.Custom
-end
-
-local function startOrbit(target: Instance)
-	local camera = workspace.CurrentCamera
-	orbiting = true
-	camera.CameraSubject = target
-	camera.CameraType = Enum.CameraType.Orbital
-end
-
 local state = {
 	moveMode = false,
 	snapEnabled = true,
@@ -834,20 +815,6 @@ UserInputService.InputBegan:Connect(function(input, processed)
 	end
 
 	local key = input.KeyCode
-	if
-		orbiting
-		and (
-			key == Enum.KeyCode.W
-			or key == Enum.KeyCode.A
-			or key == Enum.KeyCode.S
-			or key == Enum.KeyCode.D
-			or key == Enum.KeyCode.Q
-			or key == Enum.KeyCode.E
-			or key == KEY_CANCEL
-		)
-	then
-		stopOrbit()
-	end
 	if key == KEY_MOVE_MODE then
 		setMoveMode(not state.moveMode)
 	elseif key == KEY_CYCLE_GRID then
@@ -867,7 +834,32 @@ UserInputService.InputBegan:Connect(function(input, processed)
 	end
 end)
 
-UserInputService.InputEnded:Connect(function(input)
+local function focusOn(target: Instance)
+	local camera = workspace.CurrentCamera
+	if not camera then
+		return
+	end
+
+	local center, radius
+	if target:IsA("BasePart") then
+		center = target.Position
+		radius = target.Size.Magnitude / 2
+	elseif target:IsA("Model") then
+		local cf, size = target:GetBoundingBox()
+		center = cf.Position
+		radius = size.Magnitude / 2
+	else
+		return
+	end
+
+	local look = camera.CFrame.LookVector
+	local distance = math.max(radius * 2.5, 4)
+	local position = center - look * distance
+
+	camera.CFrame = CFrame.lookAt(position, center)
+end
+
+UserInputService.InputEnded:Connect(function(input, processed)
 	if input.UserInputType == Enum.UserInputType.MouseButton1 then
 		if drag.active then
 			endDrag(true)
@@ -875,13 +867,9 @@ UserInputService.InputEnded:Connect(function(input)
 			drag.pending = false
 		end
 	elseif input.KeyCode == Enum.KeyCode.F and not processed then
-		if orbiting then
-			stopOrbit()
-		else
-			local selection = Selection:Get()[1]
-			if selection then
-				startOrbit(selection)
-			end
+		local selection = Selection:Get()[1]
+		if selection then
+			focusOn(selection)
 		end
 	end
 end)
