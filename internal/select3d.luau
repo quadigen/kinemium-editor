@@ -842,7 +842,7 @@ local function focusOn(target: Instance)
 
 	local center, radius
 	if target:IsA("BasePart") then
-		center = target.Position
+		center = target.CFrame.Position
 		radius = target.Size.Magnitude / 2
 	elseif target:IsA("Model") then
 		local cf, size = target:GetBoundingBox()
