@@ -825,5 +825,14 @@ UserInputService.InputEnded:Connect(function(input)
 		else
 			drag.pending = false
 		end
+	elseif input.KeyCode == Enum.KeyCode.F then
+		local camera = workspace.CurrentCamera
+		local selection = Selection:Get() and Selection:Get()[1]
+		if selection then
+			camera.CameraSubject = selection
+			camera.CameraType = Enum.CameraType.Orbital
+			task.wait()
+			camera.CameraType = Enum.CameraType.Fixed
+		end
 	end
 end)
