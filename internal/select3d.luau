@@ -253,13 +253,16 @@ local function positionReadout(worldPosition: Vector3, radius: number): boolean
 		return false
 	end
 
-	local center, onScreen = camera:WorldToViewportPoint(worldPosition)
-	if not onScreen then
+	local onScreen, centerX, centerY = camera:WorldToViewportPoint(worldPosition)
+	if not onScreen or type(centerX) ~= "number" or type(centerY) ~= "number" then
 		return false
 	end
 
-	local edge = camera:WorldToViewportPoint(worldPosition + camera.CFrame.RightVector * radius)
-	local spread = math.min(math.abs(edge.X - center.X), 400)
+	local spread = 40
+	local _, edgeX = camera:WorldToViewportPoint(worldPosition + camera.CFrame.RightVector * radius)
+	if type(edgeX) == "number" then
+		spread = math.clamp(math.abs(edgeX - centerX), 12, 400)
+	end
 
 	local screen = workspace:GetWindowDimensions()
 	local width = readout.frame.Size.X.Offset
@@ -267,11 +270,11 @@ local function positionReadout(worldPosition: Vector3, radius: number): boolean
 	local margin = 4
 	local gap = 16
 
-	local x = center.X + spread + gap
+	local x = centerX + spread + gap
 	if x + width > screen.X - margin then
-		x = center.X - spread - gap - width
+		x = centerX - spread - gap - width
 	end
-	local y = center.Y - height / 2
+	local y = centerY - height / 2
 
 	x = math.clamp(x, margin, math.max(margin, screen.X - width - margin))
 	y = math.clamp(y, margin, math.max(margin, screen.Y - height - margin))
