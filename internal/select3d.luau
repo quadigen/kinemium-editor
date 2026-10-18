@@ -14,6 +14,7 @@ local highlight = Instance.new("Highlight")
 highlight.Name = "SelectionHighlight"
 highlight.FillTransparency = 1
 highlight.OutlineColor = accent
+highlight.Enabled = false
 highlight.Parent = workspace
 
 local function isOutOfBounds(num)
@@ -22,7 +23,7 @@ end
 
 RunService.RenderStepped:Connect(function()
 	local target = Mouse.Target
-	if target:IsA("BasePart") then
+	if target and target:IsA("BasePart") then
 		if isOutOfBounds(target.Size.X) or isOutOfBounds(target.Size.Y) or isOutOfBounds(target.Size.Z) then
 			return
 		end
