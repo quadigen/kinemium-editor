@@ -7,7 +7,8 @@ local function selectedObject()
 end
 
 local function parent(sourceDataModel)
-	if sourceDataModel:IsA("Datamodel") then
+	print(sourceDataModel.ClassName)
+	if sourceDataModel:IsA("DataModel") then
 		for _, sourceService in sourceDataModel:GetChildren() do
 			local currentService = game:FindFirstChild(sourceService.Name)
 

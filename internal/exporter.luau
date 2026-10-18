@@ -297,7 +297,7 @@ local WEB_COMPRESS = { "None", "Gzip", "Brotli" }
 local DESKTOP_ARCH = { "x86_64", "arm64" }
 
 local OS_TAG = { Windows = "windows", Linux = "linux", MacOS = "macos" }
-local ARCH_TAG = { x86_64 = "x86_64", arm64 = "arm64", Universal = "arm64" }
+local ARCH_TAG = { x86_64 = "x86_64", arm64 = "arm64" }
 local EXT = { Windows = ".exe", Linux = "", MacOS = "" }
 local NATIVE_PLATFORMS = { Windows = true, Linux = true, MacOS = true }
 
@@ -424,8 +424,8 @@ local pages = {
 				key = "arch",
 				label = "Architecture",
 				type = "dropdown",
-				options = { "Universal", "arm64", "x86_64" },
-				default = "Universal",
+				options = { "arm64" },
+				default = "arm64",
 			},
 			{ key = "mode", label = "Build Mode", type = "dropdown", options = MODES, default = "Release" },
 			{
