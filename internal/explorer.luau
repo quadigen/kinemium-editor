@@ -5,13 +5,13 @@ local UI = require("@internal/editor_ui")
 local viewport = require("@internal/viewport")
 local export_service = game:GetService("ExportService")
 local dialog = game:GetService("DialogService")
-local util = require("@internal/util")
 local docker = require("@internal/docker")
 local files = require("@internal/files")
 
 local StudioThemeService = game:GetService("StudioThemeService")
 local theme = StudioThemeService.SelectedTheme
 local Selection = game:GetService("Selection")
+local Project = game:GetService("Project")
 local UserInputService = game:GetService("UserInputService")
 local TweenService = game:GetService("TweenService")
 local ReflectionService = game:GetService("ReflectionService")
@@ -96,9 +96,11 @@ local function selectObject(data)
 	local obj = data[1]
 	Selection:Set(obj)
 
+	local project = Project:GetActiveProject()
+
 	DiscordRPC:SetPresence({
-		Details = "Selected " .. obj.Name,
-		State = _RUNTIME.version.display,
+		Details = "Editing " .. obj.Name,
+		State = project and project.Name or _RUNTIME.version.display,
 		LargeText = _RUNTIME.url,
 	})
 end
@@ -476,7 +478,7 @@ local function addRow(instance, depth, y)
 	local rowColor = rowIndex % 2 == 0 and tokens.color.rowEven or tokens.color.rowOdd
 
 	local row = UI.button(list, "", UDim2.fromOffset(1, y), UDim2.new(1, -2, 0, UI.metrics.treeRow), function()
-		Selection:Set({
+		selectObject({
 			instance,
 		})
 
@@ -513,7 +515,7 @@ local function addRow(instance, depth, y)
 			commitRename()
 			closeContextMenu()
 
-			Selection:Set({
+			selectObject({
 				instance,
 			})
 
@@ -665,7 +667,7 @@ local function deleteInstance(instance)
 	expanded[instance] = nil
 	renaming = nil
 
-	Selection:Set({})
+	selectObject({})
 
 	instance:Destroy()
 
@@ -685,7 +687,7 @@ local function duplicateInstance(instance)
 		clone.Name = instance.Name
 		clone.Parent = instance.Parent
 
-		Selection:Set({
+		selectObject({
 			clone,
 		})
 
@@ -807,7 +809,7 @@ local function selectAndReveal(index)
 		return
 	end
 
-	Selection:Set({
+	selectObject({
 		instance,
 	})
 
@@ -898,7 +900,7 @@ openContextMenu = function(instance, screenPoint)
 
 						if ok and clone then
 							clone.Parent = target
-							Selection:Set({ clone })
+							selectObject({ clone })
 							lastHash = ""
 						end
 					end
@@ -1061,8 +1063,6 @@ local function moveDragVisual()
 end
 
 local function animateDrop(reparent)
-	-- Capture the drag now: finishDrop runs from the tween's Completed callback
-	-- ~0.12s later, by which point `drag` may describe a different gesture.
 	local source = drag.source
 	local target = drag.target
 
@@ -1075,7 +1075,7 @@ local function animateDrop(reparent)
 
 			expanded[target] = true
 
-			Selection:Set({
+			selectObject({
 				source,
 			})
 
@@ -1120,7 +1120,7 @@ UserInputService.InputChanged:Connect(function(input: InputObject)
 
 		drag.active = true
 
-		Selection:Set({
+		selectObject({
 			drag.source,
 		})
 
@@ -1200,7 +1200,7 @@ UserInputService.InputBegan:Connect(function(input: InputObject, gameProcessed: 
 		elseif typing then
 			searchField.Text = ""
 		else
-			Selection:Set({})
+			selectObject({})
 		end
 
 		return
@@ -1306,7 +1306,7 @@ UserInputService.InputBegan:Connect(function(input: InputObject, gameProcessed: 
 			if ok and clone then
 				clone.Parent = destination
 
-				Selection:Set({
+				selectObject({
 					clone,
 				})
 
@@ -1336,7 +1336,7 @@ UserInputService.InputBegan:Connect(function(input: InputObject, gameProcessed: 
 				if clone then
 					clone.Parent = selected.Parent
 
-					Selection:Set({
+					selectObject({
 						clone,
 					})
 
