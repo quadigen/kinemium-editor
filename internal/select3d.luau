@@ -23,6 +23,25 @@ local KEY_TOGGLE_SNAP = Enum.KeyCode.N
 local KEY_ROTATE = Enum.KeyCode.R
 local KEY_CANCEL = Enum.KeyCode.Escape
 
+local orbiting = false
+
+local function stopOrbit()
+	if not orbiting then
+		return
+	end
+	orbiting = false
+	local camera = workspace.CurrentCamera
+	camera.CameraSubject = nil
+	camera.CameraType = Enum.CameraType.Custom
+end
+
+local function startOrbit(target: Instance)
+	local camera = workspace.CurrentCamera
+	orbiting = true
+	camera.CameraSubject = target
+	camera.CameraType = Enum.CameraType.Orbital
+end
+
 local state = {
 	moveMode = false,
 	snapEnabled = true,
@@ -334,6 +353,18 @@ local function gizmoCapturesMouse()
 	end
 	return false
 end
+
+-- The engine reports gameProcessedEvent (the second input callback argument) as
+-- true whenever the pointer is over a GUI object, so a panel or toolbar owns the
+-- cursor. Mouse movement carries that flag, so track it to keep the hover
+-- highlight off a part that sits behind the interface; the click handler below
+-- already ignores processed input.
+local mouseOverGui = false
+UserInputService.InputChanged:Connect(function(input, processed)
+	if input.UserInputType == Enum.UserInputType.MouseMovement then
+		mouseOverGui = processed == true
+	end
+end)
 
 local function isOutOfBounds(num: number)
 	return num >= MAX_PICK_SIZE
@@ -724,7 +755,11 @@ RunService.RenderStepped:Connect(function()
 		endGizmoTracking()
 	end
 
-	if gizmoCapturesMouse() or UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton2) then
+	if
+		mouseOverGui
+		or gizmoCapturesMouse()
+		or UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton2)
+	then
 		setHover(nil)
 		return
 	end
@@ -799,6 +834,20 @@ UserInputService.InputBegan:Connect(function(input, processed)
 	end
 
 	local key = input.KeyCode
+	if
+		orbiting
+		and (
+			key == Enum.KeyCode.W
+			or key == Enum.KeyCode.A
+			or key == Enum.KeyCode.S
+			or key == Enum.KeyCode.D
+			or key == Enum.KeyCode.Q
+			or key == Enum.KeyCode.E
+			or key == KEY_CANCEL
+		)
+	then
+		stopOrbit()
+	end
 	if key == KEY_MOVE_MODE then
 		setMoveMode(not state.moveMode)
 	elseif key == KEY_CYCLE_GRID then
@@ -825,14 +874,14 @@ UserInputService.InputEnded:Connect(function(input)
 		else
 			drag.pending = false
 		end
-	elseif input.KeyCode == Enum.KeyCode.F then
-		local camera = workspace.CurrentCamera
-		local selection = Selection:Get() and Selection:Get()[1]
-		if selection then
-			camera.CameraSubject = selection
-			camera.CameraType = Enum.CameraType.Orbital
-			camera.CameraType = Enum.CameraType.Fixed
-			camera.CameraSubject = nil
+	elseif input.KeyCode == Enum.KeyCode.F and not processed then
+		if orbiting then
+			stopOrbit()
+		else
+			local selection = Selection:Get()[1]
+			if selection then
+				startOrbit(selection)
+			end
 		end
 	end
 end)
