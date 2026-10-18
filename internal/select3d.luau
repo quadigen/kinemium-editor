@@ -160,9 +160,10 @@ local READOUT_ROWS = {
 	{ key = "z", prefix = "Z", color = AXIS_COLORS.z },
 	{ key = "dist", prefix = "Dist" },
 	{ key = "rot", prefix = "Rot" },
+	{ key = "size", prefix = "Size" },
 }
 
-local READOUT_WIDTH = 176
+local READOUT_WIDTH = 196
 local READOUT_ROW_HEIGHT = 16
 local READOUT_PAD = 8
 local READOUT_Z = 6000
@@ -246,36 +247,37 @@ local function createReadout()
 	return parts
 end
 
-local function positionReadout()
-	if not readout then
-		return
+local function positionReadout(worldPosition: Vector3, radius: number): boolean
+	local camera = workspace.CurrentCamera
+	if not readout or not camera then
+		return false
 	end
 
-	local mouse = UserInputService:GetMouseLocation()
+	local center, onScreen = camera:WorldToViewportPoint(worldPosition)
+	if not onScreen then
+		return false
+	end
+
+	local edge = camera:WorldToViewportPoint(worldPosition + camera.CFrame.RightVector * radius)
+	local spread = math.min(math.abs(edge.X - center.X), 400)
+
 	local screen = workspace:GetWindowDimensions()
-	local size = readout.frame.AbsoluteSize
+	local width = readout.frame.Size.X.Offset
+	local height = readout.frame.Size.Y.Offset
 	local margin = 4
+	local gap = 16
 
-	local x = mouse.X + 20
-	local y = mouse.Y + 20
-
-	if x + size.X > screen.X - margin then
-		x = mouse.X - size.X - 12
+	local x = center.X + spread + gap
+	if x + width > screen.X - margin then
+		x = center.X - spread - gap - width
 	end
-	if y + size.Y > screen.Y - margin then
-		y = mouse.Y - size.Y - 12
-	end
+	local y = center.Y - height / 2
 
-	readout.frame.Position = UDim2.fromOffset(math.max(x, margin), math.max(y, margin))
-end
+	x = math.clamp(x, margin, math.max(margin, screen.X - width - margin))
+	y = math.clamp(y, margin, math.max(margin, screen.Y - height - margin))
 
-local function showReadout(partCount: number)
-	if not readout then
-		readout = createReadout()
-	end
-	readout.header.Text = partCount == 1 and "Moving 1 part" or ("Moving " .. partCount .. " parts")
-	readout.frame.Visible = true
-	positionReadout()
+	readout.frame.Position = UDim2.fromOffset(x, y)
+	return true
 end
 
 local function hideReadout()
@@ -284,21 +286,28 @@ local function hideReadout()
 	end
 end
 
-local function updateReadout(delta: Vector3, rotY: number, vertical: boolean, snapping: boolean, grid: number)
+local function updateReadout(info)
 	if not readout then
-		return
+		readout = createReadout()
 	end
 
-	readout.x.Text = string.format("%+.2f studs", delta.X)
-	readout.y.Text = string.format("%+.2f studs", delta.Y)
-	readout.z.Text = string.format("%+.2f studs", delta.Z)
-	readout.dist.Text = string.format("%.2f studs", delta.Magnitude)
-	readout.rot.Text = string.format("%d°", math.round(math.deg(rotY) % 360))
-	readout.footer.Text = (vertical and "Vertical" or "Horizontal")
-		.. "  |  "
-		.. (snapping and ("Snap " .. grid) or "Snap off")
+	readout.header.Text = info.header
+	readout.x.Text = string.format("%+.2f studs", info.delta.X)
+	readout.y.Text = string.format("%+.2f studs", info.delta.Y)
+	readout.z.Text = string.format("%+.2f studs", info.delta.Z)
+	readout.dist.Text = string.format("%.2f studs", info.delta.Magnitude)
+	readout.rot.Text = string.format("%d°", math.round(math.deg(info.rotation)))
 
-	positionReadout()
+	local sizeDelta = info.sizeDelta
+	if sizeDelta.Magnitude < 1e-3 then
+		readout.size.Text = "none"
+	else
+		readout.size.Text = string.format("%+.2f, %+.2f, %+.2f", sizeDelta.X, sizeDelta.Y, sizeDelta.Z)
+	end
+
+	readout.footer.Text = info.footer
+
+	readout.frame.Visible = positionReadout(info.position, info.radius)
 end
 
 local function setHover(part: BasePart?)
@@ -430,6 +439,100 @@ local function collectMovableParts(): { BasePart }
 	return list
 end
 
+local gizmo = {
+	active = false,
+	parts = {} :: { BasePart },
+	startCFrames = {} :: { [BasePart]: CFrame },
+	startSizes = {} :: { [BasePart]: Vector3 },
+	startCenter = Vector3.zero,
+	first = nil :: BasePart?,
+}
+
+local function gizmoDragging(): boolean
+	for _, name in ipairs(GIZMO_ADORNMENT_NAMES) do
+		local adornment = workspace:FindFirstChild(name)
+		if adornment and adornment.Visible and adornment.Dragging then
+			return true
+		end
+	end
+	return false
+end
+
+local function centroidOf(parts: { BasePart }): Vector3
+	local sum = Vector3.zero
+	local count = 0
+	for _, part in ipairs(parts) do
+		if part.Parent then
+			sum += part.Position
+			count += 1
+		end
+	end
+	return count > 0 and sum / count or Vector3.zero
+end
+
+local function beginGizmoTracking()
+	local parts = collectMovableParts()
+	if #parts == 0 then
+		return
+	end
+
+	gizmo.active = true
+	gizmo.parts = parts
+	gizmo.first = parts[1]
+	gizmo.startCFrames = {}
+	gizmo.startSizes = {}
+	for _, part in ipairs(parts) do
+		gizmo.startCFrames[part] = part.CFrame
+		gizmo.startSizes[part] = part.Size
+	end
+	gizmo.startCenter = centroidOf(parts)
+end
+
+local function updateGizmoTracking()
+	local first = gizmo.first
+	if not first or not first.Parent then
+		return
+	end
+
+	local center = centroidOf(gizmo.parts)
+	local delta = center - gizmo.startCenter
+
+	local startCFrame = gizmo.startCFrames[first]
+	local startRotation = startCFrame - startCFrame.Position
+	local currentRotation = first.CFrame - first.CFrame.Position
+	local _, angle = (startRotation:Inverse() * currentRotation):ToAxisAngle()
+
+	local sizeDelta = first.Size - gizmo.startSizes[first]
+
+	local header = "Moving"
+	if sizeDelta.Magnitude >= 1e-3 then
+		header = "Resizing"
+	elseif angle >= math.rad(0.05) then
+		header = "Rotating"
+	end
+	local count = #gizmo.parts
+	header = header .. (count == 1 and " 1 part" or (" " .. count .. " parts"))
+
+	updateReadout({
+		position = center,
+		radius = first.Size.Magnitude / 2,
+		delta = delta,
+		rotation = angle,
+		sizeDelta = sizeDelta,
+		header = header,
+		footer = "Gizmo",
+	})
+end
+
+local function endGizmoTracking()
+	gizmo.active = false
+	gizmo.parts = {}
+	gizmo.startCFrames = {}
+	gizmo.startSizes = {}
+	gizmo.first = nil
+	hideReadout()
+end
+
 local function intersectPlane(ray: Ray, origin: Vector3, normal: Vector3): Vector3?
 	local denom = ray.Direction:Dot(normal)
 	if math.abs(denom) < 1e-3 then
@@ -470,7 +573,6 @@ local function beginDrag()
 	highlight.OutlineColor = DRAG_COLOR
 	highlight.FillTransparency = 0.8
 	setHover(drag.grabbed)
-	showReadout(#parts)
 end
 
 local function applyDrag()
@@ -531,7 +633,21 @@ local function applyDrag()
 		end
 	end
 
-	updateReadout(target - drag.pivotStart, drag.rotY, vertical, snap, GRID_SIZES[state.gridIndex])
+	local grabbed = drag.grabbed
+	if grabbed then
+		local count = #drag.parts
+		updateReadout({
+			position = grabbed.Position,
+			radius = grabbed.Size.Magnitude / 2,
+			delta = target - drag.pivotStart,
+			rotation = drag.rotY % (math.pi * 2),
+			sizeDelta = Vector3.zero,
+			header = count == 1 and "Moving 1 part" or ("Moving " .. count .. " parts"),
+			footer = (vertical and "Vertical" or "Horizontal")
+				.. "  |  "
+				.. (snap and ("Snap " .. GRID_SIZES[state.gridIndex]) or "Snap off"),
+		})
+	end
 end
 
 local function endDrag(commit: boolean)
@@ -590,6 +706,19 @@ RunService.RenderStepped:Connect(function()
 			beginDrag()
 		end
 		return
+	end
+
+	if gizmoDragging() then
+		if not gizmo.active then
+			beginGizmoTracking()
+		end
+		if gizmo.active then
+			updateGizmoTracking()
+		end
+		setHover(nil)
+		return
+	elseif gizmo.active then
+		endGizmoTracking()
 	end
 
 	if gizmoCapturesMouse() or UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton2) then
