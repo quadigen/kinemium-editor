@@ -9,6 +9,7 @@ local theme = StudioThemeService.SelectedTheme
 local Selection = game:GetService("Selection")
 local UserInputService = game:GetService("UserInputService")
 local docker = require("@internal/docker")
+local ImageViewer = require("@internal/image_viewer")
 
 local colors = UI.colors
 local tokens = UI.tokens
@@ -161,6 +162,19 @@ local heights = {}
 local canvasTween
 local lastObject
 
+local IMAGE_EXTENSIONS = {
+	png = true,
+	jpg = true,
+	jpeg = true,
+	webp = true,
+	gif = true,
+	bmp = true,
+	svg = true,
+}
+
+local PREVIEW_SIZE = 18
+local PREVIEW_GAP = 4
+
 local function targetCanvasHeight()
 	local total, count = 0, 0
 
@@ -280,6 +294,28 @@ local function propertyMatchesSearch(propertyName, value, query)
 	return string.find(name, query, 1, true) ~= nil
 		or string.find(valueText, query, 1, true) ~= nil
 		or string.find(datatype, query, 1, true) ~= nil
+end
+
+local function isImagePath(text)
+	if type(text) ~= "string" or text == "" then
+		return false
+	end
+
+	if not (text:find("/", 1, true) or text:find("\\", 1, true)) then
+		return false
+	end
+
+	local extension = string.lower(text):match("%.(%w+)$")
+
+	return extension ~= nil and IMAGE_EXTENSIONS[extension] == true
+end
+
+local function resolveImageSource(path)
+	if string.find(path, "://", 1, true) then
+		return path
+	end
+
+	return ImageViewer.ImageSource(path)
 end
 
 local function buildStructure(object, searchQuery)
@@ -710,13 +746,75 @@ registerAdapter("string", {
 
 		local field = valueField(row, property.value)
 
+		local preview = UI.frame(
+			row,
+			UDim2.new(0.45, 6, 0, 2),
+			UDim2.fromOffset(PREVIEW_SIZE, PREVIEW_SIZE),
+			tokens.color.input,
+			tokens.radius.xs
+		)
+		preview.Visible = false
+
+		UI.stroke(preview, tokens.color.border, 1, 0)
+
+		local image = nil
+		local shownPath = nil
+
+		local function layoutField(hasPreview)
+			if hasPreview then
+				local shift = PREVIEW_SIZE + PREVIEW_GAP
+
+				field.Position = UDim2.new(0.45, 6 + shift, 0, 2)
+				field.Size = UDim2.new(0.55, -(12 + shift), 0, 18)
+			else
+				field.Position = UDim2.new(0.45, 6, 0, 2)
+				field.Size = UDim2.new(0.55, -12, 0, 18)
+			end
+		end
+
+		local function updatePreview(text)
+			local isImage = isImagePath(text)
+
+			if isImage ~= preview.Visible then
+				preview.Visible = isImage
+				layoutField(isImage)
+			end
+
+			if not isImage or text == shownPath then
+				return
+			end
+
+			shownPath = text
+
+			pcall(function()
+				local source = resolveImageSource(text)
+
+				if image == nil then
+					image = UI.image(preview, source, UDim2.fromOffset(1, 1), UDim2.new(1, -2, 1, -2))
+					image.ScaleType = Enum.ScaleType.Fit
+				else
+					image.Image = source
+				end
+			end)
+		end
+
+		updatePreview(property.value)
+
 		watchValueField(field, object, property.name, function(text)
 			return text
 		end)
 
-		return textFieldController(field, function(value)
-			return tostring(value or "")
-		end)
+		return {
+			refresh = function(value)
+				local text = tostring(value or "")
+
+				if not field:IsFocused() then
+					field.Text = text
+				end
+
+				updatePreview(text)
+			end,
+		}
 	end,
 })
 
@@ -1141,7 +1239,7 @@ registerAdapter("Quaternion", {
 })
 
 registerAdapter("CFrame", {
-	height = PROPERTY_HEIGHT * 4,
+	height = PROPERTY_HEIGHT * 2,
 
 	render = function(row, object, property)
 		if readonlyProperties[property.name] then
@@ -1149,72 +1247,58 @@ registerAdapter("CFrame", {
 		end
 
 		local value = property.value
-
-		local px, py, pz, r00, r01, r02, r10, r11, r12, r20, r21, r22 = value:GetComponents()
+		local rx, ry, rz = value:ToOrientation()
+		rx, ry, rz = math.deg(rx), math.deg(ry), math.deg(rz)
 
 		local fields = {
-			componentField(row, "X", px, 1, 3, 0),
+			componentField(row, "X", value.X, 1, 3, 0),
+			componentField(row, "Y", value.Y, 2, 3, 0),
+			componentField(row, "Z", value.Z, 3, 3, 0),
 
-			componentField(row, "Y", py, 2, 3, 0),
-
-			componentField(row, "Z", pz, 3, 3, 0),
-
-			componentField(row, "R00", r00, 1, 3, 1),
-
-			componentField(row, "R01", r01, 2, 3, 1),
-
-			componentField(row, "R02", r02, 3, 3, 1),
-
-			componentField(row, "R10", r10, 1, 3, 2),
-
-			componentField(row, "R11", r11, 2, 3, 2),
-
-			componentField(row, "R12", r12, 3, 3, 2),
-
-			componentField(row, "R20", r20, 1, 3, 3),
-
-			componentField(row, "R21", r21, 2, 3, 3),
-
-			componentField(row, "R22", r22, 3, 3, 3),
+			componentField(row, "RX", rx, 1, 3, 1),
+			componentField(row, "RY", ry, 2, 3, 1),
+			componentField(row, "RZ", rz, 3, 3, 1),
 		}
 
 		watchComponentFields(fields, object, property.name, function()
-			local values = {}
-
-			for index, field in ipairs(fields) do
-				values[index] = parseComponent(field.Text)
-
-				if values[index] == nil then
+			local v = {}
+			for i, field in ipairs(fields) do
+				v[i] = parseComponent(field.Text)
+				if v[i] == nil then
 					return nil
 				end
 			end
 
-			return CFrame.new(
-				values[1],
-				values[2],
-				values[3],
-				values[4],
-				values[5],
-				values[6],
-				values[7],
-				values[8],
-				values[9],
-				values[10],
-				values[11],
-				values[12]
-			)
+			local current = propertyValue(object, property.name)
+			if typeof(current) ~= "CFrame" then
+				return nil
+			end
+
+			local crx, cry, crz = current:ToOrientation()
+			local rotationEdited = formatNumber(math.deg(crx)) ~= fields[4].Text
+				or formatNumber(math.deg(cry)) ~= fields[5].Text
+				or formatNumber(math.deg(crz)) ~= fields[6].Text
+
+			local rotation
+			if rotationEdited then
+				rotation = CFrame.fromOrientation(math.rad(v[4]), math.rad(v[5]), math.rad(v[6]))
+			else
+				rotation = CFrame.new(-current.Position) * current -- rotation only
+			end
+
+			return CFrame.new(v[1], v[2], v[3]) * rotation
 		end)
 
 		return componentController(fields, function(newValue)
-			local parts = { newValue:GetComponents() }
-
-			local formatted = {}
-
-			for index = 1, 12 do
-				formatted[index] = formatNumber(parts[index])
-			end
-
-			return formatted
+			local a, b, c = newValue:ToOrientation()
+			return {
+				formatNumber(newValue.X),
+				formatNumber(newValue.Y),
+				formatNumber(newValue.Z),
+				formatNumber(math.deg(a)),
+				formatNumber(math.deg(b)),
+				formatNumber(math.deg(c)),
+			}
 		end)
 	end,
 })
