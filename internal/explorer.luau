@@ -97,10 +97,12 @@ local function selectObject(data)
 	Selection:Set(data)
 
 	local project = Project:GetActiveProject()
+	local details = `In {project and project.Name or _RUNTIME.version.display}`
+	local state = "Editing " .. obj.Name
 
 	DiscordRPC:SetPresence({
-		Details = "Editing " .. obj.Name,
-		State = project and project.Name or _RUNTIME.version.display,
+		Details = details,
+		State = state,
 		LargeText = _RUNTIME.url,
 	})
 end
@@ -864,7 +866,6 @@ openContextMenu = function(instance, screenPoint)
 					if file then
 						local imported = export_service:ImportFile(file)
 						if imported then
-							imported.Parent = target
 						end
 					end
 				elseif action == "export" then

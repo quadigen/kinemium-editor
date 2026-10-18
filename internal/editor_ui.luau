@@ -1534,6 +1534,9 @@ function UI.label(parent, text, position, size, textSize, color)
 
 		TextSize = textSize or UI.tokens.type.body,
 
+		TextXAlignment = Enum.TextXAlignment.Left,
+		TextYAlignment = Enum.TextYAlignment.Center,
+
 		TextColor3 = color or UI.tokens.color.text,
 
 		BorderSizePixel = 0,

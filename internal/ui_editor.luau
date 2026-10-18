@@ -1375,40 +1375,6 @@ function Editor:Paste()
 	self:notify(#created == 1 and "Pasted" or ("Pasted " .. #created .. " objects"))
 end
 
-function Editor:Duplicate()
-	local list = self:targets()
-
-	if #list == 0 then
-		return
-	end
-
-	local created = {}
-
-	self:transact("Duplicate", function(ctx)
-		for _, obj in ipairs(list) do
-			local ok, clone = pcall(function()
-				return obj:Clone()
-			end)
-
-			if ok and clone then
-				ctx.created(clone)
-
-				clone.Parent = obj.Parent
-
-				local parentSize = self:parentInfo(clone)
-				local p = clone.Position
-
-				clone.Position = udim2(shiftUDim(p.X, 10, parentSize.X), shiftUDim(p.Y, 10, parentSize.Y))
-
-				table.insert(created, clone)
-			end
-		end
-	end)
-
-	self:setSelection(created)
-	self:notify("Duplicated")
-end
-
 function Editor:SelectAll()
 	local all = {}
 
@@ -1804,8 +1770,6 @@ function Editor:onKey(input)
 		self:Copy()
 	elseif key == Enum.KeyCode.V and #self.clipboard > 0 then
 		self:Paste()
-	elseif key == Enum.KeyCode.D and self.target then
-		self:Duplicate()
 	elseif key == Enum.KeyCode.G and self.target then
 		if isShift() then
 			self:Ungroup()
@@ -1995,9 +1959,6 @@ function Editor:contextItems(over)
 		add(item("Paste", function()
 			self:Paste()
 		end, { shortcut = "Ctrl+V", enabled = #self.clipboard > 0 }))
-		add(item("Duplicate", function()
-			self:Duplicate()
-		end, { shortcut = "Ctrl+D", enabled = not locked }))
 		add(item("Delete", function()
 			self:Delete()
 		end, { shortcut = "Del", enabled = not locked }))

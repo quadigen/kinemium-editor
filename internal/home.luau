@@ -7,11 +7,11 @@ local plugin_marketplace = require("@internal/marketplace")
 local credits_page = require("@internal/credits")
 local settings_page = require("@internal/settings")
 
-local DiscordRPC = game:GetService("DiscordRPC")
-
 local gui = Instance.new("ScreenGui")
 gui.Name = "Home"
 gui.Parent = game.CoreGui
+
+local DiscordRPC = game:GetService("DiscordRPC")
 
 DiscordRPC:SetPresence({
 	Details = "Running Kinemium",
