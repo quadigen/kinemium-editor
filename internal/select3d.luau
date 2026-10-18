@@ -21,10 +21,19 @@ local function isOutOfBounds(num)
 	return num >= 100
 end
 
+local function isOutOfBoundsTarget(target)
+	if isOutOfBounds(target.Size.X) or isOutOfBounds(target.Size.Y) or isOutOfBounds(target.Size.Z) then
+		return true
+	else
+		return false
+	end
+end
+
 RunService.RenderStepped:Connect(function()
 	local target = Mouse.Target
+
 	if target and target:IsA("BasePart") then
-		if isOutOfBounds(target.Size.X) or isOutOfBounds(target.Size.Y) or isOutOfBounds(target.Size.Z) then
+		if isOutOfBoundsTarget(target) then
 			return
 		end
 		if target then
@@ -44,7 +53,10 @@ UserInputService.InputBegan:Connect(function(input, processed)
 
 	if input.UserInputType == Enum.UserInputType.MouseButton1 then
 		local target = Mouse.Target
-		if target then
+		if target and target:IsA("BasePart") then
+			if isOutOfBoundsTarget(target) then
+				return
+			end
 			Selection:Set({ target })
 		end
 	end
