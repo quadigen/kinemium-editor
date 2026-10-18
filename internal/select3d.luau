@@ -832,6 +832,7 @@ UserInputService.InputEnded:Connect(function(input)
 			camera.CameraSubject = selection
 			camera.CameraType = Enum.CameraType.Orbital
 			camera.CameraType = Enum.CameraType.Fixed
+			camera.CameraSubject = nil
 		end
 	end
 end)
