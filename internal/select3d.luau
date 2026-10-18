@@ -832,7 +832,7 @@ UserInputService.InputEnded:Connect(function(input)
 			camera.CameraSubject = selection
 			camera.CameraType = Enum.CameraType.Orbital
 			task.wait()
-			camera.CameraType = Enum.CameraType.Fixed
+			camera.CameraType = Enum.CameraType.Custom
 		end
 	end
 end)
