@@ -9,7 +9,6 @@ local theme = StudioThemeService.SelectedTheme
 local Selection = game:GetService("Selection")
 local UserInputService = game:GetService("UserInputService")
 local docker = require("@internal/docker")
-local ImageViewer = require("@internal/image_viewer")
 
 local colors = UI.colors
 local tokens = UI.tokens
@@ -162,19 +161,6 @@ local heights = {}
 local canvasTween
 local lastObject
 
-local IMAGE_EXTENSIONS = {
-	png = true,
-	jpg = true,
-	jpeg = true,
-	webp = true,
-	gif = true,
-	bmp = true,
-	svg = true,
-}
-
-local PREVIEW_SIZE = 18
-local PREVIEW_GAP = 4
-
 local function targetCanvasHeight()
 	local total, count = 0, 0
 
@@ -294,28 +280,6 @@ local function propertyMatchesSearch(propertyName, value, query)
 	return string.find(name, query, 1, true) ~= nil
 		or string.find(valueText, query, 1, true) ~= nil
 		or string.find(datatype, query, 1, true) ~= nil
-end
-
-local function isImagePath(text)
-	if type(text) ~= "string" or text == "" then
-		return false
-	end
-
-	if not (text:find("/", 1, true) or text:find("\\", 1, true)) then
-		return false
-	end
-
-	local extension = string.lower(text):match("%.(%w+)$")
-
-	return extension ~= nil and IMAGE_EXTENSIONS[extension] == true
-end
-
-local function resolveImageSource(path)
-	if string.find(path, "://", 1, true) then
-		return path
-	end
-
-	return ImageViewer.ImageSource(path)
 end
 
 local function buildStructure(object, searchQuery)
@@ -746,75 +710,13 @@ registerAdapter("string", {
 
 		local field = valueField(row, property.value)
 
-		local preview = UI.frame(
-			row,
-			UDim2.new(0.45, 6, 0, 2),
-			UDim2.fromOffset(PREVIEW_SIZE, PREVIEW_SIZE),
-			tokens.color.input,
-			tokens.radius.xs
-		)
-		preview.Visible = false
-
-		UI.stroke(preview, tokens.color.border, 1, 0)
-
-		local image = nil
-		local shownPath = nil
-
-		local function layoutField(hasPreview)
-			if hasPreview then
-				local shift = PREVIEW_SIZE + PREVIEW_GAP
-
-				field.Position = UDim2.new(0.45, 6 + shift, 0, 2)
-				field.Size = UDim2.new(0.55, -(12 + shift), 0, 18)
-			else
-				field.Position = UDim2.new(0.45, 6, 0, 2)
-				field.Size = UDim2.new(0.55, -12, 0, 18)
-			end
-		end
-
-		local function updatePreview(text)
-			local isImage = isImagePath(text)
-
-			if isImage ~= preview.Visible then
-				preview.Visible = isImage
-				layoutField(isImage)
-			end
-
-			if not isImage or text == shownPath then
-				return
-			end
-
-			shownPath = text
-
-			pcall(function()
-				local source = resolveImageSource(text)
-
-				if image == nil then
-					image = UI.image(preview, source, UDim2.fromOffset(1, 1), UDim2.new(1, -2, 1, -2))
-					image.ScaleType = Enum.ScaleType.Fit
-				else
-					image.Image = source
-				end
-			end)
-		end
-
-		updatePreview(property.value)
-
 		watchValueField(field, object, property.name, function(text)
 			return text
 		end)
 
-		return {
-			refresh = function(value)
-				local text = tostring(value or "")
-
-				if not field:IsFocused() then
-					field.Text = text
-				end
-
-				updatePreview(text)
-			end,
-		}
+		return textFieldController(field, function(value)
+			return tostring(value or "")
+		end)
 	end,
 })
 
