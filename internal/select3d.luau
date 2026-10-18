@@ -831,8 +831,7 @@ UserInputService.InputEnded:Connect(function(input)
 		if selection then
 			camera.CameraSubject = selection
 			camera.CameraType = Enum.CameraType.Orbital
-			task.wait()
-			camera.CameraType = Enum.CameraType.Custom
+			camera.CameraType = Enum.CameraType.Fixed
 		end
 	end
 end)
