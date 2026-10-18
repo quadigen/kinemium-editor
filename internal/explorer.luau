@@ -94,7 +94,7 @@ end
 
 local function selectObject(data)
 	local obj = data[1]
-	Selection:Set(obj)
+	Selection:Set(data)
 
 	local project = Project:GetActiveProject()
 
