@@ -34,6 +34,8 @@ RunService.RenderStepped:Connect(function()
 
 	if target and target:IsA("BasePart") then
 		if isOutOfBoundsTarget(target) then
+			highlight.Adornee = nil
+			highlight.Enabled = false
 			return
 		end
 		if target then
