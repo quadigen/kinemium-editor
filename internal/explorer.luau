@@ -15,6 +15,7 @@ local Selection = game:GetService("Selection")
 local UserInputService = game:GetService("UserInputService")
 local TweenService = game:GetService("TweenService")
 local ReflectionService = game:GetService("ReflectionService")
+local DiscordRPC = game:GetService("DiscordRPC")
 
 local colors = UI.colors
 local tokens = UI.tokens
@@ -89,6 +90,17 @@ UI.corner(list, tokens.radius.md)
 local function selectedObject()
 	local selection = Selection:Get()
 	return selection and selection[1]
+end
+
+local function selectObject(data)
+	local obj = data[1]
+	Selection:Set(obj)
+
+	DiscordRPC:SetPresence({
+		Details = "Selected " .. obj.Name,
+		State = _RUNTIME.version.display,
+		LargeText = _RUNTIME.url,
+	})
 end
 
 local categoriesByName = {}
@@ -270,7 +282,7 @@ local dropdown = UI.dropdown(
 
 			expanded[parent] = true
 
-			Selection:Set({
+			selectObject({
 				object,
 			})
 		end,
