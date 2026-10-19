@@ -423,7 +423,7 @@ logoPlate =
 
 logoPlate.Name = "Logo"
 
-UI.image(logoPlate, "builtin://icons/Kinemium.svg", UDim2.fromOffset(2, 2), UDim2.fromOffset(21, 21))
+UI.image(logoPlate, "builtin://global-icons/KinemiumWhite.png", UDim2.fromOffset(2, 2), UDim2.fromOffset(21, 21))
 
 flyout = UI.group(topbar, UDim2.fromOffset(5, baseHeaderHeight() + FLYOUT_GAP), UDim2.new(1, -10, 0, FLYOUT_HEIGHT), {
 	color = initialColors.surface,
@@ -667,6 +667,17 @@ UI.EngineTopbar = {
 		return layoutExtraHeight()
 	end,
 }
+
+local profileButton, record = UI.iconButton(
+	topbar,
+	"assets/icons/Play.svg",
+	UDim2.new(1, 0, 0.5, 0),
+	UDim2.fromOffset(30, 30),
+	function()
+		print("Play")
+	end
+)
+profileButton.AnchorPoint = Vector2.new(1, 0.5)
 
 rebuildFlyout()
 updateCategoryAppearance()
