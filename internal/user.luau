@@ -57,6 +57,8 @@ return function(parent)
 	)
 
 	image.Size = UDim2.new(1, 0, 1, 0)
+	image.AnchorPoint = UDim2.new(0.5, 0, 0.5, 0)
+	image.Position = UDim2.new(0.5, 0, 0.5, 0)
 
 	tooltip = UI.tooltip(profileButton, "Not logged in", {
 		placement = "below",
