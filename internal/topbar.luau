@@ -14,6 +14,7 @@ local viewCategory = require("@internal/topbar_view")
 local pluginsCategory = require("@internal/topbar_plugins")
 local studioCategory = require("@internal/topbar_studio")
 local menuBarController
+local user = require("@internal/user")
 
 local StudioThemeService = game:GetService("StudioThemeService")
 local theme = StudioThemeService.SelectedTheme
@@ -668,6 +669,7 @@ UI.EngineTopbar = {
 	end,
 }
 
+user(topbar)
 rebuildFlyout()
 updateCategoryAppearance()
 setExpanded(true)
