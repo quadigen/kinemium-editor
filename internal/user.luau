@@ -56,6 +56,8 @@ return function(parent)
 		end
 	)
 
+	image.Size = UDim2.new(1, 0, 1, 0)
+
 	tooltip = UI.tooltip(profileButton, "Not logged in", {
 		placement = "below",
 		hoverDelay = 0.35,
