@@ -2596,7 +2596,6 @@ return function(content, windowControls)
 	end)
 
 	return {
-
 		RegisterFileType = function(definition)
 			registerFileType(definition)
 
