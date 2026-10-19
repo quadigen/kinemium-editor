@@ -35,37 +35,56 @@ local function fieldRow(parent, index, labelText, placeholder, options)
 	return box
 end
 
+local NATIVE_MASK_PROPERTIES = { "PasswordMode", "MaskText", "Masked", "IsPassword" }
+
 local function passwordRow(parent, index, labelText, placeholder)
-	local box = fieldRow(parent, index, labelText, placeholder)
+	local box = fieldRow(parent, index, labelText, placeholder, {})
 
-	local real = ""
-	local updating = false
+	local native = false
 
-	box:GetPropertyChangedSignal("Text"):Connect(function()
-		if updating then
-			return
+	for _, name in ipairs(NATIVE_MASK_PROPERTIES) do
+		local ok, current = pcall(function()
+			return box[name]
+		end)
+
+		if ok and type(current) == "boolean" then
+			native = pcall(function()
+				box[name] = true
+			end)
+
+			if native then
+				break
+			end
+		end
+	end
+
+	if not native then
+		box.TextTransparency = 1
+
+		local overlay = UI.label(box, "", UDim2.fromOffset(0, 0), UDim2.fromScale(1, 1), box.TextSize, colors.text)
+
+		overlay.Name = "Mask"
+		overlay.ZIndex = box.ZIndex + 1
+
+		pcall(function()
+			overlay.Active = false
+			overlay.InputSink = false
+		end)
+
+		local function redraw()
+			local text = box.Text or ""
+
+			overlay.Text = string.rep(BULLET, utf8.len(text) or #text)
 		end
 
-		local text = box.Text
-		local had = utf8.len(real) or #real
-		local now = utf8.len(text) or #text
+		box:GetPropertyChangedSignal("Text"):Connect(redraw)
+		box.FocusLost:Connect(redraw)
 
-		if now < had then
-			real = real:sub(1, (utf8.offset(real, now + 1) or (#real + 1)) - 1)
-		elseif now > had then
-			local from = utf8.offset(text, had + 1) or (#text + 1)
-			local added = text:sub(from):gsub(BULLET, "")
-
-			real ..= added
-		end
-
-		updating = true
-		box.Text = string.rep(BULLET, utf8.len(real) or 0)
-		updating = false
-	end)
+		redraw()
+	end
 
 	return box, function()
-		return real
+		return box.Text
 	end
 end
 
@@ -164,7 +183,7 @@ function Auth.Login(options)
 						return false
 					end
 
-					return Auth.SignUp({ homeserver = fields.homeserver.Text, onSuccess = options.onSuccess })
+					Auth.SignUp({ homeserver = fields.homeserver.Text, onSuccess = options.onSuccess })
 				end,
 			},
 			{
@@ -260,7 +279,7 @@ function Auth.SignUp(options)
 						return false
 					end
 
-					return Auth.Login({ homeserver = fields.homeserver.Text, onSuccess = options.onSuccess })
+					Auth.Login({ homeserver = fields.homeserver.Text, onSuccess = options.onSuccess })
 				end,
 			},
 			{
