@@ -250,7 +250,7 @@ function UI.create(className, properties, parent)
 end
 
 function UI.corner(parent, radius)
-	return UI.create("UISquircle", {}, parent)
+	return UI.create("UICorner", { CornerRadius = UDim.new(0, radius or UI.tokens.radius.sm) }, parent)
 end
 
 function UI.backdrop(parent, radius, TintColor3)
@@ -2160,8 +2160,6 @@ function UI.toast(text, options)
 			Color3 = options.shadowColor or Color3.new(0, 0, 0),
 
 			Transparency = 1,
-
-			Exponent = 2,
 
 			Enabled = true,
 		}, frame)
@@ -5728,7 +5726,7 @@ function UI.window(name, position, size, title, options)
 	local panel = UI.frame(UI.root(), position, size, colors.panel, radius)
 
 	panel.Name = name
-	panel.ClipsDescendants = false
+	panel.ClipsDescendants = true
 
 	shared.windows[string.lower(name)] = panel
 
@@ -7600,8 +7598,6 @@ UI.frame(parent, position, size, options.color or colors.surface, options.radius
 			Color3 = options.shadowColor or Color3.fromRGB(0, 0, 0),
 
 			Transparency = options.shadowTransparency or 0.6,
-
-			Exponent = 2,
 
 			Enabled = true,
 		}, card)
