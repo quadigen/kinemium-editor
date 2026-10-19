@@ -34,6 +34,7 @@ return function(parent)
 	local id = ""
 	local tooltip
 	local profileButton, _, image
+	local clicked = false
 
 	profileButton, _, image = UI.iconButton(
 		parent,
@@ -41,9 +42,17 @@ return function(parent)
 		UDim2.new(1, -5, 0, 5),
 		UDim2.fromOffset(25, 25),
 		function()
+			if shared.CurrentSession then
+				return
+			end
+			if clicked then
+				return
+			end
+			clicked = true
 			Auth.Login({
 				onSuccess = function(session)
 					shared.CurrentSession = session
+					clicked = false
 
 					id = session.userId
 					if tooltip then
@@ -58,6 +67,7 @@ return function(parent)
 
 	image.Size = UDim2.new(1, 0, 1, 0)
 	image.AnchorPoint = Vector2.new(0.5, 0.5)
+	image.ClipsDescendants = true
 	image.Position = UDim2.new(0.5, 0, 0.5, 0)
 
 	tooltip = UI.tooltip(profileButton, "Not logged in", {
