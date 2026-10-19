@@ -437,8 +437,6 @@ function UI.prompt(options)
 
 			Transparency = options.shadowTransparency or 0.45,
 
-			Exponent = options.shadowExponent or 2,
-
 			Enabled = true,
 		}, panel)
 	end
