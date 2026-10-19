@@ -18,26 +18,7 @@ local TOKEN_STAGES = {
 	["org.matrix.msc3231.login.registration_token"] = true,
 }
 
-local cachedHttp: any = nil
-
-local function getHttpService(): any
-	if cachedHttp then
-		return cachedHttp
-	end
-
-	for _, name in ipairs({ "HTTPService", "HttpService" }) do
-		local ok, service = pcall(function()
-			return game:GetService(name)
-		end)
-
-		if ok and service then
-			cachedHttp = service
-			return service
-		end
-	end
-
-	return nil
-end
+local http: any = game:GetService("HttpService")
 
 local function trim(text: any): string
 	return (tostring(text or ""):match("^%s*(.-)%s*$")) :: string
@@ -113,12 +94,6 @@ export type Result = {
 }
 
 function Matrix.request(base: string, method: string, path: string, body: any?, token: string?): Result
-	local http = getHttpService()
-
-	if not http then
-		return { ok = false, status = 0, error = "HttpService is not available." }
-	end
-
 	local headers: { [string]: string } = { ["Accept"] = "application/json" }
 	local encoded = nil
 
