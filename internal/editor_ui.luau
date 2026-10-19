@@ -323,6 +323,7 @@ function UI.prompt(options)
 	local screenGui = UI.create("ScreenGui", {
 		Name = options.screenGuiName or ("PromptGui" .. tostring(promptId)),
 		RenderOnTop = options.renderOnTop ~= false,
+		DisplayOrder = 4000,
 	}, options.parent or game.CoreGui)
 
 	local host = UI.create("Frame", {
