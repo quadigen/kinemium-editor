@@ -235,13 +235,8 @@ for _, item in ipairs(classItems) do
 	end
 end
 
-local dropdown = UI.dropdown(
-	UI.contextMenuOverlay(),
-	"",
-	UDim2.new(1, -32, 0, 6),
-	UDim2.fromOffset(26, UI.metrics.inputHeight),
-	nil,
-	{
+local dropdown =
+	UI.dropdown(UI.widgetOverlay(), "", UDim2.new(1, -32, 0, 6), UDim2.fromOffset(26, UI.metrics.inputHeight), nil, {
 		items = classItems,
 		categories = categories,
 
@@ -290,8 +285,7 @@ local dropdown = UI.dropdown(
 				object,
 			})
 		end,
-	}
-)
+	})
 
 local serviceOrder = {
 	Workspace = 1,
