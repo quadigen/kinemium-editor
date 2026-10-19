@@ -891,7 +891,7 @@ local function buildSettings(content, controller, width, height, session, onLogo
 
 	local doLogout = function()
 		if onLogout then
-			onLogout()
+			onLogout(session)
 		end
 
 		controller:Close("logout")
@@ -1286,7 +1286,7 @@ local function openSettings(session, onLogout, onClose)
 		shadowTransparency = 0.45,
 		clip = true,
 		destroyOnClose = true,
-		closeOnBackdrop = true,
+		closeOnBackdrop = false,
 		dimTransparency = 0.55,
 		screenGuiName = "MatrixSettings",
 		build = function(content, controller)
