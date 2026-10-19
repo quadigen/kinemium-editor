@@ -23,9 +23,11 @@ local function SetImage(session, image)
 		return
 	end
 
-	local imageId = http:GetImageBytes(url)
+	local content = http:GetImageBytes(url, {
+		Authorization = "Bearer " .. session.accessToken,
+	})
 
-	image.Image = imageId
+	image.Image = content
 end
 
 return function(parent)
