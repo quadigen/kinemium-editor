@@ -586,7 +586,7 @@ local function beginDrag()
 
 	highlight.FillColor = DRAG_COLOR
 	highlight.OutlineColor = DRAG_COLOR
-	highlight.FillTransparency = 0.8
+	highlight.FillTransparency = 1
 	setHover(drag.grabbed)
 end
 
@@ -701,7 +701,7 @@ local function setMoveMode(enabled: boolean)
 		endDrag(true)
 	end
 	state.moveMode = enabled
-	highlight.FillTransparency = enabled and 0.9 or 1
+	highlight.FillTransparency = 1
 	updateHud()
 end
 
