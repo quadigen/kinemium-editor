@@ -644,7 +644,6 @@ return function(parent)
 			local title = UI.label(card, row.title, position, width, tokens.type.body, colors.text)
 
 			title.TextXAlignment = Enum.TextXAlignment.Left
-			title.TextTruncate = Enum.TextTruncate.AtEnd
 
 			if row.description then
 				local description = UI.label(
@@ -795,7 +794,6 @@ return function(parent)
 
 				value.TextXAlignment = Enum.TextXAlignment.Right
 				value.TextYAlignment = Enum.TextYAlignment.Center
-				value.TextTruncate = Enum.TextTruncate.AtEnd
 			end
 		end
 
