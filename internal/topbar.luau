@@ -673,8 +673,8 @@ local tooltip
 local profileButton, record = UI.iconButton(
 	topbar,
 	"assets/icons/Play.svg",
-	UDim2.new(1, 0, 0.5, 0),
-	UDim2.fromOffset(30, 30),
+	UDim2.new(1, -5, 0, 5),
+	UDim2.fromOffset(25, 25),
 	function()
 		local Auth = require("@internal/auth")
 
@@ -694,7 +694,7 @@ tooltip = UI.tooltip(profileButton, "Not logged in", {
 	hoverDelay = 0.35,
 })
 
-profileButton.AnchorPoint = Vector2.new(1, 0.5)
+profileButton.AnchorPoint = Vector2.new(1, 0)
 
 rebuildFlyout()
 updateCategoryAppearance()
