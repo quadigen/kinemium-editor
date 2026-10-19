@@ -745,6 +745,18 @@ return function(parent)
 					}
 				)
 
+				local openDropdown = controller.record.callback
+
+				controller.record.callback = function()
+					openDropdown()
+
+					local active = shared.activeDropdown
+
+					if active and active.controller == controller and active.menu then
+						active.menu.Parent = UI.widgetOverlay()
+					end
+				end
+
 				table.insert(dropdowns, controller)
 
 				if not enabled then
@@ -1023,6 +1035,7 @@ return function(parent)
 			}
 		)
 
+		panel.Parent = UI.widgetOverlay()
 		panel.Visible = false
 
 		settingsWindow = panel
