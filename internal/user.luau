@@ -969,7 +969,18 @@ return function(parent)
 		logoutIcon.ImageColor3 = colors.error
 
 		scroller:GetPropertyChangedSignal("CanvasPosition"):Connect(function()
-			closeDropdowns()
+			local active = shared.activeDropdown
+
+			if not active then
+				return
+			end
+
+			for _, controller in ipairs(dropdowns) do
+				if active.controller == controller then
+					controller:Close()
+					return
+				end
+			end
 		end)
 
 		search.TextChanged:Connect(function()
@@ -1059,7 +1070,9 @@ return function(parent)
 						tooltip:SetText(session.userId)
 					end
 
-					SetImage(session, image)
+					task.spawn(function()
+						pcall(SetImage, session, image)
+					end)
 
 					task.defer(function()
 						open()
