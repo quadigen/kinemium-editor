@@ -31,14 +31,6 @@ local window, _, _, windowControls = UI.window("Projects", UDim2.new(0, 15, 0, 1
 
 window.Parent = gui
 
-local Auth = require("@internal/auth")
-
-Auth.Login({
-	onSuccess = function(session)
-		print(session.userId)
-	end,
-})
-
 UI.widgetOverlay().Enabled = false
 UI.root().Enabled = false
 UI.RootOverlay().Enabled = false
