@@ -2,6 +2,7 @@ if (IsServer or IsClient) or IsPlaytest then
 	return nil
 end
 local UI = require("@internal/editor_ui")
+local user = require("@internal/user")
 local Explorer = require("@internal/explorer")
 
 local Project = game.Project
@@ -453,6 +454,8 @@ return function(page, windowControls, gui)
 		Color3.new(0, 0, 0),
 		15
 	)
+
+	user(bannerFrame)
 
 	bannerFrame.ClipsDescendants = true
 	bannerFrame.Parent = projectsPage

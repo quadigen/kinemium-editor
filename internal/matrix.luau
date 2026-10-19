@@ -1,7 +1,9 @@
 local Matrix = {}
 
-Matrix.DEFAULT_HOMESERVER = "https://opus.quadigen.com/_matrix/static/"
-Matrix.DEVICE_NAME = "Studio"
+local endpoints = require("@internal/endpoints")
+
+Matrix.DEFAULT_HOMESERVER = endpoints.DEFAULT_HOMESERVER
+Matrix.DEVICE_NAME = endpoints.DEVICE_NAME
 
 local STAGE_NAMES = {
 	["m.login.recaptcha"] = "a captcha",

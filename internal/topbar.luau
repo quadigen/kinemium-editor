@@ -668,34 +668,6 @@ UI.EngineTopbar = {
 	end,
 }
 
-local id = ""
-local tooltip
-local profileButton, record = UI.iconButton(
-	topbar,
-	"assets/icons/Play.svg",
-	UDim2.new(1, -5, 0, 5),
-	UDim2.fromOffset(25, 25),
-	function()
-		local Auth = require("@internal/auth")
-
-		Auth.Login({
-			onSuccess = function(session)
-				id = session.userId
-				if tooltip then
-					tooltip:SetText(id)
-				end
-			end,
-		})
-	end
-)
-
-tooltip = UI.tooltip(profileButton, "Not logged in", {
-	placement = "below",
-	hoverDelay = 0.35,
-})
-
-profileButton.AnchorPoint = Vector2.new(1, 0)
-
 rebuildFlyout()
 updateCategoryAppearance()
 setExpanded(true)
