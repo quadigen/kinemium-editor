@@ -6289,7 +6289,8 @@ function UI.input(parent, placeholder, position, size, options)
 		InputSink = true,
 	}, parent)
 
-	UI.corner(field, options.radius or UI.tokens.radius.sm)
+	local squircle = Instance.new("UISquircle")
+	squircle.Parent = field
 
 	local stroke = UI.stroke(
 		field,
