@@ -347,13 +347,7 @@ return function(page, windowControls, gui)
 		end
 	end
 
-	local detailPage = UI.frame(
-		marketplacePage,
-		UDim2.fromOffset(0, 0),
-		UDim2.new(1, 0, 1, 0),
-		tokens.color.panel,
-		0
-	)
+	local detailPage = UI.frame(marketplacePage, UDim2.fromOffset(0, 0), UDim2.new(1, 0, 1, 0), tokens.color.panel, 0)
 
 	detailPage.Name = "PackageDetails"
 	detailPage.Visible = false
@@ -439,8 +433,21 @@ return function(page, windowControls, gui)
 		end
 
 		local width = math.max(options.minWidth or 50, #label * 7 + 20)
-		local pill = UI.frame(parent, UDim2.fromOffset(x, y), UDim2.fromOffset(width, 22), options.color or tokens.color.surfaceAlt, 7)
-		local textLabel = UI.label(pill, label, UDim2.fromOffset(0, 0), UDim2.new(1, 0, 1, 0), 11, options.textColor or tokens.color.text)
+		local pill = UI.frame(
+			parent,
+			UDim2.fromOffset(x, y),
+			UDim2.fromOffset(width, 22),
+			options.color or tokens.color.surfaceAlt,
+			7
+		)
+		local textLabel = UI.label(
+			pill,
+			label,
+			UDim2.fromOffset(0, 0),
+			UDim2.new(1, 0, 1, 0),
+			11,
+			options.textColor or tokens.color.text
+		)
 
 		textLabel.TextXAlignment = Enum.TextXAlignment.Center
 
@@ -453,426 +460,25 @@ return function(page, windowControls, gui)
 		end
 	end
 
-	local function renderPackageDetail(plugin, data)
-		clearPackageDetail()
+	local PackageDetails = require("@internal/package_details")
 
-		if type(data) == "table" and type(data.package) == "table" then
-			data = data.package
-		end
-
-		data = type(data) == "table" and data or {}
-
-		local manifest = plugin.Manifest or {}
-		local assets = plugin.Assets or {}
-		local name = firstValue(data.name, data.Name, manifest.Name, plugin.Name, "Unknown Package")
-		local namespace = firstValue(data.namespace, data.Namespace, plugin.Namespace, "unknown")
-		local description = firstValue(data.description, data.Description, manifest.Description, "No description provided.")
-		local itemType = firstValue(data.itemType, data.type, data.Type, manifest.Type, "package")
-		local version = firstValue(data.latestVersion, data.version, data.Version, manifest.Version, "?")
-		local tags = stringList(firstValue(data.tags, data.Tags, manifest.Keywords))
-		local license = firstValue(data.license, data.License, plugin.License, "Not specified")
-		local visibility = firstValue(data.visibility, data.Visibility, plugin.Visibility, "public")
-		local reviewStatus = firstValue(data.reviewStatus, data.review_status, plugin.ReviewStatus, "approved")
-		local engineConstraint = firstValue(data.engineConstraint, data.engine_constraint, "Any")
-		local packageId = firstValue(data.packageId, data.package_id, plugin.PackageId, "unknown")
-		local updatedAt = firstValue(data.updatedAt, data.updated_at, data.publishedAt, data.published_at, plugin.UpdatedAt, "")
-		local acquisitionCount = firstValue(
-			data.acquisitionCount,
-			data.acquisition_count,
-			data.downloads,
-			plugin.AcquisitionCount,
-			plugin.Downloads,
-			0
-		)
-		local rating = data.rating or plugin.Rating or {}
-		local ratingAverage = tonumber(rating.average or rating.Average)
-		local ratingCount = tonumber(rating.count or rating.Count) or 0
-		local iconUrl = firstValue(data.iconUrl, data.icon_url, assets.IconUrl)
-		local bannerUrl = firstValue(data.bannerUrl, data.banner_url, data.thumbnailUrl, assets.ThumbnailUrl)
-		local versions = type(data.versions) == "table" and data.versions or {}
-		local latest = nil
-
-		for _, item in ipairs(versions) do
-			if type(item) == "table" and not item.yanked then
-				latest = item
-				break
-			end
-		end
-
-		local dependencies = latest and type(latest.dependencies) == "table" and latest.dependencies or {}
-		local contentWidth = math.max(360, detailScroll.AbsoluteSize.X - 12)
-		local charsPerLine = math.max(36, math.floor(contentWidth / 7.5))
-
-		local hero = UI.frame(detailScroll, UDim2.fromOffset(0, 0), UDim2.new(1, 0, 0, 170), tokens.color.surfaceAlt, 14)
-
-		hero.ClipsDescendants = true
-
-		local banner = UI.image(hero, "", UDim2.fromScale(0, 0), UDim2.fromScale(1, 1))
-
-		banner.ScaleType = Enum.ScaleType.Crop
-		banner.Parent = hero
-		setCardImage(banner, bannerUrl)
-
-		if not bannerUrl or bannerUrl == "" then
-			local empty = UI.label(hero, "NO BANNER", UDim2.fromOffset(18, 14), UDim2.new(1, -36, 0, 18), 11, tokens.color.muted)
-
-			empty.TextXAlignment = Enum.TextXAlignment.Right
-		end
-
-		local info = UI.card(detailScroll, UDim2.fromOffset(0, 156), UDim2.new(1, 0, 0, 138), {
-			color = tokens.color.surface,
-			radius = 14,
-		})
-
-		local iconFrame = UI.frame(info, UDim2.fromOffset(16, -24), UDim2.fromOffset(86, 86), tokens.color.surfaceAlt, 13)
-
-		iconFrame.ClipsDescendants = true
-		UI.stroke(iconFrame, tokens.color.border, 1, 0)
-
-		local icon = UI.image(iconFrame, "", UDim2.fromOffset(0, 0), UDim2.new(1, 0, 1, 0))
-
-		icon.ScaleType = Enum.ScaleType.Fit
-		icon.Parent = iconFrame
-		setCardImage(icon, iconUrl)
-
-		local title = UI.label(
-			info,
-			tostring(name),
-			UDim2.fromOffset(120, 10),
-			UDim2.new(1, -136, 0, 30),
-			23,
-			tokens.color.text
-		)
-
-		title.TextYAlignment = Enum.TextYAlignment.Center
-
-		local author = UI.label(
-			info,
-			"by " .. tostring(namespace),
-			UDim2.fromOffset(120, 40),
-			UDim2.new(1, -136, 0, 20),
-			13,
-			tokens.color.accent
-		)
-
-		local pillX = detailPill(info, string.upper(tostring(itemType)), 120, 66, {
-			color = tokens.color.accentSoft,
-		})
-
-		pillX = detailPill(info, "v" .. tostring(version), pillX, 66, {
-			minWidth = 44,
-		})
-
-		detailPill(info, string.upper(tostring(reviewStatus)), pillX, 66, {
-			minWidth = 62,
-			textColor = reviewStatus == "approved" and tokens.color.text or tokens.color.muted,
-		})
-
-		if #tags > 0 then
-			local tagText = UI.label(
-				info,
-				table.concat(tags, "   "),
-				UDim2.fromOffset(120, 98),
-				UDim2.new(1, -136, 0, 18),
-				12,
-				tokens.color.subtext
-			)
-
-			tagText.TextWrapped = false
-		end
-
-		local statY = 306
-		local statCards = {
-			{
-				label = "DOWNLOADS",
-				value = formatDetailCount(acquisitionCount),
-			},
-			{
-				label = "RATING",
-				value = ratingAverage and string.format("%.1f (%d)", ratingAverage, ratingCount) or "No ratings",
-			},
-			{
-				label = "VERSION",
-				value = "v" .. tostring(version),
-			},
-			{
-				label = "UPDATED",
-				value = formatDetailDate(updatedAt),
-			},
-		}
-
-		for index, stat in ipairs(statCards) do
-			local card = UI.card(
-				detailScroll,
-				UDim2.new((index - 1) * 0.25, 0, 0, statY),
-				UDim2.new(0.25, -8, 0, 64),
-				{
-					color = tokens.color.surface,
-					radius = 12,
-				}
-			)
-
-			UI.label(
-				card,
-				stat.label,
-				UDim2.fromOffset(12, 10),
-				UDim2.new(1, -24, 0, 16),
-				10,
-				tokens.color.muted
-			)
-
-			UI.label(
-				card,
-				stat.value,
-				UDim2.fromOffset(12, 28),
-				UDim2.new(1, -24, 0, 24),
-				17,
-				tokens.color.text
-			)
-		end
-
-		local bodyY = statY + 78
-		local descriptionHeight = math.clamp(62 + detailTextHeight(description, charsPerLine, 18), 92, 240)
-		local descriptionCard = UI.card(detailScroll, UDim2.fromOffset(0, bodyY), UDim2.new(1, 0, 0, descriptionHeight), {
-			color = tokens.color.surface,
-			radius = 12,
-		})
-
-		UI.label(
-			descriptionCard,
-			"ABOUT",
-			UDim2.fromOffset(16, 12),
-			UDim2.new(1, -32, 0, 16),
-			10,
-			tokens.color.muted
-		)
-
-		local descriptionLabel = UI.label(
-			descriptionCard,
-			tostring(description),
-			UDim2.fromOffset(16, 34),
-			UDim2.new(1, -32, 1, -46),
-			14,
-			tokens.color.text
-		)
-
-		descriptionLabel.TextWrapped = true
-		descriptionLabel.TextYAlignment = Enum.TextYAlignment.Top
-
-		local detailsY = bodyY + descriptionHeight + 12
-		local detailsHeight = 122
-		local detailsCard = UI.card(detailScroll, UDim2.fromOffset(0, detailsY), UDim2.new(1, 0, 0, detailsHeight), {
-			color = tokens.color.surface,
-			radius = 12,
-		})
-
-		UI.label(
-			detailsCard,
-			"DETAILS",
-			UDim2.fromOffset(16, 12),
-			UDim2.new(1, -32, 0, 16),
-			10,
-			tokens.color.muted
-		)
-
-		local function detailField(labelText, valueText, x, y, width)
-			UI.label(
-				detailsCard,
-				labelText,
-				UDim2.fromOffset(x, y),
-				UDim2.new(0, width, 0, 14),
-				9,
-				tokens.color.muted
-			)
-
-			local value = UI.label(
-				detailsCard,
-				tostring(valueText),
-				UDim2.fromOffset(x, y + 15),
-				UDim2.new(0, width, 0, 18),
-				12,
-				tokens.color.text
-			)
-
-			value.TextWrapped = false
-		end
-
-		local halfWidth = math.max(120, math.floor((contentWidth - 48) / 2))
-
-		detailField("LICENSE", license, 16, 38, halfWidth)
-		detailField("ENGINE", engineConstraint, 32 + halfWidth, 38, halfWidth)
-		detailField("VISIBILITY", visibility, 16, 76, halfWidth)
-		detailField("REVIEW", reviewStatus, 32 + halfWidth, 76, halfWidth)
-
-		local packageIdLabel = UI.label(
-			detailsCard,
-			tostring(packageId),
-			UDim2.fromOffset(16, 105),
-			UDim2.new(1, -32, 0, 14),
-			10,
-			tokens.color.subtext
-		)
-
-		packageIdLabel.TextWrapped = false
-
-		local dependenciesY = detailsY + detailsHeight + 12
-		local dependencyCount = math.min(#dependencies, 8)
-		local dependenciesHeight = 48 + math.max(1, dependencyCount) * 22
-		local dependenciesCard = UI.card(
-			detailScroll,
-			UDim2.fromOffset(0, dependenciesY),
-			UDim2.new(1, 0, 0, dependenciesHeight),
-			{
-				color = tokens.color.surface,
-				radius = 12,
-			}
-		)
-
-		UI.label(
-			dependenciesCard,
-			"DEPENDENCIES",
-			UDim2.fromOffset(16, 12),
-			UDim2.new(1, -32, 0, 16),
-			10,
-			tokens.color.muted
-		)
-
-		if dependencyCount == 0 then
-			UI.label(
-				dependenciesCard,
-				"No dependencies.",
-				UDim2.fromOffset(16, 34),
-				UDim2.new(1, -32, 0, 18),
-				12,
-				tokens.color.subtext
-			)
-		else
-			for index = 1, dependencyCount do
-				local dependency = dependencies[index]
-				local dependencyName = tostring(dependency.name or dependency.Name or "unknown")
-				local dependencyNamespace = tostring(dependency.namespace or dependency.Namespace or "unknown")
-				local constraint = tostring(dependency.constraint or dependency.Constraint or "*")
-				local y = 32 + (index - 1) * 22
-
-				UI.label(
-					dependenciesCard,
-					dependencyNamespace .. "/" .. dependencyName,
-					UDim2.fromOffset(16, y),
-					UDim2.new(1, -140, 0, 18),
-					12,
-					tokens.color.text
-				)
-
-				local constraintLabel = UI.label(
-					dependenciesCard,
-					constraint,
-					UDim2.new(1, -124, 0, y),
-					UDim2.fromOffset(108, 18),
-					11,
-					tokens.color.subtext
-				)
-
-				constraintLabel.TextXAlignment = Enum.TextXAlignment.Right
-			end
-		end
-
-		local versionsY = dependenciesY + dependenciesHeight + 12
-		local versionCount = math.min(#versions, 6)
-		local versionsHeight = 48 + math.max(1, versionCount) * 26
-		local versionsCard = UI.card(
-			detailScroll,
-			UDim2.fromOffset(0, versionsY),
-			UDim2.new(1, 0, 0, versionsHeight),
-			{
-				color = tokens.color.surface,
-				radius = 12,
-			}
-		)
-
-		UI.label(
-			versionsCard,
-			string.format("VERSIONS (%d)", #versions),
-			UDim2.fromOffset(16, 12),
-			UDim2.new(1, -32, 0, 16),
-			10,
-			tokens.color.muted
-		)
-
-		if versionCount == 0 then
-			UI.label(
-				versionsCard,
-				"No published versions.",
-				UDim2.fromOffset(16, 34),
-				UDim2.new(1, -32, 0, 18),
-				12,
-				tokens.color.subtext
-			)
-		else
-			for index = 1, versionCount do
-				local item = versions[index]
-				local y = 32 + (index - 1) * 26
-				local versionText = "v" .. tostring(item.version or item.Version or "?")
-				local dateText = formatDetailDate(item.publishedAt or item.published_at)
-				local sizeText = ""
-
-				if type(item.size) == "number" then
-					sizeText = string.format("%.1f KB", item.size / 1024)
-				end
-
-				UI.label(
-					versionsCard,
-					versionText,
-					UDim2.fromOffset(16, y),
-					UDim2.fromOffset(140, 20),
-					12,
-					item.yanked and tokens.color.muted or tokens.color.text
-				)
-
-				UI.label(
-					versionsCard,
-					dateText .. (sizeText ~= "" and ("   " .. sizeText) or ""),
-					UDim2.new(1, -236, 0, y),
-					UDim2.fromOffset(220, 20),
-					11,
-					tokens.color.subtext
-				).TextXAlignment = Enum.TextXAlignment.Right
-
-				if item.yanked then
-					local yanked = UI.label(
-						versionsCard,
-						"YANKED",
-						UDim2.new(1, -70, 0, y),
-						UDim2.fromOffset(54, 20),
-						9,
-						tokens.color.warning
-					)
-
-					yanked.TextXAlignment = Enum.TextXAlignment.Right
-				end
-			end
-		end
-
-		detailScroll.CanvasSize = UDim2.fromOffset(0, versionsY + versionsHeight + 12)
-		detailScroll.CanvasPosition = Vector2.new(0, 0)
-	end
+	local details = PackageDetails(marketplacePage, {
+		setImage = setCardImage,
+		fetch = function(plugin)
+			return Packages:GetMarketplacePackage(plugin.Namespace, plugin.Name)
+		end,
+		onOpen = function()
+			marketplaceControls.Visible = false
+			marketplaceList.Visible = false
+		end,
+		onClose = function()
+			marketplaceControls.Visible = true
+			marketplaceList.Visible = true
+		end,
+	})
 
 	local function openPackagePage(plugin)
-		marketplaceControls.Visible = false
-		marketplaceList.Visible = false
-		detailPage.Visible = true
-		detailCrumb.Text = string.upper("MARKETPLACE   /   " .. tostring(plugin.Slug or plugin.Manifest.Name))
-
-		renderPackageDetail(plugin, plugin.Raw)
-
-		local ok, data = Packages:GetMarketplacePackage(plugin.Namespace, plugin.Name)
-
-		if ok then
-			renderPackageDetail(plugin, data)
-		else
-			UI.toast("Could not load package details.", {
-				type = "error",
-			})
-		end
+		details:Open(plugin)
 	end
 
 	detailBack.MouseButton1Click:Connect(function()
