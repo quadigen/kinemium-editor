@@ -6,7 +6,7 @@ local http = game:GetService("HttpService")
 local colors = UI.tokens.color
 local tokens = UI.tokens
 
-shared.CurrentSession = nil
+shared.CurrentSession = MatrixService:GetSession()
 
 local function svgIcon(body)
 	return "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'>"
@@ -38,7 +38,7 @@ local state = {
 	enterNewline = false,
 	tabSpaces = true,
 	tabSize = "4",
-	rememberSession = true,
+	rememberSession = MatrixService.RememberSession ~= false,
 
 	notifyDirect = true,
 	notifyMentions = true,
@@ -233,6 +233,9 @@ local function buildCategories(session, onLogout)
 							key = "rememberSession",
 							title = "Remember this session",
 							description = "Keep your Matrix account signed in between launches.",
+							onChanged = function(value)
+								MatrixService:SetRememberSession(value)
+							end,
 						},
 						{
 							kind = "button",
@@ -1072,10 +1075,18 @@ return function(parent)
 	image.ClipsDescendants = true
 	image.Position = UDim2.new(0.5, 0, 0.5, 0)
 
-	tooltip = UI.tooltip(profileButton, "Not logged in", {
+	local session = shared.CurrentSession
+
+	tooltip = UI.tooltip(profileButton, session and session.userId or "Not logged in", {
 		placement = "below",
 		hoverDelay = 0.35,
 	})
+
+	if session then
+		task.spawn(function()
+			pcall(SetImage, session, image)
+		end)
+	end
 
 	profileButton.AnchorPoint = Vector2.new(1, 0)
 end
