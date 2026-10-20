@@ -7,6 +7,7 @@ local UI = require("@internal/editor_ui")
 local TextService = game:GetService("TextService")
 local RunService = game:GetService("RunService")
 local Project = game:GetService("Project")
+local LuauService = game:GetService("LuauService")
 
 local tokens = UI.tokens
 
@@ -22,6 +23,9 @@ local SUGGEST_ROW_HEIGHT = 22
 local SUGGEST_MAX_ROWS = 7
 local SUGGEST_PADDING = 4
 local SUGGEST_ICON_SIZE = 12
+
+local DIAGNOSTIC_WIDTH = 320
+local DIAGNOSTIC_DELAY = 0.18
 
 local SUGGEST_LINE_HEIGHT = 22
 
@@ -1073,11 +1077,63 @@ function CodeEditor.new(parent)
 
 	UI.stroke(hint, tokens.color.border, 1, 0)
 
+	local diagnostic = UI.frame(
+		suggestionLayer,
+		UDim2.fromOffset(0, 0),
+		UDim2.fromOffset(DIAGNOSTIC_WIDTH, 54),
+		tokens.color.panel,
+		tokens.radius.sm
+	)
+
+	diagnostic.Name = "DiagnosticPopup"
+	diagnostic.Visible = false
+	diagnostic.Active = false
+	diagnostic.ClipsDescendants = true
+	diagnostic.ZIndex = 100
+
+	UI.stroke(diagnostic, tokens.color.error, 1, 0.35)
+	UI.create("UIShadow", {
+		BlurRadius = UDim.new(0, 8),
+		Offset = UDim2.fromOffset(0, 3),
+		Spread = UDim2.fromOffset(0, 1),
+		Color3 = tokens.color.canvas,
+		Transparency = 0.35,
+		Parent = diagnostic,
+	})
+
+	local diagnosticTitle = UI.label(
+		diagnostic,
+		"Syntax error",
+		UDim2.fromOffset(10, 6),
+		UDim2.new(1, -20, 0, 15),
+		tokens.type.caption,
+		tokens.color.error
+	)
+
+	diagnosticTitle.ZIndex = 101
+
+	local diagnosticText = UI.label(
+		diagnostic,
+		"",
+		UDim2.fromOffset(10, 24),
+		UDim2.new(1, -20, 1, -30),
+		tokens.type.small,
+		tokens.color.text
+	)
+
+	diagnosticText.TextWrapped = true
+	diagnosticText.TextYAlignment = Enum.TextYAlignment.Top
+	diagnosticText.ZIndex = 101
+
 	self.TabStrip = tabStrip
 	self.TextBox = editor
 	self.SuggestionLayer = suggestionLayer
 	self.Popup = popup
 	self.Hint = hint
+	self.DiagnosticPopup = diagnostic
+	self.DiagnosticTitle = diagnosticTitle
+	self.DiagnosticText = diagnosticText
+	self.diagnosticSerial = 0
 	self.rows = {}
 
 	local find = UI.frame(
@@ -1362,6 +1418,7 @@ function CodeEditor:loadDocument(document)
 	self.suppressTextSync = false
 
 	self:dismissSuggestions()
+	self:refreshDiagnostics()
 
 	self:rebuildTabs()
 	self:updateVisibility()
@@ -1421,6 +1478,9 @@ function CodeEditor:closeDocument(document)
 			self.suppressTextSync = true
 			self.TextBox.Text = ""
 			self.suppressTextSync = false
+
+			self.TextBox:ClearDiagnostics()
+			self:hideDiagnosticPopup()
 
 			self:dismissSuggestions()
 
@@ -2705,6 +2765,131 @@ function CodeEditor:markFindToggle(id, on)
 	paintToggle(self.findButtons[id], on)
 end
 
+local function diagnosticSpan(source, lineNumber, message)
+	local lines = string.split(source, "\n")
+	local line = lines[lineNumber]
+
+	if line == nil or line == "" then
+		return 1, 1
+	end
+
+	local token = message:match("near '([^']+)'")
+		or message:match('near "([^"]+)"')
+		or message:match("got '([^']+)'")
+		or message:match('got "([^"]+)"')
+
+	if token ~= nil and token ~= "" then
+		local start = string.find(line, token, 1, true)
+
+		if start ~= nil then
+			return start, math.min(#line, start + #token - 1)
+		end
+	end
+
+	local first = string.find(line, "%S")
+
+	if first ~= nil then
+		return first, #line
+	end
+
+	return 1, 1
+end
+
+function CodeEditor:hideDiagnosticPopup()
+	if UI.isAlive(self.DiagnosticPopup) then
+		self.DiagnosticPopup.Visible = false
+	end
+end
+
+function CodeEditor:showDiagnosticPopup(diagnostic, x, y)
+	if not UI.isAlive(self.DiagnosticPopup) then
+		return
+	end
+
+	local line = math.max(1, math.floor(tonumber(diagnostic.Line) or 1))
+	local message = tostring(diagnostic.Message or "Syntax error")
+
+	self.DiagnosticTitle.Text = "Syntax error · line " .. line
+	self.DiagnosticText.Text = message
+
+	local measured = TextService:GetTextSize(
+		message,
+		tokens.type.small,
+		TAB_FONT,
+		Vector2.new(DIAGNOSTIC_WIDTH - 20, 2000)
+	)
+
+	local height = math.max(54, math.ceil(measured.Y) + 34)
+
+	self.DiagnosticPopup.Size = UDim2.fromOffset(DIAGNOSTIC_WIDTH, height)
+
+	local camera = workspace.CurrentCamera
+	local screen = camera and camera.ViewportSize or Vector2.new(1280, 720)
+
+	local px = math.max(8, math.min(x + 14, screen.X - DIAGNOSTIC_WIDTH - 8))
+	local py = y + 18
+
+	if py + height > screen.Y - 8 then
+		py = math.max(8, y - height - 12)
+	end
+
+	self.DiagnosticPopup.Position = UDim2.fromOffset(math.floor(px), math.floor(py))
+	self.DiagnosticPopup.Visible = true
+end
+
+function CodeEditor:refreshDiagnostics()
+	if not UI.isAlive(self.TextBox) then
+		return
+	end
+
+	local source = self.TextBox.Text
+
+	if not UI.shared().scriptDiagnostics or self.activeDocument == nil or source == "" then
+		self.TextBox:ClearDiagnostics()
+		self:hideDiagnosticPopup()
+
+		return
+	end
+
+	self.diagnosticSerial += 1
+
+	local serial = self.diagnosticSerial
+
+	task.delay(DIAGNOSTIC_DELAY, function()
+		if serial ~= self.diagnosticSerial or not UI.isAlive(self.TextBox) then
+			return
+		end
+
+		local ok, result = pcall(function()
+			return LuauService:Diagnose(source)
+		end)
+
+		if not ok or type(result) ~= "table" or serial ~= self.diagnosticSerial then
+			return
+		end
+
+		if result.Ok then
+			self.TextBox:ClearDiagnostics()
+			self:hideDiagnosticPopup()
+
+			return
+		end
+
+		local line = math.max(1, math.floor(tonumber(result.Line) or 1))
+		local message = tostring(result.Message or "Syntax error")
+		local column, endColumn = diagnosticSpan(source, line, message)
+
+		self.TextBox:SetDiagnostics({
+			{
+				Line = line,
+				Column = column,
+				EndColumn = endColumn,
+				Message = message,
+			},
+		})
+	end)
+end
+
 function CodeEditor:wireEditor()
 	self.TextBox.TextChanged:Connect(function()
 		if self.suppressTextSync then
@@ -2716,6 +2901,8 @@ function CodeEditor:wireEditor()
 
 			self:commitDocument(self.activeDocument)
 		end
+
+		self:refreshDiagnostics()
 
 		if self.applyingSuggestion then
 			self:renderArgumentHint()
@@ -2751,6 +2938,21 @@ function CodeEditor:wireEditor()
 				self:dismissSuggestions()
 			end
 		end)
+	end)
+
+	self.TextBox.MouseMoved:Connect(function(x, y)
+		local absolute = self.TextBox.AbsolutePosition
+		local diagnostic = self.TextBox:DiagnosticAtPoint(x - absolute.X, y - absolute.Y)
+
+		if diagnostic ~= nil and UI.shared().scriptDiagnostics then
+			self:showDiagnosticPopup(diagnostic, x, y)
+		else
+			self:hideDiagnosticPopup()
+		end
+	end)
+
+	self.TextBox.MouseLeave:Connect(function()
+		self:hideDiagnosticPopup()
 	end)
 
 	self.TextBox.KeyDown:Connect(function(input)

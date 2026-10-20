@@ -803,6 +803,10 @@ return function(parent)
 					function(value)
 						state[row.key] = value
 
+						if row.key == "diagnostics" then
+							UI.shared().scriptDiagnostics = value
+						end
+
 						if row.onChanged then
 							row.onChanged(value)
 						end

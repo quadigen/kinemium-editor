@@ -504,6 +504,10 @@ return function(page, windowControls, gui)
 		if config.type == "switch" then
 			UI.switch(parent, UDim2.new(1, -58, 0, rowY + 26), state[config.key], function(value)
 				state[config.key] = value
+
+				if config.key == "scriptDiagnostics" then
+					UI.shared().scriptDiagnostics = value
+				end
 			end, {
 				width = 38,
 				height = 20,
