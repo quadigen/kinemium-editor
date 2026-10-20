@@ -636,7 +636,6 @@ function PackageUpload.open(target)
 		UI.tokens.color.muted
 	)
 	bannerName.TextXAlignment = Enum.TextXAlignment.Left
-	bannerName.TextTruncate = Enum.TextTruncate.AtEnd
 
 	local iconName = UI.label(
 		card,
@@ -647,7 +646,6 @@ function PackageUpload.open(target)
 		UI.tokens.color.muted
 	)
 	iconName.TextXAlignment = Enum.TextXAlignment.Left
-	iconName.TextTruncate = Enum.TextTruncate.AtEnd
 
 	smallButton(card, "Choose banner", UDim2.fromOffset(CARD_PAD, CARD_PAD + BANNER_HEIGHT + 4), UDim2.fromOffset(120, 26), function()
 		chooseImage(bannerImage, bannerPlaceholder, bannerName, "banner")
@@ -703,7 +701,6 @@ function PackageUpload.open(target)
 		UI.tokens.color.muted
 	)
 	sourceLabel.TextXAlignment = Enum.TextXAlignment.Left
-	sourceLabel.TextTruncate = Enum.TextTruncate.AtEnd
 
 	local namespaceLabel = UI.label(
 		content,
@@ -715,7 +712,6 @@ function PackageUpload.open(target)
 		UI.tokens.color.muted
 	)
 	namespaceLabel.TextXAlignment = Enum.TextXAlignment.Left
-	namespaceLabel.TextTruncate = Enum.TextTruncate.AtEnd
 
 	content.CanvasSize = UDim2.fromOffset(0, y + LABEL_HEIGHT * 2 + 20)
 
