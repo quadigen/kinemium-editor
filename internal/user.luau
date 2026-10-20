@@ -1,6 +1,6 @@
 local Auth = require("@internal/auth")
 local UI = require("@internal/editor_ui")
-local Matrix = require("@internal/matrix")
+local MatrixService = game:GetService("MatrixService")
 local http = game:GetService("HttpService")
 
 local colors = UI.tokens.color
@@ -60,13 +60,13 @@ local state = {
 }
 
 local function SetImage(session, image)
-	local ok, profile = Matrix.getProfile(session)
+	local ok, profile = MatrixService:GetProfile(session)
 
 	if not ok or not profile.avatarUrl then
 		return
 	end
 
-	local url = Matrix.mxcToHttp(session.homeserver, profile.avatarUrl, {
+	local url = MatrixService:MxcToHttp(session.homeserver, profile.avatarUrl, {
 		authenticated = true,
 		width = 128,
 		height = 128,
@@ -464,7 +464,7 @@ return function(parent)
 
 		task.spawn(function()
 			if session then
-				Matrix.logout(session)
+				MatrixService:Logout(session)
 			end
 		end)
 	end
@@ -485,18 +485,13 @@ return function(parent)
 			performLogout(session)
 		end)
 
-		local sidebar = UI.card(
-			page,
-			UDim2.fromOffset(INSET, INSET),
-			UDim2.new(0, SIDEBAR_WIDTH, 1, -INSET * 2),
-			{
-				color = colors.panel,
-				radius = tokens.radius.md,
-				border = true,
-				borderColor = colors.border,
-				borderTransparency = 0.35,
-			}
-		)
+		local sidebar = UI.card(page, UDim2.fromOffset(INSET, INSET), UDim2.new(0, SIDEBAR_WIDTH, 1, -INSET * 2), {
+			color = colors.panel,
+			radius = tokens.radius.md,
+			border = true,
+			borderColor = colors.border,
+			borderTransparency = 0.35,
+		})
 
 		local contentPanel = UI.card(
 			page,
@@ -534,15 +529,10 @@ return function(parent)
 
 		optionsLabel.TextXAlignment = Enum.TextXAlignment.Left
 
-		local header = UI.group(
-			contentPanel,
-			UDim2.fromOffset(INSET, INSET),
-			UDim2.new(1, -INSET * 2, 0, 60),
-			{
-				color = colors.surface,
-				radius = tokens.radius.sm,
-			}
-		)
+		local header = UI.group(contentPanel, UDim2.fromOffset(INSET, INSET), UDim2.new(1, -INSET * 2, 0, 60), {
+			color = colors.surface,
+			radius = tokens.radius.sm,
+		})
 
 		UI.stroke(header, colors.border, 1, 0.45)
 
@@ -571,33 +561,29 @@ return function(parent)
 		descriptionLabel.TextXAlignment = Enum.TextXAlignment.Left
 		descriptionLabel.TextWrapped = true
 
-		local scroller = UI.create(
-			"ScrollingFrame",
-			{
-				Name = "SettingsScroller",
-				Position = UDim2.fromOffset(INSET, 76),
-				Size = UDim2.new(1, -INSET * 2, 1, -84),
-				BackgroundTransparency = 1,
-				BorderSizePixel = 0,
-				CanvasPosition = Vector2.new(0, 0),
-				CanvasSize = UDim2.new(0, 0, 0, 0),
-				ScrollingEnabled = true,
-				ScrollSpeed = 38,
-				SmoothScrollingEnabled = true,
-				ScrollSmoothness = 18,
-				ScrollBarThickness = 5,
-				ScrollBarImageColor3 = colors.subtext,
-				ScrollBarImageTransparency = 0.4,
-				ScrollBarAutoHide = true,
-				ScrollBarFadeDelay = 0.45,
-				ScrollBarFadeSpeed = 12,
-				ScrollBarMinimumHandleSize = 24,
-				ClipsDescendants = true,
-				Active = true,
-				InputSink = true,
-			},
-			contentPanel
-		)
+		local scroller = UI.create("ScrollingFrame", {
+			Name = "SettingsScroller",
+			Position = UDim2.fromOffset(INSET, 76),
+			Size = UDim2.new(1, -INSET * 2, 1, -84),
+			BackgroundTransparency = 1,
+			BorderSizePixel = 0,
+			CanvasPosition = Vector2.new(0, 0),
+			CanvasSize = UDim2.new(0, 0, 0, 0),
+			ScrollingEnabled = true,
+			ScrollSpeed = 38,
+			SmoothScrollingEnabled = true,
+			ScrollSmoothness = 18,
+			ScrollBarThickness = 5,
+			ScrollBarImageColor3 = colors.subtext,
+			ScrollBarImageTransparency = 0.4,
+			ScrollBarAutoHide = true,
+			ScrollBarFadeDelay = 0.45,
+			ScrollBarFadeSpeed = 12,
+			ScrollBarMinimumHandleSize = 24,
+			ClipsDescendants = true,
+			Active = true,
+			InputSink = true,
+		}, contentPanel)
 
 		local navItems = {}
 		local selectedCategory = categories[1]
@@ -639,7 +625,8 @@ return function(parent)
 
 		local function rowTitle(card, row, y)
 			local width = UDim2.new(1, -(16 + controlWidth(row) + 24), 0, 18)
-			local position = UDim2.fromOffset(16, row.description and y + 7 or y + math.floor((rowHeight(row) - 18) / 2))
+			local position =
+				UDim2.fromOffset(16, row.description and y + 7 or y + math.floor((rowHeight(row) - 18) / 2))
 
 			local title = UI.label(card, row.title, position, width, tokens.type.body, colors.text)
 
@@ -730,10 +717,7 @@ return function(parent)
 							local position = dropdown.AbsolutePosition
 							local size = dropdown.AbsoluteSize
 
-							return UDim2.fromOffset(
-								math.floor(position.X),
-								math.floor(position.Y + size.Y + 2)
-							)
+							return UDim2.fromOffset(math.floor(position.X), math.floor(position.Y + size.Y + 2))
 						end,
 						onChanged = function(value)
 							state[row.key] = value
@@ -1020,20 +1004,14 @@ return function(parent)
 			math.max(0, math.floor((screenHeight - height) / 2))
 		)
 
-		local panel, content = UI.window(
-			"MatrixSettings",
-			position,
-			UDim2.fromOffset(width, height),
-			"Settings",
-			{
-				closable = true,
-				onClose = function(window)
-					closeDropdowns()
-					window.Visible = false
-					settingsOpen = false
-				end,
-			}
-		)
+		local panel, content = UI.window("MatrixSettings", position, UDim2.fromOffset(width, height), "Settings", {
+			closable = true,
+			onClose = function(window)
+				closeDropdowns()
+				window.Visible = false
+				settingsOpen = false
+			end,
+		})
 
 		panel.Parent = UI.widgetOverlay()
 		panel.Visible = false
@@ -1083,10 +1061,6 @@ return function(parent)
 
 					task.spawn(function()
 						pcall(SetImage, session, image)
-					end)
-
-					task.defer(function()
-						open()
 					end)
 				end,
 			})

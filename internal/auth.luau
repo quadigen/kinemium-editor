@@ -1,5 +1,5 @@
 local UI = require("@internal/editor_ui")
-local Matrix = require("@internal/matrix")
+local MatrixService = game:GetService("MatrixService")
 
 local Auth = {}
 
@@ -126,7 +126,7 @@ local function run(controller, setStatus, work, onSuccess, options)
 			return
 		end
 
-		Matrix.setSession(result)
+		MatrixService:SetSession(result)
 
 		controller:Close("success", result)
 
@@ -156,8 +156,8 @@ function Auth.Login(options)
 				content,
 				1,
 				"Homeserver",
-				Matrix.DEFAULT_HOMESERVER,
-				{ text = options.homeserver or Matrix.DEFAULT_HOMESERVER }
+				MatrixService.DefaultHomeserver,
+				{ text = options.homeserver or MatrixService.DefaultHomeserver }
 			)
 
 			fields.username = fieldRow(content, 2, "Username", "alice", { text = options.username or "" })
@@ -191,7 +191,7 @@ function Auth.Login(options)
 				text = "Log in",
 				role = "primary",
 				callback = function(controller)
-					local username = Matrix.normalizeUsername(fields.username.Text)
+					local username = MatrixService:NormalizeUsername(fields.username.Text)
 					local password = fields.getPassword()
 
 					if username == "" or password == "" then
@@ -202,13 +202,13 @@ function Auth.Login(options)
 					local homeserver = fields.homeserver.Text
 
 					run(controller, setStatus, function()
-						local ok, base = Matrix.resolveHomeserver(homeserver)
+						local ok, base = MatrixService:ResolveHomeserver(homeserver)
 
 						if not ok then
 							return false, base
 						end
 
-						return Matrix.login(base, username, password)
+						return MatrixService:Login(base, username, password)
 					end, function() end, options)
 
 					return false
@@ -248,8 +248,8 @@ function Auth.SignUp(options)
 				content,
 				1,
 				"Homeserver",
-				Matrix.DEFAULT_HOMESERVER,
-				{ text = options.homeserver or Matrix.DEFAULT_HOMESERVER }
+				MatrixService.DefaultHomeserver,
+				{ text = options.homeserver or MatrixService.DefaultHomeserver }
 			)
 
 			fields.username = fieldRow(content, 2, "Username", "alice", { text = options.username or "" })
@@ -287,7 +287,7 @@ function Auth.SignUp(options)
 				text = "Sign up",
 				role = "primary",
 				callback = function(controller)
-					local username = Matrix.normalizeUsername(fields.username.Text)
+					local username = MatrixService:NormalizeUsername(fields.username.Text)
 					local password = fields.getPassword()
 
 					if username == "" then
@@ -314,13 +314,13 @@ function Auth.SignUp(options)
 					local registrationToken = fields.token.Text
 
 					run(controller, setStatus, function()
-						local ok, base = Matrix.resolveHomeserver(homeserver)
+						local ok, base = MatrixService:ResolveHomeserver(homeserver)
 
 						if not ok then
 							return false, base
 						end
 
-						return Matrix.register(base, username, password, { registrationToken = registrationToken })
+						return MatrixService:Register(base, username, password, { registrationToken = registrationToken })
 					end, function() end, options)
 
 					return false
