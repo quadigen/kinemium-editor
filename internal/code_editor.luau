@@ -19,7 +19,7 @@ local TAB_CLOSE_SIZE = 18
 local TAB_FONT = "builtin://fonts/Montserrat-Regular.ttf"
 
 local SUGGEST_WIDTH = 268
-local SUGGEST_ROW_HEIGHT = 22
+local SUGGEST_ROW_HEIGHT = 25
 local SUGGEST_MAX_ROWS = 7
 local SUGGEST_PADDING = 4
 local SUGGEST_ICON_SIZE = 12
@@ -1196,24 +1196,26 @@ function CodeEditor.new(parent)
 		local button, label, record
 
 		if findIcons[id] then
-			button, record = UI.iconButton(find, findIcons[id], UDim2.fromOffset(findX, 4), UDim2.fromOffset(22, 20), callback, {
-				color = tokens.color.panel,
-				hoverColor = tokens.color.hover,
-				radius = tokens.radius.xs,
-				border = false,
-				iconSize = 12,
-			})
+			button, record =
+				UI.iconButton(find, findIcons[id], UDim2.fromOffset(findX, 4), UDim2.fromOffset(22, 20), callback, {
+					color = tokens.color.panel,
+					hoverColor = tokens.color.hover,
+					radius = tokens.radius.xs,
+					border = false,
+					iconSize = 12,
+				})
 		else
-			button, label, record = UI.button(find, findText[id], UDim2.fromOffset(findX, 4), UDim2.fromOffset(22, 20), callback, {
-				color = tokens.color.panel,
-				hoverColor = tokens.color.hover,
-				textColor = tokens.color.muted,
-				textSize = tokens.type.caption,
-				textY = 3,
-				radius = tokens.radius.xs,
-				border = false,
-				paddingX = 3,
-			})
+			button, label, record =
+				UI.button(find, findText[id], UDim2.fromOffset(findX, 4), UDim2.fromOffset(22, 20), callback, {
+					color = tokens.color.panel,
+					hoverColor = tokens.color.hover,
+					textColor = tokens.color.muted,
+					textSize = tokens.type.caption,
+					textY = 3,
+					radius = tokens.radius.xs,
+					border = false,
+					paddingX = 3,
+				})
 		end
 
 		self.findButtons[id] = { gui = button, label = label, record = record, text = findText[id] }
@@ -1653,7 +1655,6 @@ local function resolveInstance(segments, upto, aliases)
 			root = resolveRoot(service)
 
 			if root == nil then
-
 				local ok, resolved = pcall(function()
 					return game:GetService(service)
 				end)
@@ -1935,10 +1936,9 @@ end
 local function collectServiceAliases(source, services)
 	local aliases = {}
 
-	for name, service in string.gmatch(
-		source,
-		"local%s+([%a_][%w_]*)%s*=%s*[%a_][%w_]*[%.:]GetService%s*%(%s*[\"']([^\"']+)[\"']"
-	) do
+	for name, service in
+		string.gmatch(source, "local%s+([%a_][%w_]*)%s*=%s*[%a_][%w_]*[%.:]GetService%s*%(%s*[\"']([^\"']+)[\"']")
+	do
 		aliases[name] = service
 	end
 
@@ -2660,7 +2660,7 @@ function CodeEditor:updateFindCount()
 		index = 1
 	end
 
-	self.findCount.Text = ('%d of %d'):format(index, total)
+	self.findCount.Text = ("%d of %d"):format(index, total)
 end
 
 function CodeEditor:runFind(direction)
@@ -2701,7 +2701,8 @@ function CodeEditor:openFind()
 	end
 
 	local box = self.TextBox
-	local selected = box.Text:sub(math.min(box.SelectionStart, box.SelectionEnd) + 1, math.max(box.SelectionStart, box.SelectionEnd))
+	local selected =
+		box.Text:sub(math.min(box.SelectionStart, box.SelectionEnd) + 1, math.max(box.SelectionStart, box.SelectionEnd))
 
 	if selected ~= "" and not selected:find("\n") then
 		self.findInput.Text = selected
@@ -2725,10 +2726,7 @@ function CodeEditor:placeFindWidget()
 	local camera = workspace.CurrentCamera
 	local screen = camera and camera.ViewportSize or Vector2.new(1280, 720)
 
-	self.Find.Position = UDim2.fromOffset(
-		math.max(8, screen.X - FIND_WIDTH - 16),
-		math.max(8, TAB_STRIP_HEIGHT + 12)
-	)
+	self.Find.Position = UDim2.fromOffset(math.max(8, screen.X - FIND_WIDTH - 16), math.max(8, TAB_STRIP_HEIGHT + 12))
 end
 
 function CodeEditor:closeFind()
@@ -2812,12 +2810,8 @@ function CodeEditor:showDiagnosticPopup(diagnostic, x, y)
 	self.DiagnosticTitle.Text = "Syntax error · line " .. line
 	self.DiagnosticText.Text = message
 
-	local measured = TextService:GetTextSize(
-		message,
-		tokens.type.small,
-		TAB_FONT,
-		Vector2.new(DIAGNOSTIC_WIDTH - 20, 2000)
-	)
+	local measured =
+		TextService:GetTextSize(message, tokens.type.small, TAB_FONT, Vector2.new(DIAGNOSTIC_WIDTH - 20, 2000))
 
 	local height = math.max(54, math.ceil(measured.Y) + 34)
 
