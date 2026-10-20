@@ -7,19 +7,17 @@ local UI = require("@internal/editor_ui")
 local tokens = UI.tokens
 local colors = tokens.color
 
--- Layout constants -----------------------------------------------------------
-
-local PAGE_PADDING = 20 -- space around the scrolling content
-local SECTION_GAP = 14 -- vertical gap between cards
-local CARD_PADDING = 18 -- inner padding of cards
-local CARD_GAP = 10 -- gap between items inside a card
+local PAGE_PADDING = 20
+local SECTION_GAP = 14
+local CARD_PADDING = 18
+local CARD_GAP = 10
 local CARD_RADIUS = 12
 
 local TOPBAR_HEIGHT = 48
 local BANNER_HEIGHT = 150
 local FADE_HEIGHT = 80
 local ICON_SIZE = 88
-local ICON_OVERLAP = 44 -- how far the icon hangs over the banner
+local ICON_OVERLAP = 44
 local IDENTITY_HEIGHT = 64
 local INSTALL_WIDTH = 100
 
@@ -27,13 +25,11 @@ local STAT_HEIGHT = 68
 local ROW_HEIGHT = 32
 local PILL_HEIGHT = 22
 local PILL_PADDING = 10
-local CHAR_WIDTH = 8 -- rough monospace-ish estimate, only used for the LATEST badge offset
+local CHAR_WIDTH = 8
 
 local MAX_TAGS = 6
 local MAX_DEPENDENCIES = 12
 local MAX_VERSIONS = 8
-
--- Helpers --------------------------------------------------------------------
 
 local function firstValue(...)
 	for index = 1, select("#", ...) do
@@ -79,67 +75,10 @@ local function tableList(value)
 	return result
 end
 
--- Dates sometimes arrive wrapped in a table; dig out the first usable number/string.
-local function unwrapTimestamp(value)
-	if type(value) ~= "table" then
-		return value
-	end
-
-	for _, key in ipairs({
-		"UnixTimestampMillis",
-		"UnixTimestamp",
-		"unix",
-		"Unix",
-		"timestamp",
-		"Timestamp",
-		"seconds",
-		"Seconds",
-		"iso",
-		"ISO",
-		"date",
-		"Date",
-		"value",
-		"Value",
-	}) do
-		local inner = value[key]
-
-		if inner ~= nil and type(inner) ~= "table" then
-			return inner
-		end
-	end
-
-	for _, inner in pairs(value) do
-		if type(inner) == "number" or type(inner) == "string" then
-			return inner
-		end
-	end
-
-	return nil
-end
-
--- Converts a unix timestamp to YYYY-MM-DD by hand; os.date isn't reliable in this engine.
-local function dateFromSeconds(seconds)
-	local days = math.floor(seconds / 86400)
-	local z = days + 719468
-	local era = math.floor(z / 146097)
-	local doe = z - era * 146097
-	local yoe = math.floor((doe - math.floor(doe / 1460) + math.floor(doe / 36524) - math.floor(doe / 146096)) / 365)
-	local year = yoe + era * 400
-	local doy = doe - (365 * yoe + math.floor(yoe / 4) - math.floor(yoe / 100))
-	local mp = math.floor((5 * doy + 2) / 153)
-	local day = doy - math.floor((153 * mp + 2) / 5) + 1
-	local month = mp < 10 and mp + 3 or mp - 9
-
-	if month <= 2 then
-		year += 1
-	end
-
-	return string.format("%04d-%02d-%02d", year, month, day)
-end
-
--- Always returns a string.
 local function formatDate(value)
-	value = unwrapTimestamp(value)
+	if type(value) == "userdata" then
+		return DateTime.fromIsoDate(value) or "Unknown"
+	end
 
 	if type(value) == "string" then
 		if value == "" then
@@ -147,7 +86,7 @@ local function formatDate(value)
 		end
 
 		if not value:match("^%d+$") then
-			return string.sub(value, 1, 10) -- ISO-style text
+			return string.sub(value, 1, 10)
 		end
 
 		value = tonumber(value)
@@ -157,18 +96,23 @@ local function formatDate(value)
 		return "Unknown"
 	end
 
-	-- Very large numbers are milliseconds.
-	local seconds = value > 100000000000 and math.floor(value / 1000) or math.floor(value)
+	local ok, dateTime = pcall(function()
+		if value > 100000000000 then
+			return DateTime.fromUnixTimestampMillis(value)
+		end
 
-	return dateFromSeconds(seconds)
+		return DateTime.fromUnixTimestamp(value)
+	end)
+
+	return ok and DateTime.fromIsoDate(dateTime) or "Unknown"
 end
 
--- First candidate that actually looks like a date.
 local function pickDate(...)
 	for index = 1, select("#", ...) do
-		local value = unwrapTimestamp((select(index, ...)))
+		local value = select(index, ...)
+		local kind = type(value)
 
-		if type(value) == "number" or (type(value) == "string" and value ~= "") then
+		if kind == "number" or kind == "userdata" or (kind == "string" and value ~= "") then
 			return value
 		end
 	end
@@ -212,7 +156,6 @@ local function formatSize(bytes)
 	return string.format("%d B", math.floor(bytes))
 end
 
--- Cosmetic-only properties: never let an unsupported one break the page.
 local function trySet(object, property, value)
 	pcall(function()
 		object[property] = value
@@ -225,13 +168,6 @@ local function truncate(label)
 	return label
 end
 
--- options:
---   setImage(imageLabel, url)   loads an image into an ImageLabel
---   fetch(plugin) -> ok, data   fetches full package details (may yield)
---   onOpen(plugin)              called when the page opens
---   onClose()                   called when the page closes (Back)
---   onInstall(plugin, data)     if given, an install button is shown
---   installText                 label for the install button
 return function(parent, options)
 	options = options or {}
 
@@ -251,8 +187,6 @@ return function(parent, options)
 
 	controller.frame = page
 
-	-- Top bar -----------------------------------------------------------------
-
 	local topbar = UI.frame(page, UDim2.fromOffset(0, 0), UDim2.new(1, 0, 0, TOPBAR_HEIGHT), colors.panelRaised, 0)
 
 	topbar.Name = "TopBar"
@@ -262,7 +196,7 @@ return function(parent, options)
 
 	local backButton = UI.button(
 		topbar,
-		"←  Back",
+		"Back",
 		UDim2.fromOffset(PAGE_PADDING, (TOPBAR_HEIGHT - 28) / 2),
 		UDim2.fromOffset(78, 28),
 		function()
@@ -305,8 +239,6 @@ return function(parent, options)
 		crumb.Text = string.upper(text)
 	end
 
-	-- Scrolling body ----------------------------------------------------------
-
 	local scroll = UI.create("ScrollingFrame", {
 		Name = "Scroll",
 		Position = UDim2.fromOffset(0, TOPBAR_HEIGHT),
@@ -323,7 +255,7 @@ return function(parent, options)
 
 	local scrollPadding = UI.create("UIPadding", {
 		PaddingLeft = UDim.new(0, PAGE_PADDING),
-		PaddingRight = UDim.new(0, PAGE_PADDING + 4), -- extra room for the scrollbar
+		PaddingRight = UDim.new(0, PAGE_PADDING + 4),
 		PaddingTop = UDim.new(0, PAGE_PADDING),
 		PaddingBottom = UDim.new(0, PAGE_PADDING),
 	}, scroll)
@@ -335,7 +267,6 @@ return function(parent, options)
 
 	local keep = { [scrollPadding] = true, [scrollLayout] = true }
 
-	-- Every child of the scroll has an explicit height, so the canvas is just their sum.
 	local function syncCanvas()
 		local total, count = 0, 0
 
@@ -351,8 +282,6 @@ return function(parent, options)
 		scroll.CanvasSize = UDim2.fromOffset(0, total + PAGE_PADDING * 2)
 	end
 
-	-- Builders ----------------------------------------------------------------
-
 	local function pill(pillParent, text, order, config)
 		config = config or {}
 
@@ -362,7 +291,6 @@ return function(parent, options)
 			return nil
 		end
 
-		-- Start from an estimate, then snap to the measured text width.
 		local frame = UI.frame(
 			pillParent,
 			UDim2.fromOffset(0, 0),
@@ -408,7 +336,6 @@ return function(parent, options)
 
 	local HEADER_HEIGHT = 16
 
-	-- Card height = padding + header + gap + body. Bodies report their own height.
 	local function setBody(card, bodyHeight)
 		card.Size = UDim2.new(1, 0, 0, CARD_PADDING * 2 + HEADER_HEIGHT + CARD_GAP + bodyHeight)
 
@@ -520,11 +447,8 @@ return function(parent, options)
 	end
 
 	local function roundImage(image, radius)
-		-- ClipsDescendants does not follow rounded corners, so images need their own.
 		UI.create("UICorner", { CornerRadius = UDim.new(0, radius) }, image)
 	end
-
-	-- Rendering ---------------------------------------------------------------
 
 	function controller:Render(plugin, data)
 		UI.clear(scroll, keep)
@@ -564,7 +488,6 @@ return function(parent, options)
 		local iconUrl = firstValue(data.iconUrl, data.icon_url, assets.IconUrl)
 		local bannerUrl = firstValue(data.bannerUrl, data.banner_url, data.thumbnailUrl, assets.ThumbnailUrl)
 
-		-- Only keep well-formed entries so a bad record can't error the whole page.
 		local versions = tableList(data.versions)
 
 		local latest = nil
@@ -587,8 +510,6 @@ return function(parent, options)
 			latest and latest.publishedAt,
 			latest and latest.published_at
 		)
-
-		-- Hero ------------------------------------------------------------------
 
 		local pillsTop = BANNER_HEIGHT + IDENTITY_HEIGHT
 
@@ -718,7 +639,6 @@ return function(parent, options)
 			LinePadding = UDim.new(0, 6),
 		}, pills)
 
-		-- Pills wrap onto extra lines, so the pill row and the hero both follow the layout's height.
 		local function fitHero()
 			local height = math.max(pillsLayout.AbsoluteContentSize.Y, PILL_HEIGHT)
 
@@ -793,8 +713,6 @@ return function(parent, options)
 			initial.ZIndex = 6
 		end
 
-		-- Stats -----------------------------------------------------------------
-
 		local stats = UI.create("Frame", {
 			Name = "Stats",
 			Size = UDim2.new(1, 0, 0, STAT_HEIGHT),
@@ -816,8 +734,6 @@ return function(parent, options)
 			{ label = "UPDATED", value = formatDate(updatedAt) },
 		}
 
-		-- 4 columns with 8px gaps, positioned by hand (no grid layout):
-		-- cell width = W/4 - 6, cell n starts at (n-1) * (W/4 + 2).
 		for index, stat in ipairs(statCards) do
 			local card =
 				UI.card(stats, UDim2.new((index - 1) * 0.25, (index - 1) * 2, 0, 0), UDim2.new(0.25, -6, 1, 0), {
@@ -838,8 +754,6 @@ return function(parent, options)
 
 			truncate(UI.label(card, stat.value, UDim2.fromOffset(14, 32), UDim2.new(1, -28, 0, 24), 17, colors.text))
 		end
-
-		-- About -----------------------------------------------------------------
 
 		local about = section("ABOUT", 3)
 
@@ -868,8 +782,6 @@ return function(parent, options)
 
 		fitDescription()
 
-		-- Details ---------------------------------------------------------------
-
 		local details = section("DETAILS", 4)
 
 		local FIELD_HEIGHT, FIELD_GAP = 40, 12
@@ -895,7 +807,6 @@ return function(parent, options)
 
 		setBody(details, fieldRows * FIELD_HEIGHT + (fieldRows - 1) * FIELD_GAP)
 
-		-- 2 columns with a 20px gutter, positioned by hand.
 		for index, field in ipairs(fields) do
 			local column = (index - 1) % 2
 			local fieldRow = math.floor((index - 1) / 2)
@@ -921,8 +832,6 @@ return function(parent, options)
 				)
 			)
 		end
-
-		-- Dependencies ----------------------------------------------------------
 
 		local depsCard = section("DEPENDENCIES", 5, #dependencies > 0 and tostring(#dependencies) or nil)
 
@@ -962,8 +871,6 @@ return function(parent, options)
 
 			setBody(depsCard, shown * ROW_HEIGHT + (shown - 1) * CARD_GAP + (extra and (CARD_GAP + 18) or 0))
 		end
-
-		-- Versions --------------------------------------------------------------
 
 		local versionsCard = section("VERSIONS", 6, #versions > 0 and tostring(#versions) or nil)
 
@@ -1025,8 +932,6 @@ return function(parent, options)
 		scroll.CanvasPosition = Vector2.new(0, 0)
 	end
 
-	-- Lifecycle ---------------------------------------------------------------
-
 	function controller:IsOpen()
 		return state.open
 	end
@@ -1046,7 +951,6 @@ return function(parent, options)
 
 		page.Visible = true
 
-		-- Show what we already know straight away, then upgrade with the full record.
 		controller:Render(plugin, plugin.Raw)
 
 		if not options.fetch then
@@ -1057,7 +961,6 @@ return function(parent, options)
 
 		local called, ok, data = pcall(options.fetch, plugin)
 
-		-- The user may have gone back or opened something else while we were yielding.
 		if serial ~= state.serial or not state.open then
 			return
 		end
