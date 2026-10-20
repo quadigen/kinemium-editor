@@ -117,30 +117,63 @@ local function unwrapTimestamp(value)
 	return nil
 end
 
+-- Converts a unix timestamp to YYYY-MM-DD by hand; os.date isn't reliable in this engine.
+local function dateFromSeconds(seconds)
+	local days = math.floor(seconds / 86400)
+	local z = days + 719468
+	local era = math.floor(z / 146097)
+	local doe = z - era * 146097
+	local yoe = math.floor((doe - math.floor(doe / 1460) + math.floor(doe / 36524) - math.floor(doe / 146096)) / 365)
+	local year = yoe + era * 400
+	local doy = doe - (365 * yoe + math.floor(yoe / 4) - math.floor(yoe / 100))
+	local mp = math.floor((5 * doy + 2) / 153)
+	local day = doy - math.floor((153 * mp + 2) / 5) + 1
+	local month = mp < 10 and mp + 3 or mp - 9
+
+	if month <= 2 then
+		year += 1
+	end
+
+	return string.format("%04d-%02d-%02d", year, month, day)
+end
+
+-- Always returns a string.
 local function formatDate(value)
 	value = unwrapTimestamp(value)
 
-	if type(value) == "string" and value:match("^%d+$") then
+	if type(value) == "string" then
+		if value == "" then
+			return "Unknown"
+		end
+
+		if not value:match("^%d+$") then
+			return string.sub(value, 1, 10) -- ISO-style text
+		end
+
 		value = tonumber(value)
 	end
 
-	if type(value) == "number" then
-		-- Treat very large numbers as milliseconds.
-		local seconds = value > 100000000000 and math.floor(value / 1000) or value
-		local ok, formatted = pcall(os.date, "%Y-%m-%d", seconds)
-
-		if ok and formatted then
-			return formatted
-		end
-	end
-
-	local text = tostring(value or "")
-
-	if text == "" then
+	if type(value) ~= "number" then
 		return "Unknown"
 	end
 
-	return string.sub(text, 1, 10)
+	-- Very large numbers are milliseconds.
+	local seconds = value > 100000000000 and math.floor(value / 1000) or math.floor(value)
+
+	return dateFromSeconds(seconds)
+end
+
+-- First candidate that actually looks like a date.
+local function pickDate(...)
+	for index = 1, select("#", ...) do
+		local value = unwrapTimestamp((select(index, ...)))
+
+		if type(value) == "number" or (type(value) == "string" and value ~= "") then
+			return value
+		end
+	end
+
+	return nil
 end
 
 local function formatCount(value)
@@ -190,17 +223,6 @@ local function truncate(label)
 	trySet(label, "TextTruncate", Enum.TextTruncate.AtEnd)
 
 	return label
-end
-
--- This UI layer's list layouts don't pick up AutomaticSize results, so anything that
--- grows with its content gets an explicit height driven by its layout instead.
-local function bindHeight(frame, layout, extra)
-	local function update()
-		frame.Size = UDim2.new(frame.Size.X.Scale, frame.Size.X.Offset, 0, layout.AbsoluteContentSize.Y + extra)
-	end
-
-	layout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(update)
-	update()
 end
 
 -- options:
@@ -313,11 +335,21 @@ return function(parent, options)
 
 	local keep = { [scrollPadding] = true, [scrollLayout] = true }
 
+	-- Every child of the scroll has an explicit height, so the canvas is just their sum.
 	local function syncCanvas()
-		scroll.CanvasSize = UDim2.fromOffset(0, scrollLayout.AbsoluteContentSize.Y + PAGE_PADDING * 2)
-	end
+		local total, count = 0, 0
 
-	scrollLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(syncCanvas)
+		for _, child in ipairs(scroll:GetChildren()) do
+			if child:IsA("GuiObject") then
+				total += child.Size.Y.Offset
+				count += 1
+			end
+		end
+
+		total += math.max(count - 1, 0) * SECTION_GAP
+
+		scroll.CanvasSize = UDim2.fromOffset(0, total + PAGE_PADDING * 2)
+	end
 
 	-- Builders ----------------------------------------------------------------
 
@@ -374,8 +406,17 @@ return function(parent, options)
 		return frame
 	end
 
+	local HEADER_HEIGHT = 16
+
+	-- Card height = padding + header + gap + body. Bodies report their own height.
+	local function setBody(card, bodyHeight)
+		card.Size = UDim2.new(1, 0, 0, CARD_PADDING * 2 + HEADER_HEIGHT + CARD_GAP + bodyHeight)
+
+		syncCanvas()
+	end
+
 	local function section(title, order, rightText)
-		local card = UI.card(scroll, UDim2.fromOffset(0, 0), UDim2.new(1, 0, 0, 60), {
+		local card = UI.card(scroll, UDim2.fromOffset(0, 0), UDim2.new(1, 0, 0, 0), {
 			color = colors.surface,
 			radius = CARD_RADIUS,
 		})
@@ -390,16 +431,16 @@ return function(parent, options)
 			PaddingBottom = UDim.new(0, CARD_PADDING),
 		}, card)
 
-		local cardLayout = UI.create("UIListLayout", {
+		UI.create("UIListLayout", {
 			SortOrder = Enum.SortOrder.LayoutOrder,
 			Padding = UDim.new(0, CARD_GAP),
 		}, card)
 
-		bindHeight(card, cardLayout, CARD_PADDING * 2)
+		setBody(card, 20)
 
 		local header = UI.create("Frame", {
 			Name = "Header",
-			Size = UDim2.new(1, 0, 0, 16),
+			Size = UDim2.new(1, 0, 0, HEADER_HEIGHT),
 			BackgroundTransparency = 1,
 			BorderSizePixel = 0,
 			LayoutOrder = 0,
@@ -537,15 +578,14 @@ return function(parent, options)
 
 		local dependencies = latest and tableList(latest.dependencies) or {}
 
-		local updatedAt = firstValue(
+		local updatedAt = pickDate(
 			data.updatedAt,
 			data.updated_at,
 			data.publishedAt,
 			data.published_at,
 			plugin.UpdatedAt,
 			latest and latest.publishedAt,
-			latest and latest.published_at,
-			""
+			latest and latest.published_at
 		)
 
 		-- Hero ------------------------------------------------------------------
@@ -684,6 +724,8 @@ return function(parent, options)
 
 			pills.Size = UDim2.new(1, -CARD_PADDING * 2, 0, height)
 			hero.Size = UDim2.new(1, 0, 0, pillsTop + height + CARD_PADDING)
+
+			syncCanvas()
 		end
 
 		pillsLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(fitHero)
@@ -813,7 +855,10 @@ return function(parent, options)
 			local height = descriptionLabel.TextBounds.Y
 
 			if height and height > 0 then
-				descriptionLabel.Size = UDim2.new(1, 0, 0, math.ceil(height) + 2)
+				local bodyHeight = math.ceil(height) + 2
+
+				descriptionLabel.Size = UDim2.new(1, 0, 0, bodyHeight)
+				setBody(about, bodyHeight)
 			end
 		end
 
@@ -848,6 +893,8 @@ return function(parent, options)
 			LayoutOrder = 1,
 		}, details)
 
+		setBody(details, fieldRows * FIELD_HEIGHT + (fieldRows - 1) * FIELD_GAP)
+
 		-- 2 columns with a 20px gutter, positioned by hand.
 		for index, field in ipairs(fields) do
 			local column = (index - 1) % 2
@@ -881,6 +928,7 @@ return function(parent, options)
 
 		if #dependencies == 0 then
 			emptyNote(depsCard, "No dependencies.")
+			setBody(depsCard, 18)
 		else
 			local shown = math.min(#dependencies, MAX_DEPENDENCIES)
 
@@ -906,9 +954,13 @@ return function(parent, options)
 				rightLabel(item, constraint, 110, 12, ROW_HEIGHT, tokens.type.caption, colors.subtext)
 			end
 
-			if #dependencies > shown then
+			local extra = #dependencies > shown
+
+			if extra then
 				overflowNote(depsCard, string.format("+ %d more", #dependencies - shown), shown + 1)
 			end
+
+			setBody(depsCard, shown * ROW_HEIGHT + (shown - 1) * CARD_GAP + (extra and (CARD_GAP + 18) or 0))
 		end
 
 		-- Versions --------------------------------------------------------------
@@ -917,6 +969,7 @@ return function(parent, options)
 
 		if #versions == 0 then
 			emptyNote(versionsCard, "No published versions.")
+			setBody(versionsCard, 18)
 		else
 			local shown = math.min(#versions, MAX_VERSIONS)
 
@@ -926,7 +979,7 @@ return function(parent, options)
 				local versionText = "v" .. tostring(item.version or item.Version or "?")
 				local dateText = formatDate(item.publishedAt or item.published_at)
 				local sizeText = formatSize(item.size)
-				local meta = dateText .. (sizeText ~= "" and ("   " .. sizeText) or "")
+				local meta = tostring(dateText) .. (sizeText ~= "" and ("   " .. tostring(sizeText)) or "")
 
 				local line = row(versionsCard, index, ROW_HEIGHT)
 				local versionWidth = #versionText * CHAR_WIDTH + 4
@@ -959,9 +1012,13 @@ return function(parent, options)
 				rightLabel(line, meta, 190, rightOffset, ROW_HEIGHT, tokens.type.caption, colors.subtext)
 			end
 
-			if #versions > shown then
+			local extra = #versions > shown
+
+			if extra then
 				overflowNote(versionsCard, string.format("+ %d older versions", #versions - shown), shown + 1)
 			end
+
+			setBody(versionsCard, shown * ROW_HEIGHT + (shown - 1) * CARD_GAP + (extra and (CARD_GAP + 18) or 0))
 		end
 
 		syncCanvas()
