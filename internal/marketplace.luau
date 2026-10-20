@@ -8,6 +8,7 @@ local MatrixService = game:GetService("MatrixService")
 local HttpService = game:GetService("HttpService")
 local tokens = UI.tokens
 local marketplaceLayoutMode = "List"
+local PackageDetails = require("@internal/package_details")
 
 return function(page, windowControls, gui)
 	local BUTTON_SIZE = 28
@@ -459,8 +460,6 @@ return function(page, windowControls, gui)
 			child:Destroy()
 		end
 	end
-
-	local PackageDetails = require("@internal/package_details")
 
 	local details = PackageDetails(marketplacePage, {
 		setImage = setCardImage,
