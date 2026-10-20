@@ -1088,6 +1088,7 @@ return function(parent)
 
 		local messenger, content, _, windowControls =
 			UI.window("Explorer", UDim2.new(0.5, 0, 0.5, 0), UDim2.new(0.5, 0, 0.5, 0), "Explorer")
+		messenger.Parent = UI.widgetOverlay()
 
 		Messaging(content, windowControls)
 		SetImage(session, image)
