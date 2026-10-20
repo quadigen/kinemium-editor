@@ -849,6 +849,7 @@ return function(parent, options)
 				local versionText = "v" .. tostring(item.version or item.Version or "?")
 				local dateText = formatDate(item.publishedAt or item.published_at)
 				local sizeText = formatSize(item.size)
+				print(item)
 				local meta = dateText .. (sizeText ~= "" and ("   " .. sizeText) or "")
 
 				local line = row(versionsCard, index, ROW_HEIGHT)
