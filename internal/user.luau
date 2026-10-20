@@ -455,7 +455,7 @@ return function(parent)
 		shared.CurrentSession = nil
 		settingsOpen = false
 
-		image.Image = "assets/icons/Play.svg"
+		image.Image = "builtin://icons/Play.svg"
 
 		if tooltip then
 			tooltip:SetText("Not logged in")
@@ -1083,6 +1083,7 @@ return function(parent)
 	})
 
 	if session then
+		print(session, image)
 		SetImage(session, image)
 		print("Setting image")
 	end
