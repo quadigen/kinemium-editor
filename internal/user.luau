@@ -1083,14 +1083,13 @@ return function(parent)
 		hoverDelay = 0.35,
 	})
 
-	local messenger, content, _, windowControls =
-		UI.window("Explorer", UDim2.new(0.5, 0, 0.5, 0), UDim2.new(0.5, 0, 0.5, 0), "Explorer", )
-
-	Messaging(content)
-
 	if session then
 		print(session, image)
 
+		local messenger, content, _, windowControls =
+			UI.window("Explorer", UDim2.new(0.5, 0, 0.5, 0), UDim2.new(0.5, 0, 0.5, 0), "Explorer")
+
+		Messaging(content, windowControls)
 		SetImage(session, image)
 		print("Setting image")
 	end
