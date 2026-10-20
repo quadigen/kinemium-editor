@@ -847,9 +847,8 @@ return function(parent, options)
 				local item = versions[index]
 				local yanked = item.yanked == true
 				local versionText = "v" .. tostring(item.version or item.Version or "?")
-				local dateText = formatDate(item.publishedAt or item.published_at)
-				local sizeText = formatSize(item.size)
-				print(item)
+				local dateText = tostring(item.publishedAt)
+				local sizeText = tostring(item.size)
 				local meta = dateText .. (sizeText ~= "" and ("   " .. sizeText) or "")
 
 				local line = row(versionsCard, index, ROW_HEIGHT)
