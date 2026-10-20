@@ -7,12 +7,38 @@ local UI = require("@internal/editor_ui")
 local tokens = UI.tokens
 local colors = tokens.color
 
+-- Layout constants -----------------------------------------------------------
+
+local PAGE_PADDING = 20 -- space around the scrolling content
+local SECTION_GAP = 14 -- vertical gap between cards
+local CARD_PADDING = 18 -- inner padding of cards
+local CARD_GAP = 10 -- gap between items inside a card
+local CARD_RADIUS = 12
+
+local TOPBAR_HEIGHT = 48
 local BANNER_HEIGHT = 150
 local FADE_HEIGHT = 80
 local ICON_SIZE = 88
+local ICON_OVERLAP = 44 -- how far the icon hangs over the banner
+local IDENTITY_HEIGHT = 64
+local INSTALL_WIDTH = 100
+
+local STAT_HEIGHT = 68
+local ROW_HEIGHT = 32
+local PILL_HEIGHT = 22
+local PILL_PADDING = 10
+local CHAR_WIDTH = 8 -- rough monospace-ish estimate, only used for the LATEST badge offset
+
+local MAX_TAGS = 6
+local MAX_DEPENDENCIES = 12
+local MAX_VERSIONS = 8
+
+-- Helpers --------------------------------------------------------------------
 
 local function firstValue(...)
-	for _, value in ipairs({ ... }) do
+	for index = 1, select("#", ...) do
+		local value = select(index, ...)
+
 		if value ~= nil and value ~= "" then
 			return value
 		end
@@ -29,7 +55,23 @@ local function stringList(value)
 	end
 
 	for _, entry in ipairs(value) do
-		if type(entry) == "string" then
+		if type(entry) == "string" and entry ~= "" then
+			table.insert(result, entry)
+		end
+	end
+
+	return result
+end
+
+local function tableList(value)
+	local result = {}
+
+	if type(value) ~= "table" then
+		return result
+	end
+
+	for _, entry in ipairs(value) do
+		if type(entry) == "table" then
 			table.insert(result, entry)
 		end
 	end
@@ -39,6 +81,7 @@ end
 
 local function formatDate(value)
 	if type(value) == "number" then
+		-- Treat very large numbers as milliseconds.
 		local seconds = value > 100000000000 and math.floor(value / 1000) or value
 		local ok, formatted = pcall(os.date, "%Y-%m-%d", seconds)
 
@@ -50,7 +93,7 @@ local function formatDate(value)
 	local text = tostring(value or "")
 
 	if text == "" then
-		return "unknown"
+		return "Unknown"
 	end
 
 	return string.sub(text, 1, 10)
@@ -64,9 +107,16 @@ local function formatCount(value)
 	end
 
 	local text = tostring(math.floor(number))
-	local formatted = text:reverse():gsub("(%d%d%d)", "%1,"):reverse()
+	local sign, digits = text:match("^(-?)(%d+)$")
 
-	return (formatted:gsub("^,", ""))
+	if not digits then
+		return text
+	end
+
+	digits = digits:reverse():gsub("(%d%d%d)", "%1,"):reverse()
+	digits = digits:gsub("^,", "")
+
+	return sign .. digits
 end
 
 local function formatSize(bytes)
@@ -78,7 +128,24 @@ local function formatSize(bytes)
 		return string.format("%.1f MB", bytes / (1024 * 1024))
 	end
 
-	return string.format("%.1f KB", bytes / 1024)
+	if bytes >= 1024 then
+		return string.format("%.1f KB", bytes / 1024)
+	end
+
+	return string.format("%d B", math.floor(bytes))
+end
+
+-- Cosmetic-only properties: never let an unsupported one break the page.
+local function trySet(object, property, value)
+	pcall(function()
+		object[property] = value
+	end)
+end
+
+local function truncate(label)
+	trySet(label, "TextTruncate", Enum.TextTruncate.AtEnd)
+
+	return label
 end
 
 -- options:
@@ -109,46 +176,64 @@ return function(parent, options)
 
 	-- Top bar -----------------------------------------------------------------
 
-	local MARGIN = tokens.space.lg
-	local TOPBAR = 44
-
-	local topbar = UI.frame(page, UDim2.fromOffset(0, 0), UDim2.new(1, 0, 0, TOPBAR), colors.panelRaised, 0)
+	local topbar = UI.frame(page, UDim2.fromOffset(0, 0), UDim2.new(1, 0, 0, TOPBAR_HEIGHT), colors.panelRaised, 0)
 
 	topbar.Name = "TopBar"
+	topbar.ZIndex = 10
 
 	UI.separator(topbar, UDim2.new(0, 0, 1, -1), UDim2.new(1, 0, 0, 1), colors.border)
 
-	local backButton = UI.button(topbar, "Back", UDim2.fromOffset(MARGIN, 8), UDim2.fromOffset(78, 28), function()
-		controller:Close()
-	end, {
-		color = colors.surface,
-		hoverColor = colors.hover,
-		pressedColor = colors.pressed,
-		textColor = colors.text,
-		icon = "builtin://global-icons/chevron-down.svg",
-		iconSize = 12,
-		radius = tokens.radius.md,
-	})
+	local backButton = UI.button(
+		topbar,
+		"←  Back",
+		UDim2.fromOffset(PAGE_PADDING, (TOPBAR_HEIGHT - 28) / 2),
+		UDim2.fromOffset(78, 28),
+		function()
+			controller:Close()
+		end,
+		{
+			color = colors.surface,
+			hoverColor = colors.hover,
+			pressedColor = colors.pressed,
+			textColor = colors.text,
+			radius = tokens.radius.md,
+			textY = 0,
+		}
+	)
 
 	backButton.Name = "Back"
+
+	local crumbX = PAGE_PADDING + 78 + 14
 
 	local crumb = UI.label(
 		topbar,
 		"MARKETPLACE",
-		UDim2.fromOffset(MARGIN + 90, 0),
-		UDim2.new(1, -(MARGIN * 2 + 90), 1, 0),
+		UDim2.fromOffset(crumbX, 0),
+		UDim2.new(1, -(crumbX + PAGE_PADDING), 1, 0),
 		tokens.type.caption,
 		colors.subtext
 	)
 
 	crumb.Name = "Breadcrumb"
+	truncate(crumb)
+
+	local function setCrumb(plugin, suffix)
+		local slug = tostring(plugin.Slug or (plugin.Manifest and plugin.Manifest.Name) or "")
+		local text = "MARKETPLACE   /   " .. slug
+
+		if suffix then
+			text ..= "   ·   " .. suffix
+		end
+
+		crumb.Text = string.upper(text)
+	end
 
 	-- Scrolling body ----------------------------------------------------------
 
 	local scroll = UI.create("ScrollingFrame", {
 		Name = "Scroll",
-		Position = UDim2.fromOffset(0, TOPBAR),
-		Size = UDim2.new(1, 0, 1, -TOPBAR),
+		Position = UDim2.fromOffset(0, TOPBAR_HEIGHT),
+		Size = UDim2.new(1, 0, 1, -TOPBAR_HEIGHT),
 		BackgroundTransparency = 1,
 		BorderSizePixel = 0,
 		ScrollBarThickness = 6,
@@ -160,21 +245,21 @@ return function(parent, options)
 	}, page)
 
 	local scrollPadding = UI.create("UIPadding", {
-		PaddingLeft = UDim.new(0, MARGIN),
-		PaddingRight = UDim.new(0, MARGIN + 4),
-		PaddingTop = UDim.new(0, MARGIN),
-		PaddingBottom = UDim.new(0, MARGIN),
+		PaddingLeft = UDim.new(0, PAGE_PADDING),
+		PaddingRight = UDim.new(0, PAGE_PADDING + 4), -- extra room for the scrollbar
+		PaddingTop = UDim.new(0, PAGE_PADDING),
+		PaddingBottom = UDim.new(0, PAGE_PADDING),
 	}, scroll)
 
 	local scrollLayout = UI.create("UIListLayout", {
 		SortOrder = Enum.SortOrder.LayoutOrder,
-		Padding = UDim.new(0, 12),
+		Padding = UDim.new(0, SECTION_GAP),
 	}, scroll)
 
 	local keep = { [scrollPadding] = true, [scrollLayout] = true }
 
 	local function syncCanvas()
-		scroll.CanvasSize = UDim2.fromOffset(0, scrollLayout.AbsoluteContentSize.Y + MARGIN * 2)
+		scroll.CanvasSize = UDim2.fromOffset(0, scrollLayout.AbsoluteContentSize.Y + PAGE_PADDING * 2)
 	end
 
 	scrollLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(syncCanvas)
@@ -190,31 +275,39 @@ return function(parent, options)
 			return nil
 		end
 
-		local width = math.max(config.minWidth or 44, #label * 7 + 18)
+		-- The pill sizes itself to its text so long tags never clip.
 		local frame = UI.frame(
 			pillParent,
 			UDim2.fromOffset(0, 0),
-			UDim2.fromOffset(width, 22),
+			UDim2.fromOffset(0, PILL_HEIGHT),
 			config.color or colors.surfaceAlt,
 			7
 		)
 
 		frame.LayoutOrder = order
+		frame.AutomaticSize = Enum.AutomaticSize.X
+
+		UI.create("UIPadding", {
+			PaddingLeft = UDim.new(0, PILL_PADDING),
+			PaddingRight = UDim.new(0, PILL_PADDING),
+		}, frame)
 
 		if config.stroke then
 			UI.stroke(frame, config.stroke, 1, 0.3)
 		end
 
-		local text = UI.label(
+		local textLabel = UI.label(
 			frame,
 			label,
 			UDim2.fromOffset(0, 0),
-			UDim2.fromScale(1, 1),
+			UDim2.fromOffset(0, PILL_HEIGHT),
 			tokens.type.caption,
 			config.textColor or colors.text
 		)
 
-		text.TextXAlignment = Enum.TextXAlignment.Center
+		textLabel.TextWrapped = false
+		textLabel.AutomaticSize = Enum.AutomaticSize.X
+		textLabel.TextXAlignment = Enum.TextXAlignment.Center
 
 		return frame
 	end
@@ -222,7 +315,7 @@ return function(parent, options)
 	local function section(title, order, rightText)
 		local card = UI.card(scroll, UDim2.fromOffset(0, 0), UDim2.new(1, 0, 0, 0), {
 			color = colors.surface,
-			radius = 12,
+			radius = CARD_RADIUS,
 		})
 
 		card.Name = title
@@ -230,15 +323,15 @@ return function(parent, options)
 		card.AutomaticSize = Enum.AutomaticSize.Y
 
 		UI.create("UIPadding", {
-			PaddingLeft = UDim.new(0, 16),
-			PaddingRight = UDim.new(0, 16),
-			PaddingTop = UDim.new(0, 14),
-			PaddingBottom = UDim.new(0, 14),
+			PaddingLeft = UDim.new(0, CARD_PADDING),
+			PaddingRight = UDim.new(0, CARD_PADDING),
+			PaddingTop = UDim.new(0, CARD_PADDING),
+			PaddingBottom = UDim.new(0, CARD_PADDING),
 		}, card)
 
 		UI.create("UIListLayout", {
 			SortOrder = Enum.SortOrder.LayoutOrder,
-			Padding = UDim.new(0, 8),
+			Padding = UDim.new(0, CARD_GAP),
 		}, card)
 
 		local header = UI.create("Frame", {
@@ -249,11 +342,17 @@ return function(parent, options)
 			LayoutOrder = 0,
 		}, card)
 
-		UI.label(header, title, UDim2.fromOffset(0, 0), UDim2.new(0.6, 0, 1, 0), 10, colors.muted)
+		UI.label(header, title, UDim2.fromOffset(0, 0), UDim2.new(0.6, 0, 1, 0), tokens.type.caption, colors.muted)
 
 		if rightText and rightText ~= "" then
-			local right =
-				UI.label(header, rightText, UDim2.new(0.6, 0, 0, 0), UDim2.new(0.4, 0, 1, 0), 10, colors.muted)
+			local right = UI.label(
+				header,
+				rightText,
+				UDim2.new(0.6, 0, 0, 0),
+				UDim2.new(0.4, 0, 1, 0),
+				tokens.type.caption,
+				colors.muted
+			)
 
 			right.TextXAlignment = Enum.TextXAlignment.Right
 		end
@@ -262,7 +361,7 @@ return function(parent, options)
 	end
 
 	local function row(rowParent, order, height)
-		local frame = UI.frame(rowParent, UDim2.fromOffset(0, 0), UDim2.new(1, 0, 0, height), colors.surfaceAlt, 6)
+		local frame = UI.frame(rowParent, UDim2.fromOffset(0, 0), UDim2.new(1, 0, 0, height), colors.surfaceAlt, 8)
 
 		frame.BackgroundTransparency = 0.55
 		frame.LayoutOrder = order
@@ -285,13 +384,40 @@ return function(parent, options)
 		return label
 	end
 
-	local function overflowNote(parent, text, order)
-		local label = UI.label(parent, text, UDim2.fromOffset(0, 0), UDim2.new(1, 0, 0, 16), 11, colors.muted)
+	local function emptyNote(noteParent, text)
+		local label = UI.label(
+			noteParent,
+			text,
+			UDim2.fromOffset(0, 0),
+			UDim2.new(1, 0, 0, 18),
+			tokens.type.small,
+			colors.subtext
+		)
+
+		label.LayoutOrder = 1
+
+		return label
+	end
+
+	local function overflowNote(noteParent, text, order)
+		local label = UI.label(
+			noteParent,
+			text,
+			UDim2.fromOffset(0, 0),
+			UDim2.new(1, 0, 0, 18),
+			tokens.type.caption,
+			colors.muted
+		)
 
 		label.LayoutOrder = order
 		label.TextXAlignment = Enum.TextXAlignment.Center
 
 		return label
+	end
+
+	local function roundImage(image, radius)
+		-- ClipsDescendants does not follow rounded corners, so images need their own.
+		UI.create("UICorner", { CornerRadius = UDim.new(0, radius) }, image)
 	end
 
 	-- Rendering ---------------------------------------------------------------
@@ -335,18 +461,20 @@ return function(parent, options)
 		local ratingCount = type(rating) == "table" and tonumber(rating.count or rating.Count) or 0
 		local iconUrl = firstValue(data.iconUrl, data.icon_url, assets.IconUrl)
 		local bannerUrl = firstValue(data.bannerUrl, data.banner_url, data.thumbnailUrl, assets.ThumbnailUrl)
-		local versions = type(data.versions) == "table" and data.versions or {}
+
+		-- Only keep well-formed entries so a bad record can't error the whole page.
+		local versions = tableList(data.versions)
 
 		local latest = nil
 
 		for _, item in ipairs(versions) do
-			if type(item) == "table" and not item.yanked then
+			if not item.yanked then
 				latest = item
 				break
 			end
 		end
 
-		local dependencies = latest and type(latest.dependencies) == "table" and latest.dependencies or {}
+		local dependencies = latest and tableList(latest.dependencies) or {}
 
 		-- Hero ------------------------------------------------------------------
 
@@ -381,6 +509,8 @@ return function(parent, options)
 		bannerImage.ScaleType = Enum.ScaleType.Crop
 		bannerImage.ZIndex = 1
 
+		roundImage(bannerImage, 14)
+
 		if bannerUrl and bannerUrl ~= "" then
 			if options.setImage then
 				options.setImage(bannerImage, bannerUrl)
@@ -411,43 +541,46 @@ return function(parent, options)
 
 		local identity = UI.create("Frame", {
 			Name = "Identity",
-			Size = UDim2.new(1, 0, 0, 60),
+			Size = UDim2.new(1, 0, 0, IDENTITY_HEIGHT),
 			BackgroundTransparency = 1,
 			BorderSizePixel = 0,
 			LayoutOrder = 2,
 		}, stack)
 
-		local actionWidth = options.onInstall and 108 or 0
-		local textX = 16 + ICON_SIZE + 14
+		local actionWidth = options.onInstall and (INSTALL_WIDTH + CARD_PADDING) or 0
+		local textX = CARD_PADDING + ICON_SIZE + 16
+		local textRight = textX + CARD_PADDING + actionWidth
 
 		local title = UI.label(
 			identity,
 			tostring(name),
-			UDim2.fromOffset(textX, 6),
-			UDim2.new(1, -(textX + 16 + actionWidth), 0, 28),
+			UDim2.fromOffset(textX, 8),
+			UDim2.new(1, -textRight, 0, 28),
 			22,
 			colors.text
 		)
 
 		title.Name = "Title"
+		truncate(title)
 
 		local author = UI.label(
 			identity,
 			"by " .. tostring(namespace),
-			UDim2.fromOffset(textX, 36),
-			UDim2.new(1, -(textX + 16 + actionWidth), 0, 18),
+			UDim2.fromOffset(textX, 38),
+			UDim2.new(1, -textRight, 0, 18),
 			13,
 			colors.accent
 		)
 
 		author.Name = "Author"
+		truncate(author)
 
 		if options.onInstall then
 			local _, installLabel = UI.button(
 				identity,
 				options.installText or "Install",
-				UDim2.new(1, -(actionWidth + 8), 0, 10),
-				UDim2.fromOffset(actionWidth - 8, 32),
+				UDim2.new(1, -(INSTALL_WIDTH + CARD_PADDING), 0, 12),
+				UDim2.fromOffset(INSTALL_WIDTH, 34),
 				function()
 					options.onInstall(plugin, data)
 				end,
@@ -476,9 +609,9 @@ return function(parent, options)
 		}, stack)
 
 		UI.create("UIPadding", {
-			PaddingLeft = UDim.new(0, 16),
-			PaddingRight = UDim.new(0, 16),
-			PaddingBottom = UDim.new(0, 16),
+			PaddingLeft = UDim.new(0, CARD_PADDING),
+			PaddingRight = UDim.new(0, CARD_PADDING),
+			PaddingBottom = UDim.new(0, CARD_PADDING),
 		}, pills)
 
 		UI.create("UIListLayout", {
@@ -498,23 +631,22 @@ return function(parent, options)
 		end
 
 		addPill(string.upper(tostring(itemType)), { color = colors.accent, textColor = colors.text })
-		addPill("v" .. tostring(version), { minWidth = 44 })
+		addPill("v" .. tostring(version))
 		addPill(string.upper(tostring(reviewStatus)), {
-			minWidth = 62,
 			textColor = approved and colors.success or colors.warning,
 		})
 
 		for index, tag in ipairs(tags) do
-			if index > 6 then
+			if index > MAX_TAGS then
 				break
 			end
 
-			addPill(tostring(tag), { color = colors.surface, stroke = colors.border, textColor = colors.subtext })
+			addPill(tag, { color = colors.surface, stroke = colors.border, textColor = colors.subtext })
 		end
 
 		local iconFrame = UI.frame(
 			hero,
-			UDim2.fromOffset(16, BANNER_HEIGHT - 44),
+			UDim2.fromOffset(CARD_PADDING, BANNER_HEIGHT - ICON_OVERLAP),
 			UDim2.fromOffset(ICON_SIZE, ICON_SIZE),
 			colors.surfaceAlt,
 			16
@@ -530,6 +662,8 @@ return function(parent, options)
 
 		iconImage.ScaleType = Enum.ScaleType.Fit
 		iconImage.ZIndex = 6
+
+		roundImage(iconImage, 16)
 
 		if iconUrl and iconUrl ~= "" then
 			if options.setImage then
@@ -553,40 +687,51 @@ return function(parent, options)
 
 		local stats = UI.create("Frame", {
 			Name = "Stats",
-			Size = UDim2.new(1, 0, 0, 64),
+			Size = UDim2.new(1, 0, 0, STAT_HEIGHT),
 			BackgroundTransparency = 1,
 			BorderSizePixel = 0,
 			LayoutOrder = 2,
 		}, scroll)
 
+		-- 4 cells + 3 gaps of 10px: each cell is a quarter of the width minus its share of the gaps.
 		UI.create("UIGridLayout", {
-			CellSize = UDim2.new(0.25, -6, 0, 64),
-			CellPadding = UDim2.fromOffset(8, 8),
+			CellSize = UDim2.new(0.25, -8, 0, STAT_HEIGHT),
+			CellPadding = UDim2.fromOffset(10, 10),
 			SortOrder = Enum.SortOrder.LayoutOrder,
 		}, stats)
 
+		local ratingText = "No ratings"
+
+		if ratingAverage then
+			ratingText = string.format("%.1f  (%d)", ratingAverage, math.floor(ratingCount or 0))
+		end
+
 		local statCards = {
 			{ label = "DOWNLOADS", value = formatCount(downloads) },
-			{
-				label = "RATING",
-				value = ratingAverage and string.format("%.1f  (%d)", ratingAverage, ratingCount) or "No ratings",
-			},
+			{ label = "RATING", value = ratingText },
 			{ label = "VERSION", value = "v" .. tostring(version) },
 			{ label = "UPDATED", value = formatDate(updatedAt) },
 		}
 
 		for index, stat in ipairs(statCards) do
-			local card = UI.card(stats, UDim2.fromOffset(0, 0), UDim2.fromOffset(100, 64), {
+			local card = UI.card(stats, UDim2.fromOffset(0, 0), UDim2.fromOffset(100, STAT_HEIGHT), {
 				color = colors.surface,
-				radius = 12,
+				radius = CARD_RADIUS,
 			})
 
+			card.Name = stat.label
 			card.LayoutOrder = index
 
-			UI.label(card, stat.label, UDim2.fromOffset(14, 11), UDim2.new(1, -28, 0, 14), 10, colors.muted)
+			UI.label(
+				card,
+				stat.label,
+				UDim2.fromOffset(14, 12),
+				UDim2.new(1, -28, 0, 14),
+				tokens.type.caption,
+				colors.muted
+			)
 
-			local value =
-				UI.label(card, stat.value, UDim2.fromOffset(14, 29), UDim2.new(1, -28, 0, 24), 17, colors.text)
+			truncate(UI.label(card, stat.value, UDim2.fromOffset(14, 32), UDim2.new(1, -28, 0, 24), 17, colors.text))
 		end
 
 		-- About -----------------------------------------------------------------
@@ -600,6 +745,7 @@ return function(parent, options)
 		descriptionLabel.TextWrapped = true
 		descriptionLabel.AutomaticSize = Enum.AutomaticSize.Y
 		descriptionLabel.TextYAlignment = Enum.TextYAlignment.Top
+		trySet(descriptionLabel, "LineHeight", 1.2)
 
 		-- Details ---------------------------------------------------------------
 
@@ -614,9 +760,10 @@ return function(parent, options)
 			LayoutOrder = 1,
 		}, details)
 
+		-- 2 columns with a 20px gutter.
 		UI.create("UIGridLayout", {
-			CellSize = UDim2.new(0.5, -8, 0, 36),
-			CellPadding = UDim2.fromOffset(16, 8),
+			CellSize = UDim2.new(0.5, -10, 0, 40),
+			CellPadding = UDim2.fromOffset(20, 12),
 			SortOrder = Enum.SortOrder.LayoutOrder,
 		}, grid)
 
@@ -637,15 +784,17 @@ return function(parent, options)
 				LayoutOrder = index,
 			}, grid)
 
-			UI.label(cell, field[1], UDim2.fromOffset(0, 0), UDim2.new(1, 0, 0, 14), 9, colors.muted)
+			UI.label(cell, field[1], UDim2.fromOffset(0, 0), UDim2.new(1, 0, 0, 14), tokens.type.caption, colors.muted)
 
-			local value = UI.label(
-				cell,
-				tostring(field[2]),
-				UDim2.fromOffset(0, 15),
-				UDim2.new(1, 0, 0, 18),
-				tokens.type.small,
-				colors.text
+			truncate(
+				UI.label(
+					cell,
+					tostring(field[2]),
+					UDim2.fromOffset(0, 18),
+					UDim2.new(1, 0, 0, 20),
+					tokens.type.small,
+					colors.text
+				)
 			)
 		end
 
@@ -654,18 +803,9 @@ return function(parent, options)
 		local depsCard = section("DEPENDENCIES", 5, #dependencies > 0 and tostring(#dependencies) or nil)
 
 		if #dependencies == 0 then
-			local none = UI.label(
-				depsCard,
-				"No dependencies.",
-				UDim2.fromOffset(0, 0),
-				UDim2.new(1, 0, 0, 18),
-				tokens.type.small,
-				colors.subtext
-			)
-
-			none.LayoutOrder = 1
+			emptyNote(depsCard, "No dependencies.")
 		else
-			local shown = math.min(#dependencies, 12)
+			local shown = math.min(#dependencies, MAX_DEPENDENCIES)
 
 			for index = 1, shown do
 				local dependency = dependencies[index]
@@ -673,18 +813,20 @@ return function(parent, options)
 				local depNamespace = tostring(dependency.namespace or dependency.Namespace or "unknown")
 				local constraint = tostring(dependency.constraint or dependency.Constraint or "*")
 
-				local item = row(depsCard, index, 28)
+				local item = row(depsCard, index, ROW_HEIGHT)
 
-				local depLabel = UI.label(
-					item,
-					depNamespace .. "/" .. depName,
-					UDim2.fromOffset(10, 0),
-					UDim2.new(1, -140, 1, 0),
-					tokens.type.small,
-					colors.text
+				truncate(
+					UI.label(
+						item,
+						depNamespace .. "/" .. depName,
+						UDim2.fromOffset(12, 0),
+						UDim2.new(1, -150, 1, 0),
+						tokens.type.small,
+						colors.text
+					)
 				)
 
-				rightLabel(item, constraint, 110, 10, 28, tokens.type.caption, colors.subtext)
+				rightLabel(item, constraint, 110, 12, ROW_HEIGHT, tokens.type.caption, colors.subtext)
 			end
 
 			if #dependencies > shown then
@@ -697,18 +839,9 @@ return function(parent, options)
 		local versionsCard = section("VERSIONS", 6, #versions > 0 and tostring(#versions) or nil)
 
 		if #versions == 0 then
-			local none = UI.label(
-				versionsCard,
-				"No published versions.",
-				UDim2.fromOffset(0, 0),
-				UDim2.new(1, 0, 0, 18),
-				tokens.type.small,
-				colors.subtext
-			)
-
-			none.LayoutOrder = 1
+			emptyNote(versionsCard, "No published versions.")
 		else
-			local shown = math.min(#versions, 8)
+			local shown = math.min(#versions, MAX_VERSIONS)
 
 			for index = 1, shown do
 				local item = versions[index]
@@ -718,34 +851,35 @@ return function(parent, options)
 				local sizeText = formatSize(item.size)
 				local meta = dateText .. (sizeText ~= "" and ("   " .. sizeText) or "")
 
-				local line = row(versionsCard, index, 30)
+				local line = row(versionsCard, index, ROW_HEIGHT)
+				local versionWidth = #versionText * CHAR_WIDTH + 4
 
 				UI.label(
 					line,
 					versionText,
-					UDim2.fromOffset(10, 0),
-					UDim2.fromOffset(#versionText * 8 + 4, 30),
+					UDim2.fromOffset(12, 0),
+					UDim2.fromOffset(versionWidth, ROW_HEIGHT),
 					tokens.type.small,
 					yanked and colors.muted or colors.text
 				)
 
 				if item == latest then
-					UI.badge(line, "LATEST", UDim2.fromOffset(10 + #versionText * 8 + 10, 6), {
+					UI.badge(line, "LATEST", UDim2.fromOffset(12 + versionWidth + 8, (ROW_HEIGHT - 18) / 2), {
 						color = colors.accent,
 						textColor = colors.text,
 						height = 18,
 					})
 				end
 
-				local rightOffset = 10
+				local rightOffset = 12
 
 				if yanked then
-					rightLabel(line, "YANKED", 54, rightOffset, 30, 9, colors.warning)
+					rightLabel(line, "YANKED", 54, rightOffset, ROW_HEIGHT, tokens.type.caption, colors.warning)
 
-					rightOffset += 60
+					rightOffset += 62
 				end
 
-				rightLabel(line, meta, 190, rightOffset, 30, tokens.type.caption, colors.subtext)
+				rightLabel(line, meta, 190, rightOffset, ROW_HEIGHT, tokens.type.caption, colors.subtext)
 			end
 
 			if #versions > shown then
@@ -770,9 +904,7 @@ return function(parent, options)
 
 		local serial = state.serial
 
-		crumb.Text = string.upper(
-			"MARKETPLACE   /   " .. tostring(plugin.Slug or (plugin.Manifest and plugin.Manifest.Name) or "")
-		)
+		setCrumb(plugin)
 
 		if options.onOpen then
 			options.onOpen(plugin)
@@ -787,13 +919,18 @@ return function(parent, options)
 			return
 		end
 
-		local ok, data = options.fetch(plugin)
+		setCrumb(plugin, "LOADING")
 
+		local called, ok, data = pcall(options.fetch, plugin)
+
+		-- The user may have gone back or opened something else while we were yielding.
 		if serial ~= state.serial or not state.open then
 			return
 		end
 
-		if ok then
+		setCrumb(plugin)
+
+		if called and ok then
 			controller:Render(plugin, data)
 		else
 			UI.toast("Could not load package details.", { type = "error" })
