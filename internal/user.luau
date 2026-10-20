@@ -447,8 +447,18 @@ local function buildCategories(session, onLogout)
 						},
 						{
 							kind = "switch",
-							key = "playtestSeparateWindow",
-							title = "Separate Playtest Window",
+							key = "playtestHeadlessServer",
+							title = "Headless Server",
+						},
+						{
+							kind = "switch",
+							key = "playtestHeadlessClient",
+							title = "Headless Client",
+						},
+						{
+							kind = "switch",
+							key = "playtestSingleplayer",
+							title = "Launch singleplayer",
 						},
 						{
 							kind = "switch",
