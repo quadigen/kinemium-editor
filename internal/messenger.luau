@@ -1,50 +1,39 @@
+if (IsServer or IsClient) or IsPlaytest then
+	return nil
+end
+
 local UI = require("@internal/editor_ui")
+local Auth = require("@internal/auth")
+
 local MatrixService = game:GetService("MatrixService")
 local SpaceService = game:GetService("SpaceService")
+local StudioThemeService = game:GetService("StudioThemeService")
+local RunService = game:GetService("RunService")
 local http = game:GetService("HttpService")
 
+local theme = StudioThemeService.SelectedTheme
 local tokens = UI.tokens
-
-local D = {
-	rail = Color3.fromRGB(30, 31, 34),
-	sidebar = Color3.fromRGB(43, 45, 49),
-	userPanel = Color3.fromRGB(35, 36, 40),
-	chat = Color3.fromRGB(49, 51, 56),
-	input = Color3.fromRGB(56, 58, 64),
-	hover = Color3.fromRGB(53, 55, 60),
-	rowHover = Color3.fromRGB(46, 48, 54),
-	selected = Color3.fromRGB(64, 66, 73),
-	pressed = Color3.fromRGB(70, 72, 78),
-	divider = Color3.fromRGB(63, 65, 71),
-	text = Color3.fromRGB(219, 222, 225),
-	bright = Color3.fromRGB(242, 243, 245),
-	muted = Color3.fromRGB(148, 155, 164),
-	blurple = Color3.fromRGB(88, 101, 242),
-	red = Color3.fromRGB(242, 63, 66),
-	green = Color3.fromRGB(35, 165, 89),
-}
-
-local AVATAR_COLORS = {
-	D.blurple,
-	D.green,
-	Color3.fromRGB(240, 178, 50),
-	Color3.fromRGB(235, 69, 158),
-	Color3.fromRGB(237, 66, 69),
-	Color3.fromRGB(26, 188, 156),
-	Color3.fromRGB(155, 89, 182),
-}
+local colors = tokens.color
 
 local RAIL = 64
 local SIDEBAR = 232
 local MEMBERS = 204
-local HEADER = 48
+local HEADER = 40
 local PANEL = 52
 local COMPOSER = 44
 local INFO = 20
-local AVATAR = 36
-local BODY_X = 64
 local HISTORY_LIMIT = 50
 local GROUP_SECONDS = 420
+
+local AVATAR_COLORS = {
+	colors.accent,
+	colors.success,
+	colors.warning,
+	colors.error,
+	Color3.fromRGB(235, 69, 158),
+	Color3.fromRGB(26, 188, 156),
+	Color3.fromRGB(155, 89, 182),
+}
 
 local function trim(text)
 	return string.match(text or "", "^%s*(.-)%s*$")
@@ -93,7 +82,7 @@ local function messageText(ev)
 end
 
 local function estimateHeight(text, width)
-	local charsPerLine = math.max(8, math.floor(width / 7.2))
+	local charsPerLine = math.max(6, math.floor(width / 7.2))
 	local lines = 0
 
 	for line in string.gmatch(text .. "\n", "(.-)\n") do
@@ -130,20 +119,29 @@ local function newScroller(parent, name, position, size, thickness)
 		BorderSizePixel = 0,
 		CanvasSize = UDim2.new(0, 0, 0, 0),
 		ScrollBarThickness = thickness or 5,
-		ScrollBarImageColor3 = D.muted,
-		ScrollBarImageTransparency = 0.5,
+		ScrollBarImageColor3 = colors.subtext,
+		ScrollBarImageTransparency = 0.4,
 		ScrollBarAutoHide = true,
 		ClipsDescendants = true,
 	}, parent)
 end
 
+local function onFrame(callback)
+	if renderer and renderer.Pool and renderer.Pool.new then
+		renderer.Pool.new("2d", callback)
+	else
+		RunService.Heartbeat:Connect(callback)
+	end
+end
+
 local Messaging = {}
 
-function Messaging.new(session, options)
-	assert(session, "Messaging.new requires a Matrix session")
+function Messaging.mount(content, session, options)
 	options = options or {}
 
 	local self = {}
+	local windowControls = options.windowControls
+	local tabName = options.tabName or "Messages"
 
 	local rooms = {}
 	local messages = {}
@@ -158,109 +156,165 @@ function Messaging.new(session, options)
 
 	local current = nil
 	local activeSpace = nil
-	local started, destroyed = false, false
-	local membersOpen = false
+	local destroyed = false
+	local wide = false
+	local membersOpen = true
 	local emojiOpen = false
 	local loadingOlder = false
 	local lastTypingSent = 0
 	local statusText, statusIsError = nil, false
 	local renderQueued = false
+	local navDirty = false
+	local wasActive = true
 	local stopSync = nil
 
 	local renderRail, renderSidebar, renderSidebarHeader, renderMessages, renderMembers, renderUserPanel
-	local selectRoom, acceptInvite, refreshRooms, updateInfo
+	local renderNav, selectRoom, selectRoomById, acceptInvite, refreshRooms, updateInfo, updateHeader
 
-	local screen = workspace:GetWindowDimensions()
-	local screenWidth = screen and screen.X or 1100
-	local screenHeight = screen and screen.Y or 760
-	local width = math.clamp(screenWidth - 80, 820, 1100)
-	local height = math.clamp(screenHeight - 80, 520, 700)
+	local function tabActive()
+		if windowControls == nil or windowControls.getSelectedTab == nil then
+			return true
+		end
 
-	membersOpen = width >= 960
+		return windowControls.getSelectedTab() == tabName
+	end
 
-	local panel, page = UI.window(
-		"MatrixMessaging",
-		UDim2.fromOffset(
-			math.max(0, math.floor((screenWidth - width) / 2)),
-			math.max(0, math.floor((screenHeight - height) / 2))
-		),
-		UDim2.fromOffset(width, height),
-		"Messages",
-		{
-			closable = true,
-			headerColor = D.rail,
-			contentColor = D.chat,
-			titleColor = D.muted,
-			borderColor = D.rail,
-			onClose = function(window)
-				window.Visible = false
-			end,
-		}
-	)
+	local function computeWide()
+		local width = content.AbsoluteSize.X
+		local outputWidth = 0
 
-	panel.Parent = UI.widgetOverlay()
-	panel.Visible = false
+		if theme.OutputCoordinates and theme.OutputCoordinates.Size then
+			outputWidth = theme.OutputCoordinates.Size.X.Offset
+		end
 
-	local rail = UI.frame(page, UDim2.fromOffset(0, 0), UDim2.new(0, RAIL, 1, 0), D.rail)
-	local sidebar = UI.frame(page, UDim2.fromOffset(RAIL, 0), UDim2.new(0, SIDEBAR, 1, 0), D.sidebar)
-	local chat = UI.frame(page, UDim2.fromOffset(RAIL + SIDEBAR, 0), UDim2.new(1, -(RAIL + SIDEBAR), 1, 0), D.chat)
-	local membersPanel = UI.frame(page, UDim2.new(1, -MEMBERS, 0, 0), UDim2.new(0, MEMBERS, 1, 0), D.sidebar)
+		if outputWidth <= 0 then
+			return width >= 700
+		end
+
+		return width >= outputWidth
+	end
+
+	wide = computeWide()
+
+	local root = UI.create("Frame", {
+		Name = "MessagesRoot",
+		Size = UDim2.fromScale(1, 1),
+		BackgroundColor3 = colors.panel,
+		BorderSizePixel = 0,
+		ClipsDescendants = true,
+	}, content)
+
+	local rail = UI.frame(root, UDim2.fromOffset(0, 0), UDim2.new(0, RAIL, 1, 0), colors.canvas)
+	local sidebar = UI.frame(root, UDim2.fromOffset(RAIL, 0), UDim2.new(0, SIDEBAR, 1, 0), colors.panelRaised)
+	local chat = UI.frame(root, UDim2.fromOffset(0, 0), UDim2.fromScale(1, 1), colors.panel)
+	local membersPanel = UI.frame(root, UDim2.new(1, -MEMBERS, 0, 0), UDim2.new(0, MEMBERS, 1, 0), colors.panelRaised)
 	chat.ClipsDescendants = true
 
 	local railList = newScroller(rail, "Rail", UDim2.fromOffset(0, 0), UDim2.fromScale(1, 1), 0)
 
-	local sidebarHeader = UI.frame(sidebar, UDim2.fromOffset(0, 0), UDim2.new(1, 0, 0, HEADER), D.sidebar)
-	UI.separator(sidebarHeader, UDim2.new(0, 0, 1, -1), UDim2.new(1, 0, 0, 1), D.rail)
+	local sidebarHeader = UI.frame(sidebar, UDim2.fromOffset(0, 0), UDim2.new(1, 0, 0, HEADER), colors.panelRaised)
+	UI.separator(sidebarHeader, UDim2.new(0, 0, 1, -1), UDim2.new(1, 0, 0, 1), colors.canvas)
 
 	local searchInput = UI.input(
 		sidebarHeader,
 		"Find or start a conversation",
-		UDim2.fromOffset(8, 10),
+		UDim2.fromOffset(8, 6),
 		UDim2.new(1, -16, 0, 28),
-		{ color = D.rail, borderColor = D.rail, textSize = tokens.type.small, textColor = D.text }
+		{ textSize = tokens.type.small }
 	)
 
-	local spaceTitle = UI.label(sidebarHeader, "", UDim2.fromOffset(14, 0), UDim2.new(1, -28, 1, 0), 15, D.bright)
+	local spaceTitle =
+		UI.label(sidebarHeader, "", UDim2.fromOffset(14, 0), UDim2.new(1, -28, 1, 0), tokens.type.title, colors.text)
 	spaceTitle.Visible = false
 
 	local roomList =
 		newScroller(sidebar, "RoomList", UDim2.fromOffset(0, HEADER), UDim2.new(1, 0, 1, -(HEADER + PANEL)), 5)
+	local userPanel = UI.frame(sidebar, UDim2.new(0, 0, 1, -PANEL), UDim2.new(1, 0, 0, PANEL), colors.surface)
 
-	local userPanel = UI.frame(sidebar, UDim2.new(0, 0, 1, -PANEL), UDim2.new(1, 0, 0, PANEL), D.userPanel)
+	local chatHeader = UI.frame(chat, UDim2.fromOffset(0, 0), UDim2.new(1, 0, 0, HEADER), colors.panel)
+	UI.separator(chatHeader, UDim2.new(0, 0, 1, -1), UDim2.new(1, 0, 0, 1), colors.border)
 
-	local chatHeader = UI.frame(chat, UDim2.fromOffset(0, 0), UDim2.new(1, 0, 0, HEADER), D.chat)
-	UI.separator(chatHeader, UDim2.new(0, 0, 1, -1), UDim2.new(1, 0, 0, 1), D.rail)
-
-	local prefixLabel = UI.label(chatHeader, "#", UDim2.fromOffset(16, 0), UDim2.fromOffset(16, HEADER), 22, D.muted)
+	local prefixLabel =
+		UI.label(chatHeader, "#", UDim2.fromOffset(14, 0), UDim2.fromOffset(16, HEADER), 20, colors.muted)
 	local titleLabel = UI.label(
 		chatHeader,
 		"Pick a conversation",
-		UDim2.fromOffset(34, 0),
+		UDim2.fromOffset(32, 0),
 		UDim2.fromOffset(240, HEADER),
-		15,
-		D.bright
+		tokens.type.title,
+		colors.text
 	)
-	local dividerLine = UI.frame(chatHeader, UDim2.fromOffset(0, 12), UDim2.fromOffset(1, 24), D.divider)
+	local dividerLine = UI.frame(chatHeader, UDim2.fromOffset(0, 9), UDim2.fromOffset(1, 22), colors.border)
 	local topicLabel =
-		UI.label(chatHeader, "", UDim2.fromOffset(0, 0), UDim2.fromOffset(300, HEADER), tokens.type.small, D.muted)
+		UI.label(chatHeader, "", UDim2.fromOffset(0, 0), UDim2.fromOffset(300, HEADER), tokens.type.small, colors.muted)
 	dividerLine.Visible = false
 
 	local membersButton = UI.button(
 		chatHeader,
 		"Members",
-		UDim2.new(1, -(12 + 76), 0.5, -12),
+		UDim2.new(1, -(10 + 76), 0.5, -12),
 		UDim2.fromOffset(76, 24),
 		function() end,
 		{
-			color = D.chat,
-			hoverColor = D.hover,
-			pressedColor = D.pressed,
-			textColor = D.muted,
+			color = colors.panel,
+			hoverColor = colors.hover,
+			pressedColor = colors.pressed,
+			textColor = colors.subtext,
 			textSize = tokens.type.small,
-			radius = 4,
+			radius = tokens.radius.sm,
 			border = false,
 			paddingX = 8,
 			textY = 0,
+		}
+	)
+
+	local channelButton, channelController
+
+	local function navTitle(roomId)
+		for _, room in ipairs(rooms) do
+			if room.roomId == roomId then
+				local title = room.isDirect
+						and room.directUserId
+						and (profiles[room.directUserId] and profiles[room.directUserId].displayName)
+					or room.displayName
+					or room.roomId
+				return (room.isDirect and "@" or "#") .. tostring(title)
+			end
+		end
+
+		return "Select a channel"
+	end
+
+	channelButton, _, channelController = UI.dropdown(
+		chatHeader,
+		"",
+		UDim2.fromOffset(8, 7),
+		UDim2.new(1, -16, 0, 26),
+		"builtin://global-icons/chevron-down.svg",
+		{
+			items = {},
+			showSearch = true,
+			searchPlaceholder = "Search channels...",
+			menuWidth = 240,
+			maxVisibleItems = 8,
+			color = colors.input,
+			hoverColor = colors.hover,
+			pressedColor = colors.pressed,
+			textColor = colors.text,
+			menuColor = colors.panelRaised,
+			borderColor = colors.border,
+			radius = tokens.radius.sm,
+			textSize = tokens.type.small,
+			format = navTitle,
+			menuPosition = function()
+				local position = channelButton.AbsolutePosition
+				local size = channelButton.AbsoluteSize
+
+				return UDim2.fromOffset(math.floor(position.X), math.floor(position.Y + size.Y + 2))
+			end,
+			onChanged = function(value)
+				selectRoomById(value)
+			end,
 		}
 	)
 
@@ -269,55 +323,80 @@ function Messaging.new(session, options)
 		"Messages",
 		UDim2.fromOffset(0, HEADER),
 		UDim2.new(1, 0, 1, -(HEADER + COMPOSER + INFO + 12)),
-		8
+		6
 	)
 
-	local composer =
-		UI.frame(chat, UDim2.new(0, 16, 1, -(INFO + COMPOSER + 2)), UDim2.new(1, -32, 0, COMPOSER), D.input, 8)
+	local composer = UI.frame(
+		chat,
+		UDim2.new(0, 10, 1, -(INFO + COMPOSER + 2)),
+		UDim2.new(1, -20, 0, COMPOSER),
+		colors.input,
+		tokens.radius.md
+	)
 
 	local input = UI.input(
 		composer,
 		"Message",
-		UDim2.fromOffset(14, 8),
-		UDim2.new(1, -(14 + 46), 0, 28),
-		{ color = D.input, borderColor = D.input, textSize = 14, textColor = D.text }
+		UDim2.fromOffset(10, 8),
+		UDim2.new(1, -(10 + 42), 0, 28),
+		{ color = colors.input, borderColor = colors.input, textSize = tokens.type.body }
 	)
 
 	local emojiButton = UI.iconButton(
 		composer,
 		"builtin://icons/Sparkles.svg",
-		UDim2.new(1, -40, 0.5, -16),
-		UDim2.fromOffset(32, 32),
+		UDim2.new(1, -38, 0.5, -15),
+		UDim2.fromOffset(30, 30),
 		function() end,
-		{ color = D.input, hoverColor = D.hover, pressedColor = D.pressed, border = false, iconSize = 20, radius = 6 }
+		{
+			color = colors.input,
+			hoverColor = colors.hover,
+			pressedColor = colors.pressed,
+			border = false,
+			iconSize = 18,
+			radius = tokens.radius.sm,
+		}
 	)
 
-	local infoLabel =
-		UI.label(chat, "", UDim2.new(0, 18, 1, -INFO), UDim2.new(1, -36, 0, INFO - 2), tokens.type.caption, D.muted)
+	local infoLabel = UI.label(
+		chat,
+		"",
+		UDim2.new(0, 12, 1, -INFO),
+		UDim2.new(1, -24, 0, INFO - 2),
+		tokens.type.caption,
+		colors.muted
+	)
 
+	local emojiWidth = 320
 	local emojiPanel = UI.frame(
 		chat,
-		UDim2.new(1, -(16 + 320), 1, -(INFO + COMPOSER + 2 + 8 + 180)),
-		UDim2.fromOffset(320, 180),
-		D.sidebar,
-		8
+		UDim2.new(1, -(10 + emojiWidth), 1, -(INFO + COMPOSER + 10 + 180)),
+		UDim2.fromOffset(emojiWidth, 180),
+		colors.panelRaised,
+		tokens.radius.md
 	)
-	UI.stroke(emojiPanel, D.rail, 1, 0)
+	UI.stroke(emojiPanel, colors.border, 1, 0)
 	emojiPanel.Visible = false
 	emojiPanel.ZIndex = 5
 
-	local emojiTitle = UI.label(
+	UI.label(
 		emojiPanel,
 		"Custom emoji",
 		UDim2.fromOffset(12, 6),
 		UDim2.new(1, -24, 0, 18),
 		tokens.type.caption,
-		D.muted
+		colors.muted
 	)
 	local emojiList = newScroller(emojiPanel, "Emoji", UDim2.fromOffset(8, 28), UDim2.new(1, -16, 1, -36), 5)
 
-	local membersHeader =
-		UI.label(membersPanel, "", UDim2.fromOffset(16, 0), UDim2.new(1, -32, 0, HEADER), tokens.type.caption, D.muted)
+	local membersHeader = UI.label(
+		membersPanel,
+		"",
+		UDim2.fromOffset(16, 0),
+		UDim2.new(1, -32, 0, HEADER),
+		tokens.type.caption,
+		colors.muted
+	)
 	local memberList = newScroller(membersPanel, "Members", UDim2.fromOffset(0, HEADER), UDim2.new(1, 0, 1, -HEADER), 5)
 
 	local function loadImage(mxc, callback)
@@ -409,11 +488,14 @@ function Messaging.new(session, options)
 				return
 			end
 
-			renderRail()
-			renderSidebar()
+			renderNav()
+			updateHeader()
 			renderMessages(false)
-			renderMembers()
-			renderUserPanel()
+
+			if wide then
+				renderMembers()
+				renderUserPanel()
+			end
 		end)
 	end
 
@@ -489,11 +571,11 @@ function Messaging.new(session, options)
 	updateInfo = function()
 		if statusText then
 			infoLabel.Text = statusText
-			infoLabel.TextColor3 = statusIsError and D.red or D.muted
+			infoLabel.TextColor3 = statusIsError and colors.error or colors.muted
 			return
 		end
 
-		infoLabel.TextColor3 = D.muted
+		infoLabel.TextColor3 = colors.muted
 
 		local who = {}
 		for _, userId in ipairs(current and typing[current.roomId] or {}) do
@@ -519,10 +601,6 @@ function Messaging.new(session, options)
 		end
 
 		return nil
-	end
-
-	local function visible()
-		return panel.Visible and not destroyed
 	end
 
 	local function inSpace(space, room)
@@ -554,83 +632,85 @@ function Messaging.new(session, options)
 	end
 
 	renderRail = function()
+		if not wide then
+			return
+		end
+
 		UI.clear(railList)
 
-		local y = 12
+		local y = 10
 
 		local function pill(selected, unread, itemY)
 			if not selected and unread <= 0 then
 				return
 			end
 
-			local h = selected and 32 or 8
-			UI.frame(railList, UDim2.fromOffset(0, itemY + 24 - h / 2), UDim2.fromOffset(4, h), D.bright, 2)
+			local h = selected and 28 or 8
+			UI.frame(railList, UDim2.fromOffset(0, itemY + 20 - h / 2), UDim2.fromOffset(4, h), colors.text, 2)
 		end
 
-		local function badge(button, count, highlight)
+		local function badge(button, count)
 			if count <= 0 then
 				return
 			end
 
-			UI.badge(button, count > 99 and "99+" or tostring(count), UDim2.new(1, -20, 1, -16), {
+			UI.badge(button, count > 99 and "99+" or tostring(count), UDim2.new(1, -18, 1, -14), {
 				width = math.max(18, #tostring(count) * 7 + 10),
 				height = 16,
-				color = highlight and D.red or D.red,
+				color = colors.error,
 				textColor = Color3.new(1, 1, 1),
 			})
 		end
 
-		local homeUnread, homeHighlights = unreadFor(function(room)
+		local homeUnread = unreadFor(function(room)
 			return not inAnySpace(room)
 		end)
 
-		local home = UI.button(railList, "", UDim2.fromOffset(8, y), UDim2.fromOffset(48, 48), function()
+		local home = UI.button(railList, "", UDim2.fromOffset(12, y), UDim2.fromOffset(40, 40), function()
 			activeSpace = nil
-			renderRail()
+			renderNav()
 			renderSidebarHeader()
-			renderSidebar()
 		end, {
-			color = activeSpace == nil and D.blurple or D.chat,
-			hoverColor = D.blurple,
-			pressedColor = D.blurple,
-			radius = activeSpace == nil and 14 or 24,
+			color = activeSpace == nil and colors.accent or colors.panel,
+			hoverColor = colors.accent,
+			pressedColor = colors.accent,
+			radius = activeSpace == nil and 12 or 20,
 			border = false,
 		})
 
 		local homeIcon =
-			UI.image(home, "builtin://icons/Player.svg", UDim2.fromOffset(12, 12), UDim2.fromOffset(24, 24))
+			UI.image(home, "builtin://icons/Player.svg", UDim2.fromOffset(10, 10), UDim2.fromOffset(20, 20))
 		homeIcon.ImageColor3 = Color3.new(1, 1, 1)
 
 		pill(activeSpace == nil, homeUnread, y)
-		badge(home, homeUnread, homeHighlights > 0)
-		y += 56
+		badge(home, homeUnread)
+		y += 48
 
-		UI.frame(railList, UDim2.fromOffset(16, y), UDim2.fromOffset(32, 2), D.divider, 1)
+		UI.frame(railList, UDim2.fromOffset(18, y), UDim2.fromOffset(28, 2), colors.border, 1)
 		y += 10
 
 		for _, space in ipairs(rooms) do
 			if space.roomType == "m.space" and space.membership == "join" then
 				local selected = activeSpace ~= nil and activeSpace.roomId == space.roomId
-				local unread, highlights = unreadFor(function(room)
+				local unread = unreadFor(function(room)
 					return inSpace(space, room)
 				end)
 
 				local button, label = UI.button(
 					railList,
 					"",
-					UDim2.fromOffset(8, y),
-					UDim2.fromOffset(48, 48),
+					UDim2.fromOffset(12, y),
+					UDim2.fromOffset(40, 40),
 					function()
 						activeSpace = space
-						renderRail()
+						renderNav()
 						renderSidebarHeader()
-						renderSidebar()
 					end,
 					{
 						color = colorFor(space.roomId),
-						hoverColor = D.blurple,
-						pressedColor = D.blurple,
-						radius = selected and 14 or 24,
+						hoverColor = colors.accent,
+						pressedColor = colors.accent,
+						radius = selected and 12 or 20,
 						border = false,
 					}
 				)
@@ -638,7 +718,7 @@ function Messaging.new(session, options)
 				label.Text = firstChar(roomTitle(space))
 				label.Position = UDim2.fromOffset(0, 0)
 				label.Size = UDim2.fromScale(1, 1)
-				label.TextSize = 20
+				label.TextSize = 18
 				label.TextColor3 = Color3.new(1, 1, 1)
 				label.TextXAlignment = Enum.TextXAlignment.Center
 				label.TextYAlignment = Enum.TextYAlignment.Center
@@ -646,14 +726,14 @@ function Messaging.new(session, options)
 				loadImage(space.avatarUrl, function(bytes)
 					if UI.isAlive(button) then
 						local image = UI.image(button, bytes, UDim2.fromScale(0, 0), UDim2.fromScale(1, 1))
-						UI.corner(image, selected and 14 or 24)
+						UI.corner(image, selected and 12 or 20)
 						label.Visible = false
 					end
 				end)
 
 				pill(selected, unread, y)
-				badge(button, unread, highlights > 0)
-				y += 56
+				badge(button, unread)
+				y += 48
 			end
 		end
 
@@ -672,13 +752,24 @@ function Messaging.new(session, options)
 	end
 
 	renderSidebar = function()
+		if not wide then
+			return
+		end
+
 		UI.clear(roomList)
 
 		local query = string.lower(trim(searchInput.Text))
 		local y = 8
 
 		local function addHeader(text)
-			local label = UI.label(roomList, text, UDim2.fromOffset(16, y + 6), UDim2.new(1, -32, 0, 14), 11, D.muted)
+			local label = UI.label(
+				roomList,
+				text,
+				UDim2.fromOffset(16, y + 6),
+				UDim2.new(1, -32, 0, 14),
+				tokens.type.caption,
+				colors.muted
+			)
 			label.TextXAlignment = Enum.TextXAlignment.Left
 			y += 26
 		end
@@ -687,7 +778,7 @@ function Messaging.new(session, options)
 			local selected = current ~= nil and current.roomId == room.roomId
 			local isInvite = room.membership == "invite"
 			local unread = room.unread or 0
-			local rowHeight = channelStyle and 32 or 42
+			local rowHeight = channelStyle and 30 or 40
 			local title = roomTitle(room)
 
 			local text = channelStyle and ("#  " .. title) or title
@@ -698,8 +789,8 @@ function Messaging.new(session, options)
 			local button, label = UI.button(
 				roomList,
 				text,
-				UDim2.fromOffset(8, y),
-				UDim2.new(1, -16, 0, rowHeight - 2),
+				UDim2.fromOffset(6, y),
+				UDim2.new(1, -12, 0, rowHeight - 2),
 				function()
 					if isInvite then
 						acceptInvite(room)
@@ -708,19 +799,19 @@ function Messaging.new(session, options)
 					end
 				end,
 				{
-					color = selected and D.selected or D.sidebar,
-					hoverColor = selected and D.selected or D.hover,
-					pressedColor = D.pressed,
-					textColor = (selected or unread > 0) and D.bright or D.muted,
-					textSize = 14,
-					radius = 4,
+					color = selected and colors.selection or colors.panelRaised,
+					hoverColor = selected and colors.selectionHover or colors.hover,
+					pressedColor = colors.pressed,
+					textColor = (selected or unread > 0) and colors.text or colors.subtext,
+					textSize = tokens.type.body,
+					radius = tokens.radius.sm,
 					border = false,
 					paddingX = 8,
 					textY = 0,
 				}
 			)
 
-			local labelX = channelStyle and 10 or 48
+			local labelX = channelStyle and 10 or 46
 			label.Position = UDim2.fromOffset(labelX, 0)
 			label.Size = UDim2.new(1, -(labelX + (unread > 0 and 38 or 10)), 1, 0)
 			label.TextXAlignment = Enum.TextXAlignment.Left
@@ -732,8 +823,8 @@ function Messaging.new(session, options)
 					room.directUserId or room.roomId,
 					title,
 					roomAvatar(room),
-					UDim2.fromOffset(8, 3),
-					34
+					UDim2.fromOffset(7, 3),
+					32
 				)
 			end
 
@@ -741,7 +832,7 @@ function Messaging.new(session, options)
 				UI.badge(button, unread > 99 and "99+" or tostring(unread), UDim2.new(1, -34, 0.5, -8), {
 					width = 26,
 					height = 16,
-					color = D.red,
+					color = colors.error,
 					textColor = Color3.new(1, 1, 1),
 				})
 			end
@@ -763,7 +854,7 @@ function Messaging.new(session, options)
 					UDim2.fromOffset(16, 16),
 					UDim2.new(1, -32, 0, 18),
 					tokens.type.small,
-					D.muted
+					colors.muted
 				)
 				label.TextXAlignment = Enum.TextXAlignment.Left
 			else
@@ -792,7 +883,7 @@ function Messaging.new(session, options)
 						UDim2.fromOffset(16, y),
 						UDim2.new(1, -32, 0, 18),
 						tokens.type.small,
-						D.muted
+						colors.muted
 					)
 					label.TextXAlignment = Enum.TextXAlignment.Left
 				end
@@ -836,6 +927,10 @@ function Messaging.new(session, options)
 	end
 
 	renderUserPanel = function()
+		if not wide then
+			return
+		end
+
 		UI.clear(userPanel)
 
 		local profile = profileOf(session.userId)
@@ -845,7 +940,7 @@ function Messaging.new(session, options)
 		makeAvatar(userPanel, session.userId, name, profile and profile.avatarUrl, UDim2.fromOffset(10, 10), 32)
 
 		local nameLabel =
-			UI.label(userPanel, name, UDim2.fromOffset(50, 9), UDim2.new(1, -96, 0, 18), tokens.type.small, D.bright)
+			UI.label(userPanel, name, UDim2.fromOffset(50, 9), UDim2.new(1, -96, 0, 18), tokens.type.small, colors.text)
 		nameLabel.TextXAlignment = Enum.TextXAlignment.Left
 
 		local idLabel = UI.label(
@@ -854,7 +949,7 @@ function Messaging.new(session, options)
 			UDim2.fromOffset(50, 26),
 			UDim2.new(1, -96, 0, 16),
 			tokens.type.caption,
-			D.muted
+			colors.muted
 		)
 		idLabel.TextXAlignment = Enum.TextXAlignment.Left
 
@@ -866,18 +961,64 @@ function Messaging.new(session, options)
 				UDim2.fromOffset(30, 30),
 				options.onSettings,
 				{
-					color = D.userPanel,
-					hoverColor = D.hover,
-					pressedColor = D.pressed,
+					color = colors.surface,
+					hoverColor = colors.hover,
+					pressedColor = colors.pressed,
 					border = false,
 					iconSize = 18,
-					radius = 4,
+					radius = tokens.radius.sm,
 				}
 			)
 		end
 	end
 
+	local function dropdownOpen()
+		local active = UI.shared().activeDropdown
+		return active ~= nil and active.controller == channelController
+	end
+
+	local function refreshChannelDropdown()
+		if wide then
+			return
+		end
+
+		if dropdownOpen() then
+			navDirty = true
+			return
+		end
+
+		navDirty = false
+
+		local items = {}
+
+		for _, room in ipairs(rooms) do
+			if room.roomType ~= "m.space" and room.membership == "join" then
+				local unread = room.unread or 0
+				table.insert(items, {
+					value = room.roomId,
+					label = navTitle(room.roomId) .. (unread > 0 and ("  (" .. unread .. ")") or ""),
+				})
+			end
+		end
+
+		channelController:SetItems(items)
+		channelController:SetValue(current and current.roomId or "", true)
+	end
+
+	renderNav = function()
+		if wide then
+			renderRail()
+			renderSidebar()
+		else
+			refreshChannelDropdown()
+		end
+	end
+
 	renderMembers = function()
+		if not wide then
+			return
+		end
+
 		UI.clear(memberList)
 
 		local list = current and roomMembers[current.roomId]
@@ -902,74 +1043,100 @@ function Messaging.new(session, options)
 			local button, label = UI.button(
 				memberList,
 				name,
-				UDim2.fromOffset(8, y),
-				UDim2.new(1, -16, 0, 40),
+				UDim2.fromOffset(6, y),
+				UDim2.new(1, -12, 0, 38),
 				function() end,
 				{
-					color = D.sidebar,
-					hoverColor = D.hover,
-					pressedColor = D.pressed,
-					textColor = D.muted,
-					textSize = 14,
-					radius = 4,
+					color = colors.panelRaised,
+					hoverColor = colors.hover,
+					pressedColor = colors.pressed,
+					textColor = colors.subtext,
+					textSize = tokens.type.body,
+					radius = tokens.radius.sm,
 					border = false,
 					paddingX = 8,
 					textY = 0,
 				}
 			)
 
-			label.Position = UDim2.fromOffset(46, 0)
-			label.Size = UDim2.new(1, -54, 1, 0)
+			label.Position = UDim2.fromOffset(44, 0)
+			label.Size = UDim2.new(1, -52, 1, 0)
 			label.TextYAlignment = Enum.TextYAlignment.Center
 
-			makeAvatar(button, member.userId, name, member.avatarUrl, UDim2.fromOffset(6, 4), 32)
+			makeAvatar(button, member.userId, name, member.avatarUrl, UDim2.fromOffset(6, 3), 32)
 
-			y += 42
+			y += 40
 		end
 
 		memberList.CanvasSize = UDim2.new(0, 0, 0, y + 8)
 	end
 
+	updateHeader = function()
+		titleLabel.Visible = wide
+		prefixLabel.Visible = wide
+		topicLabel.Visible = wide
+		channelButton.Visible = not wide
+
+		if not wide then
+			dividerLine.Visible = false
+			channelController:SetValue(current and current.roomId or "", true)
+		elseif not current then
+			prefixLabel.Text = ""
+			titleLabel.Text = "Pick a conversation"
+			titleLabel.Position = UDim2.fromOffset(14, 0)
+			topicLabel.Text = ""
+			dividerLine.Visible = false
+		else
+			local title = roomTitle(current)
+			prefixLabel.Text = current.isDirect and "@" or "#"
+			titleLabel.Position = UDim2.fromOffset(32, 0)
+			titleLabel.Text = title
+
+			local topic = current.topic or ""
+			local topicX = 32 + #title * 8.6 + 22
+
+			dividerLine.Visible = topic ~= ""
+			dividerLine.Position = UDim2.fromOffset(topicX - 11, 9)
+			topicLabel.Position = UDim2.fromOffset(topicX, 0)
+			topicLabel.Size = UDim2.new(1, -(topicX + 110), 0, HEADER)
+			topicLabel.Text = topic
+			topicLabel.TextXAlignment = Enum.TextXAlignment.Left
+		end
+
+		input.PlaceholderText = current and ("Message " .. (current.isDirect and "@" or "#") .. roomTitle(current))
+			or "Message"
+	end
+
 	local function applyLayout()
-		membersPanel.Visible = membersOpen
-		chat.Size = UDim2.new(1, -(RAIL + SIDEBAR + (membersOpen and MEMBERS or 0)), 1, 0)
-		membersButton.BackgroundColor3 = membersOpen and D.selected or D.chat
+		rail.Visible = wide
+		sidebar.Visible = wide
+
+		local left = wide and (RAIL + SIDEBAR) or 0
+		local right = (wide and membersOpen) and MEMBERS or 0
+
+		membersPanel.Visible = wide and membersOpen
+		membersButton.Visible = wide
+		membersButton.BackgroundColor3 = membersOpen and colors.surface or colors.panel
+
+		chat.Position = UDim2.fromOffset(left, 0)
+		chat.Size = UDim2.new(1, -(left + right), 1, 0)
+
+		emojiOpen = false
+		emojiPanel.Visible = false
+
+		renderSidebarHeader()
+		renderNav()
+		updateHeader()
+		renderMembers()
+		renderUserPanel()
 
 		task.defer(function()
 			task.wait()
 
 			if not destroyed then
-				renderMessages(false)
+				renderMessages(true)
 			end
 		end)
-	end
-
-	local function updateHeader()
-		if not current then
-			prefixLabel.Text = ""
-			titleLabel.Text = "Pick a conversation"
-			titleLabel.Position = UDim2.fromOffset(16, 0)
-			topicLabel.Text = ""
-			dividerLine.Visible = false
-			return
-		end
-
-		local title = roomTitle(current)
-		prefixLabel.Text = current.isDirect and "@" or "#"
-		titleLabel.Position = UDim2.fromOffset(34, 0)
-		titleLabel.Text = title
-
-		local topic = current.topic or ""
-		local topicX = 34 + #title * 8.6 + 22
-
-		dividerLine.Visible = topic ~= ""
-		dividerLine.Position = UDim2.fromOffset(topicX - 11, 12)
-		topicLabel.Position = UDim2.fromOffset(topicX, 0)
-		topicLabel.Size = UDim2.new(1, -(topicX + 110), 0, HEADER)
-		topicLabel.Text = topic
-		topicLabel.TextXAlignment = Enum.TextXAlignment.Left
-
-		input.PlaceholderText = "Message " .. (current.isDirect and "@" or "#") .. title
 	end
 
 	renderMessages = function(mode)
@@ -979,32 +1146,42 @@ function Messaging.new(session, options)
 
 		UI.clear(scroller)
 
+		local avatarSize = wide and 36 or 28
+		local bodyX = wide and 64 or 46
+		local avatarX = wide and 14 or 10
+
 		local roomId = current and current.roomId
 		local list = roomId and messages[roomId] or nil
-		local textWidth = math.max(scroller.AbsoluteSize.X - (BODY_X + 28), 160)
+		local textWidth = math.max(scroller.AbsoluteSize.X - (bodyX + 24), 120)
 		local y = 8
 
 		local function bigText(text, size, color, h)
-			local label = UI.label(scroller, text, UDim2.fromOffset(16, y), UDim2.new(1, -32, 0, h), size, color)
+			local label = UI.label(scroller, text, UDim2.fromOffset(12, y), UDim2.new(1, -24, 0, h), size, color)
 			label.TextXAlignment = Enum.TextXAlignment.Left
 			label.TextYAlignment = Enum.TextYAlignment.Center
+			label.TextWrapped = true
 			y += h
 			return label
 		end
 
 		if not current then
-			y = 40
-			bigText("Pick a conversation from the sidebar.", 16, D.muted, 28)
+			y = 30
+			bigText(
+				wide and "Pick a conversation from the sidebar." or "Pick a channel from the dropdown above.",
+				tokens.type.title,
+				colors.muted,
+				40
+			)
 		elseif not list then
-			y = 40
-			bigText("Loading messages...", 14, D.muted, 24)
+			y = 30
+			bigText("Loading messages...", tokens.type.body, colors.muted, 24)
 		else
 			if historyToken[roomId] then
 				UI.button(
 					scroller,
 					"Load earlier messages",
-					UDim2.fromOffset(16, y),
-					UDim2.fromOffset(180, 28),
+					UDim2.fromOffset(12, y),
+					UDim2.fromOffset(170, 26),
 					function()
 						if current and not loadingOlder then
 							local room = current
@@ -1055,24 +1232,29 @@ function Messaging.new(session, options)
 						end
 					end,
 					{
-						color = D.input,
-						hoverColor = D.hover,
-						pressedColor = D.pressed,
-						textColor = D.text,
+						color = colors.input,
+						hoverColor = colors.hover,
+						pressedColor = colors.pressed,
+						textColor = colors.text,
 						textSize = tokens.type.small,
-						radius = 4,
+						radius = tokens.radius.sm,
 						border = false,
 						textY = 0,
 					}
 				)
 
-				y += 44
+				y += 40
 			else
 				local title = roomTitle(current)
+				y += 8
+				bigText(
+					"Welcome to " .. (current.isDirect and "@" or "#") .. title .. "!",
+					wide and 24 or 16,
+					colors.text,
+					wide and 36 or 44
+				)
+				bigText("This is the start of your conversation.", tokens.type.small, colors.muted, 20)
 				y += 12
-				bigText("Welcome to " .. (current.isDirect and "@" or "#") .. title .. "!", 26, D.bright, 36)
-				bigText("This is the start of your conversation in " .. title .. ".", 14, D.muted, 22)
-				y += 18
 			end
 
 			local previous
@@ -1090,21 +1272,21 @@ function Messaging.new(session, options)
 					lastDay = dayKey(ts)
 					dayStarted = true
 
-					UI.frame(scroller, UDim2.new(0, 16, 0, y + 12), UDim2.new(1, -32, 0, 1), D.divider)
+					UI.frame(scroller, UDim2.new(0, 12, 0, y + 11), UDim2.new(1, -24, 0, 1), colors.border)
 
 					local dayLabel = UI.label(
 						scroller,
 						os.date("%B %d, %Y", ts),
 						UDim2.new(0.5, -60, 0, y + 3),
-						UDim2.fromOffset(120, 18),
-						11,
-						D.muted
+						UDim2.fromOffset(120, 16),
+						tokens.type.caption,
+						colors.muted
 					)
 					dayLabel.BackgroundTransparency = 0
-					dayLabel.BackgroundColor3 = D.chat
+					dayLabel.BackgroundColor3 = colors.panel
 					dayLabel.TextXAlignment = Enum.TextXAlignment.Center
 
-					y += 28
+					y += 26
 				end
 
 				local grouped = previous ~= nil
@@ -1116,14 +1298,14 @@ function Messaging.new(session, options)
 				local rowHeight = grouped and (bodyHeight + 2) or (22 + bodyHeight + 6)
 
 				if not grouped then
-					y += 10
+					y += 8
 				end
 
 				local row = UI.create("TextButton", {
 					Text = "",
 					Position = UDim2.fromOffset(0, y),
 					Size = UDim2.new(1, 0, 0, rowHeight),
-					BackgroundColor3 = D.rowHover,
+					BackgroundColor3 = colors.hover,
 					BackgroundTransparency = 1,
 					BorderSizePixel = 0,
 					AutoButtonColor = false,
@@ -1132,7 +1314,7 @@ function Messaging.new(session, options)
 				}, scroller)
 
 				row.MouseEnter:Connect(function()
-					row.BackgroundTransparency = 0
+					row.BackgroundTransparency = 0.5
 				end)
 
 				row.MouseLeave:Connect(function()
@@ -1150,17 +1332,17 @@ function Messaging.new(session, options)
 						ev.sender or "?",
 						name,
 						profile and profile.avatarUrl,
-						UDim2.fromOffset(14, 5),
-						AVATAR
+						UDim2.fromOffset(avatarX, 4),
+						avatarSize
 					)
 
 					local nameLabel = UI.label(
 						row,
 						name,
-						UDim2.fromOffset(BODY_X, 4),
+						UDim2.fromOffset(bodyX, 3),
 						UDim2.fromOffset(#name * 8 + 4, 18),
-						14,
-						D.bright
+						tokens.type.body,
+						colors.text
 					)
 					nameLabel.TextXAlignment = Enum.TextXAlignment.Left
 
@@ -1168,10 +1350,10 @@ function Messaging.new(session, options)
 					local timeLabel = UI.label(
 						row,
 						timeText,
-						UDim2.fromOffset(BODY_X + #name * 8 + 10, 6),
+						UDim2.fromOffset(bodyX + #name * 8 + 10, 5),
 						UDim2.fromOffset(200, 16),
-						11,
-						D.muted
+						tokens.type.caption,
+						colors.muted
 					)
 					timeLabel.TextXAlignment = Enum.TextXAlignment.Left
 
@@ -1181,10 +1363,10 @@ function Messaging.new(session, options)
 				local body = UI.label(
 					row,
 					text,
-					UDim2.fromOffset(BODY_X, bodyY),
-					UDim2.new(1, -(BODY_X + 20), 0, bodyHeight),
-					14,
-					ev.failed and D.red or D.text
+					UDim2.fromOffset(bodyX, bodyY),
+					UDim2.new(1, -(bodyX + 12), 0, bodyHeight),
+					tokens.type.body,
+					ev.failed and colors.error or colors.subtext
 				)
 				body.TextWrapped = true
 				body.TextXAlignment = Enum.TextXAlignment.Left
@@ -1195,7 +1377,7 @@ function Messaging.new(session, options)
 				previous = ev
 			end
 
-			y += 12
+			y += 10
 		end
 
 		scroller.CanvasSize = UDim2.new(0, 0, 0, y)
@@ -1292,9 +1474,19 @@ function Messaging.new(session, options)
 		end
 
 		sortRooms()
-		renderRail()
+
+		if not current and not wide then
+			for _, room in ipairs(rooms) do
+				if room.roomType ~= "m.space" and room.membership == "join" then
+					selectRoom(room)
+					break
+				end
+			end
+		end
+
+		renderNav()
 		renderSidebarHeader()
-		renderSidebar()
+		updateHeader()
 		renderUserPanel()
 
 		return true
@@ -1333,7 +1525,7 @@ function Messaging.new(session, options)
 				renderMessages(false)
 			end
 
-			renderSidebar()
+			renderNav()
 		end)
 	end
 
@@ -1386,20 +1578,20 @@ function Messaging.new(session, options)
 				UDim2.fromOffset(4, 8),
 				UDim2.new(1, -8, 0, 18),
 				tokens.type.small,
-				D.muted
+				colors.muted
 			)
 			label.TextXAlignment = Enum.TextXAlignment.Left
 			return
 		end
 
 		local x, y, rowHeight = 4, 4, 36
-		local maxX = 288
+		local maxX = emojiWidth - 32
 
 		for _, entry in ipairs(list) do
 			local hasImage = entry.mxc ~= nil
 			local cellWidth = hasImage and 36 or (#entry.code * 7 + 18)
 
-			if x + cellWidth > maxX then
+			if x + cellWidth > maxX and x > 4 then
 				x = 4
 				y += rowHeight + 4
 			end
@@ -1416,12 +1608,12 @@ function Messaging.new(session, options)
 					input:CaptureFocus()
 				end,
 				{
-					color = D.input,
-					hoverColor = D.hover,
-					pressedColor = D.pressed,
-					textColor = D.text,
+					color = colors.input,
+					hoverColor = colors.hover,
+					pressedColor = colors.pressed,
+					textColor = colors.text,
 					textSize = tokens.type.caption,
-					radius = 4,
+					radius = tokens.radius.sm,
 					border = false,
 					paddingX = 4,
 					textY = 0,
@@ -1501,12 +1693,14 @@ function Messaging.new(session, options)
 
 		updateHeader()
 		updateInfo()
-		renderRail()
-		renderSidebar()
+		renderNav()
 		renderMembers()
 		renderMessages(true)
 		loadEmojis(room)
-		loadMembers(room)
+
+		if wide then
+			loadMembers(room)
+		end
 
 		if messages[room.roomId] then
 			markRead(room)
@@ -1515,7 +1709,7 @@ function Messaging.new(session, options)
 		end
 	end
 
-	local function selectRoomById(roomId)
+	selectRoomById = function(roomId)
 		for _, room in ipairs(rooms) do
 			if room.roomId == roomId then
 				selectRoom(room)
@@ -1600,7 +1794,7 @@ function Messaging.new(session, options)
 					timestampMs = os.time() * 1000,
 				}
 				sortRooms()
-				renderSidebar()
+				renderNav()
 			end
 
 			if current == room then
@@ -1655,7 +1849,7 @@ function Messaging.new(session, options)
 
 		room.lastMessage = ev
 
-		if current == room and visible() then
+		if current == room and tabActive() then
 			renderMessages(false)
 			markRead(room)
 		elseif ev.sender ~= session.userId then
@@ -1663,8 +1857,7 @@ function Messaging.new(session, options)
 		end
 
 		sortRooms()
-		renderRail()
-		renderSidebar()
+		renderNav()
 	end
 
 	local function startSync()
@@ -1741,11 +1934,15 @@ function Messaging.new(session, options)
 		end
 
 		emojiOpen = not emojiOpen
-		emojiPanel.Visible = emojiOpen
 
 		if emojiOpen then
+			emojiWidth = math.clamp(chat.AbsoluteSize.X - 20, 160, 320)
+			emojiPanel.Size = UDim2.fromOffset(emojiWidth, 180)
+			emojiPanel.Position = UDim2.new(1, -(10 + emojiWidth), 1, -(INFO + COMPOSER + 10 + 180))
 			loadEmojis(current)
 		end
+
+		emojiPanel.Visible = emojiOpen
 	end)
 
 	membersButton.MouseButton1Click:Connect(function()
@@ -1789,38 +1986,48 @@ function Messaging.new(session, options)
 		end)
 	end)
 
-	function self:Open()
-		panel.Visible = true
+	function self:Step()
+		if destroyed then
+			return
+		end
 
-		if not started then
-			started = true
-			ensureProfile(session.userId)
-			applyLayout()
-			renderRail()
-			renderSidebarHeader()
-			renderSidebar()
-			renderUserPanel()
-			renderMessages(true)
-			task.spawn(refreshRooms)
-			startSync()
-		elseif current then
+		local active = tabActive()
+
+		if active and not wasActive and current then
 			current.unread = 0
-			renderRail()
-			renderSidebar()
+			renderNav()
 			markRead(current)
 		end
-	end
 
-	function self:Close()
-		panel.Visible = false
-	end
+		wasActive = active
 
-	function self:Toggle()
-		if panel.Visible then
-			self:Close()
-		else
-			self:Open()
+		if not active then
+			return
 		end
+
+		local newWide = computeWide()
+
+		if newWide ~= wide then
+			wide = newWide
+			applyLayout()
+
+			if not wide and not current then
+				for _, room in ipairs(rooms) do
+					if room.roomType ~= "m.space" and room.membership == "join" then
+						selectRoom(room)
+						break
+					end
+				end
+			end
+		end
+
+		if navDirty and not dropdownOpen() then
+			refreshChannelDropdown()
+		end
+	end
+
+	function self:SelectRoom(roomId)
+		selectRoomById(roomId)
 	end
 
 	function self:Destroy()
@@ -1831,16 +2038,137 @@ function Messaging.new(session, options)
 		destroyed = true
 
 		if stopSync then
-			stopSync()
+			pcall(stopSync)
 			stopSync = nil
 		end
 
-		panel:Destroy()
+		if channelController then
+			pcall(function()
+				channelController:Close()
+			end)
+		end
+
+		UI.forgetButtons(root)
+		root:Destroy()
 	end
 
-	self.Window = panel
+	applyLayout()
+	ensureProfile(session.userId)
+	task.spawn(refreshRooms)
+	startSync()
 
 	return self
 end
 
-return Messaging
+return function(content, windowControls)
+	local view = nil
+	local viewSession = nil
+	local gate = nil
+	local frame = 0
+
+	local function clearGate()
+		if gate and UI.isAlive(gate) then
+			UI.forgetButtons(gate)
+			gate:Destroy()
+		end
+
+		gate = nil
+	end
+
+	local function showGate()
+		if gate then
+			return
+		end
+
+		gate = UI.create("Frame", {
+			Name = "MessagesGate",
+			Size = UDim2.fromScale(1, 1),
+			BackgroundColor3 = colors.panel,
+			BorderSizePixel = 0,
+		}, content)
+
+		local label = UI.label(
+			gate,
+			"Log in to Matrix to use messages",
+			UDim2.new(0.5, 0, 0.5, -24),
+			UDim2.fromOffset(260, 20),
+			tokens.type.small,
+			colors.muted
+		)
+		label.AnchorPoint = Vector2.new(0.5, 0.5)
+		label.TextXAlignment = Enum.TextXAlignment.Center
+
+		local button = UI.button(
+			gate,
+			"Log in",
+			UDim2.new(0.5, -45, 0.5, 0),
+			UDim2.fromOffset(90, UI.metrics.buttonHeight + 4),
+			function()
+				Auth.Login({
+					onSuccess = function(session)
+						shared.CurrentSession = session
+					end,
+				})
+			end,
+			{
+				color = colors.accent,
+				hoverColor = colors.selectionHover,
+				pressedColor = colors.pressed,
+				textColor = colors.text,
+				textSize = tokens.type.small,
+				radius = tokens.radius.sm,
+				border = false,
+			}
+		)
+	end
+
+	local function unmount()
+		if view then
+			view:Destroy()
+			view = nil
+			viewSession = nil
+		end
+	end
+
+	local function mountFor(session)
+		clearGate()
+		unmount()
+
+		viewSession = session
+		view = Messaging.mount(content, session, { windowControls = windowControls })
+	end
+
+	if shared.CurrentSession then
+		mountFor(shared.CurrentSession)
+	else
+		showGate()
+	end
+
+	onFrame(function()
+		frame += 1
+
+		if view then
+			view:Step()
+		end
+
+		if frame % 15 == 0 then
+			local session = shared.CurrentSession
+
+			if session ~= viewSession then
+				unmount()
+
+				if session then
+					mountFor(session)
+				else
+					showGate()
+				end
+			end
+		end
+	end)
+
+	return {
+		GetView = function()
+			return view
+		end,
+	}
+end

@@ -1083,20 +1083,13 @@ return function(parent)
 		hoverDelay = 0.35,
 	})
 
-	local widget
-	local function toggleMessages()
-		local session = shared.CurrentSession
-		if not session then
-			return
-		end
+	local messenger, content, _, windowControls =
+		UI.window("Explorer", UDim2.new(0.5, 0, 0.5, 0), UDim2.new(0.5, 0, 0.5, 0), "Explorer", )
 
-		widget = widget or Messaging.new(session)
-		widget:Toggle()
-	end
+	Messaging(content)
 
 	if session then
 		print(session, image)
-		toggleMessages()
 
 		SetImage(session, image)
 		print("Setting image")
