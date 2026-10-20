@@ -208,7 +208,7 @@ function PackageUpload.open(target)
 	local rightWidth = UDim2.new(0.4, -COLUMN_GAP / 2, 0, INPUT_HEIGHT)
 	local rightX = UDim2.new(0.6, COLUMN_GAP / 2, 0, 0)
 
-	prompt = UI.prompt({
+	local _, content, controller = UI.prompt({
 		title = "Upload as Package",
 		description = "Export the selected instance and submit it to the Kinemium marketplace.",
 		size = UDim2.fromOffset(580, 640),
@@ -231,6 +231,8 @@ function PackageUpload.open(target)
 					local description = trim(fields.description.Text)
 					local entrypoint = trim(fields.entrypoint.Text)
 					local engineConstraint = trim(fields.engineConstraint.Text)
+					local icon = trim(fields.icon.Text)
+					local thumbnail = trim(fields.thumbnail.Text)
 
 					if name == "" then
 						notify("error", "Missing package name", "Enter a name for the package.")
@@ -307,6 +309,14 @@ function PackageUpload.open(target)
 						manifest.dependencies = dependencies
 					end
 
+					if icon ~= "" then
+						manifest.icon = icon
+					end
+
+					if thumbnail ~= "" then
+						manifest.thumbnail = thumbnail
+					end
+
 					controller:SetBusy(true, "upload", "Uploading...")
 
 					local callOk, ok, data, meta = pcall(function()
@@ -365,13 +375,15 @@ function PackageUpload.open(target)
 		},
 	})
 
+	prompt = controller
+
 	local promptHandle = prompt
 
-	fields.name = addTextBox(prompt.content, "Package name", defaultName, "my-package", UDim2.fromOffset(0, 0), leftWidth, 64)
-	fields.version = addTextBox(prompt.content, "Version", "1.0.0", "1.0.0", rightX, rightWidth, 32)
+	fields.name = addTextBox(content, "Package name", defaultName, "my-package", UDim2.fromOffset(0, 0), leftWidth, 64)
+	fields.version = addTextBox(content, "Version", "1.0.0", "1.0.0", rightX, rightWidth, 32)
 
 	addChoices(
-		prompt.content,
+		content,
 		"Type",
 		state.packageType,
 		UDim2.fromOffset(0, ROW_HEIGHT),
@@ -383,7 +395,7 @@ function PackageUpload.open(target)
 	)
 
 	addChoices(
-		prompt.content,
+		content,
 		"Visibility",
 		state.visibility,
 		UDim2.new(rightX.X.Scale, rightX.X.Offset, 0, ROW_HEIGHT),
@@ -395,7 +407,7 @@ function PackageUpload.open(target)
 	)
 
 	fields.entrypoint = addTextBox(
-		prompt.content,
+		content,
 		"Entry point",
 		defaultName .. ".kine",
 		"my-package.kine",
@@ -409,7 +421,7 @@ function PackageUpload.open(target)
 	end)
 
 	fields.engineConstraint = addTextBox(
-		prompt.content,
+		content,
 		"Engine constraint",
 		"*",
 		"*",
@@ -419,7 +431,7 @@ function PackageUpload.open(target)
 	)
 
 	fields.description = addTextBox(
-		prompt.content,
+		content,
 		"Description",
 		"",
 		"What does this package do?",
@@ -429,7 +441,7 @@ function PackageUpload.open(target)
 	)
 
 	fields.tags = addTextBox(
-		prompt.content,
+		content,
 		"Tags",
 		"",
 		"tool, utility, ui",
@@ -439,7 +451,7 @@ function PackageUpload.open(target)
 	)
 
 	fields.dependencies = addTextBox(
-		prompt.content,
+		content,
 		"Dependencies",
 		"",
 		"namespace/package@1.0.0, namespace/other",
@@ -448,12 +460,32 @@ function PackageUpload.open(target)
 		512
 	)
 
-	prompt.content.CanvasSize = UDim2.fromOffset(0, ROW_HEIGHT * 6 + 12)
+	fields.icon = addTextBox(
+		content,
+		"Icon URL",
+		"",
+		"https://example.com/icon.png",
+		UDim2.fromOffset(0, ROW_HEIGHT * 6),
+		leftWidth,
+		512
+	)
+
+	fields.thumbnail = addTextBox(
+		content,
+		"Thumbnail URL",
+		"",
+		"https://example.com/thumbnail.png",
+		UDim2.new(rightX.X.Scale, rightX.X.Offset, 0, ROW_HEIGHT * 6),
+		rightWidth,
+		512
+	)
+
+	content.CanvasSize = UDim2.fromOffset(0, ROW_HEIGHT * 7 + 12)
 
 	local sourceLabel = UI.label(
-		prompt.content,
+		content,
 		"Source: " .. tostring(target.Name) .. " (" .. tostring(target.ClassName) .. ")",
-		UDim2.fromOffset(0, ROW_HEIGHT * 6 + 4),
+		UDim2.fromOffset(0, ROW_HEIGHT * 7 + 4),
 		UDim2.new(1, -10, 0, LABEL_HEIGHT),
 		UI.tokens.type.caption,
 		UI.tokens.color.muted
@@ -461,20 +493,20 @@ function PackageUpload.open(target)
 	sourceLabel.TextTruncate = Enum.TextTruncate.AtEnd
 
 	local namespaceLabel = UI.label(
-		prompt.content,
+		content,
 		namespace and ("Publishing as namespace: " .. namespace)
 			or "Namespace: taken from your Kinemium session",
-		UDim2.fromOffset(0, ROW_HEIGHT * 6 + 4 + LABEL_HEIGHT + 3),
+		UDim2.fromOffset(0, ROW_HEIGHT * 7 + 4 + LABEL_HEIGHT + 3),
 		UDim2.new(1, -10, 0, LABEL_HEIGHT),
 		UI.tokens.type.caption,
 		UI.tokens.color.muted
 	)
 	namespaceLabel.TextTruncate = Enum.TextTruncate.AtEnd
 
-	prompt.content.CanvasSize = UDim2.fromOffset(0, ROW_HEIGHT * 6 + 4 + LABEL_HEIGHT * 2 + 16)
+	content.CanvasSize = UDim2.fromOffset(0, ROW_HEIGHT * 7 + 4 + LABEL_HEIGHT * 2 + 16)
 
 	fields.name.Focused:Connect(function()
-		prompt.content.CanvasPosition = Vector2.new(0, 0)
+		content.CanvasPosition = Vector2.new(0, 0)
 	end)
 
 	return promptHandle
