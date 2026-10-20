@@ -2,6 +2,7 @@ local Auth = require("@internal/auth")
 local UI = require("@internal/editor_ui")
 local MatrixService = game:GetService("MatrixService")
 local http = game:GetService("HttpService")
+local Messaging = require("@internal/messenger")
 
 local colors = UI.tokens.color
 local tokens = UI.tokens
@@ -1082,8 +1083,21 @@ return function(parent)
 		hoverDelay = 0.35,
 	})
 
+	local widget
+	local function toggleMessages()
+		local session = shared.CurrentSession
+		if not session then
+			return
+		end
+
+		widget = widget or Messaging.new(session)
+		widget:Toggle()
+	end
+
 	if session then
 		print(session, image)
+		toggleMessages()
+
 		SetImage(session, image)
 		print("Setting image")
 	end
