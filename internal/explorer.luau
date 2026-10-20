@@ -7,6 +7,7 @@ local export_service = game:GetService("ExportService")
 local dialog = game:GetService("DialogService")
 local docker = require("@internal/docker")
 local files = require("@internal/files")
+local package_upload = require("@internal/package_upload")
 
 local StudioThemeService = game:GetService("StudioThemeService")
 local theme = StudioThemeService.SelectedTheme
@@ -861,6 +862,8 @@ openContextMenu = function(instance, screenPoint)
 						if imported then
 						end
 					end
+				elseif action == "upload_package" then
+					package_upload.open(target)
 				elseif action == "export" then
 					local file = dialog:PickFile()
 					if file then
@@ -921,6 +924,7 @@ openContextMenu = function(instance, screenPoint)
 		{ label = "Copy", value = "copy" },
 		{ label = "Import Object..", value = "import" },
 		{ label = "Export Object..", value = "export" },
+		{ label = "Upload as Package..", value = "upload_package" },
 		{ label = "Paste", value = "paste" },
 	})
 
