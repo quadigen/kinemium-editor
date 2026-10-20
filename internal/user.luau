@@ -97,471 +97,469 @@ local function dropdownItems(values)
 	return result
 end
 
-```luau
 local function buildCategories(session, onLogout)
-    return {
-        {
-            name = "General",
-            icon = ICONS.general,
-            description = "Studio appearance, behavior, and preferences.",
-            sections = {
-                {
-                    title = "Appearance",
-                    rows = {
-                        {
-                            kind = "switch",
-                            key = "systemTheme",
-                            title = "System Theme",
-                            description = "Follow your operating system's theme.",
-                            rerender = true,
-                        },
-                        {
-                            kind = "dropdown",
-                            key = "lightTheme",
-                            title = "Light Theme",
-                            items = { "Light", "Dark" },
-                        },
-                        {
-                            kind = "dropdown",
-                            key = "darkTheme",
-                            title = "Dark Theme",
-                            items = { "Light", "Dark" },
-                        },
-                        {
-                            kind = "dropdown",
-                            key = "theme",
-                            title = "Theme",
-                            description = "Theme used when system theme is disabled.",
-                            items = { "Light", "Dark" },
-                            disabledKey = "systemTheme",
-                        },
-                        {
-                            kind = "switch",
-                            key = "monochrome",
-                            title = "Monochrome Mode",
-                            description = "Use a monochromatic interface appearance.",
-                        },
-                        {
-                            kind = "switch",
-                            key = "reduceMotion",
-                            title = "Reduce Motion",
-                            description = "Reduce nonessential interface animations.",
-                        },
-                        {
-                            kind = "dropdown",
-                            key = "pageZoom",
-                            title = "UI Scale",
-                            description = "Adjust the scale of Studio's interface.",
-                            items = { "75%", "90%", "100%", "110%", "125%", "150%", "200%" },
-                            width = 110,
-                        },
-                    },
-                },
-                {
-                    title = "Behavior",
-                    rows = {
-                        {
-                            kind = "switch",
-                            key = "restoreSession",
-                            title = "Restore Previous Session",
-                            description = "Restore the previous workspace when Studio starts.",
-                        },
-                        {
-                            kind = "switch",
-                            key = "autoSave",
-                            title = "Auto Save",
-                            description = "Periodically save changes to the project.",
-                        },
-                        {
-                            kind = "dropdown",
-                            key = "autoSaveInterval",
-                            title = "Auto Save Interval",
-                            items = { "1 minute", "3 minutes", "5 minutes", "10 minutes", "15 minutes" },
-                            width = 130,
-                        },
-                        {
-                            kind = "switch",
-                            key = "confirmExit",
-                            title = "Confirm Before Exiting",
-                            description = "Ask before closing Studio with unsaved changes.",
-                        },
-                        {
-                            kind = "switch",
-                            key = "showStartPage",
-                            title = "Show Start Page",
-                            description = "Display the start page when Studio launches.",
-                        },
-                    },
-                },
-                {
-                    title = "Date & Time",
-                    rows = {
-                        {
-                            kind = "switch",
-                            key = "hour24",
-                            title = "24-Hour Time Format",
-                        },
-                        {
-                            kind = "dropdown",
-                            key = "dateFormat",
-                            title = "Date Format",
-                            items = { "19 Oct 2026", "Oct 19, 2026", "2026-10-19", "19/10/2026" },
-                            width = 152,
-                        },
-                    },
-                },
-            },
-        },
+	return {
+		{
+			name = "General",
+			icon = ICONS.general,
+			description = "Studio appearance, behavior, and preferences.",
+			sections = {
+				{
+					title = "Appearance",
+					rows = {
+						{
+							kind = "switch",
+							key = "systemTheme",
+							title = "System Theme",
+							description = "Follow your operating system's theme.",
+							rerender = true,
+						},
+						{
+							kind = "dropdown",
+							key = "lightTheme",
+							title = "Light Theme",
+							items = { "Light", "Dark" },
+						},
+						{
+							kind = "dropdown",
+							key = "darkTheme",
+							title = "Dark Theme",
+							items = { "Light", "Dark" },
+						},
+						{
+							kind = "dropdown",
+							key = "theme",
+							title = "Theme",
+							description = "Theme used when system theme is disabled.",
+							items = { "Light", "Dark" },
+							disabledKey = "systemTheme",
+						},
+						{
+							kind = "switch",
+							key = "monochrome",
+							title = "Monochrome Mode",
+							description = "Use a monochromatic interface appearance.",
+						},
+						{
+							kind = "switch",
+							key = "reduceMotion",
+							title = "Reduce Motion",
+							description = "Reduce nonessential interface animations.",
+						},
+						{
+							kind = "dropdown",
+							key = "pageZoom",
+							title = "UI Scale",
+							description = "Adjust the scale of Studio's interface.",
+							items = { "75%", "90%", "100%", "110%", "125%", "150%", "200%" },
+							width = 110,
+						},
+					},
+				},
+				{
+					title = "Behavior",
+					rows = {
+						{
+							kind = "switch",
+							key = "restoreSession",
+							title = "Restore Previous Session",
+							description = "Restore the previous workspace when Studio starts.",
+						},
+						{
+							kind = "switch",
+							key = "autoSave",
+							title = "Auto Save",
+							description = "Periodically save changes to the project.",
+						},
+						{
+							kind = "dropdown",
+							key = "autoSaveInterval",
+							title = "Auto Save Interval",
+							items = { "1 minute", "3 minutes", "5 minutes", "10 minutes", "15 minutes" },
+							width = 130,
+						},
+						{
+							kind = "switch",
+							key = "confirmExit",
+							title = "Confirm Before Exiting",
+							description = "Ask before closing Studio with unsaved changes.",
+						},
+						{
+							kind = "switch",
+							key = "showStartPage",
+							title = "Show Start Page",
+							description = "Display the start page when Studio launches.",
+						},
+					},
+				},
+				{
+					title = "Date & Time",
+					rows = {
+						{
+							kind = "switch",
+							key = "hour24",
+							title = "24-Hour Time Format",
+						},
+						{
+							kind = "dropdown",
+							key = "dateFormat",
+							title = "Date Format",
+							items = { "19 Oct 2026", "Oct 19, 2026", "2026-10-19", "19/10/2026" },
+							width = 152,
+						},
+					},
+				},
+			},
+		},
 
-        {
-            name = "Editor",
-            icon = ICONS.editor or ICONS.general,
-            description = "Code editing, formatting, and scripting preferences.",
-            sections = {
-                {
-                    title = "Text Editor",
-                    rows = {
-                        {
-                            kind = "switch",
-                            key = "enterNewline",
-                            title = "Enter for Newline",
-                            description = "Insert a newline when pressing Enter.",
-                        },
-                        {
-                            kind = "switch",
-                            key = "tabSpaces",
-                            title = "Insert Spaces on Tab",
-                            description = "Insert spaces instead of tab characters.",
-                        },
-                        {
-                            kind = "dropdown",
-                            key = "tabSize",
-                            title = "Tab Size",
-                            items = { "2", "4", "8" },
-                            width = 90,
-                        },
-                        {
-                            kind = "switch",
-                            key = "lineNumbers",
-                            title = "Line Numbers",
-                        },
-                        {
-                            kind = "switch",
-                            key = "relativeLineNumbers",
-                            title = "Relative Line Numbers",
-                        },
-                        {
-                            kind = "switch",
-                            key = "wordWrap",
-                            title = "Word Wrap",
-                            description = "Wrap long lines within the editor.",
-                        },
-                        {
-                            kind = "switch",
-                            key = "minimap",
-                            title = "Show Minimap",
-                            description = "Display a code overview beside the editor.",
-                        },
-                        {
-                            kind = "switch",
-                            key = "highlightCurrentLine",
-                            title = "Highlight Current Line",
-                        },
-                        {
-                            kind = "switch",
-                            key = "bracketMatching",
-                            title = "Bracket Matching",
-                        },
-                        {
-                            kind = "switch",
-                            key = "autoIndent",
-                            title = "Automatic Indentation",
-                        },
-                        {
-                            kind = "switch",
-                            key = "autoClosingBrackets",
-                            title = "Auto-Close Brackets",
-                        },
-                        {
-                            kind = "switch",
-                            key = "autoClosingQuotes",
-                            title = "Auto-Close Quotes",
-                        },
-                    },
-                },
-                {
-                    title = "Code Assistance",
-                    rows = {
-                        {
-                            kind = "switch",
-                            key = "autocomplete",
-                            title = "Autocomplete",
-                            description = "Suggest identifiers and API members while typing.",
-                        },
-                        {
-                            kind = "switch",
-                            key = "parameterHints",
-                            title = "Parameter Hints",
-                        },
-                        {
-                            kind = "switch",
-                            key = "hoverDocumentation",
-                            title = "Hover Documentation",
-                        },
-                        {
-                            kind = "switch",
-                            key = "diagnostics",
-                            title = "Live Diagnostics",
-                            description = "Show syntax and type diagnostics while editing.",
-                        },
-                        {
-                            kind = "switch",
-                            key = "formatOnSave",
-                            title = "Format on Save",
-                        },
-                    },
-                },
-            },
-        },
+		{
+			name = "Editor",
+			icon = ICONS.editor or ICONS.general,
+			description = "Code editing, formatting, and scripting preferences.",
+			sections = {
+				{
+					title = "Text Editor",
+					rows = {
+						{
+							kind = "switch",
+							key = "enterNewline",
+							title = "Enter for Newline",
+							description = "Insert a newline when pressing Enter.",
+						},
+						{
+							kind = "switch",
+							key = "tabSpaces",
+							title = "Insert Spaces on Tab",
+							description = "Insert spaces instead of tab characters.",
+						},
+						{
+							kind = "dropdown",
+							key = "tabSize",
+							title = "Tab Size",
+							items = { "2", "4", "8" },
+							width = 90,
+						},
+						{
+							kind = "switch",
+							key = "lineNumbers",
+							title = "Line Numbers",
+						},
+						{
+							kind = "switch",
+							key = "relativeLineNumbers",
+							title = "Relative Line Numbers",
+						},
+						{
+							kind = "switch",
+							key = "wordWrap",
+							title = "Word Wrap",
+							description = "Wrap long lines within the editor.",
+						},
+						{
+							kind = "switch",
+							key = "minimap",
+							title = "Show Minimap",
+							description = "Display a code overview beside the editor.",
+						},
+						{
+							kind = "switch",
+							key = "highlightCurrentLine",
+							title = "Highlight Current Line",
+						},
+						{
+							kind = "switch",
+							key = "bracketMatching",
+							title = "Bracket Matching",
+						},
+						{
+							kind = "switch",
+							key = "autoIndent",
+							title = "Automatic Indentation",
+						},
+						{
+							kind = "switch",
+							key = "autoClosingBrackets",
+							title = "Auto-Close Brackets",
+						},
+						{
+							kind = "switch",
+							key = "autoClosingQuotes",
+							title = "Auto-Close Quotes",
+						},
+					},
+				},
+				{
+					title = "Code Assistance",
+					rows = {
+						{
+							kind = "switch",
+							key = "autocomplete",
+							title = "Autocomplete",
+							description = "Suggest identifiers and API members while typing.",
+						},
+						{
+							kind = "switch",
+							key = "parameterHints",
+							title = "Parameter Hints",
+						},
+						{
+							kind = "switch",
+							key = "hoverDocumentation",
+							title = "Hover Documentation",
+						},
+						{
+							kind = "switch",
+							key = "diagnostics",
+							title = "Live Diagnostics",
+							description = "Show syntax and type diagnostics while editing.",
+						},
+						{
+							kind = "switch",
+							key = "formatOnSave",
+							title = "Format on Save",
+						},
+					},
+				},
+			},
+		},
 
-        {
-            name = "Studio",
-            icon = ICONS.studio or ICONS.general,
-            description = "Workspace layout, panels, and viewport behavior.",
-            sections = {
-                {
-                    title = "Workspace",
-                    rows = {
-                        {
-                            kind = "switch",
-                            key = "restoreLayout",
-                            title = "Restore Workspace Layout",
-                        },
-                        {
-                            kind = "switch",
-                            key = "showStatusBar",
-                            title = "Show Status Bar",
-                        },
-                        {
-                            kind = "switch",
-                            key = "showToolbar",
-                            title = "Show Toolbar",
-                        },
-                        {
-                            kind = "switch",
-                            key = "showExplorer",
-                            title = "Show Explorer",
-                        },
-                        {
-                            kind = "switch",
-                            key = "showProperties",
-                            title = "Show Properties",
-                        },
-                        {
-                            kind = "switch",
-                            key = "showOutput",
-                            title = "Show Output",
-                        },
-                    },
-                },
-                {
-                    title = "Viewport",
-                    rows = {
-                        {
-                            kind = "switch",
-                            key = "viewportGrid",
-                            title = "Show Grid",
-                        },
-                        {
-                            kind = "switch",
-                            key = "viewportAxes",
-                            title = "Show Axes",
-                        },
-                        {
-                            kind = "switch",
-                            key = "viewportGizmos",
-                            title = "Show Gizmos",
-                        },
-                        {
-                            kind = "switch",
-                            key = "viewportSelectionOutline",
-                            title = "Selection Outline",
-                        },
-                        {
-                            kind = "switch",
-                            key = "viewportCameraControls",
-                            title = "Camera Controls",
-                        },
-                    },
-                },
-            },
-        },
+		{
+			name = "Studio",
+			icon = ICONS.studio or ICONS.general,
+			description = "Workspace layout, panels, and viewport behavior.",
+			sections = {
+				{
+					title = "Workspace",
+					rows = {
+						{
+							kind = "switch",
+							key = "restoreLayout",
+							title = "Restore Workspace Layout",
+						},
+						{
+							kind = "switch",
+							key = "showStatusBar",
+							title = "Show Status Bar",
+						},
+						{
+							kind = "switch",
+							key = "showToolbar",
+							title = "Show Toolbar",
+						},
+						{
+							kind = "switch",
+							key = "showExplorer",
+							title = "Show Explorer",
+						},
+						{
+							kind = "switch",
+							key = "showProperties",
+							title = "Show Properties",
+						},
+						{
+							kind = "switch",
+							key = "showOutput",
+							title = "Show Output",
+						},
+					},
+				},
+				{
+					title = "Viewport",
+					rows = {
+						{
+							kind = "switch",
+							key = "viewportGrid",
+							title = "Show Grid",
+						},
+						{
+							kind = "switch",
+							key = "viewportAxes",
+							title = "Show Axes",
+						},
+						{
+							kind = "switch",
+							key = "viewportGizmos",
+							title = "Show Gizmos",
+						},
+						{
+							kind = "switch",
+							key = "viewportSelectionOutline",
+							title = "Selection Outline",
+						},
+						{
+							kind = "switch",
+							key = "viewportCameraControls",
+							title = "Camera Controls",
+						},
+					},
+				},
+			},
+		},
 
-        {
-            name = "Projects",
-            icon = ICONS.projects or ICONS.general,
-            description = "Project files, saving, and asset handling.",
-            sections = {
-                {
-                    title = "Project Management",
-                    rows = {
-                        {
-                            kind = "switch",
-                            key = "showRecentProjects",
-                            title = "Recent Projects",
-                        },
-                        {
-                            kind = "switch",
-                            key = "confirmDelete",
-                            title = "Confirm Before Deleting",
-                            description = "Ask before deleting project objects or files.",
-                        },
-                        {
-                            kind = "switch",
-                            key = "showFileExtensions",
-                            title = "Show File Extensions",
-                        },
-                        {
-                            kind = "switch",
-                            key = "reopenLastProject",
-                            title = "Reopen Last Project",
-                        },
-                    },
-                },
-            },
-        },
+		{
+			name = "Projects",
+			icon = ICONS.projects or ICONS.general,
+			description = "Project files, saving, and asset handling.",
+			sections = {
+				{
+					title = "Project Management",
+					rows = {
+						{
+							kind = "switch",
+							key = "showRecentProjects",
+							title = "Recent Projects",
+						},
+						{
+							kind = "switch",
+							key = "confirmDelete",
+							title = "Confirm Before Deleting",
+							description = "Ask before deleting project objects or files.",
+						},
+						{
+							kind = "switch",
+							key = "showFileExtensions",
+							title = "Show File Extensions",
+						},
+						{
+							kind = "switch",
+							key = "reopenLastProject",
+							title = "Reopen Last Project",
+						},
+					},
+				},
+			},
+		},
 
-        {
-            name = "Playtest",
-            icon = ICONS.playtest or ICONS.general,
-            description = "Configure local testing and simulation.",
-            sections = {
-                {
-                    title = "Testing",
-                    rows = {
-                        {
-                            kind = "dropdown",
-                            key = "playtestMode",
-                            title = "Default Playtest Mode",
-                            items = { "Client", "Server", "Local Server" },
-                            width = 140,
-                        },
-                        {
-                            kind = "switch",
-                            key = "playtestSeparateWindow",
-                            title = "Separate Playtest Window",
-                        },
-                        {
-                            kind = "switch",
-                            key = "playtestPauseOnError",
-                            title = "Pause on Error",
-                        },
-                        {
-                            kind = "switch",
-                            key = "playtestOutput",
-                            title = "Show Playtest Output",
-                        },
-                        {
-                            kind = "switch",
-                            key = "playtestClearOutput",
-                            title = "Clear Output on Start",
-                        },
-                    },
-                },
-            },
-        },
+		{
+			name = "Playtest",
+			icon = ICONS.playtest or ICONS.general,
+			description = "Configure local testing and simulation.",
+			sections = {
+				{
+					title = "Testing",
+					rows = {
+						{
+							kind = "dropdown",
+							key = "playtestMode",
+							title = "Default Playtest Mode",
+							items = { "Client", "Server", "Local Server" },
+							width = 140,
+						},
+						{
+							kind = "switch",
+							key = "playtestSeparateWindow",
+							title = "Separate Playtest Window",
+						},
+						{
+							kind = "switch",
+							key = "playtestPauseOnError",
+							title = "Pause on Error",
+						},
+						{
+							kind = "switch",
+							key = "playtestOutput",
+							title = "Show Playtest Output",
+						},
+						{
+							kind = "switch",
+							key = "playtestClearOutput",
+							title = "Clear Output on Start",
+						},
+					},
+				},
+			},
+		},
 
-        {
-            name = "Shortcuts",
-            icon = ICONS.shortcuts or ICONS.general,
-            description = "Keyboard shortcuts and input preferences.",
-            sections = {
-                {
-                    title = "Keyboard",
-                    rows = {
-                        {
-                            kind = "switch",
-                            key = "enableKeyboardShortcuts",
-                            title = "Enable Keyboard Shortcuts",
-                        },
-                        {
-                            kind = "switch",
-                            key = "vimMode",
-                            title = "Vim Mode",
-                            description = "Use Vim-style editing controls.",
-                        },
-                    },
-                },
-            },
-        },
+		{
+			name = "Shortcuts",
+			icon = ICONS.shortcuts or ICONS.general,
+			description = "Keyboard shortcuts and input preferences.",
+			sections = {
+				{
+					title = "Keyboard",
+					rows = {
+						{
+							kind = "switch",
+							key = "enableKeyboardShortcuts",
+							title = "Enable Keyboard Shortcuts",
+						},
+						{
+							kind = "switch",
+							key = "vimMode",
+							title = "Vim Mode",
+							description = "Use Vim-style editing controls.",
+						},
+					},
+				},
+			},
+		},
 
-        {
-            name = "Developer Tools",
-            icon = ICONS.developer,
-            description = "Diagnostics, profiling, and development options.",
-            sections = {
-                {
-                    title = "Development",
-                    rows = {
-                        {
-                            kind = "switch",
-                            key = "developerMode",
-                            title = "Developer Mode",
-                            description = "Expose additional development tools.",
-                        },
-                        {
-                            kind = "switch",
-                            key = "debugLabels",
-                            title = "Show Debug Labels",
-                            description = "Display internal identifiers in the interface.",
-                        },
-                        {
-                            kind = "switch",
-                            key = "verboseLogging",
-                            title = "Verbose Logging",
-                        },
-                        {
-                            kind = "switch",
-                            key = "showPerformanceStats",
-                            title = "Show Performance Statistics",
-                        },
-                        {
-                            kind = "switch",
-                            key = "profilerEnabled",
-                            title = "Enable Profiler",
-                        },
-                    },
-                },
-            },
-        },
+		{
+			name = "Developer Tools",
+			icon = ICONS.developer,
+			description = "Diagnostics, profiling, and development options.",
+			sections = {
+				{
+					title = "Development",
+					rows = {
+						{
+							kind = "switch",
+							key = "developerMode",
+							title = "Developer Mode",
+							description = "Expose additional development tools.",
+						},
+						{
+							kind = "switch",
+							key = "debugLabels",
+							title = "Show Debug Labels",
+							description = "Display internal identifiers in the interface.",
+						},
+						{
+							kind = "switch",
+							key = "verboseLogging",
+							title = "Verbose Logging",
+						},
+						{
+							kind = "switch",
+							key = "showPerformanceStats",
+							title = "Show Performance Statistics",
+						},
+						{
+							kind = "switch",
+							key = "profilerEnabled",
+							title = "Enable Profiler",
+						},
+					},
+				},
+			},
+		},
 
-        {
-            name = "About",
-            icon = ICONS.about,
-            description = "Version and project information.",
-            sections = {
-                {
-                    title = "Kinemium Studio",
-                    rows = {
-                        {
-                            kind = "value",
-                            title = "Version",
-                            value = "Development build",
-                            valueWidth = 180,
-                        },
-                        {
-                            kind = "value",
-                            title = "Application",
-                            value = "Kinemium Studio",
-                            valueWidth = 180,
-                        },
-                    },
-                },
-            },
-        },
-    }
+		{
+			name = "About",
+			icon = ICONS.about,
+			description = "Version and project information.",
+			sections = {
+				{
+					title = "Kinemium Studio",
+					rows = {
+						{
+							kind = "value",
+							title = "Version",
+							value = "Development build",
+							valueWidth = 180,
+						},
+						{
+							kind = "value",
+							title = "Application",
+							value = "Kinemium Studio",
+							valueWidth = 180,
+						},
+					},
+				},
+			},
+		},
+	}
 end
-```
 
 return function(parent)
 	local tooltip
