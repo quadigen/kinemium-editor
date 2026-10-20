@@ -2,7 +2,6 @@ local Auth = require("@internal/auth")
 local UI = require("@internal/editor_ui")
 local MatrixService = game:GetService("MatrixService")
 local http = game:GetService("HttpService")
-local Messaging = require("@internal/messenger")
 
 local colors = UI.tokens.color
 local tokens = UI.tokens
@@ -1073,7 +1072,7 @@ return function(parent)
 
 	image.Size = UDim2.new(1, 0, 1, 0)
 	image.AnchorPoint = Vector2.new(0.5, 0.5)
-	image.ClipsDescendants = true
+	profileButton.ClipsDescendants = true
 	image.Position = UDim2.new(0.5, 0, 0.5, 0)
 
 	local session = shared.CurrentSession
@@ -1084,15 +1083,7 @@ return function(parent)
 	})
 
 	if session then
-		print(session, image)
-
-		local messenger, content, _, windowControls =
-			UI.window("Explorer", UDim2.new(0.5, 0, 0.5, 0), UDim2.new(0.5, 0, 0.5, 0), "Explorer")
-		messenger.Parent = UI.widgetOverlay()
-
-		Messaging(content, windowControls)
 		SetImage(session, image)
-		print("Setting image")
 	end
 
 	profileButton.AnchorPoint = Vector2.new(1, 0)
