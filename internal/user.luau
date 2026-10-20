@@ -81,6 +81,8 @@ local function SetImage(session, image)
 		Authorization = "Bearer " .. session.accessToken,
 	})
 
+	print(content)
+
 	image.Image = content
 end
 
