@@ -79,7 +79,51 @@ local function tableList(value)
 	return result
 end
 
+-- Dates sometimes arrive wrapped in a table; dig out the first usable number/string.
+local function unwrapTimestamp(value)
+	if type(value) ~= "table" then
+		return value
+	end
+
+	for _, key in ipairs({
+		"UnixTimestampMillis",
+		"UnixTimestamp",
+		"unix",
+		"Unix",
+		"timestamp",
+		"Timestamp",
+		"seconds",
+		"Seconds",
+		"iso",
+		"ISO",
+		"date",
+		"Date",
+		"value",
+		"Value",
+	}) do
+		local inner = value[key]
+
+		if inner ~= nil and type(inner) ~= "table" then
+			return inner
+		end
+	end
+
+	for _, inner in pairs(value) do
+		if type(inner) == "number" or type(inner) == "string" then
+			return inner
+		end
+	end
+
+	return nil
+end
+
 local function formatDate(value)
+	value = unwrapTimestamp(value)
+
+	if type(value) == "string" and value:match("^%d+$") then
+		value = tonumber(value)
+	end
+
 	if type(value) == "number" then
 		-- Treat very large numbers as milliseconds.
 		local seconds = value > 100000000000 and math.floor(value / 1000) or value
@@ -146,6 +190,17 @@ local function truncate(label)
 	trySet(label, "TextTruncate", Enum.TextTruncate.AtEnd)
 
 	return label
+end
+
+-- This UI layer's list layouts don't pick up AutomaticSize results, so anything that
+-- grows with its content gets an explicit height driven by its layout instead.
+local function bindHeight(frame, layout, extra)
+	local function update()
+		frame.Size = UDim2.new(frame.Size.X.Scale, frame.Size.X.Offset, 0, layout.AbsoluteContentSize.Y + extra)
+	end
+
+	layout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(update)
+	update()
 end
 
 -- options:
@@ -275,22 +330,16 @@ return function(parent, options)
 			return nil
 		end
 
-		-- The pill sizes itself to its text so long tags never clip.
+		-- Start from an estimate, then snap to the measured text width.
 		local frame = UI.frame(
 			pillParent,
 			UDim2.fromOffset(0, 0),
-			UDim2.fromOffset(0, PILL_HEIGHT),
+			UDim2.fromOffset(#label * 7 + PILL_PADDING * 2, PILL_HEIGHT),
 			config.color or colors.surfaceAlt,
 			7
 		)
 
 		frame.LayoutOrder = order
-		frame.AutomaticSize = Enum.AutomaticSize.X
-
-		UI.create("UIPadding", {
-			PaddingLeft = UDim.new(0, PILL_PADDING),
-			PaddingRight = UDim.new(0, PILL_PADDING),
-		}, frame)
 
 		if config.stroke then
 			UI.stroke(frame, config.stroke, 1, 0.3)
@@ -300,27 +349,39 @@ return function(parent, options)
 			frame,
 			label,
 			UDim2.fromOffset(0, 0),
-			UDim2.fromOffset(0, PILL_HEIGHT),
+			UDim2.fromScale(1, 1),
 			tokens.type.caption,
 			config.textColor or colors.text
 		)
 
 		textLabel.TextWrapped = false
-		textLabel.AutomaticSize = Enum.AutomaticSize.X
 		textLabel.TextXAlignment = Enum.TextXAlignment.Center
+
+		local function fit()
+			local width = textLabel.TextBounds.X
+
+			if width and width > 0 then
+				frame.Size = UDim2.fromOffset(math.ceil(width) + PILL_PADDING * 2, PILL_HEIGHT)
+			end
+		end
+
+		pcall(function()
+			textLabel:GetPropertyChangedSignal("TextBounds"):Connect(fit)
+		end)
+
+		fit()
 
 		return frame
 	end
 
 	local function section(title, order, rightText)
-		local card = UI.card(scroll, UDim2.fromOffset(0, 0), UDim2.new(1, 0, 0, 0), {
+		local card = UI.card(scroll, UDim2.fromOffset(0, 0), UDim2.new(1, 0, 0, 60), {
 			color = colors.surface,
 			radius = CARD_RADIUS,
 		})
 
 		card.Name = title
 		card.LayoutOrder = order
-		card.AutomaticSize = Enum.AutomaticSize.Y
 
 		UI.create("UIPadding", {
 			PaddingLeft = UDim.new(0, CARD_PADDING),
@@ -329,10 +390,12 @@ return function(parent, options)
 			PaddingBottom = UDim.new(0, CARD_PADDING),
 		}, card)
 
-		UI.create("UIListLayout", {
+		local cardLayout = UI.create("UIListLayout", {
 			SortOrder = Enum.SortOrder.LayoutOrder,
 			Padding = UDim.new(0, CARD_GAP),
 		}, card)
+
+		bindHeight(card, cardLayout, CARD_PADDING * 2)
 
 		local header = UI.create("Frame", {
 			Name = "Header",
@@ -446,8 +509,6 @@ return function(parent, options)
 		local reviewStatus = firstValue(data.reviewStatus, data.review_status, plugin.ReviewStatus, "approved")
 		local engineConstraint = firstValue(data.engineConstraint, data.engine_constraint, "Any")
 		local packageId = firstValue(data.packageId, data.package_id, plugin.PackageId, "unknown")
-		local updatedAt =
-			firstValue(data.updatedAt, data.updated_at, data.publishedAt, data.published_at, plugin.UpdatedAt, "")
 		local downloads = firstValue(
 			data.acquisitionCount,
 			data.acquisition_count,
@@ -476,32 +537,34 @@ return function(parent, options)
 
 		local dependencies = latest and tableList(latest.dependencies) or {}
 
+		local updatedAt = firstValue(
+			data.updatedAt,
+			data.updated_at,
+			data.publishedAt,
+			data.published_at,
+			plugin.UpdatedAt,
+			latest and latest.publishedAt,
+			latest and latest.published_at,
+			""
+		)
+
 		-- Hero ------------------------------------------------------------------
 
-		local hero = UI.card(scroll, UDim2.fromOffset(0, 0), UDim2.new(1, 0, 0, 0), {
-			color = colors.surface,
-			radius = 14,
-		})
+		local pillsTop = BANNER_HEIGHT + IDENTITY_HEIGHT
+
+		local hero =
+			UI.card(scroll, UDim2.fromOffset(0, 0), UDim2.new(1, 0, 0, pillsTop + PILL_HEIGHT + CARD_PADDING), {
+				color = colors.surface,
+				radius = 14,
+			})
 
 		hero.Name = "Hero"
 		hero.LayoutOrder = 1
-		hero.AutomaticSize = Enum.AutomaticSize.Y
 		hero.ClipsDescendants = true
 
-		local stack = UI.create("Frame", {
-			Name = "Stack",
-			Size = UDim2.new(1, 0, 0, 0),
-			AutomaticSize = Enum.AutomaticSize.Y,
-			BackgroundTransparency = 1,
-			BorderSizePixel = 0,
-		}, hero)
-
-		UI.create("UIListLayout", { SortOrder = Enum.SortOrder.LayoutOrder }, stack)
-
-		local banner = UI.frame(stack, UDim2.fromOffset(0, 0), UDim2.new(1, 0, 0, BANNER_HEIGHT), colors.surfaceAlt, 14)
+		local banner = UI.frame(hero, UDim2.fromOffset(0, 0), UDim2.new(1, 0, 0, BANNER_HEIGHT), colors.surfaceAlt, 14)
 
 		banner.Name = "Banner"
-		banner.LayoutOrder = 1
 		banner.ClipsDescendants = true
 
 		local bannerImage = UI.image(banner, "", UDim2.fromOffset(0, 0), UDim2.fromScale(1, 1))
@@ -541,11 +604,11 @@ return function(parent, options)
 
 		local identity = UI.create("Frame", {
 			Name = "Identity",
+			Position = UDim2.fromOffset(0, BANNER_HEIGHT),
 			Size = UDim2.new(1, 0, 0, IDENTITY_HEIGHT),
 			BackgroundTransparency = 1,
 			BorderSizePixel = 0,
-			LayoutOrder = 2,
-		}, stack)
+		}, hero)
 
 		local actionWidth = options.onInstall and (INSTALL_WIDTH + CARD_PADDING) or 0
 		local textX = CARD_PADDING + ICON_SIZE + 16
@@ -601,26 +664,29 @@ return function(parent, options)
 
 		local pills = UI.create("Frame", {
 			Name = "Pills",
-			Size = UDim2.new(1, 0, 0, 0),
-			AutomaticSize = Enum.AutomaticSize.Y,
+			Position = UDim2.fromOffset(CARD_PADDING, pillsTop),
+			Size = UDim2.new(1, -CARD_PADDING * 2, 0, PILL_HEIGHT),
 			BackgroundTransparency = 1,
 			BorderSizePixel = 0,
-			LayoutOrder = 3,
-		}, stack)
+		}, hero)
 
-		UI.create("UIPadding", {
-			PaddingLeft = UDim.new(0, CARD_PADDING),
-			PaddingRight = UDim.new(0, CARD_PADDING),
-			PaddingBottom = UDim.new(0, CARD_PADDING),
-		}, pills)
-
-		UI.create("UIListLayout", {
+		local pillsLayout = UI.create("UIListLayout", {
 			FillDirection = Enum.FillDirection.Horizontal,
 			SortOrder = Enum.SortOrder.LayoutOrder,
 			Wraps = true,
 			Padding = UDim.new(0, 6),
 			LinePadding = UDim.new(0, 6),
 		}, pills)
+
+		-- Pills wrap onto extra lines, so the pill row and the hero both follow the layout's height.
+		local function fitHero()
+			local height = math.max(pillsLayout.AbsoluteContentSize.Y, PILL_HEIGHT)
+
+			pills.Size = UDim2.new(1, -CARD_PADDING * 2, 0, height)
+			hero.Size = UDim2.new(1, 0, 0, pillsTop + height + CARD_PADDING)
+		end
+
+		pillsLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(fitHero)
 
 		local approved = tostring(reviewStatus):lower() == "approved"
 		local order = 0
@@ -643,6 +709,8 @@ return function(parent, options)
 
 			addPill(tag, { color = colors.surface, stroke = colors.border, textColor = colors.subtext })
 		end
+
+		fitHero()
 
 		local iconFrame = UI.frame(
 			hero,
@@ -693,13 +761,6 @@ return function(parent, options)
 			LayoutOrder = 2,
 		}, scroll)
 
-		-- 4 cells + 3 gaps of 10px: each cell is a quarter of the width minus its share of the gaps.
-		UI.create("UIGridLayout", {
-			CellSize = UDim2.new(0.25, -8, 0, STAT_HEIGHT),
-			CellPadding = UDim2.fromOffset(10, 10),
-			SortOrder = Enum.SortOrder.LayoutOrder,
-		}, stats)
-
 		local ratingText = "No ratings"
 
 		if ratingAverage then
@@ -713,14 +774,16 @@ return function(parent, options)
 			{ label = "UPDATED", value = formatDate(updatedAt) },
 		}
 
+		-- 4 columns with 8px gaps, positioned by hand (no grid layout):
+		-- cell width = W/4 - 6, cell n starts at (n-1) * (W/4 + 2).
 		for index, stat in ipairs(statCards) do
-			local card = UI.card(stats, UDim2.fromOffset(0, 0), UDim2.fromOffset(100, STAT_HEIGHT), {
-				color = colors.surface,
-				radius = CARD_RADIUS,
-			})
+			local card =
+				UI.card(stats, UDim2.new((index - 1) * 0.25, (index - 1) * 2, 0, 0), UDim2.new(0.25, -6, 1, 0), {
+					color = colors.surface,
+					radius = CARD_RADIUS,
+				})
 
 			card.Name = stat.label
-			card.LayoutOrder = index
 
 			UI.label(
 				card,
@@ -739,33 +802,32 @@ return function(parent, options)
 		local about = section("ABOUT", 3)
 
 		local descriptionLabel =
-			UI.label(about, tostring(description), UDim2.fromOffset(0, 0), UDim2.new(1, 0, 0, 0), 14, colors.text)
+			UI.label(about, tostring(description), UDim2.fromOffset(0, 0), UDim2.new(1, 0, 0, 20), 14, colors.text)
 
 		descriptionLabel.LayoutOrder = 1
 		descriptionLabel.TextWrapped = true
-		descriptionLabel.AutomaticSize = Enum.AutomaticSize.Y
 		descriptionLabel.TextYAlignment = Enum.TextYAlignment.Top
 		trySet(descriptionLabel, "LineHeight", 1.2)
+
+		local function fitDescription()
+			local height = descriptionLabel.TextBounds.Y
+
+			if height and height > 0 then
+				descriptionLabel.Size = UDim2.new(1, 0, 0, math.ceil(height) + 2)
+			end
+		end
+
+		pcall(function()
+			descriptionLabel:GetPropertyChangedSignal("TextBounds"):Connect(fitDescription)
+		end)
+
+		fitDescription()
 
 		-- Details ---------------------------------------------------------------
 
 		local details = section("DETAILS", 4)
 
-		local grid = UI.create("Frame", {
-			Name = "Fields",
-			Size = UDim2.new(1, 0, 0, 0),
-			AutomaticSize = Enum.AutomaticSize.Y,
-			BackgroundTransparency = 1,
-			BorderSizePixel = 0,
-			LayoutOrder = 1,
-		}, details)
-
-		-- 2 columns with a 20px gutter.
-		UI.create("UIGridLayout", {
-			CellSize = UDim2.new(0.5, -10, 0, 40),
-			CellPadding = UDim2.fromOffset(20, 12),
-			SortOrder = Enum.SortOrder.LayoutOrder,
-		}, grid)
+		local FIELD_HEIGHT, FIELD_GAP = 40, 12
 
 		local fields = {
 			{ "LICENSE", license },
@@ -776,12 +838,27 @@ return function(parent, options)
 			{ "PACKAGE ID", packageId },
 		}
 
+		local fieldRows = math.ceil(#fields / 2)
+
+		local grid = UI.create("Frame", {
+			Name = "Fields",
+			Size = UDim2.new(1, 0, 0, fieldRows * FIELD_HEIGHT + (fieldRows - 1) * FIELD_GAP),
+			BackgroundTransparency = 1,
+			BorderSizePixel = 0,
+			LayoutOrder = 1,
+		}, details)
+
+		-- 2 columns with a 20px gutter, positioned by hand.
 		for index, field in ipairs(fields) do
+			local column = (index - 1) % 2
+			local fieldRow = math.floor((index - 1) / 2)
+
 			local cell = UI.create("Frame", {
 				Name = field[1],
+				Position = UDim2.new(column * 0.5, column * 10, 0, fieldRow * (FIELD_HEIGHT + FIELD_GAP)),
+				Size = UDim2.new(0.5, -10, 0, FIELD_HEIGHT),
 				BackgroundTransparency = 1,
 				BorderSizePixel = 0,
-				LayoutOrder = index,
 			}, grid)
 
 			UI.label(cell, field[1], UDim2.fromOffset(0, 0), UDim2.new(1, 0, 0, 14), tokens.type.caption, colors.muted)
@@ -847,8 +924,8 @@ return function(parent, options)
 				local item = versions[index]
 				local yanked = item.yanked == true
 				local versionText = "v" .. tostring(item.version or item.Version or "?")
-				local dateText = tostring(item.publishedAt)
-				local sizeText = tostring(item.size)
+				local dateText = formatDate(item.publishedAt or item.published_at)
+				local sizeText = formatSize(item.size)
 				local meta = dateText .. (sizeText ~= "" and ("   " .. sizeText) or "")
 
 				local line = row(versionsCard, index, ROW_HEIGHT)
