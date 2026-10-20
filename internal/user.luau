@@ -1063,7 +1063,7 @@ return function(parent)
 					end
 
 					task.spawn(function()
-						pcall(SetImage, session, image)
+						SetImage(session, image)
 					end)
 				end,
 			})
