@@ -7,16 +7,34 @@ local UI = require("@internal/editor_ui")
 local Packages = game:GetService("Packages")
 local MatrixService = game:GetService("MatrixService")
 local Project = game:GetService("Project")
+local DialogService = game:GetService("DialogService")
+local Filesystem = game:GetService("Filesystem")
+local HttpService = game:GetService("HttpService")
 
 local TYPES = { "package", "model", "plugin", "template", "tool" }
 local VISIBILITIES = { "public", "unlisted", "private" }
 
-local ROW_GAP = 10
+local MIME_TYPES = {
+	png = "image/png",
+	jpg = "image/jpeg",
+	jpeg = "image/jpeg",
+	webp = "image/webp",
+	gif = "image/gif",
+	bmp = "image/bmp",
+	svg = "image/svg+xml",
+}
+
 local LABEL_HEIGHT = 15
 local INPUT_OFFSET = LABEL_HEIGHT + 3
 local INPUT_HEIGHT = 30
-local ROW_HEIGHT = INPUT_OFFSET + INPUT_HEIGHT + ROW_GAP
 local COLUMN_GAP = 12
+local CARD_PAD = 12
+local ROW_HEIGHT = INPUT_OFFSET + INPUT_HEIGHT
+local SECTION_GAP = 14
+local SECTION_TITLE_HEIGHT = 16
+local SECTION_TOP = SECTION_TITLE_HEIGHT + 6
+local BANNER_HEIGHT = 104
+local ICON_SIZE = 104
 
 local PackageUpload = {}
 
@@ -85,6 +103,71 @@ local function choiceLabel(value)
 	return string.upper(string.sub(value, 1, 1)) .. string.sub(value, 2)
 end
 
+local function fileName(path)
+	return (string.match(tostring(path or ""), "[^/\\]+$") or tostring(path or ""))
+end
+
+local function mimeType(path)
+	local extension = string.lower(string.match(tostring(path or ""), "%.([%w]+)$") or "")
+	return MIME_TYPES[extension] or "application/octet-stream"
+end
+
+local function uploadImage(path)
+	if path == nil then
+		return nil
+	end
+
+	local contentsOk, contents = pcall(function()
+		return Filesystem:ReadFile(path)
+	end)
+
+	if not contentsOk or type(contents) ~= "string" or contents == "" then
+		error("Could not read " .. fileName(path) .. ".", 0)
+	end
+
+	local session = MatrixService.Session
+
+	if
+		type(session) ~= "table"
+		or type(session.homeserver) ~= "string"
+		or type(session.accessToken) ~= "string"
+	then
+		error("Sign in before uploading media.", 0)
+	end
+
+	local requestOk, response = pcall(function()
+		return HttpService:RequestAsync({
+			Url = string.gsub(session.homeserver, "/+$", "") .. "/_matrix/media/v3/upload",
+			Method = "POST",
+			Headers = {
+				["Authorization"] = "Bearer " .. session.accessToken,
+				["Content-Type"] = mimeType(path),
+			},
+			Body = contents,
+		})
+	end)
+
+	if not requestOk or type(response) ~= "table" then
+		error("Could not upload " .. fileName(path) .. ".", 0)
+	end
+
+	if not response.Success then
+		error("Could not upload " .. fileName(path) .. " (HTTP " .. tostring(response.StatusCode) .. ").", 0)
+	end
+
+	local decodeOk, decoded = pcall(function()
+		return HttpService:JSONDecode(response.Body)
+	end)
+
+	local mxc = decodeOk and type(decoded) == "table" and decoded.content_uri
+
+	if type(mxc) ~= "string" or mxc == "" then
+		error("The media upload returned no content URI.", 0)
+	end
+
+	return MatrixService:MxcToHttp(session.homeserver, mxc)
+end
+
 local function notify(kind, title, message)
 	UI.toast("package", {
 		type = kind,
@@ -114,6 +197,8 @@ function PackageUpload.open(target)
 	local state = {
 		packageType = "package",
 		visibility = "public",
+		banner = nil,
+		icon = nil,
 	}
 
 	local fields = {}
@@ -125,7 +210,7 @@ function PackageUpload.open(target)
 			parent,
 			labelText,
 			position,
-			UDim2.new(1, 0, 0, LABEL_HEIGHT),
+			UDim2.new(size.X.Scale, size.X.Offset, 0, LABEL_HEIGHT),
 			UI.tokens.type.caption,
 			UI.tokens.color.muted
 		)
@@ -143,7 +228,7 @@ function PackageUpload.open(target)
 			parent,
 			labelText,
 			position,
-			UDim2.new(1, 0, 0, LABEL_HEIGHT),
+			UDim2.new(size.X.Scale, size.X.Offset, 0, LABEL_HEIGHT),
 			UI.tokens.type.caption,
 			colors.muted
 		)
@@ -204,15 +289,115 @@ function PackageUpload.open(target)
 		refresh()
 	end
 
-	local leftWidth = UDim2.new(0.6, -COLUMN_GAP / 2, 0, INPUT_HEIGHT)
-	local rightWidth = UDim2.new(0.4, -COLUMN_GAP / 2, 0, INPUT_HEIGHT)
-	local rightX = UDim2.new(0.6, COLUMN_GAP / 2, 0, 0)
+	local function addSection(parent, y, title, height)
+		local colors = UI.tokens.color
+
+		local heading = UI.label(
+			parent,
+			title,
+			UDim2.fromOffset(2, y),
+			UDim2.new(1, -4, 0, SECTION_TITLE_HEIGHT),
+			UI.tokens.type.caption,
+			colors.muted
+		)
+		heading.TextXAlignment = Enum.TextXAlignment.Left
+
+		local card = UI.card(parent, UDim2.fromOffset(0, y + SECTION_TOP), UDim2.new(1, -6, 0, height), {
+			color = colors.surface,
+			radius = UI.tokens.radius.md,
+			border = true,
+			borderColor = colors.border,
+			borderTransparency = 0.25,
+			shadow = true,
+			shadowBlur = 8,
+			shadowOffset = 2,
+			shadowTransparency = 0.8,
+		})
+
+		return card, y + SECTION_TOP + height + SECTION_GAP
+	end
+
+	local function smallButton(parent, text, position, size, callback)
+		return UI.button(parent, text, position, size, callback, {
+			color = UI.tokens.color.panelRaised,
+			hoverColor = UI.tokens.color.hover,
+			pressedColor = UI.tokens.color.pressed,
+			textColor = UI.tokens.color.text,
+			textSize = UI.tokens.type.small,
+			radius = UI.tokens.radius.sm,
+			border = true,
+			borderColor = UI.tokens.color.border,
+			borderTransparency = 0.2,
+			paddingX = 4,
+		})
+	end
+
+	local function addMediaPreview(parent, position, size, placeholderText, fit)
+		local colors = UI.tokens.color
+		local frame = UI.frame(parent, position, size, colors.input, UI.tokens.radius.sm)
+		UI.stroke(frame, colors.border, 1, 0.2)
+
+		local image = UI.image(frame, "", UDim2.fromOffset(0, 0), UDim2.fromScale(1, 1))
+		image.ZIndex = 1
+		image.ScaleType = fit and Enum.ScaleType.Fit or Enum.ScaleType.Crop
+		image.Visible = false
+
+		local placeholder = UI.label(
+			frame,
+			placeholderText,
+			UDim2.fromOffset(0, 0),
+			UDim2.fromScale(1, 1),
+			UI.tokens.type.caption,
+			colors.muted
+		)
+		placeholder.ZIndex = 2
+		placeholder.TextXAlignment = Enum.TextXAlignment.Center
+		placeholder.TextYAlignment = Enum.TextYAlignment.Center
+
+		local click = UI.create("TextButton", {
+			Name = "PickImage",
+			Text = "",
+			Position = UDim2.fromOffset(0, 0),
+			Size = UDim2.fromScale(1, 1),
+			BackgroundTransparency = 1,
+			AutoButtonColor = false,
+			ZIndex = 3,
+		}, frame)
+
+		return image, placeholder, click
+	end
+
+	local function chooseImage(preview, placeholder, nameLabel, key)
+		local ok, path = pcall(function()
+			return DialogService:PickFile()
+		end)
+
+		if not ok or type(path) ~= "string" or path == "" then
+			return
+		end
+
+		state[key] = path
+		preview.Image = path
+		preview.Visible = true
+		placeholder.Visible = false
+		nameLabel.Text = fileName(path)
+		nameLabel.TextColor3 = UI.tokens.color.subtext
+	end
+
+	local function clearImage(preview, placeholder, nameLabel, key)
+		state[key] = nil
+		preview.Image = ""
+		preview.Visible = false
+		placeholder.Visible = true
+		nameLabel.Text = "No file selected"
+		nameLabel.TextColor3 = UI.tokens.color.muted
+	end
 
 	local _, content, controller = UI.prompt({
 		title = "Upload as Package",
-		description = "Export the selected instance and submit it to the Kinemium marketplace.",
-		size = UDim2.fromOffset(580, 640),
-		padding = 14,
+		description = "Package the selected instance and publish it to the Kinemium marketplace.",
+		size = UDim2.fromOffset(720, 700),
+		padding = 16,
 		scrollable = true,
 		destroyOnClose = true,
 		buttons = {
@@ -231,8 +416,6 @@ function PackageUpload.open(target)
 					local description = trim(fields.description.Text)
 					local entrypoint = trim(fields.entrypoint.Text)
 					local engineConstraint = trim(fields.engineConstraint.Text)
-					local icon = trim(fields.icon.Text)
-					local thumbnail = trim(fields.thumbnail.Text)
 
 					if name == "" then
 						notify("error", "Missing package name", "Enter a name for the package.")
@@ -309,15 +492,42 @@ function PackageUpload.open(target)
 						manifest.dependencies = dependencies
 					end
 
-					if icon ~= "" then
-						manifest.icon = icon
-					end
-
-					if thumbnail ~= "" then
-						manifest.thumbnail = thumbnail
-					end
-
 					controller:SetBusy(true, "upload", "Uploading...")
+
+					local iconUrl = nil
+					local bannerUrl = nil
+
+					if state.icon ~= nil then
+						local uploadOk, result = pcall(uploadImage, state.icon)
+
+						if not uploadOk then
+							controller:SetBusy(false, "upload")
+							notify("error", "Icon upload failed", tostring(result))
+							return false
+						end
+
+						iconUrl = result
+					end
+
+					if state.banner ~= nil then
+						local uploadOk, result = pcall(uploadImage, state.banner)
+
+						if not uploadOk then
+							controller:SetBusy(false, "upload")
+							notify("error", "Banner upload failed", tostring(result))
+							return false
+						end
+
+						bannerUrl = result
+					end
+
+					if iconUrl ~= nil then
+						manifest.icon = iconUrl
+					end
+
+					if bannerUrl ~= nil then
+						manifest.thumbnail = bannerUrl
+					end
 
 					local callOk, ok, data, meta = pcall(function()
 						return Packages:PublishInstance(target, manifest, {
@@ -377,139 +587,143 @@ function PackageUpload.open(target)
 
 	prompt = controller
 
-	local promptHandle = prompt
+	local cardWidth = 682
+	local innerWidth = cardWidth - CARD_PAD * 2
+	local leftWidth = math.floor((innerWidth - COLUMN_GAP) * 0.56)
+	local rightWidth = innerWidth - COLUMN_GAP - leftWidth
+	local rightX = CARD_PAD + leftWidth + COLUMN_GAP
+	local fullWidth = UDim2.new(1, -CARD_PAD * 2, 0, INPUT_HEIGHT)
+	local bannerWidth = cardWidth - CARD_PAD * 2 - ICON_SIZE - COLUMN_GAP
 
-	fields.name = addTextBox(content, "Package name", defaultName, "my-package", UDim2.fromOffset(0, 0), leftWidth, 64)
-	fields.version = addTextBox(content, "Version", "1.0.0", "1.0.0", rightX, rightWidth, 32)
+	local card
+	local y = 0
 
-	addChoices(
-		content,
-		"Type",
-		state.packageType,
-		UDim2.fromOffset(0, ROW_HEIGHT),
-		leftWidth,
-		TYPES,
-		function(value)
-			state.packageType = value
-		end
+	card, y = addSection(content, y, "Identity", CARD_PAD * 2 + ROW_HEIGHT)
+	fields.name = addTextBox(card, "Name", defaultName, "my-package", UDim2.fromOffset(CARD_PAD, CARD_PAD), UDim2.fromOffset(leftWidth, INPUT_HEIGHT), 64)
+	fields.version = addTextBox(card, "Version", "1.0.0", "1.0.0", UDim2.fromOffset(rightX, CARD_PAD), UDim2.fromOffset(rightWidth, INPUT_HEIGHT), 32)
+
+	card, y = addSection(content, y, "Listing", CARD_PAD * 2 + ROW_HEIGHT)
+	addChoices(card, "Type", state.packageType, UDim2.fromOffset(CARD_PAD, CARD_PAD), UDim2.fromOffset(leftWidth, INPUT_HEIGHT), TYPES, function(value)
+		state.packageType = value
+	end)
+	addChoices(card, "Visibility", state.visibility, UDim2.fromOffset(rightX, CARD_PAD), UDim2.fromOffset(rightWidth, INPUT_HEIGHT), VISIBILITIES, function(value)
+		state.visibility = value
+	end)
+
+	card, y = addSection(content, y, "Media", 180)
+
+	local bannerImage, bannerPlaceholder, bannerClick = addMediaPreview(
+		card,
+		UDim2.fromOffset(CARD_PAD, CARD_PAD),
+		UDim2.fromOffset(bannerWidth, BANNER_HEIGHT),
+		"Banner",
+		false
+	)
+	local iconImage, iconPlaceholder, iconClick = addMediaPreview(
+		card,
+		UDim2.fromOffset(cardWidth - CARD_PAD - ICON_SIZE, CARD_PAD),
+		UDim2.fromOffset(ICON_SIZE, ICON_SIZE),
+		"Icon",
+		true
 	)
 
-	addChoices(
-		content,
-		"Visibility",
-		state.visibility,
-		UDim2.new(rightX.X.Scale, rightX.X.Offset, 0, ROW_HEIGHT),
-		rightWidth,
-		VISIBILITIES,
-		function(value)
-			state.visibility = value
-		end
+	local bannerName = UI.label(
+		card,
+		"No file selected",
+		UDim2.fromOffset(CARD_PAD, CARD_PAD + BANNER_HEIGHT + 34),
+		UDim2.fromOffset(bannerWidth, LABEL_HEIGHT),
+		UI.tokens.type.caption,
+		UI.tokens.color.muted
 	)
+	bannerName.TextXAlignment = Enum.TextXAlignment.Left
+	bannerName.TextTruncate = Enum.TextTruncate.AtEnd
 
-	fields.entrypoint = addTextBox(
-		content,
-		"Entry point",
-		defaultName .. ".kine",
-		"my-package.kine",
-		UDim2.fromOffset(0, ROW_HEIGHT * 2),
-		leftWidth,
-		128
+	local iconName = UI.label(
+		card,
+		"No file selected",
+		UDim2.fromOffset(cardWidth - CARD_PAD - ICON_SIZE, CARD_PAD + BANNER_HEIGHT + 34),
+		UDim2.fromOffset(ICON_SIZE, LABEL_HEIGHT),
+		UI.tokens.type.caption,
+		UI.tokens.color.muted
 	)
+	iconName.TextXAlignment = Enum.TextXAlignment.Left
+	iconName.TextTruncate = Enum.TextTruncate.AtEnd
 
+	smallButton(card, "Choose banner", UDim2.fromOffset(CARD_PAD, CARD_PAD + BANNER_HEIGHT + 4), UDim2.fromOffset(120, 26), function()
+		chooseImage(bannerImage, bannerPlaceholder, bannerName, "banner")
+	end)
+	smallButton(card, "Clear", UDim2.fromOffset(CARD_PAD + 126, CARD_PAD + BANNER_HEIGHT + 4), UDim2.fromOffset(54, 26), function()
+		clearImage(bannerImage, bannerPlaceholder, bannerName, "banner")
+	end)
+
+	local iconButtonX = cardWidth - CARD_PAD - ICON_SIZE
+
+	smallButton(card, "Choose", UDim2.fromOffset(iconButtonX, CARD_PAD + BANNER_HEIGHT + 4), UDim2.fromOffset(60, 26), function()
+		chooseImage(iconImage, iconPlaceholder, iconName, "icon")
+	end)
+	smallButton(card, "Clear", UDim2.fromOffset(iconButtonX + 64, CARD_PAD + BANNER_HEIGHT + 4), UDim2.fromOffset(40, 26), function()
+		clearImage(iconImage, iconPlaceholder, iconName, "icon")
+	end)
+
+	bannerClick.MouseButton1Click:Connect(function()
+		chooseImage(bannerImage, bannerPlaceholder, bannerName, "banner")
+	end)
+	iconClick.MouseButton1Click:Connect(function()
+		chooseImage(iconImage, iconPlaceholder, iconName, "icon")
+	end)
+
+	card, y = addSection(content, y, "About", CARD_PAD * 2 + ROW_HEIGHT * 2 + 10)
+	fields.description = addTextBox(card, "Description", "", "What does this package do?", UDim2.fromOffset(CARD_PAD, CARD_PAD), fullWidth, 512)
+	fields.tags = addTextBox(card, "Tags", "", "tool, utility, ui", UDim2.fromOffset(CARD_PAD, CARD_PAD + ROW_HEIGHT + 10), fullWidth, 256)
+
+	card, y = addSection(content, y, "Compatibility", CARD_PAD * 2 + ROW_HEIGHT)
+	fields.entrypoint = addTextBox(card, "Entry point", defaultName .. ".kine", "my-package.kine", UDim2.fromOffset(CARD_PAD, CARD_PAD), UDim2.fromOffset(leftWidth, INPUT_HEIGHT), 128)
+	fields.engineConstraint = addTextBox(card, "Engine constraint", "*", "*", UDim2.fromOffset(rightX, CARD_PAD), UDim2.fromOffset(rightWidth, INPUT_HEIGHT), 64)
 	fields.entrypoint.TextChanged:Connect(function()
 		entrypointTouched = true
 	end)
 
-	fields.engineConstraint = addTextBox(
-		content,
-		"Engine constraint",
-		"*",
-		"*",
-		UDim2.new(rightX.X.Scale, rightX.X.Offset, 0, ROW_HEIGHT * 2),
-		rightWidth,
-		64
-	)
-
-	fields.description = addTextBox(
-		content,
-		"Description",
-		"",
-		"What does this package do?",
-		UDim2.fromOffset(0, ROW_HEIGHT * 3),
-		UDim2.new(1, -10, 0, INPUT_HEIGHT),
-		512
-	)
-
-	fields.tags = addTextBox(
-		content,
-		"Tags",
-		"",
-		"tool, utility, ui",
-		UDim2.fromOffset(0, ROW_HEIGHT * 4),
-		UDim2.new(1, -10, 0, INPUT_HEIGHT),
-		256
-	)
-
+	card, y = addSection(content, y, "Dependencies", CARD_PAD * 2 + ROW_HEIGHT)
 	fields.dependencies = addTextBox(
-		content,
+		card,
 		"Dependencies",
 		"",
 		"namespace/package@1.0.0, namespace/other",
-		UDim2.fromOffset(0, ROW_HEIGHT * 5),
-		UDim2.new(1, -10, 0, INPUT_HEIGHT),
+		UDim2.fromOffset(CARD_PAD, CARD_PAD),
+		fullWidth,
 		512
 	)
-
-	fields.icon = addTextBox(
-		content,
-		"Icon URL",
-		"",
-		"https://example.com/icon.png",
-		UDim2.fromOffset(0, ROW_HEIGHT * 6),
-		leftWidth,
-		512
-	)
-
-	fields.thumbnail = addTextBox(
-		content,
-		"Thumbnail URL",
-		"",
-		"https://example.com/thumbnail.png",
-		UDim2.new(rightX.X.Scale, rightX.X.Offset, 0, ROW_HEIGHT * 6),
-		rightWidth,
-		512
-	)
-
-	content.CanvasSize = UDim2.fromOffset(0, ROW_HEIGHT * 7 + 12)
 
 	local sourceLabel = UI.label(
 		content,
 		"Source: " .. tostring(target.Name) .. " (" .. tostring(target.ClassName) .. ")",
-		UDim2.fromOffset(0, ROW_HEIGHT * 7 + 4),
-		UDim2.new(1, -10, 0, LABEL_HEIGHT),
+		UDim2.fromOffset(2, y),
+		UDim2.new(1, -6, 0, LABEL_HEIGHT),
 		UI.tokens.type.caption,
 		UI.tokens.color.muted
 	)
+	sourceLabel.TextXAlignment = Enum.TextXAlignment.Left
 	sourceLabel.TextTruncate = Enum.TextTruncate.AtEnd
 
 	local namespaceLabel = UI.label(
 		content,
 		namespace and ("Publishing as namespace: " .. namespace)
 			or "Namespace: taken from your Kinemium session",
-		UDim2.fromOffset(0, ROW_HEIGHT * 7 + 4 + LABEL_HEIGHT + 3),
-		UDim2.new(1, -10, 0, LABEL_HEIGHT),
+		UDim2.fromOffset(2, y + LABEL_HEIGHT + 3),
+		UDim2.new(1, -6, 0, LABEL_HEIGHT),
 		UI.tokens.type.caption,
 		UI.tokens.color.muted
 	)
+	namespaceLabel.TextXAlignment = Enum.TextXAlignment.Left
 	namespaceLabel.TextTruncate = Enum.TextTruncate.AtEnd
 
-	content.CanvasSize = UDim2.fromOffset(0, ROW_HEIGHT * 7 + 4 + LABEL_HEIGHT * 2 + 16)
+	content.CanvasSize = UDim2.fromOffset(0, y + LABEL_HEIGHT * 2 + 20)
 
 	fields.name.Focused:Connect(function()
 		content.CanvasPosition = Vector2.new(0, 0)
 	end)
 
-	return promptHandle
+	return prompt
 end
 
 return PackageUpload

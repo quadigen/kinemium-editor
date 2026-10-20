@@ -863,6 +863,19 @@ openContextMenu = function(instance, screenPoint)
 						end
 					end
 				elseif action == "upload_package" then
+					if not shared.CurrentSession then
+						UI.toast("import", {
+							type = "error",
+							title = "Error!",
+							message = `You are not logged in.`,
+							details = ``,
+							detailsTitle = "",
+							backgroundTransparency = 0.4,
+							blur = true,
+							duration = 5,
+						})
+						return
+					end
 					package_upload.open(target)
 				elseif action == "export" then
 					local file = dialog:PickFile()
