@@ -81,8 +81,6 @@ local function SetImage(session, image)
 		Authorization = "Bearer " .. session.accessToken,
 	})
 
-	print(content)
-
 	image.Image = content
 end
 
@@ -1045,7 +1043,7 @@ return function(parent)
 		settingsWindow.Visible = true
 	end
 
-	profileButton, image = UI.iconButton(
+	profileButton, _, image = UI.iconButton(
 		parent,
 		"assets/icons/Play.svg",
 		UDim2.new(1, -5, 0, 5),
