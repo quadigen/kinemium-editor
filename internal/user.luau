@@ -1083,9 +1083,8 @@ return function(parent)
 	})
 
 	if session then
-		task.spawn(function()
-			pcall(SetImage, session, image)
-		end)
+		SetImage(session, image)
+		print("Setting image")
 	end
 
 	profileButton.AnchorPoint = Vector2.new(1, 0)
