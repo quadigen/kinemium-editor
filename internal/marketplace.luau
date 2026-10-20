@@ -4,6 +4,7 @@ end
 local UI = require("@internal/editor_ui")
 
 local Packages = game:GetService("Packages")
+local MatrixService = game:GetService("MatrixService")
 local HttpService = game:GetService("HttpService")
 local tokens = UI.tokens
 local marketplaceLayoutMode = "List"
@@ -269,10 +270,43 @@ return function(page, windowControls, gui)
 		return string.gsub(server, "/+$", "") .. "/" .. string.gsub(url, "^/+", "")
 	end
 
-	local function setCardImage(image, url)
-		url = resolveAssetUrl(url)
+	local function resolveImageSource(url)
+		if type(url) ~= "string" or url == "" then
+			return nil, nil
+		end
 
-		if url == "" then
+		if string.sub(url, 1, 6) == "mxc://" then
+			local session = MatrixService.Session
+
+			if
+				type(session) ~= "table"
+				or type(session.homeserver) ~= "string"
+				or type(session.accessToken) ~= "string"
+			then
+				return nil, nil
+			end
+
+			local resolved = MatrixService:MxcToHttp(session.homeserver, url, {
+				authenticated = true,
+			})
+
+			if not resolved then
+				return nil, nil
+			end
+
+			return resolved, {
+				Authorization = "Bearer " .. session.accessToken,
+			}
+		end
+
+		return resolveAssetUrl(url), nil
+	end
+
+	local function setCardImage(image, url)
+		local headers
+		url, headers = resolveImageSource(url)
+
+		if not url or url == "" then
 			return
 		end
 
@@ -285,6 +319,10 @@ return function(page, windowControls, gui)
 		end
 
 		local ok, content = pcall(function()
+			if headers then
+				return HttpService:GetImageBytes(url, headers)
+			end
+
 			return HttpService:GetImageBytes(url)
 		end)
 

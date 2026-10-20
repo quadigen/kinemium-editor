@@ -20,8 +20,6 @@ local MIME_TYPES = {
 	jpeg = "image/jpeg",
 	webp = "image/webp",
 	gif = "image/gif",
-	bmp = "image/bmp",
-	svg = "image/svg+xml",
 }
 
 local LABEL_HEIGHT = 15
@@ -112,9 +110,21 @@ local function mimeType(path)
 	return MIME_TYPES[extension] or "application/octet-stream"
 end
 
-local function uploadImage(path)
+local function responseError(response)
+	local decodeOk, decoded = pcall(function()
+		return HttpService:JSONDecode(response.Body)
+	end)
+
+	if decodeOk and type(decoded) == "table" then
+		return tostring(decoded.error or decoded.message or decoded.detail or "HTTP " .. tostring(response.StatusCode))
+	end
+
+	return "HTTP " .. tostring(response.StatusCode)
+end
+
+local function uploadPackageImage(session, namespace, name, asset, path)
 	if path == nil then
-		return nil
+		return
 	end
 
 	local contentsOk, contents = pcall(function()
@@ -125,19 +135,17 @@ local function uploadImage(path)
 		error("Could not read " .. fileName(path) .. ".", 0)
 	end
 
-	local session = MatrixService.Session
-
-	if
-		type(session) ~= "table"
-		or type(session.homeserver) ~= "string"
-		or type(session.accessToken) ~= "string"
-	then
-		error("Sign in before uploading media.", 0)
-	end
+	local url = string.format(
+		"%s/_kinemium/v1/packages/%s/%s/%s",
+		string.gsub(session.homeserver, "/+$", ""),
+		namespace,
+		name,
+		asset
+	)
 
 	local requestOk, response = pcall(function()
 		return HttpService:RequestAsync({
-			Url = string.gsub(session.homeserver, "/+$", "") .. "/_matrix/media/v3/upload",
+			Url = url,
 			Method = "POST",
 			Headers = {
 				["Authorization"] = "Bearer " .. session.accessToken,
@@ -148,24 +156,12 @@ local function uploadImage(path)
 	end)
 
 	if not requestOk or type(response) ~= "table" then
-		error("Could not upload " .. fileName(path) .. ".", 0)
+		error("Could not upload " .. asset .. " " .. fileName(path) .. ".", 0)
 	end
 
 	if not response.Success then
-		error("Could not upload " .. fileName(path) .. " (HTTP " .. tostring(response.StatusCode) .. ").", 0)
+		error("Could not upload " .. asset .. " " .. fileName(path) .. ": " .. responseError(response), 0)
 	end
-
-	local decodeOk, decoded = pcall(function()
-		return HttpService:JSONDecode(response.Body)
-	end)
-
-	local mxc = decodeOk and type(decoded) == "table" and decoded.content_uri
-
-	if type(mxc) ~= "string" or mxc == "" then
-		error("The media upload returned no content URI.", 0)
-	end
-
-	return MatrixService:MxcToHttp(session.homeserver, mxc)
 end
 
 local function notify(kind, title, message)
@@ -492,42 +488,21 @@ function PackageUpload.open(target)
 						manifest.dependencies = dependencies
 					end
 
+					local session = MatrixService.Session
+
+					if
+						(state.icon ~= nil or state.banner ~= nil)
+						and (
+							type(session) ~= "table"
+							or type(session.homeserver) ~= "string"
+							or type(session.accessToken) ~= "string"
+						)
+					then
+						notify("error", "Not signed in", "Sign in before uploading package media.")
+						return false
+					end
+
 					controller:SetBusy(true, "upload", "Uploading...")
-
-					local iconUrl = nil
-					local bannerUrl = nil
-
-					if state.icon ~= nil then
-						local uploadOk, result = pcall(uploadImage, state.icon)
-
-						if not uploadOk then
-							controller:SetBusy(false, "upload")
-							notify("error", "Icon upload failed", tostring(result))
-							return false
-						end
-
-						iconUrl = result
-					end
-
-					if state.banner ~= nil then
-						local uploadOk, result = pcall(uploadImage, state.banner)
-
-						if not uploadOk then
-							controller:SetBusy(false, "upload")
-							notify("error", "Banner upload failed", tostring(result))
-							return false
-						end
-
-						bannerUrl = result
-					end
-
-					if iconUrl ~= nil then
-						manifest.icon = iconUrl
-					end
-
-					if bannerUrl ~= nil then
-						manifest.thumbnail = bannerUrl
-					end
 
 					local callOk, ok, data, meta = pcall(function()
 						return Packages:PublishInstance(target, manifest, {
@@ -563,12 +538,31 @@ function PackageUpload.open(target)
 						return false
 					end
 
-					local status = meta and meta.status
-					local reviewStatus = nil
+					local package = type(data) == "table" and (data.package or data.Package) or nil
+					local packageNamespace = package and (package.namespace or package.Namespace) or sessionNamespace()
+					local packageName = package and (package.name or package.Name) or name
+					local mediaWarnings = {}
 
-					if type(data) == "table" then
-						reviewStatus = data.reviewStatus or data.ReviewStatus or data.status or data.Status
+					if packageNamespace then
+						for _, entry in ipairs({
+							{ asset = "icon", path = state.icon },
+							{ asset = "banner", path = state.banner },
+						}) do
+							if entry.path ~= nil then
+								local uploadOk, uploadErr =
+									pcall(uploadPackageImage, session, packageNamespace, packageName, entry.asset, entry.path)
+
+								if not uploadOk then
+									table.insert(mediaWarnings, tostring(uploadErr))
+								end
+							end
+						end
+					elseif state.icon ~= nil or state.banner ~= nil then
+						table.insert(mediaWarnings, "The package namespace was not returned by the server.")
 					end
+
+					local status = meta and meta.status
+					local reviewStatus = package and (package.reviewStatus or package.ReviewStatus)
 
 					local message = "Your package was submitted and is pending review."
 
@@ -578,7 +572,12 @@ function PackageUpload.open(target)
 						message = "Your package was submitted (HTTP " .. tostring(status) .. ")."
 					end
 
-					notify("success", "Package uploaded", message)
+					if #mediaWarnings > 0 then
+						notify("error", "Package uploaded, media not applied", table.concat(mediaWarnings, " "))
+					else
+						notify("success", "Package uploaded", message)
+					end
+
 					return true
 				end,
 			},
@@ -714,10 +713,6 @@ function PackageUpload.open(target)
 	namespaceLabel.TextXAlignment = Enum.TextXAlignment.Left
 
 	content.CanvasSize = UDim2.fromOffset(0, y + LABEL_HEIGHT * 2 + 20)
-
-	fields.name.Focused:Connect(function()
-		content.CanvasPosition = Vector2.new(0, 0)
-	end)
 
 	return prompt
 end
