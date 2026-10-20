@@ -97,339 +97,471 @@ local function dropdownItems(values)
 	return result
 end
 
+```luau
 local function buildCategories(session, onLogout)
-	local deviceId = session and session.deviceId or "Unknown"
+    return {
+        {
+            name = "General",
+            icon = ICONS.general,
+            description = "Studio appearance, behavior, and preferences.",
+            sections = {
+                {
+                    title = "Appearance",
+                    rows = {
+                        {
+                            kind = "switch",
+                            key = "systemTheme",
+                            title = "System Theme",
+                            description = "Follow your operating system's theme.",
+                            rerender = true,
+                        },
+                        {
+                            kind = "dropdown",
+                            key = "lightTheme",
+                            title = "Light Theme",
+                            items = { "Light", "Dark" },
+                        },
+                        {
+                            kind = "dropdown",
+                            key = "darkTheme",
+                            title = "Dark Theme",
+                            items = { "Light", "Dark" },
+                        },
+                        {
+                            kind = "dropdown",
+                            key = "theme",
+                            title = "Theme",
+                            description = "Theme used when system theme is disabled.",
+                            items = { "Light", "Dark" },
+                            disabledKey = "systemTheme",
+                        },
+                        {
+                            kind = "switch",
+                            key = "monochrome",
+                            title = "Monochrome Mode",
+                            description = "Use a monochromatic interface appearance.",
+                        },
+                        {
+                            kind = "switch",
+                            key = "reduceMotion",
+                            title = "Reduce Motion",
+                            description = "Reduce nonessential interface animations.",
+                        },
+                        {
+                            kind = "dropdown",
+                            key = "pageZoom",
+                            title = "UI Scale",
+                            description = "Adjust the scale of Studio's interface.",
+                            items = { "75%", "90%", "100%", "110%", "125%", "150%", "200%" },
+                            width = 110,
+                        },
+                    },
+                },
+                {
+                    title = "Behavior",
+                    rows = {
+                        {
+                            kind = "switch",
+                            key = "restoreSession",
+                            title = "Restore Previous Session",
+                            description = "Restore the previous workspace when Studio starts.",
+                        },
+                        {
+                            kind = "switch",
+                            key = "autoSave",
+                            title = "Auto Save",
+                            description = "Periodically save changes to the project.",
+                        },
+                        {
+                            kind = "dropdown",
+                            key = "autoSaveInterval",
+                            title = "Auto Save Interval",
+                            items = { "1 minute", "3 minutes", "5 minutes", "10 minutes", "15 minutes" },
+                            width = 130,
+                        },
+                        {
+                            kind = "switch",
+                            key = "confirmExit",
+                            title = "Confirm Before Exiting",
+                            description = "Ask before closing Studio with unsaved changes.",
+                        },
+                        {
+                            kind = "switch",
+                            key = "showStartPage",
+                            title = "Show Start Page",
+                            description = "Display the start page when Studio launches.",
+                        },
+                    },
+                },
+                {
+                    title = "Date & Time",
+                    rows = {
+                        {
+                            kind = "switch",
+                            key = "hour24",
+                            title = "24-Hour Time Format",
+                        },
+                        {
+                            kind = "dropdown",
+                            key = "dateFormat",
+                            title = "Date Format",
+                            items = { "19 Oct 2026", "Oct 19, 2026", "2026-10-19", "19/10/2026" },
+                            width = 152,
+                        },
+                    },
+                },
+            },
+        },
 
-	return {
-		{
-			name = "General",
-			icon = ICONS.general,
-			description = "Appearance, date and time, and editor preferences.",
-			sections = {
-				{
-					title = "Appearance",
-					rows = {
-						{
-							kind = "switch",
-							key = "systemTheme",
-							title = "System Theme",
-							description = "Choose between light and dark theme based on system preference.",
-							rerender = true,
-						},
-						{
-							kind = "dropdown",
-							key = "lightTheme",
-							title = "Light theme",
-							items = { "Light", "Dark" },
-						},
-						{
-							kind = "dropdown",
-							key = "darkTheme",
-							title = "Dark theme",
-							items = { "Light", "Dark" },
-						},
-						{
-							kind = "dropdown",
-							key = "theme",
-							title = "Theme",
-							description = "Theme to use when system theme is not enabled.",
-							items = { "Light", "Dark" },
-							disabledKey = "systemTheme",
-						},
-						{
-							kind = "switch",
-							key = "monochrome",
-							title = "Monochrome Mode",
-						},
-						{
-							kind = "switch",
-							key = "twitterEmoji",
-							title = "Twitter Emoji",
-						},
-						{
-							kind = "dropdown",
-							key = "pageZoom",
-							title = "Page Zoom",
-							items = { "50%", "75%", "100%", "125%", "150%", "200%" },
-							width = 110,
-						},
-					},
-				},
-				{
-					title = "Date & Time",
-					rows = {
-						{
-							kind = "switch",
-							key = "hour24",
-							title = "24-Hour Time Format",
-						},
-						{
-							kind = "dropdown",
-							key = "dateFormat",
-							title = "Date Format",
-							items = { "19 Oct 2026", "Oct 19, 2026", "2026-10-19", "19/10/2026" },
-							width = 152,
-						},
-					},
-				},
-				{
-					title = "Editor",
-					rows = {
-						{
-							kind = "switch",
-							key = "enterNewline",
-							title = "ENTER for Newline",
-						},
-						{
-							kind = "switch",
-							key = "tabSpaces",
-							title = "Tab inserts spaces",
-						},
-						{
-							kind = "dropdown",
-							key = "tabSize",
-							title = "Tab Size",
-							items = { "2", "4", "8" },
-							width = 90,
-						},
-					},
-				},
-			},
-		},
+        {
+            name = "Editor",
+            icon = ICONS.editor or ICONS.general,
+            description = "Code editing, formatting, and scripting preferences.",
+            sections = {
+                {
+                    title = "Text Editor",
+                    rows = {
+                        {
+                            kind = "switch",
+                            key = "enterNewline",
+                            title = "Enter for Newline",
+                            description = "Insert a newline when pressing Enter.",
+                        },
+                        {
+                            kind = "switch",
+                            key = "tabSpaces",
+                            title = "Insert Spaces on Tab",
+                            description = "Insert spaces instead of tab characters.",
+                        },
+                        {
+                            kind = "dropdown",
+                            key = "tabSize",
+                            title = "Tab Size",
+                            items = { "2", "4", "8" },
+                            width = 90,
+                        },
+                        {
+                            kind = "switch",
+                            key = "lineNumbers",
+                            title = "Line Numbers",
+                        },
+                        {
+                            kind = "switch",
+                            key = "relativeLineNumbers",
+                            title = "Relative Line Numbers",
+                        },
+                        {
+                            kind = "switch",
+                            key = "wordWrap",
+                            title = "Word Wrap",
+                            description = "Wrap long lines within the editor.",
+                        },
+                        {
+                            kind = "switch",
+                            key = "minimap",
+                            title = "Show Minimap",
+                            description = "Display a code overview beside the editor.",
+                        },
+                        {
+                            kind = "switch",
+                            key = "highlightCurrentLine",
+                            title = "Highlight Current Line",
+                        },
+                        {
+                            kind = "switch",
+                            key = "bracketMatching",
+                            title = "Bracket Matching",
+                        },
+                        {
+                            kind = "switch",
+                            key = "autoIndent",
+                            title = "Automatic Indentation",
+                        },
+                        {
+                            kind = "switch",
+                            key = "autoClosingBrackets",
+                            title = "Auto-Close Brackets",
+                        },
+                        {
+                            kind = "switch",
+                            key = "autoClosingQuotes",
+                            title = "Auto-Close Quotes",
+                        },
+                    },
+                },
+                {
+                    title = "Code Assistance",
+                    rows = {
+                        {
+                            kind = "switch",
+                            key = "autocomplete",
+                            title = "Autocomplete",
+                            description = "Suggest identifiers and API members while typing.",
+                        },
+                        {
+                            kind = "switch",
+                            key = "parameterHints",
+                            title = "Parameter Hints",
+                        },
+                        {
+                            kind = "switch",
+                            key = "hoverDocumentation",
+                            title = "Hover Documentation",
+                        },
+                        {
+                            kind = "switch",
+                            key = "diagnostics",
+                            title = "Live Diagnostics",
+                            description = "Show syntax and type diagnostics while editing.",
+                        },
+                        {
+                            kind = "switch",
+                            key = "formatOnSave",
+                            title = "Format on Save",
+                        },
+                    },
+                },
+            },
+        },
 
-		{
-			name = "Account",
-			icon = ICONS.account,
-			description = "Your Matrix account and session.",
-			sections = {
-				{
-					title = "Profile",
-					rows = {
-						{
-							kind = "value",
-							title = "Matrix ID",
-							value = session and session.userId or "Not logged in",
-							valueWidth = 210,
-						},
-						{
-							kind = "value",
-							title = "Homeserver",
-							value = session and session.homeserver or "Unknown",
-							valueWidth = 210,
-						},
-						{
-							kind = "value",
-							title = "Device ID",
-							value = deviceId,
-							valueWidth = 210,
-						},
-					},
-				},
-				{
-					title = "Session",
-					rows = {
-						{
-							kind = "switch",
-							key = "rememberSession",
-							title = "Remember this session",
-							description = "Keep your Matrix account signed in between launches.",
-							onChanged = function(value)
-								MatrixService:SetRememberSession(value)
-							end,
-						},
-						{
-							kind = "button",
-							title = "Log out",
-							description = "Sign out of this Matrix account.",
-							buttonText = "Log out",
-							width = 90,
-							danger = true,
-							callback = onLogout,
-						},
-					},
-				},
-			},
-		},
+        {
+            name = "Studio",
+            icon = ICONS.studio or ICONS.general,
+            description = "Workspace layout, panels, and viewport behavior.",
+            sections = {
+                {
+                    title = "Workspace",
+                    rows = {
+                        {
+                            kind = "switch",
+                            key = "restoreLayout",
+                            title = "Restore Workspace Layout",
+                        },
+                        {
+                            kind = "switch",
+                            key = "showStatusBar",
+                            title = "Show Status Bar",
+                        },
+                        {
+                            kind = "switch",
+                            key = "showToolbar",
+                            title = "Show Toolbar",
+                        },
+                        {
+                            kind = "switch",
+                            key = "showExplorer",
+                            title = "Show Explorer",
+                        },
+                        {
+                            kind = "switch",
+                            key = "showProperties",
+                            title = "Show Properties",
+                        },
+                        {
+                            kind = "switch",
+                            key = "showOutput",
+                            title = "Show Output",
+                        },
+                    },
+                },
+                {
+                    title = "Viewport",
+                    rows = {
+                        {
+                            kind = "switch",
+                            key = "viewportGrid",
+                            title = "Show Grid",
+                        },
+                        {
+                            kind = "switch",
+                            key = "viewportAxes",
+                            title = "Show Axes",
+                        },
+                        {
+                            kind = "switch",
+                            key = "viewportGizmos",
+                            title = "Show Gizmos",
+                        },
+                        {
+                            kind = "switch",
+                            key = "viewportSelectionOutline",
+                            title = "Selection Outline",
+                        },
+                        {
+                            kind = "switch",
+                            key = "viewportCameraControls",
+                            title = "Camera Controls",
+                        },
+                    },
+                },
+            },
+        },
 
-		{
-			name = "Notifications",
-			icon = ICONS.notifications,
-			description = "Choose which events should notify you.",
-			sections = {
-				{
-					title = "Messages",
-					rows = {
-						{
-							kind = "switch",
-							key = "notifyDirect",
-							title = "Direct messages",
-							description = "Notify me when a direct message arrives.",
-						},
-						{
-							kind = "switch",
-							key = "notifyMentions",
-							title = "Mentions",
-							description = "Notify me when someone mentions my name.",
-						},
-						{
-							kind = "switch",
-							key = "notifyInvites",
-							title = "Room invites",
-							description = "Notify me when I am invited to a room.",
-						},
-					},
-				},
-				{
-					title = "Alerts",
-					rows = {
-						{
-							kind = "switch",
-							key = "notifySounds",
-							title = "Notification sounds",
-						},
-						{
-							kind = "dropdown",
-							key = "notificationSound",
-							title = "Sound",
-							items = { "Chime", "Ping", "Pop", "None" },
-							width = 120,
-						},
-					},
-				},
-			},
-		},
+        {
+            name = "Projects",
+            icon = ICONS.projects or ICONS.general,
+            description = "Project files, saving, and asset handling.",
+            sections = {
+                {
+                    title = "Project Management",
+                    rows = {
+                        {
+                            kind = "switch",
+                            key = "showRecentProjects",
+                            title = "Recent Projects",
+                        },
+                        {
+                            kind = "switch",
+                            key = "confirmDelete",
+                            title = "Confirm Before Deleting",
+                            description = "Ask before deleting project objects or files.",
+                        },
+                        {
+                            kind = "switch",
+                            key = "showFileExtensions",
+                            title = "Show File Extensions",
+                        },
+                        {
+                            kind = "switch",
+                            key = "reopenLastProject",
+                            title = "Reopen Last Project",
+                        },
+                    },
+                },
+            },
+        },
 
-		{
-			name = "Devices",
-			icon = ICONS.devices,
-			description = "Manage verified and active Matrix devices.",
-			sections = {
-				{
-					title = "Current Device",
-					rows = {
-						{
-							kind = "value",
-							title = "Device ID",
-							value = deviceId,
-							valueWidth = 210,
-						},
-						{
-							kind = "switch",
-							key = "verifyDevices",
-							title = "Verify new devices",
-							description = "Ask for verification when a new device signs in.",
-						},
-						{
-							kind = "switch",
-							key = "offlineDevices",
-							title = "Show offline devices",
-							description = "Include devices that are not currently connected.",
-						},
-					},
-				},
-			},
-		},
+        {
+            name = "Playtest",
+            icon = ICONS.playtest or ICONS.general,
+            description = "Configure local testing and simulation.",
+            sections = {
+                {
+                    title = "Testing",
+                    rows = {
+                        {
+                            kind = "dropdown",
+                            key = "playtestMode",
+                            title = "Default Playtest Mode",
+                            items = { "Client", "Server", "Local Server" },
+                            width = 140,
+                        },
+                        {
+                            kind = "switch",
+                            key = "playtestSeparateWindow",
+                            title = "Separate Playtest Window",
+                        },
+                        {
+                            kind = "switch",
+                            key = "playtestPauseOnError",
+                            title = "Pause on Error",
+                        },
+                        {
+                            kind = "switch",
+                            key = "playtestOutput",
+                            title = "Show Playtest Output",
+                        },
+                        {
+                            kind = "switch",
+                            key = "playtestClearOutput",
+                            title = "Clear Output on Start",
+                        },
+                    },
+                },
+            },
+        },
 
-		{
-			name = "Emojis & Stickers",
-			icon = ICONS.emojis,
-			description = "Configure emoji and sticker behavior.",
-			sections = {
-				{
-					title = "Emoji",
-					rows = {
-						{
-							kind = "switch",
-							key = "emojiAutocomplete",
-							title = "Emoji autocomplete",
-							description = "Suggest emoji while typing a colon and a name.",
-						},
-						{
-							kind = "switch",
-							key = "largeEmoji",
-							title = "Large emoji",
-							description = "Display emoji-only messages at a larger size.",
-						},
-						{
-							kind = "dropdown",
-							key = "emojiSet",
-							title = "Emoji set",
-							items = { "Twitter", "Native", "Twemoji" },
-							width = 120,
-						},
-					},
-				},
-				{
-					title = "Stickers",
-					rows = {
-						{
-							kind = "switch",
-							key = "stickerSuggestions",
-							title = "Sticker suggestions",
-							description = "Show sticker suggestions while composing messages.",
-						},
-					},
-				},
-			},
-		},
+        {
+            name = "Shortcuts",
+            icon = ICONS.shortcuts or ICONS.general,
+            description = "Keyboard shortcuts and input preferences.",
+            sections = {
+                {
+                    title = "Keyboard",
+                    rows = {
+                        {
+                            kind = "switch",
+                            key = "enableKeyboardShortcuts",
+                            title = "Enable Keyboard Shortcuts",
+                        },
+                        {
+                            kind = "switch",
+                            key = "vimMode",
+                            title = "Vim Mode",
+                            description = "Use Vim-style editing controls.",
+                        },
+                    },
+                },
+            },
+        },
 
-		{
-			name = "Developer Tools",
-			icon = ICONS.developer,
-			description = "Debugging and Matrix development options.",
-			sections = {
-				{
-					title = "Development",
-					rows = {
-						{
-							kind = "switch",
-							key = "developerMode",
-							title = "Developer mode",
-							description = "Expose additional Matrix debugging tools.",
-						},
-						{
-							kind = "switch",
-							key = "syncLogging",
-							title = "Matrix sync logging",
-							description = "Print sync responses to the output console.",
-						},
-						{
-							kind = "switch",
-							key = "debugLabels",
-							title = "Show debug labels",
-							description = "Display internal identifiers in the interface.",
-						},
-					},
-				},
-			},
-		},
+        {
+            name = "Developer Tools",
+            icon = ICONS.developer,
+            description = "Diagnostics, profiling, and development options.",
+            sections = {
+                {
+                    title = "Development",
+                    rows = {
+                        {
+                            kind = "switch",
+                            key = "developerMode",
+                            title = "Developer Mode",
+                            description = "Expose additional development tools.",
+                        },
+                        {
+                            kind = "switch",
+                            key = "debugLabels",
+                            title = "Show Debug Labels",
+                            description = "Display internal identifiers in the interface.",
+                        },
+                        {
+                            kind = "switch",
+                            key = "verboseLogging",
+                            title = "Verbose Logging",
+                        },
+                        {
+                            kind = "switch",
+                            key = "showPerformanceStats",
+                            title = "Show Performance Statistics",
+                        },
+                        {
+                            kind = "switch",
+                            key = "profilerEnabled",
+                            title = "Enable Profiler",
+                        },
+                    },
+                },
+            },
+        },
 
-		{
-			name = "About",
-			icon = ICONS.about,
-			description = "Version and project information.",
-			sections = {
-				{
-					title = "Kinemium",
-					rows = {
-						{
-							kind = "value",
-							title = "Version",
-							value = "Development build",
-							valueWidth = 180,
-						},
-						{
-							kind = "value",
-							title = "Matrix profile",
-							value = session and session.userId or "Not logged in",
-							valueWidth = 210,
-						},
-					},
-				},
-			},
-		},
-	}
+        {
+            name = "About",
+            icon = ICONS.about,
+            description = "Version and project information.",
+            sections = {
+                {
+                    title = "Kinemium Studio",
+                    rows = {
+                        {
+                            kind = "value",
+                            title = "Version",
+                            value = "Development build",
+                            valueWidth = 180,
+                        },
+                        {
+                            kind = "value",
+                            title = "Application",
+                            value = "Kinemium Studio",
+                            valueWidth = 180,
+                        },
+                    },
+                },
+            },
+        },
+    }
 end
+```
 
 return function(parent)
 	local tooltip
