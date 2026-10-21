@@ -462,6 +462,8 @@ return function(parent, options)
 		local manifest = plugin.Manifest or {}
 		local assets = plugin.Assets or {}
 
+		print(plugin, data)
+
 		local name = firstValue(data.name, data.Name, manifest.Name, plugin.Name, "Unknown Package")
 		local namespace = firstValue(data.namespace, data.Namespace, plugin.Namespace, "unknown")
 		local description =
