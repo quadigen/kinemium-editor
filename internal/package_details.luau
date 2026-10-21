@@ -21,12 +21,9 @@ local ICON_SIZE = 88
 local ICON_OVERLAP = 44
 local IDENTITY_HEIGHT = 64
 
-local BACK_SCALE = 0.1
-local BACK_MIN_WIDTH = 64
-local INSTALL_SCALE = 0.18
-local INSTALL_MIN_WIDTH = 84
-local DOWNLOAD_SCALE = 0.2
-local DOWNLOAD_MIN_WIDTH = 90
+local BACK_SCALE = 0.12
+local INSTALL_SCALE = 0.2
+local DOWNLOAD_SCALE = 0.22
 
 local STAT_HEIGHT = 68
 local STAT_GAP = 8
@@ -204,12 +201,6 @@ local function truncate(label)
 	return label
 end
 
-local function minWidth(object, width)
-	UI.create("UISizeConstraint", {
-		MinSize = Vector2.new(width, 0),
-	}, object)
-end
-
 local function addIcon(iconParent, name, x, y, size, color)
 	local path = ICONS[name]
 
@@ -271,7 +262,6 @@ return function(parent, options)
 	)
 
 	backButton.Name = "Back"
-	minWidth(backButton, BACK_MIN_WIDTH)
 
 	local crumb = UI.label(
 		topbar,
@@ -307,10 +297,13 @@ return function(parent, options)
 		ScrollBarImageTransparency = 0.4,
 		CanvasSize = UDim2.new(0, 0, 0, 0),
 		ScrollingDirection = Enum.ScrollingDirection.Y,
-		VerticalScrollBarInset = Enum.ScrollBarInset.ScrollBar,
-		HorizontalScrollBarInset = Enum.ScrollBarInset.None,
 		ClipsDescendants = true,
 	}, page)
+
+	pcall(function()
+		scroll.VerticalScrollBarInset = Enum.ScrollBarInset.ScrollBar
+		scroll.HorizontalScrollBarInset = Enum.ScrollBarInset.None
+	end)
 
 	local scrollPadding = UI.create("UIPadding", {
 		PaddingLeft = UDim.new(0, PAGE_PADDING),
@@ -726,10 +719,10 @@ return function(parent, options)
 		truncate(author)
 
 		if hasInstall then
-			local installButton, installLabel = UI.button(
+			local _, installLabel = UI.button(
 				identity,
 				options.installText or "Install",
-				UDim2.new(1, -CARD_PADDING, 0, 12),
+				UDim2.new(1 - INSTALL_SCALE, -CARD_PADDING, 0, 12),
 				UDim2.new(INSTALL_SCALE, 0, 0, 34),
 				function()
 					options.onInstall(plugin, data)
@@ -746,8 +739,6 @@ return function(parent, options)
 				}
 			)
 
-			installButton.AnchorPoint = Vector2.new(1, 0)
-			minWidth(installButton, INSTALL_MIN_WIDTH)
 			installLabel.TextXAlignment = Enum.TextXAlignment.Center
 		end
 
@@ -1181,7 +1172,7 @@ return function(parent, options)
 				local downloadButton, downloadLabel = UI.button(
 					line,
 					"Download",
-					UDim2.new(1, -12, 0.5, 0),
+					UDim2.new(1 - DOWNLOAD_SCALE, -12, 0.5, -DOWNLOAD_HEIGHT / 2),
 					UDim2.new(DOWNLOAD_SCALE, 0, 0, DOWNLOAD_HEIGHT),
 					function()
 						if options.onDownload then
@@ -1205,8 +1196,6 @@ return function(parent, options)
 				)
 
 				downloadButton.Name = "Download"
-				downloadButton.AnchorPoint = Vector2.new(1, 0.5)
-				minWidth(downloadButton, DOWNLOAD_MIN_WIDTH)
 				downloadLabel.Size = UDim2.new(1, -(12 + 12 + 6), 1, 0)
 				downloadLabel.TextXAlignment = Enum.TextXAlignment.Center
 			end
