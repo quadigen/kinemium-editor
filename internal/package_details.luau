@@ -22,14 +22,45 @@ local IDENTITY_HEIGHT = 64
 local INSTALL_WIDTH = 100
 
 local STAT_HEIGHT = 68
+local STAT_GAP = 8
 local ROW_HEIGHT = 32
+local VERSION_ROW_HEIGHT = 44
+local DOWNLOAD_WIDTH = 96
+local DOWNLOAD_HEIGHT = 26
 local PILL_HEIGHT = 22
 local PILL_PADDING = 10
+local PILL_ICON_SPACE = 16
 local CHAR_WIDTH = 8
 
 local MAX_TAGS = 6
 local MAX_DEPENDENCIES = 12
 local MAX_VERSIONS = 8
+
+local ICONS = {
+	download = "builtin://global-icons/download.svg",
+	package = "builtin://global-icons/package.svg",
+	tag = "builtin://global-icons/tag.svg",
+	calendar = "builtin://global-icons/calendar.svg",
+	clock = "builtin://global-icons/clock.svg",
+	user = "builtin://global-icons/user.svg",
+	star = "builtin://global-icons/star.svg",
+	like = "builtin://global-icons/thumbs-up.svg",
+	dislike = "builtin://global-icons/thumbs-down.svg",
+	shield = "builtin://global-icons/shield-check.svg",
+	license = "builtin://global-icons/scale.svg",
+	engine = "builtin://global-icons/cpu.svg",
+	eye = "builtin://global-icons/eye.svg",
+	hash = "builtin://global-icons/hash.svg",
+	id = "builtin://global-icons/fingerprint.svg",
+	namespace = "builtin://global-icons/at-sign.svg",
+	install = "builtin://global-icons/hard-drive-download.svg",
+	about = "builtin://global-icons/info.svg",
+	details = "builtin://global-icons/file.svg",
+	dependencies = "builtin://global-icons/folder.svg",
+	versions = "builtin://global-icons/tag.svg",
+	warning = "builtin://global-icons/warning.svg",
+	check = "builtin://global-icons/check.svg",
+}
 
 local function firstValue(...)
 	for index = 1, select("#", ...) do
@@ -168,6 +199,21 @@ local function truncate(label)
 	return label
 end
 
+local function addIcon(iconParent, name, x, y, size, color)
+	local path = ICONS[name]
+
+	if not path or path == "" then
+		return nil
+	end
+
+	local image = UI.image(iconParent, path, UDim2.fromOffset(x, y), UDim2.fromOffset(size, size))
+
+	image.Name = "Icon_" .. name
+	trySet(image, "ImageColor3", color or colors.muted)
+
+	return image
+end
+
 return function(parent, options)
 	options = options or {}
 
@@ -291,10 +337,13 @@ return function(parent, options)
 			return nil
 		end
 
+		local hasIcon = config.icon ~= nil and ICONS[config.icon] ~= nil
+		local iconSpace = hasIcon and PILL_ICON_SPACE or 0
+
 		local frame = UI.frame(
 			pillParent,
 			UDim2.fromOffset(0, 0),
-			UDim2.fromOffset(#label * 7 + PILL_PADDING * 2, PILL_HEIGHT),
+			UDim2.fromOffset(#label * 7 + PILL_PADDING * 2 + iconSpace, PILL_HEIGHT),
 			config.color or colors.surfaceAlt,
 			7
 		)
@@ -305,11 +354,22 @@ return function(parent, options)
 			UI.stroke(frame, config.stroke, 1, 0.3)
 		end
 
+		if hasIcon then
+			addIcon(
+				frame,
+				config.icon,
+				PILL_PADDING - 2,
+				(PILL_HEIGHT - 12) / 2,
+				12,
+				config.iconColor or config.textColor or colors.subtext
+			)
+		end
+
 		local textLabel = UI.label(
 			frame,
 			label,
-			UDim2.fromOffset(0, 0),
-			UDim2.fromScale(1, 1),
+			UDim2.fromOffset(iconSpace, 0),
+			UDim2.new(1, -iconSpace, 1, 0),
 			tokens.type.caption,
 			config.textColor or colors.text
 		)
@@ -321,7 +381,7 @@ return function(parent, options)
 			local width = textLabel.TextBounds.X
 
 			if width and width > 0 then
-				frame.Size = UDim2.fromOffset(math.ceil(width) + PILL_PADDING * 2, PILL_HEIGHT)
+				frame.Size = UDim2.fromOffset(math.ceil(width) + PILL_PADDING * 2 + iconSpace, PILL_HEIGHT)
 			end
 		end
 
@@ -342,7 +402,7 @@ return function(parent, options)
 		syncCanvas()
 	end
 
-	local function section(title, order, rightText)
+	local function section(title, order, rightText, icon)
 		local card = UI.card(scroll, UDim2.fromOffset(0, 0), UDim2.new(1, 0, 0, 0), {
 			color = colors.surface,
 			radius = CARD_RADIUS,
@@ -373,7 +433,20 @@ return function(parent, options)
 			LayoutOrder = 0,
 		}, card)
 
-		UI.label(header, title, UDim2.fromOffset(0, 0), UDim2.new(0.6, 0, 1, 0), tokens.type.caption, colors.muted)
+		local titleX = 0
+
+		if icon and addIcon(header, icon, 0, 1, 14, colors.muted) then
+			titleX = 20
+		end
+
+		UI.label(
+			header,
+			title,
+			UDim2.fromOffset(titleX, 0),
+			UDim2.new(0.6, -titleX, 1, 0),
+			tokens.type.caption,
+			colors.muted
+		)
 
 		if rightText and rightText ~= "" then
 			local right = UI.label(
@@ -400,11 +473,11 @@ return function(parent, options)
 		return frame
 	end
 
-	local function rightLabel(rowParent, text, width, rightOffset, height, size, color)
+	local function rightLabel(rowParent, text, width, rightOffset, height, size, color, y)
 		local label = UI.label(
 			rowParent,
 			text,
-			UDim2.new(1, -(rightOffset + width), 0, 0),
+			UDim2.new(1, -(rightOffset + width), 0, y or 0),
 			UDim2.fromOffset(width, height),
 			size,
 			color
@@ -462,8 +535,6 @@ return function(parent, options)
 		local manifest = plugin.Manifest or {}
 		local assets = plugin.Assets or {}
 
-		print(plugin)
-
 		local name = firstValue(data.name, data.Name, manifest.Name, plugin.Name, "Unknown Package")
 		local namespace = firstValue(data.namespace, data.Namespace, plugin.Namespace, "unknown")
 		local description =
@@ -476,7 +547,10 @@ return function(parent, options)
 		local reviewStatus = firstValue(data.reviewStatus, data.review_status, plugin.ReviewStatus, "approved")
 		local engineConstraint = firstValue(data.engineConstraint, data.engine_constraint, "Any")
 		local packageId = firstValue(data.packageId, data.package_id, plugin.PackageId, "unknown")
+
 		local downloads = firstValue(
+			data.downloadCount,
+			data.download_count,
 			data.acquisitionCount,
 			data.acquisition_count,
 			data.downloads,
@@ -484,9 +558,22 @@ return function(parent, options)
 			plugin.Downloads,
 			0
 		)
+		local installs = firstValue(data.installCount, data.install_count, 0)
+
 		local rating = data.rating or plugin.Rating or {}
 		local ratingAverage = type(rating) == "table" and tonumber(rating.average or rating.Average) or nil
 		local ratingCount = type(rating) == "table" and tonumber(rating.count or rating.Count) or 0
+
+		local reactions = type(data.reactions) == "table" and data.reactions or {}
+		local likes = tonumber(reactions.likes) or 0
+		local dislikes = tonumber(reactions.dislikes) or 0
+
+		local creator = type(data.creator) == "table" and data.creator or {}
+		local owner = firstValue(data.owner, creator.userId, manifest.Author, namespace, "Unknown")
+		local reviewedBy = firstValue(data.reviewedBy, data.reviewed_by, "None")
+		local reviewNote = firstValue(data.reviewNote, data.review_note)
+		local deprecated = data.deprecated == true
+
 		local iconUrl = firstValue(data.iconUrl, data.icon_url, assets.IconUrl)
 		local bannerUrl = firstValue(data.bannerUrl, data.banner_url, data.thumbnailUrl, assets.ThumbnailUrl)
 
@@ -512,6 +599,10 @@ return function(parent, options)
 			latest and latest.publishedAt,
 			latest and latest.published_at
 		)
+		local createdAt = pickDate(data.createdAt, data.created_at)
+		local publishedAt = pickDate(data.publishedAt, data.published_at)
+		local reviewedAt = pickDate(data.reviewedAt, data.reviewed_at)
+		local submittedAt = pickDate(data.submittedAt, data.submitted_at)
 
 		local pillsTop = BANNER_HEIGHT + IDENTITY_HEIGHT
 
@@ -589,11 +680,17 @@ return function(parent, options)
 		title.Name = "Title"
 		truncate(title)
 
+		local authorX = textX
+
+		if addIcon(identity, "user", textX, 40, 13, colors.accent) then
+			authorX = textX + 18
+		end
+
 		local author = UI.label(
 			identity,
 			"by " .. tostring(namespace),
-			UDim2.fromOffset(textX, 38),
-			UDim2.new(1, -textRight, 0, 18),
+			UDim2.fromOffset(authorX, 38),
+			UDim2.new(1, -(textRight + (authorX - textX)), 0, 18),
 			13,
 			colors.accent
 		)
@@ -660,18 +757,24 @@ return function(parent, options)
 			pill(pills, text, order, config)
 		end
 
-		addPill(string.upper(tostring(itemType)), { color = colors.accent, textColor = colors.text })
-		addPill("v" .. tostring(version))
+		addPill(string.upper(tostring(itemType)), { color = colors.accent, textColor = colors.text, icon = "package" })
+		addPill("v" .. tostring(version), { icon = "tag", textColor = colors.text, iconColor = colors.subtext })
 		addPill(string.upper(tostring(reviewStatus)), {
 			textColor = approved and colors.success or colors.warning,
+			icon = approved and "shield" or "warning",
 		})
+		addPill(string.upper(tostring(visibility)), { icon = "eye", textColor = colors.subtext })
+
+		if deprecated then
+			addPill("DEPRECATED", { textColor = colors.warning, icon = "warning" })
+		end
 
 		for index, tag in ipairs(tags) do
 			if index > MAX_TAGS then
 				break
 			end
 
-			addPill(tag, { color = colors.surface, stroke = colors.border, textColor = colors.subtext })
+			addPill(tag, { color = colors.surface, stroke = colors.border, textColor = colors.subtext, icon = "hash" })
 		end
 
 		fitHero()
@@ -715,14 +818,6 @@ return function(parent, options)
 			initial.ZIndex = 6
 		end
 
-		local stats = UI.create("Frame", {
-			Name = "Stats",
-			Size = UDim2.new(1, 0, 0, STAT_HEIGHT),
-			BackgroundTransparency = 1,
-			BorderSizePixel = 0,
-			LayoutOrder = 2,
-		}, scroll)
-
 		local ratingText = "No ratings"
 
 		if ratingAverage then
@@ -730,18 +825,40 @@ return function(parent, options)
 		end
 
 		local statCards = {
-			{ label = "DOWNLOADS", value = formatCount(downloads) },
-			{ label = "RATING", value = ratingText },
-			{ label = "VERSION", value = "v" .. tostring(version) },
-			{ label = "UPDATED", value = formatDate(updatedAt) },
+			{ label = "DOWNLOADS", value = formatCount(downloads), icon = "download" },
+			{ label = "RATING", value = ratingText, icon = "star" },
+			{ label = "VERSION", value = "v" .. tostring(version), icon = "tag" },
+			{ label = "UPDATED", value = formatDate(updatedAt), icon = "clock" },
+			{ label = "INSTALLS", value = formatCount(installs), icon = "install" },
+			{ label = "REACTIONS", value = formatCount(likes) .. "  /  " .. formatCount(dislikes), icon = "like" },
+			{ label = "CREATED", value = formatDate(createdAt), icon = "calendar" },
+			{ label = "PUBLISHED", value = formatDate(publishedAt), icon = "calendar" },
 		}
 
+		local statColumns = 4
+		local statRows = math.ceil(#statCards / statColumns)
+
+		local stats = UI.create("Frame", {
+			Name = "Stats",
+			Size = UDim2.new(1, 0, 0, statRows * STAT_HEIGHT + (statRows - 1) * STAT_GAP),
+			BackgroundTransparency = 1,
+			BorderSizePixel = 0,
+			LayoutOrder = 2,
+		}, scroll)
+
 		for index, stat in ipairs(statCards) do
-			local card =
-				UI.card(stats, UDim2.new((index - 1) * 0.25, (index - 1) * 2, 0, 0), UDim2.new(0.25, -6, 1, 0), {
+			local column = (index - 1) % statColumns
+			local statRow = math.floor((index - 1) / statColumns)
+
+			local card = UI.card(
+				stats,
+				UDim2.new(column * 0.25, column * 2, 0, statRow * (STAT_HEIGHT + STAT_GAP)),
+				UDim2.new(0.25, -6, 0, STAT_HEIGHT),
+				{
 					color = colors.surface,
 					radius = CARD_RADIUS,
-				})
+				}
+			)
 
 			card.Name = stat.label
 
@@ -749,15 +866,23 @@ return function(parent, options)
 				card,
 				stat.label,
 				UDim2.fromOffset(14, 12),
-				UDim2.new(1, -28, 0, 14),
+				UDim2.new(1, -46, 0, 14),
 				tokens.type.caption,
 				colors.muted
 			)
 
+			addIcon(card, stat.icon, 0, 0, 14, colors.muted, nil)
+
+			local statIcon = card:FindFirstChild("Icon_" .. stat.icon)
+
+			if statIcon then
+				statIcon.Position = UDim2.new(1, -28, 0, 12)
+			end
+
 			truncate(UI.label(card, stat.value, UDim2.fromOffset(14, 32), UDim2.new(1, -28, 0, 24), 17, colors.text))
 		end
 
-		local about = section("ABOUT", 3)
+		local about = section("ABOUT", 3, nil, "about")
 
 		local descriptionLabel =
 			UI.label(about, tostring(description), UDim2.fromOffset(0, 0), UDim2.new(1, 0, 0, 20), 14, colors.text)
@@ -784,18 +909,29 @@ return function(parent, options)
 
 		fitDescription()
 
-		local details = section("DETAILS", 4)
+		local details = section("DETAILS", 4, nil, "details")
 
 		local FIELD_HEIGHT, FIELD_GAP = 40, 12
+		local FIELD_ICON_X = 22
 
 		local fields = {
-			{ "LICENSE", license },
-			{ "ENGINE", engineConstraint },
-			{ "VISIBILITY", visibility },
-			{ "REVIEW", reviewStatus },
-			{ "NAMESPACE", namespace },
-			{ "PACKAGE ID", packageId },
+			{ "LICENSE", license, "license" },
+			{ "ENGINE", engineConstraint, "engine" },
+			{ "VISIBILITY", visibility, "eye" },
+			{ "REVIEW", reviewStatus, "shield" },
+			{ "NAMESPACE", namespace, "namespace" },
+			{ "PACKAGE ID", packageId, "id" },
+			{ "OWNER", owner, "user" },
+			{ "REVIEWED BY", reviewedBy, "user" },
+			{ "REVIEWED", formatDate(reviewedAt), "clock" },
+			{ "SUBMITTED", formatDate(submittedAt), "calendar" },
+			{ "DEPRECATED", deprecated and "Yes" or "No", deprecated and "warning" or "check" },
+			{ "TYPE", string.upper(tostring(itemType)), "package" },
 		}
+
+		if reviewNote then
+			table.insert(fields, { "REVIEW NOTE", reviewNote, "about" })
+		end
 
 		local fieldRows = math.ceil(#fields / 2)
 
@@ -821,21 +957,35 @@ return function(parent, options)
 				BorderSizePixel = 0,
 			}, grid)
 
-			UI.label(cell, field[1], UDim2.fromOffset(0, 0), UDim2.new(1, 0, 0, 14), tokens.type.caption, colors.muted)
+			local textX = 0
+
+			if field[3] and addIcon(cell, field[3], 0, 13, 14, colors.muted) then
+				textX = FIELD_ICON_X
+			end
+
+			UI.label(
+				cell,
+				field[1],
+				UDim2.fromOffset(textX, 0),
+				UDim2.new(1, -textX, 0, 14),
+				tokens.type.caption,
+				colors.muted
+			)
 
 			truncate(
 				UI.label(
 					cell,
 					tostring(field[2]),
-					UDim2.fromOffset(0, 18),
-					UDim2.new(1, 0, 0, 20),
+					UDim2.fromOffset(textX, 18),
+					UDim2.new(1, -textX, 0, 20),
 					tokens.type.small,
 					colors.text
 				)
 			)
 		end
 
-		local depsCard = section("DEPENDENCIES", 5, #dependencies > 0 and tostring(#dependencies) or nil)
+		local depsCard =
+			section("DEPENDENCIES", 5, #dependencies > 0 and tostring(#dependencies) or nil, "dependencies")
 
 		if #dependencies == 0 then
 			emptyNote(depsCard, "No dependencies.")
@@ -851,12 +1001,14 @@ return function(parent, options)
 
 				local item = row(depsCard, index, ROW_HEIGHT)
 
+				addIcon(item, "package", 12, (ROW_HEIGHT - 14) / 2, 14, colors.subtext)
+
 				truncate(
 					UI.label(
 						item,
 						depNamespace .. "/" .. depName,
-						UDim2.fromOffset(12, 0),
-						UDim2.new(1, -150, 1, 0),
+						UDim2.fromOffset(34, 0),
+						UDim2.new(1, -172, 1, 0),
 						tokens.type.small,
 						colors.text
 					)
@@ -874,7 +1026,7 @@ return function(parent, options)
 			setBody(depsCard, shown * ROW_HEIGHT + (shown - 1) * CARD_GAP + (extra and (CARD_GAP + 18) or 0))
 		end
 
-		local versionsCard = section("VERSIONS", 6, #versions > 0 and tostring(#versions) or nil)
+		local versionsCard = section("VERSIONS", 6, #versions > 0 and tostring(#versions) or nil, "versions")
 
 		if #versions == 0 then
 			emptyNote(versionsCard, "No published versions.")
@@ -890,35 +1042,111 @@ return function(parent, options)
 				local sizeText = formatSize(item.size)
 				local meta = tostring(dateText) .. (sizeText ~= "" and ("   " .. tostring(sizeText)) or "")
 
-				local line = row(versionsCard, index, ROW_HEIGHT)
+				local line = row(versionsCard, index, VERSION_ROW_HEIGHT)
+				line.Name = versionText
+
+				local iconColor = yanked and colors.muted or colors.subtext
+
+				addIcon(line, "tag", 12, 8, 14, iconColor)
+
+				local versionX = 12 + 14 + 8
 				local versionWidth = #versionText * CHAR_WIDTH + 4
 
 				UI.label(
 					line,
 					versionText,
-					UDim2.fromOffset(12, 0),
-					UDim2.fromOffset(versionWidth, ROW_HEIGHT),
+					UDim2.fromOffset(versionX, 4),
+					UDim2.fromOffset(versionWidth, 20),
 					tokens.type.small,
 					yanked and colors.muted or colors.text
 				)
 
 				if item == latest then
-					UI.badge(line, "LATEST", UDim2.fromOffset(12 + versionWidth + 8, (ROW_HEIGHT - 18) / 2), {
+					UI.badge(line, "LATEST", UDim2.fromOffset(versionX + versionWidth + 8, 5), {
 						color = colors.accent,
 						textColor = colors.text,
 						height = 18,
 					})
 				end
 
-				local rightOffset = 12
+				local rightOffset = 12 + DOWNLOAD_WIDTH + 10
 
 				if yanked then
-					rightLabel(line, "YANKED", 54, rightOffset, ROW_HEIGHT, tokens.type.caption, colors.warning)
+					rightLabel(line, "YANKED", 54, rightOffset, 20, tokens.type.caption, colors.warning, 4)
 
 					rightOffset += 62
 				end
 
-				rightLabel(line, meta, 190, rightOffset, ROW_HEIGHT, tokens.type.caption, colors.subtext)
+				rightLabel(line, meta, 170, rightOffset, 20, tokens.type.caption, colors.subtext, 4)
+
+				local summary = firstValue(item.changelog, item.notes, item.releaseNotes, item.release_notes)
+
+				if type(summary) ~= "string" then
+					local parts = {}
+
+					local versionEngine = firstValue(item.engineConstraint, item.engine_constraint)
+
+					if versionEngine then
+						table.insert(parts, "Engine " .. tostring(versionEngine))
+					end
+
+					table.insert(parts, #tableList(item.dependencies) .. " dependencies")
+
+					local versionDownloads = firstValue(item.downloadCount, item.download_count, item.downloads)
+
+					if versionDownloads then
+						table.insert(parts, formatCount(versionDownloads) .. " downloads")
+					end
+
+					local checksum = firstValue(item.checksum, item.sha256, item.hash)
+
+					if type(checksum) == "string" then
+						table.insert(parts, "sha " .. string.sub(checksum, 1, 8))
+					end
+
+					summary = table.concat(parts, "   ·   ")
+				end
+
+				truncate(
+					UI.label(
+						line,
+						summary,
+						UDim2.fromOffset(versionX, 24),
+						UDim2.new(1, -(versionX + 12 + DOWNLOAD_WIDTH + 10), 0, 14),
+						tokens.type.caption,
+						colors.muted
+					)
+				)
+
+				local downloadButton, downloadLabel = UI.button(
+					line,
+					"Download",
+					UDim2.new(1, -(12 + DOWNLOAD_WIDTH), 0.5, -DOWNLOAD_HEIGHT / 2),
+					UDim2.fromOffset(DOWNLOAD_WIDTH, DOWNLOAD_HEIGHT),
+					function()
+						if options.onDownload then
+							options.onDownload(plugin, data, item)
+						end
+					end,
+					{
+						color = yanked and colors.surface or colors.accent,
+						hoverColor = colors.selectionHover,
+						pressedColor = colors.pressed,
+						textColor = yanked and colors.muted or colors.text,
+						textSize = tokens.type.caption,
+						radius = tokens.radius.sm,
+						border = false,
+						icon = ICONS.download,
+						iconSize = 12,
+						paddingX = 6,
+						textY = 0,
+						enabled = not yanked,
+					}
+				)
+
+				downloadButton.Name = "Download"
+				downloadLabel.Size = UDim2.new(1, -(12 + 12 + 6), 1, 0)
+				downloadLabel.TextXAlignment = Enum.TextXAlignment.Center
 			end
 
 			local extra = #versions > shown
@@ -927,7 +1155,10 @@ return function(parent, options)
 				overflowNote(versionsCard, string.format("+ %d older versions", #versions - shown), shown + 1)
 			end
 
-			setBody(versionsCard, shown * ROW_HEIGHT + (shown - 1) * CARD_GAP + (extra and (CARD_GAP + 18) or 0))
+			setBody(
+				versionsCard,
+				shown * VERSION_ROW_HEIGHT + (shown - 1) * CARD_GAP + (extra and (CARD_GAP + 18) or 0)
+			)
 		end
 
 		syncCanvas()
