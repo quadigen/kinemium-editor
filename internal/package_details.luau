@@ -9,6 +9,7 @@ local tokens = UI.tokens
 local colors = tokens.color
 
 local PAGE_PADDING = 20
+local SCROLLBAR_WIDTH = 6
 local SECTION_GAP = 14
 local CARD_PADDING = 18
 local CARD_GAP = 10
@@ -22,8 +23,8 @@ local ICON_OVERLAP = 44
 local IDENTITY_HEIGHT = 64
 
 local BACK_SCALE = 0.12
-local INSTALL_SCALE = 0.1
-local DOWNLOAD_SCALE = 0.1
+local INSTALL_SCALE = 0.2
+local DOWNLOAD_SCALE = 0.22
 
 local STAT_HEIGHT = 68
 local STAT_GAP = 8
@@ -292,7 +293,7 @@ return function(parent, options)
 		Size = UDim2.new(1, 0, 1, -TOPBAR_HEIGHT),
 		BackgroundTransparency = 0,
 		BorderSizePixel = 0,
-		ScrollBarThickness = 6,
+		ScrollBarThickness = SCROLLBAR_WIDTH,
 		ScrollBarImageColor3 = colors.subtext,
 		ScrollBarImageTransparency = 0.4,
 		CanvasSize = UDim2.new(0, 0, 0, 0),
@@ -300,29 +301,25 @@ return function(parent, options)
 		ClipsDescendants = true,
 	}, page)
 
-	pcall(function()
-		scroll.VerticalScrollBarInset = Enum.ScrollBarInset.ScrollBar
-		scroll.HorizontalScrollBarInset = Enum.ScrollBarInset.None
-	end)
-
-	local scrollPadding = UI.create("UIPadding", {
-		PaddingLeft = UDim.new(0, PAGE_PADDING),
-		PaddingRight = UDim.new(0, PAGE_PADDING),
-		PaddingTop = UDim.new(0, PAGE_PADDING),
-		PaddingBottom = UDim.new(0, PAGE_PADDING),
+	local content = UI.create("Frame", {
+		Name = "Content",
+		Position = UDim2.new(0, PAGE_PADDING, 0, PAGE_PADDING),
+		Size = UDim2.new(1, -(PAGE_PADDING * 2 + SCROLLBAR_WIDTH), 0, 0),
+		BackgroundTransparency = 1,
+		BorderSizePixel = 0,
 	}, scroll)
 
-	local scrollLayout = UI.create("UIListLayout", {
+	local contentLayout = UI.create("UIListLayout", {
 		SortOrder = Enum.SortOrder.LayoutOrder,
 		Padding = UDim.new(0, SECTION_GAP),
-	}, scroll)
+	}, content)
 
-	local keep = { [scrollPadding] = true, [scrollLayout] = true }
+	local keep = { [contentLayout] = true }
 
 	local function syncCanvas()
 		local total, count = 0, 0
 
-		for _, child in ipairs(scroll:GetChildren()) do
+		for _, child in ipairs(content:GetChildren()) do
 			if child:IsA("GuiObject") then
 				total += child.Size.Y.Offset
 				count += 1
@@ -331,6 +328,7 @@ return function(parent, options)
 
 		total += math.max(count - 1, 0) * SECTION_GAP
 
+		content.Size = UDim2.new(1, -(PAGE_PADDING * 2 + SCROLLBAR_WIDTH), 0, total)
 		scroll.CanvasSize = UDim2.new(0, 0, 0, total + PAGE_PADDING * 2)
 	end
 
@@ -418,7 +416,7 @@ return function(parent, options)
 	end
 
 	local function section(title, order, rightText, icon)
-		local card = UI.card(scroll, UDim2.fromOffset(0, 0), UDim2.new(1, 0, 0, 0), {
+		local card = UI.card(content, UDim2.fromOffset(0, 0), UDim2.new(1, 0, 0, 0), {
 			color = colors.surface,
 			radius = CARD_RADIUS,
 		})
@@ -427,17 +425,18 @@ return function(parent, options)
 		card.LayoutOrder = order
 		card.ClipsDescendants = true
 
-		UI.create("UIPadding", {
-			PaddingLeft = UDim.new(0, CARD_PADDING),
-			PaddingRight = UDim.new(0, CARD_PADDING),
-			PaddingTop = UDim.new(0, CARD_PADDING),
-			PaddingBottom = UDim.new(0, CARD_PADDING),
+		local body = UI.create("Frame", {
+			Name = "Body",
+			Position = UDim2.new(0, CARD_PADDING, 0, CARD_PADDING),
+			Size = UDim2.new(1, -CARD_PADDING * 2, 1, -CARD_PADDING * 2),
+			BackgroundTransparency = 1,
+			BorderSizePixel = 0,
 		}, card)
 
 		UI.create("UIListLayout", {
 			SortOrder = Enum.SortOrder.LayoutOrder,
 			Padding = UDim.new(0, CARD_GAP),
-		}, card)
+		}, body)
 
 		setBody(card, 20)
 
@@ -447,7 +446,7 @@ return function(parent, options)
 			BackgroundTransparency = 1,
 			BorderSizePixel = 0,
 			LayoutOrder = 0,
-		}, card)
+		}, body)
 
 		local titleX = 0
 
@@ -477,7 +476,7 @@ return function(parent, options)
 			right.TextXAlignment = Enum.TextXAlignment.Right
 		end
 
-		return card
+		return card, body
 	end
 
 	local function row(rowParent, order, height)
@@ -542,7 +541,7 @@ return function(parent, options)
 	end
 
 	function controller:Render(plugin, data)
-		UI.clear(scroll, keep)
+		UI.clear(content, keep)
 
 		if type(data) == "table" and type(data.package) == "table" then
 			data = data.package
@@ -625,7 +624,7 @@ return function(parent, options)
 		local pillsTop = BANNER_HEIGHT + IDENTITY_HEIGHT
 
 		local hero =
-			UI.card(scroll, UDim2.fromOffset(0, 0), UDim2.new(1, 0, 0, pillsTop + PILL_HEIGHT + CARD_PADDING), {
+			UI.card(content, UDim2.fromOffset(0, 0), UDim2.new(1, 0, 0, pillsTop + PILL_HEIGHT + CARD_PADDING), {
 				color = colors.surface,
 				radius = 14,
 			})
@@ -866,7 +865,7 @@ return function(parent, options)
 			BackgroundTransparency = 1,
 			BorderSizePixel = 0,
 			LayoutOrder = 2,
-		}, scroll)
+		}, content)
 
 		for index, stat in ipairs(statCards) do
 			local column = (index - 1) % statColumns
@@ -907,7 +906,7 @@ return function(parent, options)
 			truncate(UI.label(card, stat.value, UDim2.new(0, 14, 0, 32), UDim2.new(1, -28, 0, 24), 17, colors.text))
 		end
 
-		local about = section("ABOUT", 3, nil, "about")
+		local aboutCard, about = section("ABOUT", 3, nil, "about")
 
 		local descriptionLabel =
 			UI.label(about, tostring(description), UDim2.fromOffset(0, 0), UDim2.new(1, 0, 0, 20), 14, colors.text)
@@ -924,7 +923,7 @@ return function(parent, options)
 				local bodyHeight = math.ceil(height) + 2
 
 				descriptionLabel.Size = UDim2.new(1, 0, 0, bodyHeight)
-				setBody(about, bodyHeight)
+				setBody(aboutCard, bodyHeight)
 			end
 		end
 
@@ -935,7 +934,7 @@ return function(parent, options)
 
 		fitDescription()
 
-		local details = section("DETAILS", 4, nil, "details")
+		local detailsCard, details = section("DETAILS", 4, nil, "details")
 
 		local FIELD_HEIGHT, FIELD_GAP = 40, 12
 		local FIELD_ICON_X = 22
@@ -970,7 +969,7 @@ return function(parent, options)
 			LayoutOrder = 1,
 		}, details)
 
-		setBody(details, fieldRows * FIELD_HEIGHT + (fieldRows - 1) * FIELD_GAP)
+		setBody(detailsCard, fieldRows * FIELD_HEIGHT + (fieldRows - 1) * FIELD_GAP)
 
 		for index, field in ipairs(fields) do
 			local column = (index - 1) % 2
@@ -1019,11 +1018,11 @@ return function(parent, options)
 			)
 		end
 
-		local depsCard =
+		local depsCard, depsBody =
 			section("DEPENDENCIES", 5, #dependencies > 0 and tostring(#dependencies) or nil, "dependencies")
 
 		if #dependencies == 0 then
-			emptyNote(depsCard, "No dependencies.")
+			emptyNote(depsBody, "No dependencies.")
 			setBody(depsCard, 18)
 		else
 			local shown = math.min(#dependencies, MAX_DEPENDENCIES)
@@ -1035,7 +1034,7 @@ return function(parent, options)
 				local depNamespace = tostring(dependency.namespace or dependency.Namespace or "unknown")
 				local constraint = tostring(dependency.constraint or dependency.Constraint or "*")
 
-				local item = row(depsCard, index, ROW_HEIGHT)
+				local item = row(depsBody, index, ROW_HEIGHT)
 
 				addIcon(item, "package", 12, (ROW_HEIGHT - 14) / 2, 14, colors.subtext)
 
@@ -1056,16 +1055,17 @@ return function(parent, options)
 			local extra = #dependencies > shown
 
 			if extra then
-				overflowNote(depsCard, string.format("+ %d more", #dependencies - shown), shown + 1)
+				overflowNote(depsBody, string.format("+ %d more", #dependencies - shown), shown + 1)
 			end
 
 			setBody(depsCard, shown * ROW_HEIGHT + (shown - 1) * CARD_GAP + (extra and (CARD_GAP + 18) or 0))
 		end
 
-		local versionsCard = section("VERSIONS", 6, #versions > 0 and tostring(#versions) or nil, "versions")
+		local versionsCard, versionsBody =
+			section("VERSIONS", 6, #versions > 0 and tostring(#versions) or nil, "versions")
 
 		if #versions == 0 then
-			emptyNote(versionsCard, "No published versions.")
+			emptyNote(versionsBody, "No published versions.")
 			setBody(versionsCard, 18)
 		else
 			local shown = math.min(#versions, MAX_VERSIONS)
@@ -1082,7 +1082,7 @@ return function(parent, options)
 				local sizeText = formatSize(item.size)
 				local meta = tostring(dateText) .. (sizeText ~= "" and ("   " .. tostring(sizeText)) or "")
 
-				local line = row(versionsCard, index, VERSION_ROW_HEIGHT)
+				local line = row(versionsBody, index, VERSION_ROW_HEIGHT)
 				line.Name = versionText
 
 				local iconColor = yanked and colors.muted or colors.subtext
@@ -1203,7 +1203,7 @@ return function(parent, options)
 			local extra = #versions > shown
 
 			if extra then
-				overflowNote(versionsCard, string.format("+ %d older versions", #versions - shown), shown + 1)
+				overflowNote(versionsBody, string.format("+ %d older versions", #versions - shown), shown + 1)
 			end
 
 			setBody(
