@@ -291,7 +291,7 @@ return function(parent, options)
 		Name = "Scroll",
 		Position = UDim2.new(0, 0, 0, TOPBAR_HEIGHT),
 		Size = UDim2.new(1, 0, 1, -TOPBAR_HEIGHT),
-		BackgroundTransparency = 0,
+		BackgroundTransparency = 1,
 		BorderSizePixel = 0,
 		ScrollBarThickness = SCROLLBAR_WIDTH,
 		ScrollBarImageColor3 = colors.subtext,
