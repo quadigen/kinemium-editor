@@ -335,11 +335,6 @@ local function gizmoCapturesMouse()
 	return false
 end
 
--- The engine reports gameProcessedEvent (the second input callback argument) as
--- true whenever the pointer is over a GUI object, so a panel or toolbar owns the
--- cursor. Mouse movement carries that flag, so track it to keep the hover
--- highlight off a part that sits behind the interface; the click handler below
--- already ignores processed input.
 local mouseOverGui = false
 UserInputService.InputChanged:Connect(function(input, processed)
 	if input.UserInputType == Enum.UserInputType.MouseMovement then
@@ -357,6 +352,9 @@ local function isOutOfBoundsTarget(target: BasePart)
 end
 
 local function isPickable(inst: Instance): boolean
+	if not inst then
+		return false
+	end
 	if not inst:IsA("BasePart") then
 		return false
 	end

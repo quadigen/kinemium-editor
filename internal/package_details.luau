@@ -289,8 +289,8 @@ return function(parent, options)
 	local scroll = UI.create("ScrollingFrame", {
 		Name = "Scroll",
 		Position = UDim2.fromOffset(0, TOPBAR_HEIGHT),
-		Size = UDim2.new(1, 0, 1, -TOPBAR_HEIGHT),
-		BackgroundTransparency = 1,
+		Size = UDim2.new(1, -15, 1, -TOPBAR_HEIGHT),
+		BackgroundTransparency = 0,
 		BorderSizePixel = 0,
 		ScrollBarThickness = 6,
 		ScrollBarImageColor3 = colors.subtext,
