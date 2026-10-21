@@ -3,6 +3,7 @@ if (IsServer or IsClient) or IsPlaytest then
 end
 
 local UI = require("@internal/editor_ui")
+local Packages = game:GetService("Packages")
 
 local tokens = UI.tokens
 local colors = tokens.color
@@ -525,7 +526,6 @@ return function(parent, options)
 
 	function controller:Render(plugin, data)
 		UI.clear(scroll, keep)
-		print(plugin)
 
 		if type(data) == "table" and type(data.package) == "table" then
 			data = data.package

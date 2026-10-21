@@ -474,6 +474,13 @@ return function(page, windowControls, gui)
 			marketplaceControls.Visible = true
 			marketplaceList.Visible = true
 		end,
+		onDownload = function(plugin, data, item)
+			local success, result, meta = Packages:DownloadPackage(
+				data.namespace, -- Namespace
+				data.name, -- Package name
+				data.latestVersion -- Version
+			)
+		end,
 	})
 
 	local function openPackagePage(plugin)
