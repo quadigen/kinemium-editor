@@ -22,8 +22,8 @@ local ICON_OVERLAP = 44
 local IDENTITY_HEIGHT = 64
 
 local BACK_SCALE = 0.12
-local INSTALL_SCALE = 0.2
-local DOWNLOAD_SCALE = 0.22
+local INSTALL_SCALE = 0.1
+local DOWNLOAD_SCALE = 0.1
 
 local STAT_HEIGHT = 68
 local STAT_GAP = 8
