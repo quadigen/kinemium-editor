@@ -212,7 +212,7 @@ local function addIcon(iconParent, name, x, y, size, color)
 	local image = UI.image(iconParent, path, UDim2.fromOffset(x, y), UDim2.fromOffset(size, size))
 
 	image.Name = "Icon_" .. name
-	trySet(image, "ImageColor3", color or colors.muted)
+	image.ImageColor3 = Color3.new(1, 1, 1)
 
 	return image
 end
