@@ -525,6 +525,7 @@ return function(parent, options)
 
 	function controller:Render(plugin, data)
 		UI.clear(scroll, keep)
+		print(plugin)
 
 		if type(data) == "table" and type(data.package) == "table" then
 			data = data.package
