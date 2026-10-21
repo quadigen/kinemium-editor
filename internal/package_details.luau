@@ -20,18 +20,22 @@ local FADE_HEIGHT = 80
 local ICON_SIZE = 88
 local ICON_OVERLAP = 44
 local IDENTITY_HEIGHT = 64
-local INSTALL_WIDTH = 100
+
+local BACK_SCALE = 0.1
+local BACK_MIN_WIDTH = 64
+local INSTALL_SCALE = 0.18
+local INSTALL_MIN_WIDTH = 84
+local DOWNLOAD_SCALE = 0.2
+local DOWNLOAD_MIN_WIDTH = 90
 
 local STAT_HEIGHT = 68
 local STAT_GAP = 8
 local ROW_HEIGHT = 32
 local VERSION_ROW_HEIGHT = 44
-local DOWNLOAD_WIDTH = 96
 local DOWNLOAD_HEIGHT = 26
 local PILL_HEIGHT = 22
 local PILL_PADDING = 10
 local PILL_ICON_SPACE = 16
-local CHAR_WIDTH = 8
 
 local MAX_TAGS = 6
 local MAX_DEPENDENCIES = 12
@@ -200,6 +204,12 @@ local function truncate(label)
 	return label
 end
 
+local function minWidth(object, width)
+	UI.create("UISizeConstraint", {
+		MinSize = Vector2.new(width, 0),
+	}, object)
+end
+
 local function addIcon(iconParent, name, x, y, size, color)
 	local path = ICONS[name]
 
@@ -238,14 +248,15 @@ return function(parent, options)
 
 	topbar.Name = "TopBar"
 	topbar.ZIndex = 10
+	topbar.ClipsDescendants = true
 
 	UI.separator(topbar, UDim2.new(0, 0, 1, -1), UDim2.new(1, 0, 0, 1), colors.border)
 
 	local backButton = UI.button(
 		topbar,
 		"Back",
-		UDim2.fromOffset(PAGE_PADDING, (TOPBAR_HEIGHT - 28) / 2),
-		UDim2.fromOffset(78, 28),
+		UDim2.new(0, PAGE_PADDING, 0, (TOPBAR_HEIGHT - 28) / 2),
+		UDim2.new(BACK_SCALE, 0, 0, 28),
 		function()
 			controller:Close()
 		end,
@@ -260,14 +271,13 @@ return function(parent, options)
 	)
 
 	backButton.Name = "Back"
-
-	local crumbX = PAGE_PADDING + 78 + 14
+	minWidth(backButton, BACK_MIN_WIDTH)
 
 	local crumb = UI.label(
 		topbar,
 		"MARKETPLACE",
-		UDim2.fromOffset(crumbX, 0),
-		UDim2.new(1, -(crumbX + PAGE_PADDING), 1, 0),
+		UDim2.new(BACK_SCALE, PAGE_PADDING + 14, 0, 0),
+		UDim2.new(1 - BACK_SCALE, -(PAGE_PADDING * 2 + 14), 1, 0),
 		tokens.type.caption,
 		colors.subtext
 	)
@@ -288,21 +298,23 @@ return function(parent, options)
 
 	local scroll = UI.create("ScrollingFrame", {
 		Name = "Scroll",
-		Position = UDim2.fromOffset(0, TOPBAR_HEIGHT),
-		Size = UDim2.new(1, -15, 1, -TOPBAR_HEIGHT),
+		Position = UDim2.new(0, 0, 0, TOPBAR_HEIGHT),
+		Size = UDim2.new(1, 0, 1, -TOPBAR_HEIGHT),
 		BackgroundTransparency = 0,
 		BorderSizePixel = 0,
 		ScrollBarThickness = 6,
 		ScrollBarImageColor3 = colors.subtext,
 		ScrollBarImageTransparency = 0.4,
-		CanvasSize = UDim2.fromOffset(0, 0),
+		CanvasSize = UDim2.new(0, 0, 0, 0),
 		ScrollingDirection = Enum.ScrollingDirection.Y,
+		VerticalScrollBarInset = Enum.ScrollBarInset.ScrollBar,
+		HorizontalScrollBarInset = Enum.ScrollBarInset.None,
 		ClipsDescendants = true,
 	}, page)
 
 	local scrollPadding = UI.create("UIPadding", {
 		PaddingLeft = UDim.new(0, PAGE_PADDING),
-		PaddingRight = UDim.new(0, PAGE_PADDING + 4),
+		PaddingRight = UDim.new(0, PAGE_PADDING),
 		PaddingTop = UDim.new(0, PAGE_PADDING),
 		PaddingBottom = UDim.new(0, PAGE_PADDING),
 	}, scroll)
@@ -326,7 +338,7 @@ return function(parent, options)
 
 		total += math.max(count - 1, 0) * SECTION_GAP
 
-		scroll.CanvasSize = UDim2.fromOffset(0, total + PAGE_PADDING * 2)
+		scroll.CanvasSize = UDim2.new(0, 0, 0, total + PAGE_PADDING * 2)
 	end
 
 	local function pill(pillParent, text, order, config)
@@ -344,12 +356,13 @@ return function(parent, options)
 		local frame = UI.frame(
 			pillParent,
 			UDim2.fromOffset(0, 0),
-			UDim2.fromOffset(#label * 7 + PILL_PADDING * 2 + iconSpace, PILL_HEIGHT),
+			UDim2.new(0, #label * 7 + PILL_PADDING * 2 + iconSpace, 0, PILL_HEIGHT),
 			config.color or colors.surfaceAlt,
 			7
 		)
 
 		frame.LayoutOrder = order
+		frame.ClipsDescendants = true
 
 		if config.stroke then
 			UI.stroke(frame, config.stroke, 1, 0.3)
@@ -369,7 +382,7 @@ return function(parent, options)
 		local textLabel = UI.label(
 			frame,
 			label,
-			UDim2.fromOffset(iconSpace, 0),
+			UDim2.new(0, iconSpace, 0, 0),
 			UDim2.new(1, -iconSpace, 1, 0),
 			tokens.type.caption,
 			config.textColor or colors.text
@@ -377,12 +390,20 @@ return function(parent, options)
 
 		textLabel.TextWrapped = false
 		textLabel.TextXAlignment = Enum.TextXAlignment.Center
+		truncate(textLabel)
 
 		local function fit()
 			local width = textLabel.TextBounds.X
 
 			if width and width > 0 then
-				frame.Size = UDim2.fromOffset(math.ceil(width) + PILL_PADDING * 2 + iconSpace, PILL_HEIGHT)
+				local total = math.ceil(width) + PILL_PADDING * 2 + iconSpace
+				local limit = pillParent.AbsoluteSize.X
+
+				if limit > 0 then
+					total = math.min(total, limit)
+				end
+
+				frame.Size = UDim2.new(0, total, 0, PILL_HEIGHT)
 			end
 		end
 
@@ -411,6 +432,7 @@ return function(parent, options)
 
 		card.Name = title
 		card.LayoutOrder = order
+		card.ClipsDescendants = true
 
 		UI.create("UIPadding", {
 			PaddingLeft = UDim.new(0, CARD_PADDING),
@@ -443,7 +465,7 @@ return function(parent, options)
 		UI.label(
 			header,
 			title,
-			UDim2.fromOffset(titleX, 0),
+			UDim2.new(0, titleX, 0, 0),
 			UDim2.new(0.6, -titleX, 1, 0),
 			tokens.type.caption,
 			colors.muted
@@ -470,21 +492,23 @@ return function(parent, options)
 
 		frame.BackgroundTransparency = 0.55
 		frame.LayoutOrder = order
+		frame.ClipsDescendants = true
 
 		return frame
 	end
 
-	local function rightLabel(rowParent, text, width, rightOffset, height, size, color, y)
+	local function rightLabel(rowParent, text, widthScale, edgeScale, edgeOffset, height, size, color, y)
 		local label = UI.label(
 			rowParent,
 			text,
-			UDim2.new(1, -(rightOffset + width), 0, y or 0),
-			UDim2.fromOffset(width, height),
+			UDim2.new(edgeScale - widthScale, edgeOffset, 0, y or 0),
+			UDim2.new(widthScale, 0, 0, height),
 			size,
 			color
 		)
 
 		label.TextXAlignment = Enum.TextXAlignment.Right
+		truncate(label)
 
 		return label
 	end
@@ -659,21 +683,23 @@ return function(parent, options)
 
 		local identity = UI.create("Frame", {
 			Name = "Identity",
-			Position = UDim2.fromOffset(0, BANNER_HEIGHT),
+			Position = UDim2.new(0, 0, 0, BANNER_HEIGHT),
 			Size = UDim2.new(1, 0, 0, IDENTITY_HEIGHT),
 			BackgroundTransparency = 1,
 			BorderSizePixel = 0,
+			ClipsDescendants = true,
 		}, hero)
 
-		local actionWidth = options.onInstall and (INSTALL_WIDTH + CARD_PADDING) or 0
+		local hasInstall = options.onInstall ~= nil
 		local textX = CARD_PADDING + ICON_SIZE + 16
-		local textRight = textX + CARD_PADDING + actionWidth
+		local textWidthScale = hasInstall and (1 - INSTALL_SCALE) or 1
+		local textRightOffset = textX + CARD_PADDING * (hasInstall and 2 or 1)
 
 		local title = UI.label(
 			identity,
 			tostring(name),
-			UDim2.fromOffset(textX, 8),
-			UDim2.new(1, -textRight, 0, 28),
+			UDim2.new(0, textX, 0, 8),
+			UDim2.new(textWidthScale, -textRightOffset, 0, 28),
 			22,
 			colors.text
 		)
@@ -690,8 +716,8 @@ return function(parent, options)
 		local author = UI.label(
 			identity,
 			"by " .. tostring(namespace),
-			UDim2.fromOffset(authorX, 38),
-			UDim2.new(1, -(textRight + (authorX - textX)), 0, 18),
+			UDim2.new(0, authorX, 0, 38),
+			UDim2.new(textWidthScale, -(textRightOffset + (authorX - textX)), 0, 18),
 			13,
 			colors.accent
 		)
@@ -699,12 +725,12 @@ return function(parent, options)
 		author.Name = "Author"
 		truncate(author)
 
-		if options.onInstall then
-			local _, installLabel = UI.button(
+		if hasInstall then
+			local installButton, installLabel = UI.button(
 				identity,
 				options.installText or "Install",
-				UDim2.new(1, -(INSTALL_WIDTH + CARD_PADDING), 0, 12),
-				UDim2.fromOffset(INSTALL_WIDTH, 34),
+				UDim2.new(1, -CARD_PADDING, 0, 12),
+				UDim2.new(INSTALL_SCALE, 0, 0, 34),
 				function()
 					options.onInstall(plugin, data)
 				end,
@@ -720,12 +746,14 @@ return function(parent, options)
 				}
 			)
 
+			installButton.AnchorPoint = Vector2.new(1, 0)
+			minWidth(installButton, INSTALL_MIN_WIDTH)
 			installLabel.TextXAlignment = Enum.TextXAlignment.Center
 		end
 
 		local pills = UI.create("Frame", {
 			Name = "Pills",
-			Position = UDim2.fromOffset(CARD_PADDING, pillsTop),
+			Position = UDim2.new(0, CARD_PADDING, 0, pillsTop),
 			Size = UDim2.new(1, -CARD_PADDING * 2, 0, PILL_HEIGHT),
 			BackgroundTransparency = 1,
 			BorderSizePixel = 0,
@@ -782,7 +810,7 @@ return function(parent, options)
 
 		local iconFrame = UI.frame(
 			hero,
-			UDim2.fromOffset(CARD_PADDING, BANNER_HEIGHT - ICON_OVERLAP),
+			UDim2.new(0, CARD_PADDING, 0, BANNER_HEIGHT - ICON_OVERLAP),
 			UDim2.fromOffset(ICON_SIZE, ICON_SIZE),
 			colors.surfaceAlt,
 			16
@@ -838,6 +866,8 @@ return function(parent, options)
 
 		local statColumns = 4
 		local statRows = math.ceil(#statCards / statColumns)
+		local statScale = 1 / statColumns
+		local statOffset = STAT_GAP * (statColumns - 1) / statColumns
 
 		local stats = UI.create("Frame", {
 			Name = "Stats",
@@ -853,8 +883,8 @@ return function(parent, options)
 
 			local card = UI.card(
 				stats,
-				UDim2.new(column * 0.25, column * 2, 0, statRow * (STAT_HEIGHT + STAT_GAP)),
-				UDim2.new(0.25, -6, 0, STAT_HEIGHT),
+				UDim2.new(column * statScale, column * (STAT_GAP - statOffset), 0, statRow * (STAT_HEIGHT + STAT_GAP)),
+				UDim2.new(statScale, -statOffset, 0, STAT_HEIGHT),
 				{
 					color = colors.surface,
 					radius = CARD_RADIUS,
@@ -862,14 +892,17 @@ return function(parent, options)
 			)
 
 			card.Name = stat.label
+			card.ClipsDescendants = true
 
-			UI.label(
-				card,
-				stat.label,
-				UDim2.fromOffset(14, 12),
-				UDim2.new(1, -46, 0, 14),
-				tokens.type.caption,
-				colors.muted
+			truncate(
+				UI.label(
+					card,
+					stat.label,
+					UDim2.new(0, 14, 0, 12),
+					UDim2.new(1, -46, 0, 14),
+					tokens.type.caption,
+					colors.muted
+				)
 			)
 
 			addIcon(card, stat.icon, 0, 0, 14, colors.muted, nil)
@@ -880,7 +913,7 @@ return function(parent, options)
 				statIcon.Position = UDim2.new(1, -28, 0, 12)
 			end
 
-			truncate(UI.label(card, stat.value, UDim2.fromOffset(14, 32), UDim2.new(1, -28, 0, 24), 17, colors.text))
+			truncate(UI.label(card, stat.value, UDim2.new(0, 14, 0, 32), UDim2.new(1, -28, 0, 24), 17, colors.text))
 		end
 
 		local about = section("ABOUT", 3, nil, "about")
@@ -906,6 +939,7 @@ return function(parent, options)
 
 		pcall(function()
 			descriptionLabel:GetPropertyChangedSignal("TextBounds"):Connect(fitDescription)
+			descriptionLabel:GetPropertyChangedSignal("AbsoluteSize"):Connect(fitDescription)
 		end)
 
 		fitDescription()
@@ -914,6 +948,7 @@ return function(parent, options)
 
 		local FIELD_HEIGHT, FIELD_GAP = 40, 12
 		local FIELD_ICON_X = 22
+		local FIELD_COLUMN_GAP = 10
 
 		local fields = {
 			{ "LICENSE", license, "license" },
@@ -952,10 +987,16 @@ return function(parent, options)
 
 			local cell = UI.create("Frame", {
 				Name = field[1],
-				Position = UDim2.new(column * 0.5, column * 10, 0, fieldRow * (FIELD_HEIGHT + FIELD_GAP)),
-				Size = UDim2.new(0.5, -10, 0, FIELD_HEIGHT),
+				Position = UDim2.new(
+					column * 0.5,
+					column * (FIELD_COLUMN_GAP / 2),
+					0,
+					fieldRow * (FIELD_HEIGHT + FIELD_GAP)
+				),
+				Size = UDim2.new(0.5, -(FIELD_COLUMN_GAP / 2), 0, FIELD_HEIGHT),
 				BackgroundTransparency = 1,
 				BorderSizePixel = 0,
+				ClipsDescendants = true,
 			}, grid)
 
 			local textX = 0
@@ -964,20 +1005,22 @@ return function(parent, options)
 				textX = FIELD_ICON_X
 			end
 
-			UI.label(
-				cell,
-				field[1],
-				UDim2.fromOffset(textX, 0),
-				UDim2.new(1, -textX, 0, 14),
-				tokens.type.caption,
-				colors.muted
+			truncate(
+				UI.label(
+					cell,
+					field[1],
+					UDim2.new(0, textX, 0, 0),
+					UDim2.new(1, -textX, 0, 14),
+					tokens.type.caption,
+					colors.muted
+				)
 			)
 
 			truncate(
 				UI.label(
 					cell,
 					tostring(field[2]),
-					UDim2.fromOffset(textX, 18),
+					UDim2.new(0, textX, 0, 18),
 					UDim2.new(1, -textX, 0, 20),
 					tokens.type.small,
 					colors.text
@@ -993,6 +1036,7 @@ return function(parent, options)
 			setBody(depsCard, 18)
 		else
 			local shown = math.min(#dependencies, MAX_DEPENDENCIES)
+			local constraintScale = 0.3
 
 			for index = 1, shown do
 				local dependency = dependencies[index]
@@ -1008,14 +1052,14 @@ return function(parent, options)
 					UI.label(
 						item,
 						depNamespace .. "/" .. depName,
-						UDim2.fromOffset(34, 0),
-						UDim2.new(1, -172, 1, 0),
+						UDim2.new(0, 34, 0, 0),
+						UDim2.new(1 - constraintScale, -(34 + 8), 1, 0),
 						tokens.type.small,
 						colors.text
 					)
 				)
 
-				rightLabel(item, constraint, 110, 12, ROW_HEIGHT, tokens.type.caption, colors.subtext)
+				rightLabel(item, constraint, constraintScale, 1, -12, ROW_HEIGHT, tokens.type.caption, colors.subtext)
 			end
 
 			local extra = #dependencies > shown
@@ -1034,6 +1078,10 @@ return function(parent, options)
 			setBody(versionsCard, 18)
 		else
 			local shown = math.min(#versions, MAX_VERSIONS)
+			local versionScale = 0.14
+			local yankedScale = 0.1
+			local metaScale = 0.3
+			local sideGap = 12 + 10
 
 			for index = 1, shown do
 				local item = versions[index]
@@ -1051,34 +1099,45 @@ return function(parent, options)
 				addIcon(line, "tag", 12, 8, 14, iconColor)
 
 				local versionX = 12 + 14 + 8
-				local versionWidth = #versionText * CHAR_WIDTH + 4
 
-				UI.label(
-					line,
-					versionText,
-					UDim2.fromOffset(versionX, 4),
-					UDim2.fromOffset(versionWidth, 20),
-					tokens.type.small,
-					yanked and colors.muted or colors.text
+				truncate(
+					UI.label(
+						line,
+						versionText,
+						UDim2.new(0, versionX, 0, 4),
+						UDim2.new(versionScale, 0, 0, 20),
+						tokens.type.small,
+						yanked and colors.muted or colors.text
+					)
 				)
 
 				if item == latest then
-					UI.badge(line, "LATEST", UDim2.fromOffset(versionX + versionWidth + 8, 5), {
+					UI.badge(line, "LATEST", UDim2.new(versionScale, versionX + 8, 0, 5), {
 						color = colors.accent,
 						textColor = colors.text,
 						height = 18,
 					})
 				end
 
-				local rightOffset = 12 + DOWNLOAD_WIDTH + 10
+				local metaEdge = 1 - DOWNLOAD_SCALE
 
 				if yanked then
-					rightLabel(line, "YANKED", 54, rightOffset, 20, tokens.type.caption, colors.warning, 4)
+					rightLabel(
+						line,
+						"YANKED",
+						yankedScale,
+						metaEdge,
+						-sideGap,
+						20,
+						tokens.type.caption,
+						colors.warning,
+						4
+					)
 
-					rightOffset += 62
+					metaEdge -= yankedScale
 				end
 
-				rightLabel(line, meta, 170, rightOffset, 20, tokens.type.caption, colors.subtext, 4)
+				rightLabel(line, meta, metaScale, metaEdge, -sideGap, 20, tokens.type.caption, colors.subtext, 4)
 
 				local summary = firstValue(item.changelog, item.notes, item.releaseNotes, item.release_notes)
 
@@ -1112,8 +1171,8 @@ return function(parent, options)
 					UI.label(
 						line,
 						summary,
-						UDim2.fromOffset(versionX, 24),
-						UDim2.new(1, -(versionX + 12 + DOWNLOAD_WIDTH + 10), 0, 14),
+						UDim2.new(0, versionX, 0, 24),
+						UDim2.new(1 - DOWNLOAD_SCALE, -(versionX + sideGap), 0, 14),
 						tokens.type.caption,
 						colors.muted
 					)
@@ -1122,8 +1181,8 @@ return function(parent, options)
 				local downloadButton, downloadLabel = UI.button(
 					line,
 					"Download",
-					UDim2.new(1, -(12 + DOWNLOAD_WIDTH), 0.5, -DOWNLOAD_HEIGHT / 2),
-					UDim2.fromOffset(DOWNLOAD_WIDTH, DOWNLOAD_HEIGHT),
+					UDim2.new(1, -12, 0.5, 0),
+					UDim2.new(DOWNLOAD_SCALE, 0, 0, DOWNLOAD_HEIGHT),
 					function()
 						if options.onDownload then
 							options.onDownload(plugin, data, item)
@@ -1146,6 +1205,8 @@ return function(parent, options)
 				)
 
 				downloadButton.Name = "Download"
+				downloadButton.AnchorPoint = Vector2.new(1, 0.5)
+				minWidth(downloadButton, DOWNLOAD_MIN_WIDTH)
 				downloadLabel.Size = UDim2.new(1, -(12 + 12 + 6), 1, 0)
 				downloadLabel.TextXAlignment = Enum.TextXAlignment.Center
 			end
