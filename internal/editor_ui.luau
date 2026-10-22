@@ -7630,19 +7630,6 @@ function UI.input(parent, placeholder, position, size, options)
 		end)
 	end
 
-	field.MouseButton1Down:Connect(function()
-		task.defer(function()
-			if not UI.isAlive(field) or not field:IsFocused() then
-				return
-			end
-
-			baseColor = stroke.Color
-			baseTransparency = stroke.Transparency
-
-			setFocus(1, false)
-		end)
-	end)
-
 	field.FocusLost:Connect(function()
 		setFocus(0, false)
 	end)
