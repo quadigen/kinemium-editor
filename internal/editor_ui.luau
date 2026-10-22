@@ -23,6 +23,8 @@ local shared = {
 }
 local MIN_SPAN = 0.0005
 local MAX_TICKS = 16
+local THEME_ANIMATION_DURATION = 0.24
+local EMPTY_MAP = {}
 
 local function tooltipLerp(a, b, t)
 	return a + (b - a) * t
@@ -938,7 +940,13 @@ do
 			end
 
 			if known then
-				record.gui.BackgroundColor3 = record.color
+				if current == previous[3] then
+					record.gui.BackgroundColor3 = record.pressedColor
+				elseif current == previous[2] then
+					record.gui.BackgroundColor3 = record.hoverColor
+				else
+					record.gui.BackgroundColor3 = record.color
+				end
 			end
 		end
 	end
@@ -959,54 +967,42 @@ do
 		end
 	end
 
-	function UI.setTheme(name)
-		local spec
+	local function copyTable(source)
+		local result = {}
 
-		if name == "System" then
-			spec = systemThemeSpec()
-			shared.engineTheme = StudioThemeService.SelectedTheme
-		else
-			spec = resolveTheme(name)
+		for key, value in pairs(source) do
+			result[key] = value
 		end
 
-		if not spec then
-			return false, "unknown theme: " .. tostring(name)
-		end
+		return result
+	end
 
-		local old = { color = {}, radius = {}, type = {} }
-
-		for key, value in pairs(UI.tokens.color) do
-			old.color[key] = value
-		end
-
-		for key, value in pairs(UI.tokens.radius) do
-			old.radius[key] = value
-		end
-
-		for key, value in pairs(UI.tokens.type) do
-			old.type[key] = value
-		end
-
-		local maps = {
-			background = buildKeyMap(old.color, spec.color, BACKGROUND_KEYS),
-			text = buildKeyMap(old.color, spec.color, TEXT_KEYS),
-			stroke = buildKeyMap(old.color, spec.color, STROKE_KEYS),
-			image = buildKeyMap(old.color, spec.color, IMAGE_KEYS),
-			placeholder = buildKeyMap(old.color, spec.color, PLACEHOLDER_KEYS),
-			caret = buildKeyMap(old.color, spec.color, CARET_KEYS),
-			selection = buildKeyMap(old.color, spec.color, SELECTION_KEYS),
-			hover = buildKeyMap(old.color, spec.color, HOVER_KEYS),
-			pressed = buildKeyMap(old.color, spec.color, PRESSED_KEYS),
-			focus = buildKeyMap(old.color, spec.color, CARET_KEYS),
+	local function buildColorMaps(oldColors, newColors)
+		return {
+			background = buildKeyMap(oldColors, newColors, BACKGROUND_KEYS),
+			text = buildKeyMap(oldColors, newColors, TEXT_KEYS),
+			stroke = buildKeyMap(oldColors, newColors, STROKE_KEYS),
+			image = buildKeyMap(oldColors, newColors, IMAGE_KEYS),
+			placeholder = buildKeyMap(oldColors, newColors, PLACEHOLDER_KEYS),
+			caret = buildKeyMap(oldColors, newColors, CARET_KEYS),
+			selection = buildKeyMap(oldColors, newColors, SELECTION_KEYS),
+			hover = buildKeyMap(oldColors, newColors, HOVER_KEYS),
+			pressed = buildKeyMap(oldColors, newColors, PRESSED_KEYS),
+			focus = buildKeyMap(oldColors, newColors, CARET_KEYS),
 		}
+	end
 
-		local radiusMap = buildNumberMap(old.radius, spec.radius)
-		local typeMap = buildNumberMap(old.type, spec.type)
-
-		for key, value in pairs(spec.color) do
-			UI.tokens.color[key] = value
+	local function mapsHaveChanges(maps)
+		for _, map in pairs(maps) do
+			if next(map) ~= nil then
+				return true
+			end
 		end
 
+		return false
+	end
+
+	local function applyThemeDimensions(spec)
 		for key, value in pairs(spec.space) do
 			UI.tokens.space[key] = value
 		end
@@ -1022,7 +1018,20 @@ do
 		for key, value in pairs(spec.font) do
 			UI.tokens.font[key] = value
 		end
+	end
 
+	local function notifyThemeChanged(name)
+		for _, callback in ipairs(shared.themeListeners) do
+			pcall(callback, name, UI.tokens)
+		end
+	end
+
+	local function applyThemeNow(spec, maps, radiusMap, typeMap)
+		for key, value in pairs(spec.color) do
+			UI.tokens.color[key] = value
+		end
+
+		applyThemeDimensions(spec)
 		syncLegacyColors()
 
 		for instance in pairs(shared.themeObjects) do
@@ -1031,12 +1040,146 @@ do
 
 		applyButtonRecords(maps)
 		applyThemeBindings()
+	end
+
+	local function finishThemeTransition(notify)
+		local transition = shared.themeTransition
+
+		if not transition then
+			return
+		end
+
+		shared.themeTransition = nil
+
+		if transition.connection then
+			transition.connection:Disconnect()
+		end
+
+		local maps = buildColorMaps(transition.previous, transition.target)
+
+		for key, value in pairs(transition.target) do
+			UI.tokens.color[key] = value
+		end
+
+		syncLegacyColors()
+
+		for instance in pairs(shared.themeObjects) do
+			applyToInstance(instance, maps, transition.radiusMap, transition.typeMap, transition.font)
+		end
+
+		applyButtonRecords(maps)
+		applyThemeBindings()
+
+		if notify then
+			notifyThemeChanged(transition.name)
+		end
+	end
+
+	local function beginThemeTransition(name, spec, old, radiusMap, typeMap)
+		local transition = {
+			name = name,
+			target = spec.color,
+			previous = old.color,
+			radiusMap = radiusMap,
+			typeMap = typeMap,
+			font = spec.font,
+			elapsed = 0,
+			duration = THEME_ANIMATION_DURATION,
+		}
+
+		applyThemeDimensions(spec)
 
 		shared.themeName = name
+		shared.themeTransition = transition
 
-		for _, callback in ipairs(shared.themeListeners) do
-			pcall(callback, name, UI.tokens)
+		local firstStep = true
+
+		transition.connection = RunService.Heartbeat:Connect(function(dt)
+			if shared.themeTransition ~= transition then
+				return
+			end
+
+			transition.elapsed += dt
+
+			local alpha = math.min(transition.elapsed / transition.duration, 1)
+			local eased = alpha * alpha * (3 - 2 * alpha)
+			local current = {}
+
+			for key, targetValue in pairs(transition.target) do
+				local oldValue = old.color[key] or targetValue
+
+				current[key] = oldValue:Lerp(targetValue, eased)
+			end
+
+			local maps = buildColorMaps(transition.previous, current)
+
+			for key, value in pairs(current) do
+				UI.tokens.color[key] = value
+			end
+
+			syncLegacyColors()
+
+			local stepRadiusMap = firstStep and radiusMap or EMPTY_MAP
+			local stepTypeMap = firstStep and typeMap or EMPTY_MAP
+			local stepFont = firstStep and spec.font or nil
+
+			for instance in pairs(shared.themeObjects) do
+				applyToInstance(instance, maps, stepRadiusMap, stepTypeMap, stepFont)
+			end
+
+			applyButtonRecords(maps)
+			applyThemeBindings()
+
+			transition.previous = current
+			firstStep = false
+
+			if alpha >= 1 then
+				finishThemeTransition(true)
+			end
+		end)
+	end
+
+	function UI.setTheme(name)
+		local spec
+
+		if name == "System" then
+			spec = systemThemeSpec()
+			shared.engineTheme = StudioThemeService.SelectedTheme
+		else
+			spec = resolveTheme(name)
 		end
+
+		if not spec then
+			return false, "unknown theme: " .. tostring(name)
+		end
+
+		finishThemeTransition(false)
+
+		local old = {
+			color = copyTable(UI.tokens.color),
+			radius = copyTable(UI.tokens.radius),
+			type = copyTable(UI.tokens.type),
+		}
+
+		local maps = buildColorMaps(old.color, spec.color)
+		local radiusMap = buildNumberMap(old.radius, spec.radius)
+		local typeMap = buildNumberMap(old.type, spec.type)
+
+		local animate = THEME_ANIMATION_DURATION > 0
+			and mapsHaveChanges(maps)
+			and next(shared.themeObjects) ~= nil
+
+		if not animate then
+			applyThemeNow(spec, maps, radiusMap, typeMap)
+
+			shared.themeName = name
+
+			notifyThemeChanged(name)
+
+			return true
+		end
+
+		beginThemeTransition(name, spec, old, radiusMap, typeMap)
 
 		return true
 	end
