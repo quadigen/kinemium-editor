@@ -164,11 +164,8 @@ UI.tokens = {
 	},
 
 	space = { xs = 3, sm = 5, md = 8, lg = 12 },
-
 	radius = { xs = 3, sm = 4, md = 6 },
-
 	type = { caption = 11, small = 12, body = 13, title = 14 },
-
 	font = { family = "builtin://fonts/SourceSansPro-Regular.ttf" },
 }
 
@@ -563,6 +560,10 @@ do
 	shared.themeOrder = { "System" }
 
 	UI.registerTheme("Dark", {
+		color = UI.tokens.color,
+	})
+
+	UI.registerTheme("Blue", {
 		color = {
 			canvas = Color3.fromRGB(30, 30, 30),
 			panel = Color3.fromRGB(37, 37, 38),
