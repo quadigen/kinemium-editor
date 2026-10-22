@@ -1406,6 +1406,7 @@ function UI.prompt(options)
 		buttonConfigs = {},
 
 		open = options.startVisible ~= false,
+		promptDestroyPending = false,
 		busy = false,
 		destroyed = false,
 	}
@@ -1501,6 +1502,112 @@ function UI.prompt(options)
 			panel.BackgroundTransparency = 0.12
 		end
 	end
+
+	local animatePrompt = options.animate ~= false
+	local promptSpeed = options.animationSpeed or 18
+	local promptCloseSpeed = options.closeSpeed or 28
+	local promptProgress = 0
+	local promptTarget = 0
+	local promptHeartbeat = nil
+	local promptScale = nil
+	local promptBackdropTransparency = backdrop and backdrop.BackgroundTransparency or 1
+	local promptBorderTransparency = controller.border and controller.border.Transparency or nil
+	local promptShadowTransparency = controller.shadow and controller.shadow.Transparency or nil
+
+	if animatePrompt then
+		promptScale = UI.create("UIScale", { Scale = 1 }, panel)
+	end
+
+	local function applyPrompt(alpha)
+		alpha = math.clamp(alpha, 0, 1)
+
+		local eased = alpha * alpha * (3 - 2 * alpha)
+
+		if promptScale then
+			promptScale.Scale = 0.965 + 0.035 * eased
+		end
+
+		if backdrop then
+			backdrop.BackgroundTransparency = 1 - (1 - promptBackdropTransparency) * eased
+		end
+
+		if controller.border and promptBorderTransparency then
+			controller.border.Transparency = 1 - (1 - promptBorderTransparency) * eased
+		end
+
+		if controller.shadow and promptShadowTransparency then
+			controller.shadow.Transparency = 1 - (1 - promptShadowTransparency) * eased
+		end
+	end
+
+	local function stopPromptAnimation()
+		if promptHeartbeat then
+			promptHeartbeat:Disconnect()
+			promptHeartbeat = nil
+		end
+	end
+
+	local function finishPromptClose()
+		if not controller.promptDestroyPending then
+			return
+		end
+
+		controller.promptDestroyPending = false
+
+		if not controller.destroyed then
+			controller:Destroy()
+		end
+	end
+
+	local function wakePrompt(target)
+		promptTarget = target
+
+		if not animatePrompt then
+			stopPromptAnimation()
+
+			promptProgress = target
+
+			applyPrompt(target)
+
+			if target <= 0 then
+				screenGui.Enabled = false
+
+				finishPromptClose()
+			end
+
+			return
+		end
+
+		if promptHeartbeat then
+			return
+		end
+
+		promptHeartbeat = RunService.Heartbeat:Connect(function(dt)
+			local speed = promptTarget <= 0 and promptCloseSpeed or promptSpeed
+
+			promptProgress = tooltipSmoothTowards(promptProgress, promptTarget, speed, dt)
+
+			local finished = math.abs(promptProgress - promptTarget) < 0.002
+
+			if finished then
+				promptProgress = promptTarget
+			end
+
+			applyPrompt(promptProgress)
+
+			if finished then
+				stopPromptAnimation()
+
+				if promptTarget <= 0 then
+					screenGui.Enabled = false
+
+					finishPromptClose()
+				end
+			end
+		end)
+	end
+
+	panel.Destroying:Connect(stopPromptAnimation)
 
 	local header = nil
 
@@ -1937,7 +2044,11 @@ function UI.prompt(options)
 		end
 
 		self.open = true
+		self.promptDestroyPending = false
+
 		self.screenGui.Enabled = true
+
+		wakePrompt(1)
 
 		if options.onOpen then
 			options.onOpen(self)
@@ -1960,15 +2071,13 @@ function UI.prompt(options)
 		end
 
 		self.open = false
-		self.screenGui.Enabled = false
+		self.promptDestroyPending = options.destroyOnClose == true
 
 		if options.onClose then
 			options.onClose(reason, result, self)
 		end
 
-		if options.destroyOnClose == true then
-			self:Destroy()
-		end
+		wakePrompt(0)
 
 		return true
 	end
@@ -1980,6 +2089,9 @@ function UI.prompt(options)
 
 		self.destroyed = true
 		self.open = false
+		self.promptDestroyPending = false
+
+		stopPromptAnimation()
 
 		UI.forgetButtons(self.screenGui)
 
@@ -2187,7 +2299,22 @@ function UI.prompt(options)
 		options.onCreated(controller, content)
 	end
 
-	screenGui.Enabled = controller.open
+	if controller.open then
+		screenGui.Enabled = true
+
+		if animatePrompt then
+			applyPrompt(0)
+			wakePrompt(1)
+		else
+			promptProgress = 1
+
+			applyPrompt(1)
+		end
+	else
+		screenGui.Enabled = false
+
+		applyPrompt(0)
+	end
 
 	if controller.open and options.onOpen then
 		options.onOpen(controller)
@@ -2213,6 +2340,12 @@ function UI.rangeSlider(parent, position, size, minimum, maximum, low, high, cal
 
 	local step = options.step or 0
 	local dragging = nil
+
+	local animate = options.animate ~= false
+	local animationSpeed = options.animationSpeed or 18
+
+	local displayLow, displayHigh = low, high
+	local heartbeat = nil
 
 	local container = UI.create("TextButton", {
 		Text = "",
@@ -2275,8 +2408,8 @@ function UI.rangeSlider(parent, position, size, minimum, maximum, low, high, cal
 	end
 
 	local function redraw()
-		local lowAlpha = alpha(low)
-		local highAlpha = alpha(high)
+		local lowAlpha = alpha(displayLow)
+		local highAlpha = alpha(displayHigh)
 
 		fill.Position = UDim2.new(lowAlpha, 0, 0, 0)
 		fill.Size = UDim2.new(math.max(highAlpha - lowAlpha, 0), 0, 1, 0)
@@ -2285,6 +2418,52 @@ function UI.rangeSlider(parent, position, size, minimum, maximum, low, high, cal
 
 		highKnob.Position = UDim2.new(highAlpha, -math.floor(knobSize / 2), 0.5, -math.floor(knobSize / 2))
 	end
+
+	local function stopAnimation()
+		if heartbeat then
+			heartbeat:Disconnect()
+			heartbeat = nil
+		end
+	end
+
+	local function snapVisual()
+		stopAnimation()
+
+		displayLow, displayHigh = low, high
+
+		redraw()
+	end
+
+	local function wake()
+		if not animate or dragging then
+			snapVisual()
+
+			return
+		end
+
+		if heartbeat then
+			return
+		end
+
+		heartbeat = RunService.Heartbeat:Connect(function(dt)
+			displayLow = tooltipSmoothTowards(displayLow, low, animationSpeed, dt)
+			displayHigh = tooltipSmoothTowards(displayHigh, high, animationSpeed, dt)
+
+			local finished = math.abs(displayLow - low) < 0.0005 and math.abs(displayHigh - high) < 0.0005
+
+			if finished then
+				displayLow, displayHigh = low, high
+			end
+
+			redraw()
+
+			if finished then
+				stopAnimation()
+			end
+		end)
+	end
+
+	container.Destroying:Connect(stopAnimation)
 
 	local function valueFromPoint(x)
 		local position = track.AbsolutePosition
@@ -2333,6 +2512,8 @@ function UI.rangeSlider(parent, position, size, minimum, maximum, low, high, cal
 			return
 		end
 
+		displayLow, displayHigh = low, high
+
 		redraw()
 
 		if not silent and callback then
@@ -2341,6 +2522,8 @@ function UI.rangeSlider(parent, position, size, minimum, maximum, low, high, cal
 	end
 
 	container.MouseButton1Down:Connect(function(x)
+		stopAnimation()
+
 		chooseKnob(x)
 
 		if options.onBegin then
@@ -2380,7 +2563,7 @@ function UI.rangeSlider(parent, position, size, minimum, maximum, low, high, cal
 		return low, high
 	end
 
-	function controller:SetValues(newLow, newHigh, silent)
+	function controller:SetValues(newLow, newHigh, silent, instant)
 		low = math.clamp(newLow, minimum, maximum)
 		high = math.clamp(newHigh, minimum, maximum)
 
@@ -2388,7 +2571,11 @@ function UI.rangeSlider(parent, position, size, minimum, maximum, low, high, cal
 			low, high = high, low
 		end
 
-		redraw()
+		if instant then
+			snapVisual()
+		else
+			wake()
+		end
 
 		if not silent and callback then
 			callback(low, high)
@@ -2402,7 +2589,7 @@ function UI.rangeSlider(parent, position, size, minimum, maximum, low, high, cal
 		low = math.clamp(low, minimum, maximum)
 		high = math.clamp(high, minimum, maximum)
 
-		redraw()
+		snapVisual()
 	end
 
 	redraw()
@@ -7340,6 +7527,80 @@ function UI.input(parent, placeholder, position, size, options)
 		options.strokeTransparency or 0
 	)
 
+	local animate = options.animate ~= false
+	local focusSpeed = options.focusSpeed or 16
+	local focusTarget = 0
+	local focusAlpha = 0
+	local focusHeartbeat = nil
+	local baseColor = stroke.Color
+	local baseTransparency = stroke.Transparency
+
+	local function focusColor()
+		return options.focusColor or UI.tokens.color.focus
+	end
+
+	local function applyFocus()
+		stroke.Color = baseColor:Lerp(focusColor(), focusAlpha)
+
+		local targetTransparency = options.focusTransparency or 0
+
+		stroke.Transparency = baseTransparency + (targetTransparency - baseTransparency) * focusAlpha
+	end
+
+	local function stopFocusAnimation()
+		if focusHeartbeat then
+			focusHeartbeat:Disconnect()
+			focusHeartbeat = nil
+		end
+	end
+
+	local function setFocus(target, snap)
+		focusTarget = target
+
+		if snap or not animate then
+			stopFocusAnimation()
+
+			focusAlpha = target
+
+			applyFocus()
+
+			return
+		end
+
+		if focusHeartbeat then
+			return
+		end
+
+		focusHeartbeat = RunService.Heartbeat:Connect(function(dt)
+			focusAlpha = tooltipSmoothTowards(focusAlpha, focusTarget, focusSpeed, dt)
+
+			local finished = math.abs(focusAlpha - focusTarget) < 0.005
+
+			if finished then
+				focusAlpha = focusTarget
+			end
+
+			applyFocus()
+
+			if finished then
+				stopFocusAnimation()
+			end
+		end)
+	end
+
+	field.Focused:Connect(function()
+		baseColor = stroke.Color
+		baseTransparency = stroke.Transparency
+
+		setFocus(1, false)
+	end)
+
+	field.FocusLost:Connect(function()
+		setFocus(0, false)
+	end)
+
+	field.Destroying:Connect(stopFocusAnimation)
+
 	return field, field, stroke
 end
 
@@ -9088,6 +9349,12 @@ function UI.slider(parent, position, size, minimum, maximum, value, callback, op
 
 	local dragging = false
 
+	local animate = options.animate ~= false
+	local animationSpeed = options.animationSpeed or 20
+
+	local displayValue = value
+	local heartbeat = nil
+
 	local container = UI.create("TextButton", {
 
 		Text = "",
@@ -9139,21 +9406,66 @@ function UI.slider(parent, position, size, minimum, maximum, value, callback, op
 
 	UI.stroke(knob, options.knobBorderColor or colors.borderStrong, 1, options.knobBorderTransparency or 0)
 
-	local function alphaFromValue()
+	local function alphaFromValue(input)
 		if maximum == minimum then
 			return 0
 		end
 
-		return math.clamp((value - minimum) / (maximum - minimum), 0, 1)
+		return math.clamp((input - minimum) / (maximum - minimum), 0, 1)
 	end
 
 	local function redraw()
-		local alpha = alphaFromValue()
+		local alpha = alphaFromValue(displayValue)
 
 		fill.Size = UDim2.new(alpha, 0, 1, 0)
 
 		knob.Position = UDim2.new(alpha, -math.floor(knobSize / 2), 0.5, -math.floor(knobSize / 2))
 	end
+
+	local function stopAnimation()
+		if heartbeat then
+			heartbeat:Disconnect()
+			heartbeat = nil
+		end
+	end
+
+	local function snapVisual()
+		stopAnimation()
+
+		displayValue = value
+
+		redraw()
+	end
+
+	local function wake()
+		if not animate or dragging then
+			snapVisual()
+
+			return
+		end
+
+		if heartbeat then
+			return
+		end
+
+		heartbeat = RunService.Heartbeat:Connect(function(dt)
+			displayValue = tooltipSmoothTowards(displayValue, value, animationSpeed, dt)
+
+			local finished = math.abs(displayValue - value) < 0.0005
+
+			if finished then
+				displayValue = value
+			end
+
+			redraw()
+
+			if finished then
+				stopAnimation()
+			end
+		end)
+	end
+
+	container.Destroying:Connect(stopAnimation)
 
 	local function setFromPoint(pointX, silent)
 		local absolutePosition = track.AbsolutePosition
@@ -9179,6 +9491,7 @@ function UI.slider(parent, position, size, minimum, maximum, value, callback, op
 		end
 
 		value = newValue
+		displayValue = newValue
 
 		redraw()
 
@@ -9188,6 +9501,8 @@ function UI.slider(parent, position, size, minimum, maximum, value, callback, op
 	end
 
 	container.MouseButton1Down:Connect(function(x)
+		stopAnimation()
+
 		dragging = true
 
 		setFromPoint(x)
@@ -9215,14 +9530,18 @@ function UI.slider(parent, position, size, minimum, maximum, value, callback, op
 		return value
 	end
 
-	function controller:SetValue(newValue, silent)
+	function controller:SetValue(newValue, silent, instant)
 		value = math.clamp(newValue, minimum, maximum)
 
 		if step > 0 then
 			value = math.floor((value - minimum) / step + 0.5) * step + minimum
 		end
 
-		redraw()
+		if instant then
+			snapVisual()
+		else
+			wake()
+		end
 
 		if not silent and callback then
 			callback(value)
@@ -9236,7 +9555,7 @@ function UI.slider(parent, position, size, minimum, maximum, value, callback, op
 
 		value = math.clamp(value, minimum, maximum)
 
-		redraw()
+		snapVisual()
 	end
 
 	controller.frame = container
@@ -9259,6 +9578,12 @@ function UI.progressBar(parent, position, size, value, options)
 
 	local progress = math.clamp(value or 0, 0, 1)
 
+	local animate = options.animate ~= false
+	local animationSpeed = options.animationSpeed or 18
+
+	local displayProgress = progress
+	local heartbeat = nil
+
 	local background = UI.frame(
 		parent,
 		position,
@@ -9277,16 +9602,69 @@ function UI.progressBar(parent, position, size, value, options)
 		options.radius or UI.tokens.radius.xs
 	)
 
+	local function stopAnimation()
+		if heartbeat then
+			heartbeat:Disconnect()
+			heartbeat = nil
+		end
+	end
+
+	local function redraw()
+		fill.Size = UDim2.new(displayProgress, 0, 1, 0)
+	end
+
+	local function snapVisual()
+		stopAnimation()
+
+		displayProgress = progress
+
+		redraw()
+	end
+
+	local function wake()
+		if not animate then
+			snapVisual()
+
+			return
+		end
+
+		if heartbeat then
+			return
+		end
+
+		heartbeat = RunService.Heartbeat:Connect(function(dt)
+			displayProgress = tooltipSmoothTowards(displayProgress, progress, animationSpeed, dt)
+
+			local finished = math.abs(displayProgress - progress) < 0.0005
+
+			if finished then
+				displayProgress = progress
+			end
+
+			redraw()
+
+			if finished then
+				stopAnimation()
+			end
+		end)
+	end
+
+	background.Destroying:Connect(stopAnimation)
+
 	local controller = {}
 
 	function controller:GetValue()
 		return progress
 	end
 
-	function controller:SetValue(newValue)
+	function controller:SetValue(newValue, instant)
 		progress = math.clamp(newValue, 0, 1)
 
-		fill.Size = UDim2.new(progress, 0, 1, 0)
+		if instant then
+			snapVisual()
+		else
+			wake()
+		end
 	end
 
 	controller.frame = background
