@@ -855,6 +855,7 @@ return function(parent)
 						borderTransparency = 0.2,
 						radius = tokens.radius.sm,
 						textSize = tokens.type.small,
+						menuParent = UI.contextMenuOverlay(),
 						backdrop = true,
 						backdropBlur = 14,
 						backdropTransparency = 0.88,
@@ -873,18 +874,6 @@ return function(parent)
 						end,
 					}
 				)
-
-				local openDropdown = controller.record.callback
-
-				controller.record.callback = function()
-					openDropdown()
-
-					local active = shared.activeDropdown
-
-					if active and active.controller == controller and active.menu then
-						active.menu.Parent = UI.widgetOverlay()
-					end
-				end
 
 				table.insert(dropdowns, controller)
 
