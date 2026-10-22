@@ -13,10 +13,11 @@ local shared = {
 
 	themeObjects = setmetatable({}, { __mode = "k" }),
 	themeBindings = setmetatable({}, { __mode = "k" }),
+	themeFontFaces = setmetatable({}, { __mode = "k" }),
 	themes = {},
 	themeOrder = {},
 	themeListeners = {},
-	themeName = "System",
+	themeName = "Dark",
 	engineTheme = nil,
 	trackedRoots = setmetatable({}, { __mode = "k" }),
 }
@@ -168,10 +169,48 @@ UI.tokens = {
 
 	type = { caption = 11, small = 12, body = 13, title = 14 },
 
-	font = { family = "rbxasset://fonts/families/SourceSansPro.json", weight = Enum.FontWeight.Regular },
+	font = { family = "builtin://fonts/SourceSansPro-Regular.ttf" },
 }
 
 local colors = UI.tokens.color
+
+local function themedFont(font)
+	if not font or not font.family then
+		return nil
+	end
+
+	if font.weight then
+		local ok, face = pcall(Font.new, font.family, font.weight)
+
+		if ok then
+			return face
+		end
+	end
+
+	local ok, face = pcall(Font.new, font.family)
+
+	return ok and face or nil
+end
+
+local function fontFaceKey(face)
+	if not face then
+		return nil
+	end
+
+	local ok, family = pcall(function()
+		return face.Family
+	end)
+
+	if not ok then
+		return nil
+	end
+
+	local weightOk, weight = pcall(function()
+		return face.Weight
+	end)
+
+	return tostring(family) .. "|" .. tostring(weightOk and weight or "")
+end
 
 local function findContainingWindow(gui)
 	local current = gui
@@ -341,7 +380,7 @@ do
 				md = theme.CornerRadius or 6,
 			},
 			type = { caption = 11, small = 12, body = 13, title = 14 },
-			font = { family = "rbxasset://fonts/families/SourceSansPro.json", weight = Enum.FontWeight.Regular },
+			font = { family = "builtin://fonts/SourceSansPro-Regular.ttf" },
 		}
 	end
 
@@ -7572,6 +7611,10 @@ function UI.checkbox(parent, text, position, checked, callback, options)
 	local markSize = options.markSize or 12
 	local markIcon = options.markIcon or "builtin://global-icons/check.svg"
 
+	local animate = options.animate ~= false
+	local speed = options.animationSpeed or 22
+	local pressShrink = options.pressShrink or 0.15 -- fraction the mark shrinks while pressed
+
 	local container = UI.frame(
 		parent,
 		position or UDim2.fromOffset(0, 0),
@@ -7584,16 +7627,55 @@ function UI.checkbox(parent, text, position, checked, callback, options)
 	local box
 	local mark
 	local record
+	local stroke
 
-	local function redraw()
-		local base = value and colors.accent or options.color or colors.input
+	local state = {
+		alpha = value and 1 or 0, -- 0 = unchecked, 1 = checked
+		hover = 0,
+		press = 0,
+		hovered = false,
+		pressed = false,
+		destroyed = false,
+	}
 
-		record.color = base
-		record.defaultColor = base
+	-- overshoot curve so the checkmark "pops" in
+	local function easeOutBack(t)
+		local c1 = 1.70158
+		local c3 = c1 + 1
+		return 1 + c3 * (t - 1) ^ 3 + c1 * (t - 1) ^ 2
+	end
 
-		box.BackgroundColor3 = base
+	local function render()
+		local uncheckedColor = options.color or colors.input
+		local checkedColor = options.checkedColor or colors.accent
 
-		mark.Visible = value
+		-- box colour: unchecked -> checked
+		local color = uncheckedColor:Lerp(checkedColor, state.alpha)
+
+		-- hover: unchecked boxes move toward the hover colour, checked boxes lighten slightly
+		color = color:Lerp(colors.hover, state.hover * (1 - state.alpha))
+		color = color:Lerp(Color3.new(1, 1, 1), 0.08 * state.hover * state.alpha)
+
+		-- press: darken
+		color = color:Lerp(Color3.new(0, 0, 0), 0.1 * state.press)
+
+		box.BackgroundColor3 = color
+
+		-- border blends toward the accent as the box gets checked
+		if stroke then
+			stroke.Color = (options.borderColor or colors.border):Lerp(checkedColor, state.alpha)
+		end
+
+		-- checkmark: fade + scale in with overshoot, shrinks a little while pressed
+		local a = math.clamp(state.alpha, 0, 1)
+		local scale = value and easeOutBack(a) or a
+		scale *= 1 - pressShrink * state.press
+
+		local size = math.max(math.floor(markSize * scale + 0.5), 0)
+
+		mark.Visible = a > 0.001
+		mark.Size = UDim2.fromOffset(size, size)
+		mark.ImageTransparency = 1 - math.clamp(a * 1.6, 0, 1)
 	end
 
 	box, _, record = UI.button(
@@ -7604,7 +7686,10 @@ function UI.checkbox(parent, text, position, checked, callback, options)
 		function()
 			value = not value
 
-			redraw()
+			if not animate then
+				state.alpha = value and 1 or 0
+				render()
+			end
 
 			if callback then
 				callback(value)
@@ -7622,18 +7707,17 @@ function UI.checkbox(parent, text, position, checked, callback, options)
 			borderColor = colors.border,
 
 			paddingX = 0,
+
+			hoveringEnabled = false, -- hover/press colours are driven by the animation
 		}
 	)
 
-	mark = UI.image(
-		box,
-		markIcon,
-		UDim2.new(0.5, -math.floor(markSize / 2), 0.5, -math.floor(markSize / 2)),
-		UDim2.fromOffset(markSize, markSize)
-	)
+	stroke = box:FindFirstChildOfClass("UIStroke")
+
+	mark = UI.image(box, markIcon, UDim2.fromScale(0.5, 0.5), UDim2.fromOffset(markSize, markSize))
 
 	mark.Name = "Mark"
-	mark.Visible = value
+	mark.AnchorPoint = Vector2.new(0.5, 0.5)
 
 	local textLabel = UI.label(
 		container,
@@ -7647,20 +7731,104 @@ function UI.checkbox(parent, text, position, checked, callback, options)
 	textLabel.TextYAlignment = Enum.TextYAlignment.Center
 	textLabel.TextXAlignment = Enum.TextXAlignment.Left
 
+	box.MouseEnter:Connect(function()
+		state.hovered = true
+	end)
+
+	box.MouseLeave:Connect(function()
+		state.hovered = false
+	end)
+
+	box.MouseButton1Down:Connect(function()
+		state.pressed = true
+	end)
+
+	-- MouseButton1Up only fires over the button, so release is tracked globally
+	local inputEnded = UserInputService.InputEnded:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 then
+			state.pressed = false
+		end
+	end)
+
+	local heartbeat
+
+	local function cleanup()
+		if state.destroyed then
+			return
+		end
+
+		state.destroyed = true
+
+		if heartbeat then
+			heartbeat:Disconnect()
+			heartbeat = nil
+		end
+
+		inputEnded:Disconnect()
+	end
+
+	heartbeat = RunService.Heartbeat:Connect(function(dt)
+		if state.destroyed then
+			return
+		end
+
+		if not UI.isAlive(box) then
+			cleanup()
+			return
+		end
+
+		local alphaTarget = value and 1 or 0
+		local hoverTarget = (state.hovered and not state.pressed) and 1 or 0
+		local pressTarget = state.pressed and 1 or 0
+
+		if animate then
+			state.alpha = tooltipSmoothTowards(state.alpha, alphaTarget, speed, dt)
+			state.hover = tooltipSmoothTowards(state.hover, hoverTarget, speed, dt)
+			state.press = tooltipSmoothTowards(state.press, pressTarget, speed * 1.6, dt)
+
+			if math.abs(state.alpha - alphaTarget) < 0.005 then
+				state.alpha = alphaTarget
+			end
+
+			if math.abs(state.hover - hoverTarget) < 0.005 then
+				state.hover = hoverTarget
+			end
+
+			if math.abs(state.press - pressTarget) < 0.005 then
+				state.press = pressTarget
+			end
+		else
+			state.alpha, state.hover, state.press = alphaTarget, hoverTarget, pressTarget
+		end
+
+		render()
+	end)
+
+	box.Destroying:Connect(cleanup)
+
 	local controller = {}
 
 	function controller:GetValue()
 		return value
 	end
 
-	function controller:SetValue(newValue, silent)
+	function controller:SetValue(newValue, silent, instant)
 		value = newValue == true
 
-		redraw()
+		if instant or not animate then
+			state.alpha = value and 1 or 0
+			render()
+		end
 
 		if not silent and callback then
 			callback(value)
 		end
+	end
+
+	function controller:Destroy()
+		cleanup()
+		UI.forgetButtons(container)
+		container:Destroy()
 	end
 
 	controller.frame = container
@@ -7673,7 +7841,7 @@ function UI.checkbox(parent, text, position, checked, callback, options)
 
 	controller.record = record
 
-	redraw()
+	render()
 
 	return container, controller
 end
