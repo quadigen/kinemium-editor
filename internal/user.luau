@@ -110,7 +110,7 @@ local function buildCategories(session, onLogout)
 							key = "theme",
 							title = "Theme",
 							description = "Theme used when system theme is disabled.",
-							items = { "Dark", "Light", "Blue", "Night", "Catppuccin Mocha" },
+							items = { "Dark", "Light", "Blue", "Night", "Catppuccin Mocha", "Void" },
 							disabledKey = "systemTheme",
 
 							onChanged = function(value)

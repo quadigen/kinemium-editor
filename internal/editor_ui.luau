@@ -565,6 +565,39 @@ do
 		color = UI.tokens.color,
 	})
 
+	UI.registerTheme("Void", {
+		color = {
+			canvas = Color3.fromRGB(5, 5, 8),
+			panel = Color3.fromRGB(9, 9, 13),
+			panelRaised = Color3.fromRGB(13, 13, 19),
+			surface = Color3.fromRGB(18, 18, 25),
+			surfaceAlt = Color3.fromRGB(13, 13, 19),
+			rowEven = Color3.fromRGB(9, 9, 13),
+			rowOdd = Color3.fromRGB(11, 11, 16),
+			hover = Color3.fromRGB(22, 22, 32),
+			pressed = Color3.fromRGB(29, 26, 43),
+			input = Color3.fromRGB(11, 11, 16),
+
+			-- No visible outlines
+			border = Color3.fromRGB(9, 9, 13),
+			borderStrong = Color3.fromRGB(9, 9, 13),
+
+			text = Color3.fromRGB(235, 235, 245),
+			subtext = Color3.fromRGB(165, 165, 185),
+			muted = Color3.fromRGB(100, 100, 120),
+
+			accent = Color3.fromRGB(155, 110, 255),
+			accentSoft = Color3.fromRGB(30, 22, 46),
+			selection = Color3.fromRGB(48, 35, 75),
+			selectionHover = Color3.fromRGB(62, 45, 95),
+			focus = Color3.fromRGB(180, 145, 255),
+
+			warning = Color3.fromRGB(245, 190, 100),
+			error = Color3.fromRGB(245, 100, 125),
+			success = Color3.fromRGB(100, 210, 155),
+		},
+	})
+
 	UI.registerTheme("Catppuccin Mocha", {
 		color = {
 			canvas = Color3.fromRGB(30, 30, 46), -- Base
@@ -1165,9 +1198,7 @@ do
 		local radiusMap = buildNumberMap(old.radius, spec.radius)
 		local typeMap = buildNumberMap(old.type, spec.type)
 
-		local animate = THEME_ANIMATION_DURATION > 0
-			and mapsHaveChanges(maps)
-			and next(shared.themeObjects) ~= nil
+		local animate = THEME_ANIMATION_DURATION > 0 and mapsHaveChanges(maps) and next(shared.themeObjects) ~= nil
 
 		if not animate then
 			applyThemeNow(spec, maps, radiusMap, typeMap)
