@@ -7450,6 +7450,18 @@ function UI.dropdown(parent, value, position, size, chevronIcon, options)
 
 	local controller = {}
 
+	local function menuOverlay()
+		local overlay = options.menuParent or UI.contextMenuOverlay()
+
+		if overlay and overlay:IsA("ScreenGui") then
+			pcall(function()
+				overlay.Enabled = true
+			end)
+		end
+
+		return overlay or UI.root()
+	end
+
 	local anim = {
 		hover = 0,
 		press = 0,
@@ -7559,7 +7571,7 @@ function UI.dropdown(parent, value, position, size, chevronIcon, options)
 		-- Fixed position menu (with optional search / categories)
 		---------------------------------------------------------------------
 		if fixedMenuPosition then
-			local overlay = options.menuParent or UI.RootOverlay()
+			local overlay = menuOverlay()
 			local screen = workspace:GetWindowDimensions()
 			local edge = margin
 
@@ -7830,7 +7842,7 @@ function UI.dropdown(parent, value, position, size, chevronIcon, options)
 			ScrollBarFadeDelay = 0.45,
 			ScrollBarFadeSpeed = 12,
 			ClipsDescendants = true,
-		}, options.menuParent or UI.root())
+		}, menuOverlay())
 
 		UI.corner(menu, options.radius or UI.tokens.radius.sm)
 
