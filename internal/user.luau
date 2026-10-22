@@ -106,26 +106,11 @@ local function buildCategories(session, onLogout)
 					title = "Appearance",
 					rows = {
 						{
-							kind = "switch",
-							key = "systemTheme",
-							title = "System Theme",
-							description = "Follow the engine's current Studio theme.",
-							rerender = true,
-
-							onChanged = function(value)
-								if value then
-									UI.setTheme("System")
-								else
-									UI.setTheme(state.theme)
-								end
-							end,
-						},
-						{
 							kind = "dropdown",
 							key = "theme",
 							title = "Theme",
 							description = "Theme used when system theme is disabled.",
-							items = { "Dark", "Light", "Blue", "Night" },
+							items = { "Dark", "Light", "Blue", "Night", "Catppuccin Mocha" },
 							disabledKey = "systemTheme",
 
 							onChanged = function(value)

@@ -7,7 +7,6 @@ local UI = require("@internal/editor_ui")
 local StudioThemeService = game:GetService("StudioThemeService")
 local theme = StudioThemeService.SelectedTheme
 local Selection = game:GetService("Selection")
-local UserInputService = game:GetService("UserInputService")
 local docker = require("@internal/docker")
 
 local colors = UI.colors
@@ -349,197 +348,6 @@ local function setProperty(object, propertyName, value)
 	return ok
 end
 
-local openEnumDropdown = nil
-
-local function closeEnumDropdown()
-	if not openEnumDropdown then
-		return
-	end
-
-	local popup = openEnumDropdown.popup
-	openEnumDropdown = nil
-
-	if popup then
-		pcall(function()
-			UI.clear(popup)
-			popup:Destroy()
-		end)
-	end
-end
-
-local function updateEnumDropdownPosition()
-	local dropdown = openEnumDropdown
-
-	if not dropdown then
-		return
-	end
-
-	local ok = pcall(function()
-		local field = dropdown.field
-		local popup = dropdown.popup
-
-		local position = field.AbsolutePosition
-		local size = field.AbsoluteSize
-
-		popup.Position = UDim2.fromOffset(position.X, position.Y + size.Y + 2)
-
-		popup.Size = UDim2.fromOffset(math.max(size.X, 110), dropdown.height)
-	end)
-
-	if not ok then
-		closeEnumDropdown()
-	end
-end
-
-local function openEnumDropdownFor(field, object, property)
-	if openEnumDropdown and openEnumDropdown.field == field then
-		closeEnumDropdown()
-		return
-	end
-
-	closeEnumDropdown()
-
-	local value = property.value
-	local enumType = value.EnumType
-
-	if not enumType then
-		return
-	end
-
-	local ok, items = pcall(function()
-		return enumType:GetEnumItems()
-	end)
-
-	if not ok or type(items) ~= "table" or #items == 0 then
-		return
-	end
-
-	local ITEM_HEIGHT = 22
-	local MENU_PADDING = 3
-	local MAX_VISIBLE_ITEMS = 7
-
-	local visibleItems = math.min(#items, MAX_VISIBLE_ITEMS)
-
-	local menuHeight = visibleItems * ITEM_HEIGHT + MENU_PADDING * 2
-
-	local fieldPosition = field.AbsolutePosition
-
-	local fieldSize = field.AbsoluteSize
-
-	local popup = UI.create("ScrollingFrame", {
-		Position = UDim2.fromOffset(fieldPosition.X, fieldPosition.Y + fieldSize.Y + 2),
-
-		Size = UDim2.fromOffset(math.max(fieldSize.X, 110), menuHeight),
-
-		BackgroundColor3 = tokens.color.panelRaised,
-
-		BorderSizePixel = 0,
-
-		CanvasPosition = Vector2.new(0, 0),
-
-		CanvasSize = UDim2.fromOffset(0, #items * ITEM_HEIGHT + MENU_PADDING * 2),
-
-		ScrollingEnabled = #items > MAX_VISIBLE_ITEMS,
-
-		ScrollSpeed = 28,
-
-		SmoothScrollingEnabled = true,
-		ScrollSmoothness = 20,
-
-		ScrollBarThickness = 4,
-
-		ScrollBarImageColor3 = tokens.color.subtext,
-
-		ScrollBarImageTransparency = 0.35,
-
-		ScrollBarAutoHide = true,
-		ScrollBarFadeDelay = 0.35,
-		ScrollBarFadeSpeed = 14,
-		ScrollBarMinimumHandleSize = 18,
-
-		ClipsDescendants = true,
-
-		Active = true,
-		InputSink = true,
-
-		ZIndex = 10000,
-	}, UI.root())
-
-	UI.corner(popup, tokens.radius.sm)
-
-	UI.stroke(popup, tokens.color.borderStrong, 1, 0)
-
-	for index, item in ipairs(items) do
-		local selected = item == value
-
-		local button = UI.button(
-			popup,
-			item.Name,
-			UDim2.fromOffset(MENU_PADDING, MENU_PADDING + (index - 1) * ITEM_HEIGHT),
-			UDim2.new(1, -MENU_PADDING * 2, 0, ITEM_HEIGHT),
-			function()
-				setProperty(object, property.name, item)
-
-				closeEnumDropdown()
-			end,
-			{
-				color = selected and tokens.color.selection or tokens.color.panelRaised,
-
-				hoverColor = selected and tokens.color.selectionHover or tokens.color.hover,
-
-				pressedColor = tokens.color.pressed,
-
-				textColor = selected and tokens.color.text or tokens.color.subtext,
-
-				textSize = tokens.type.caption,
-
-				paddingX = 7,
-
-				textY = 3,
-
-				radius = tokens.radius.xs,
-
-				border = false,
-			}
-		)
-
-		button.ZIndex = 10001
-	end
-
-	openEnumDropdown = {
-		field = field,
-		popup = popup,
-		height = menuHeight,
-	}
-end
-
-UserInputService.InputBegan:Connect(function(event)
-	if not openEnumDropdown then
-		return
-	end
-
-	if event.UserInputType ~= Enum.UserInputType.MouseButton1 then
-		return
-	end
-
-	local point = Vector2.new(event.Position.X, event.Position.Y)
-
-	local dropdown = openEnumDropdown
-
-	local insideField = false
-	local insidePopup = false
-
-	pcall(function()
-		insideField = UI.pointInside(dropdown.field, point)
-
-		insidePopup = UI.pointInside(dropdown.popup, point)
-	end)
-
-	if not insideField and not insidePopup then
-		closeEnumDropdown()
-	end
-end)
-
 local adapters = {}
 
 local function registerAdapter(typeName, adapter)
@@ -849,6 +657,10 @@ registerAdapter("EnumItem", {
 		return {
 			refresh = function(newValue)
 				if typeof(newValue) == "EnumItem" and controller:GetValue() ~= newValue then
+					if controller:IsOpen() then
+						controller:Close(true)
+					end
+
 					controller:SetValue(newValue, true)
 				end
 			end,
@@ -1533,7 +1345,7 @@ local function rebuild(object, visible)
 
 	rebuilding = true
 
-	closeEnumDropdown()
+	UI.closeDropdown(true)
 
 	local oldCanvasPosition = list.CanvasPosition
 
@@ -1661,7 +1473,6 @@ renderer.Pool.new("2d", function()
 	end
 
 	updateEditors()
-	updateEnumDropdownPosition()
 
 	signatureClock += 1
 

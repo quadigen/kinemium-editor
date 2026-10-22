@@ -563,6 +563,34 @@ do
 		color = UI.tokens.color,
 	})
 
+	UI.registerTheme("Catppuccin Mocha", {
+		color = {
+			canvas = Color3.fromRGB(30, 30, 46), -- Base
+			panel = Color3.fromRGB(24, 24, 37), -- Mantle
+			panelRaised = Color3.fromRGB(49, 50, 68), -- Surface 0
+			surface = Color3.fromRGB(69, 71, 90), -- Surface 1
+			surfaceAlt = Color3.fromRGB(49, 50, 68), -- Surface 0
+			rowEven = Color3.fromRGB(24, 24, 37), -- Mantle
+			rowOdd = Color3.fromRGB(35, 35, 52),
+			hover = Color3.fromRGB(49, 50, 68), -- Surface 0
+			pressed = Color3.fromRGB(69, 71, 90), -- Surface 1
+			input = Color3.fromRGB(24, 24, 37), -- Mantle
+			border = Color3.fromRGB(88, 91, 112), -- Surface 2
+			borderStrong = Color3.fromRGB(203, 166, 247), -- Mauve
+			text = Color3.fromRGB(205, 214, 244), -- Text
+			subtext = Color3.fromRGB(186, 194, 222), -- Subtext 1
+			muted = Color3.fromRGB(127, 132, 156), -- Overlay 0
+			accent = Color3.fromRGB(203, 166, 247), -- Mauve
+			accentSoft = Color3.fromRGB(69, 61, 91),
+			selection = Color3.fromRGB(88, 91, 112), -- Surface 2
+			selectionHover = Color3.fromRGB(108, 112, 134), -- Overlay 0
+			focus = Color3.fromRGB(180, 190, 254), -- Lavender
+			warning = Color3.fromRGB(249, 226, 175), -- Yellow
+			error = Color3.fromRGB(243, 139, 168), -- Red
+			success = Color3.fromRGB(166, 227, 161), -- Green
+		},
+	})
+
 	UI.registerTheme("Night", {
 		color = {
 			canvas = Color3.fromRGB(12, 12, 18),
@@ -7952,6 +7980,8 @@ function UI.dropdown(parent, value, position, size, chevronIcon, options)
 			borderColor = options.borderColor or colors.border,
 
 			paddingX = options.paddingX or UI.tokens.space.md,
+
+			textY = options.textY,
 
 			icon = options.icon,
 
