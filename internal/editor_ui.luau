@@ -569,6 +569,38 @@ do
 		color = UI.tokens.color,
 	})
 
+	UI.registerTheme("Red", {
+		color = {
+			canvas = Color3.fromRGB(20, 20, 20),
+			panel = Color3.fromRGB(26, 26, 26),
+			panelRaised = Color3.fromRGB(32, 32, 32),
+			surface = Color3.fromRGB(40, 40, 40),
+			surfaceAlt = Color3.fromRGB(32, 32, 32),
+			rowEven = Color3.fromRGB(26, 26, 26),
+			rowOdd = Color3.fromRGB(29, 29, 29),
+			hover = Color3.fromRGB(43, 43, 43),
+			pressed = Color3.fromRGB(50, 38, 38),
+			input = Color3.fromRGB(22, 22, 22),
+
+			border = Color3.fromRGB(52, 52, 52),
+			borderStrong = Color3.fromRGB(210, 55, 55),
+
+			text = Color3.fromRGB(235, 235, 235),
+			subtext = Color3.fromRGB(185, 185, 185),
+			muted = Color3.fromRGB(125, 125, 125),
+
+			accent = Color3.fromRGB(220, 50, 50),
+			accentSoft = Color3.fromRGB(55, 30, 30),
+			selection = Color3.fromRGB(100, 35, 35),
+			selectionHover = Color3.fromRGB(125, 42, 42),
+			focus = Color3.fromRGB(245, 75, 75),
+
+			warning = Color3.fromRGB(230, 175, 75),
+			error = Color3.fromRGB(245, 85, 85),
+			success = Color3.fromRGB(100, 195, 125),
+		},
+	})
+
 	UI.registerTheme("Void", {
 		color = {
 			canvas = Color3.fromRGB(5, 5, 8),

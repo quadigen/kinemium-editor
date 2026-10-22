@@ -109,7 +109,7 @@ local function buildCategories(session, onLogout)
 							key = "theme",
 							title = "Theme",
 							description = "Theme used throughout the interface.",
-							items = { "Dark", "Light", "Blue", "Night", "Catppuccin Mocha", "Void" },
+							items = { "Dark", "Light", "Blue", "Night", "Catppuccin Mocha", "Void", "Red" },
 
 							onChanged = function(value)
 								UI.setTheme(value)
