@@ -111,35 +111,37 @@ local function themeColor(value, fallback)
 end
 
 local function palette()
+	local colors = tokens.color
+
 	return {
-		base = themeColor(theme.BaseColor, tokens.color.canvas),
+		base = colors.canvas,
 
-		panel = themeColor(theme.BgColor, tokens.color.panel),
+		panel = colors.panel,
 
-		raised = themeColor(theme.SecondaryColor, tokens.color.panelRaised),
+		raised = colors.panelRaised,
 
-		surface = themeColor(theme.ThirdColor, tokens.color.surface),
+		surface = colors.surface,
 
-		input = themeColor(theme.InputColor, tokens.color.input),
+		input = colors.input,
 
-		border = themeColor(theme.InputFocusColor, tokens.color.borderStrong),
+		border = colors.borderStrong,
 
-		accent = themeColor(theme.AccentColor, tokens.color.accent),
+		accent = colors.accent,
 
-		text = themeColor(theme.TextColor, tokens.color.text),
+		text = colors.text,
 
-		subtext = themeColor(theme.SecondaryTextColor, tokens.color.subtext),
+		subtext = colors.subtext,
 
-		muted = themeColor(theme.TextColorDimmed, tokens.color.muted),
+		muted = colors.muted,
 	}
 end
 
 local function windowRadius()
-	return theme.CornerRadius or tokens.radius.md
+	return tokens.radius.md
 end
 
 local function buttonRadius()
-	return theme.ButtonCornerRadius or tokens.radius.sm
+	return tokens.radius.sm
 end
 
 local function copyUDim2(value)
@@ -605,7 +607,7 @@ do
 end
 
 local function refreshTheme()
-	local selectedTheme = theme
+	local selectedTheme = StudioThemeService.SelectedTheme
 
 	local themeChanged = selectedTheme ~= lastTheme
 

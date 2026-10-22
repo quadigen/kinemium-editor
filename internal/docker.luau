@@ -36,6 +36,7 @@ overlay.DisplayOrder = 2000
 overlay.RenderOnTop = true
 overlay.Name = "DockingOverlay"
 overlay.Parent = game.CoreGui
+UI.trackRoot(overlay)
 
 local container = UI.frame(overlay, UDim2.fromOffset(0, 0), UDim2.fromScale(1, 1), Color3.new(0, 0, 0), 0)
 container.BackgroundTransparency = 1

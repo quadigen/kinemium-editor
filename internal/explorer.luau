@@ -491,6 +491,8 @@ local function addRow(instance, depth, y)
 		radius = isSelected and tokens.radius.sm or 0,
 
 		border = false,
+
+		selected = isSelected,
 	})
 
 	row.Activated:Connect(function(input, clickCount)

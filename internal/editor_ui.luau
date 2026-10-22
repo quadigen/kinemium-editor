@@ -3,7 +3,23 @@ local UI = {}
 local StudioThemeService = game:GetService("StudioThemeService")
 local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
-local shared = { buttons = {}, root = nil, background = nil, windows = {}, windowControllers = {}, scriptDiagnostics = true }
+local shared = {
+	buttons = {},
+	root = nil,
+	background = nil,
+	windows = {},
+	windowControllers = {},
+	scriptDiagnostics = true,
+
+	themeObjects = setmetatable({}, { __mode = "k" }),
+	themeBindings = setmetatable({}, { __mode = "k" }),
+	themes = {},
+	themeOrder = {},
+	themeListeners = {},
+	themeName = "System",
+	engineTheme = nil,
+	trackedRoots = setmetatable({}, { __mode = "k" }),
+}
 local MIN_SPAN = 0.0005
 local MAX_TICKS = 16
 
@@ -151,6 +167,8 @@ UI.tokens = {
 	radius = { xs = 3, sm = 4, md = 6 },
 
 	type = { caption = 11, small = 12, body = 13, title = 14 },
+
+	font = { family = "rbxasset://fonts/families/SourceSansPro.json", weight = Enum.FontWeight.Regular },
 }
 
 local colors = UI.tokens.color
@@ -237,6 +255,25 @@ local function assign(object, properties)
 	return object
 end
 
+function UI.track(object)
+	if
+		object
+		and (
+			object:IsA("GuiObject")
+			or object:IsA("UIBase")
+			or object:IsA("UICorner")
+			or object:IsA("UIStroke")
+			or object:IsA("UIGradient")
+			or object:IsA("UIShadow")
+			or object:IsA("UIBackdrop")
+		)
+	then
+		shared.themeObjects[object] = true
+	end
+
+	return object
+end
+
 function UI.create(className, properties, parent)
 	local object = Instance.new(className)
 
@@ -246,7 +283,688 @@ function UI.create(className, properties, parent)
 		object.Parent = parent
 	end
 
+	UI.track(object)
+
+	local font = UI.tokens.font
+
+	if font and font.family and (object:IsA("TextLabel") or object:IsA("TextButton") or object:IsA("TextBox")) then
+		pcall(function()
+			object.FontFace = Font.new(font.family, font.weight or Enum.FontWeight.Regular)
+		end)
+	end
+
+	if object:IsA("ScreenGui") and UI.trackRoot then
+		UI.trackRoot(object)
+	end
+
 	return object
+end
+
+do
+	local function systemThemeSpec()
+		local theme = StudioThemeService.SelectedTheme
+
+	return {
+		color = {
+			canvas = Color3.new(theme.BaseColor.R, theme.BaseColor.G, theme.BaseColor.B),
+			panel = Color3.new(theme.BgColor.R, theme.BgColor.G, theme.BgColor.B),
+			panelRaised = Color3.new(theme.SecondaryColor.R, theme.SecondaryColor.G, theme.SecondaryColor.B),
+			surface = Color3.new(theme.ThirdColor.R, theme.ThirdColor.G, theme.ThirdColor.B),
+			surfaceAlt = Color3.new(theme.SecondaryColor.R, theme.SecondaryColor.G, theme.SecondaryColor.B),
+			rowEven = Color3.new(theme.AlternatingColor1.R, theme.AlternatingColor1.G, theme.AlternatingColor1.B),
+			rowOdd = Color3.new(theme.AlternatingColor2.R, theme.AlternatingColor2.G, theme.AlternatingColor2.B),
+			hover = Color3.new(theme.SecondaryColor.R, theme.SecondaryColor.G, theme.SecondaryColor.B),
+			pressed = Color3.new(theme.ThirdColor.R, theme.ThirdColor.G, theme.ThirdColor.B),
+			input = Color3.new(theme.InputColor.R, theme.InputColor.G, theme.InputColor.B),
+			border = Color3.new(theme.SecondaryColor.R, theme.SecondaryColor.G, theme.SecondaryColor.B),
+			borderStrong = Color3.new(theme.InputFocusColor.R, theme.InputFocusColor.G, theme.InputFocusColor.B),
+			text = Color3.new(theme.TextColor.R, theme.TextColor.G, theme.TextColor.B),
+			subtext = Color3.new(theme.SecondaryTextColor.R, theme.SecondaryTextColor.G, theme.SecondaryTextColor.B),
+			muted = Color3.new(theme.TextColorDimmed.R, theme.TextColorDimmed.G, theme.TextColorDimmed.B),
+			accent = Color3.new(theme.AccentColor.R, theme.AccentColor.G, theme.AccentColor.B),
+			accentSoft = Color3.new(theme.SecondaryColor.R, theme.SecondaryColor.G, theme.SecondaryColor.B),
+			selection = Color3.new(theme.AccentColor.R, theme.AccentColor.G, theme.AccentColor.B),
+			selectionHover = Color3.new(theme.AccentColor.R, theme.AccentColor.G, theme.AccentColor.B),
+			focus = Color3.new(theme.InputFocusColor.R, theme.InputFocusColor.G, theme.InputFocusColor.B),
+			warning = Color3.fromRGB(224, 168, 74),
+			error = Color3.fromRGB(231, 91, 91),
+			success = Color3.fromRGB(81, 184, 122),
+		},
+		space = { xs = 3, sm = 5, md = 8, lg = 12 },
+		radius = {
+			xs = 3,
+			sm = theme.ButtonCornerRadius or 4,
+			md = theme.CornerRadius or 6,
+		},
+		type = { caption = 11, small = 12, body = 13, title = 14 },
+		font = { family = "rbxasset://fonts/families/SourceSansPro.json", weight = Enum.FontWeight.Regular },
+	}
+end
+
+local function syncLegacyColors()
+	local tokens = UI.tokens.color
+
+	UI.colors.base = tokens.canvas
+	UI.colors.panel = tokens.panel
+	UI.colors.secondary = tokens.panelRaised
+	UI.colors.hover = tokens.hover
+	UI.colors.pressed = tokens.pressed
+	UI.colors.input = tokens.input
+	UI.colors.line = tokens.border
+	UI.colors.text = tokens.text
+	UI.colors.subtext = tokens.subtext
+	UI.colors.muted = tokens.muted
+	UI.colors.accent = tokens.accent
+	UI.colors.selection = tokens.selection
+	UI.colors.warning = tokens.warning
+	UI.colors.error = tokens.error
+end
+
+local function packColor(color)
+	return math.floor(color.R * 255 + 0.5) * 65536
+		+ math.floor(color.G * 255 + 0.5) * 256
+		+ math.floor(color.B * 255 + 0.5)
+end
+
+local BACKGROUND_KEYS = {
+	"canvas",
+	"panel",
+	"panelRaised",
+	"accentSoft",
+	"surface",
+	"surfaceAlt",
+	"input",
+	"rowEven",
+	"rowOdd",
+	"accent",
+	"selection",
+	"selectionHover",
+	"hover",
+	"pressed",
+	"muted",
+	"border",
+	"borderStrong",
+	"text",
+	"subtext",
+	"error",
+	"warning",
+	"success",
+}
+
+local TEXT_KEYS = { "text", "subtext", "muted", "accent", "error", "warning", "success", "selection" }
+
+local STROKE_KEYS = { "border", "borderStrong", "focus", "accent", "selection", "muted" }
+
+local IMAGE_KEYS = { "text", "subtext", "muted", "accent", "warning", "error", "success" }
+
+local PLACEHOLDER_KEYS = { "muted", "subtext" }
+
+local CARET_KEYS = { "accent", "focus" }
+
+local SELECTION_KEYS = { "selection", "selectionHover", "accent" }
+
+local HOVER_KEYS = { "hover", "panelRaised" }
+
+local PRESSED_KEYS = { "pressed", "surface" }
+
+local function buildKeyMap(oldColors, newColors, keys)
+	local map = {}
+
+	for _, key in ipairs(keys) do
+		local oldColor = oldColors[key]
+		local newColor = newColors[key]
+
+		if oldColor and newColor and oldColor ~= newColor then
+			local packed = packColor(oldColor)
+
+			if map[packed] == nil then
+				map[packed] = newColor
+			end
+		end
+	end
+
+	return map
+end
+
+local function buildNumberMap(oldValues, newValues)
+	local map = {}
+
+	for key, oldValue in pairs(oldValues) do
+		local newValue = newValues[key]
+
+		if newValue and oldValue ~= newValue then
+			map[oldValue] = newValue
+		end
+	end
+
+	return map
+end
+
+function UI.registerTheme(name, spec)
+	if type(name) ~= "string" or name == "" then
+		error("theme name must be a non-empty string")
+	end
+
+	spec = spec or {}
+
+	local theme = {
+		name = name,
+		basedOn = spec.basedOn,
+		color = spec.color or {},
+		space = spec.space or {},
+		radius = spec.radius or {},
+		type = spec.type or {},
+		font = spec.font or {},
+	}
+
+	if not shared.themes[name] then
+		table.insert(shared.themeOrder, name)
+	end
+
+	shared.themes[name] = theme
+
+	return theme
+end
+
+local function mergeSpec(base, overrides)
+	local result = { color = {}, space = {}, radius = {}, type = {}, font = {} }
+
+	for _, section in ipairs({ "color", "space", "radius", "type", "font" }) do
+		for key, value in pairs(base[section] or {}) do
+			result[section][key] = value
+		end
+
+		for key, value in pairs(overrides[section] or {}) do
+			result[section][key] = value
+		end
+	end
+
+	return result
+end
+
+local function resolveTheme(name)
+	if name == "System" then
+		return systemThemeSpec()
+	end
+
+	local theme = shared.themes[name]
+
+	if not theme then
+		return nil
+	end
+
+	local base = systemThemeSpec()
+
+	if theme.basedOn and theme.basedOn ~= name then
+		base = resolveTheme(theme.basedOn) or base
+	end
+
+	return mergeSpec(base, theme)
+end
+
+shared.engineTheme = StudioThemeService.SelectedTheme
+shared.themeOrder = { "System" }
+
+UI.registerTheme("Dark", {
+	color = {
+		canvas = Color3.fromRGB(30, 30, 30),
+		panel = Color3.fromRGB(37, 37, 38),
+		panelRaised = Color3.fromRGB(45, 45, 48),
+		surface = Color3.fromRGB(51, 51, 55),
+		surfaceAlt = Color3.fromRGB(45, 45, 48),
+		rowEven = Color3.fromRGB(37, 37, 38),
+		rowOdd = Color3.fromRGB(42, 42, 45),
+		hover = Color3.fromRGB(45, 45, 48),
+		pressed = Color3.fromRGB(51, 51, 55),
+		input = Color3.fromRGB(60, 60, 60),
+		border = Color3.fromRGB(63, 63, 70),
+		borderStrong = Color3.fromRGB(0, 122, 204),
+		text = Color3.fromRGB(255, 255, 255),
+		subtext = Color3.fromRGB(204, 204, 204),
+		muted = Color3.fromRGB(128, 128, 128),
+		accent = Color3.fromRGB(0, 122, 204),
+		accentSoft = Color3.fromRGB(45, 45, 48),
+		selection = Color3.fromRGB(0, 122, 204),
+		selectionHover = Color3.fromRGB(0, 122, 204),
+		focus = Color3.fromRGB(0, 122, 204),
+		warning = Color3.fromRGB(224, 168, 74),
+		error = Color3.fromRGB(231, 91, 91),
+		success = Color3.fromRGB(81, 184, 122),
+	},
+})
+
+UI.registerTheme("Light", {
+	color = {
+		canvas = Color3.fromRGB(243, 243, 243),
+		panel = Color3.fromRGB(255, 255, 255),
+		panelRaised = Color3.fromRGB(236, 236, 236),
+		surface = Color3.fromRGB(245, 245, 245),
+		surfaceAlt = Color3.fromRGB(236, 236, 236),
+		rowEven = Color3.fromRGB(255, 255, 255),
+		rowOdd = Color3.fromRGB(245, 245, 245),
+		hover = Color3.fromRGB(229, 229, 229),
+		pressed = Color3.fromRGB(218, 218, 218),
+		input = Color3.fromRGB(255, 255, 255),
+		border = Color3.fromRGB(212, 212, 212),
+		borderStrong = Color3.fromRGB(0, 120, 212),
+		text = Color3.fromRGB(31, 31, 31),
+		subtext = Color3.fromRGB(97, 97, 97),
+		muted = Color3.fromRGB(138, 138, 138),
+		accent = Color3.fromRGB(0, 120, 212),
+		accentSoft = Color3.fromRGB(236, 236, 236),
+		selection = Color3.fromRGB(204, 228, 247),
+		selectionHover = Color3.fromRGB(187, 222, 251),
+		focus = Color3.fromRGB(0, 120, 212),
+		warning = Color3.fromRGB(183, 121, 31),
+		error = Color3.fromRGB(209, 52, 56),
+		success = Color3.fromRGB(16, 124, 16),
+	},
+})
+
+function UI.getTheme()
+	return shared.themeName
+end
+
+function UI.getThemes()
+	local list = {}
+
+	for index, name in ipairs(shared.themeOrder) do
+		list[index] = name
+	end
+
+	return list
+end
+
+function UI.bindTheme(instance, property, key)
+	if not instance then
+		return instance
+	end
+
+	local bindings = shared.themeBindings[instance]
+
+	if not bindings then
+		bindings = {}
+		shared.themeBindings[instance] = bindings
+	end
+
+	for _, binding in ipairs(bindings) do
+		if binding.property == property then
+			binding.key = key
+
+			return instance
+		end
+	end
+
+	table.insert(bindings, { property = property, key = key })
+
+	return instance
+end
+
+local function resolveToken(key)
+	local value = UI.tokens
+
+	for part in string.gmatch(key, "[^%.]+") do
+		if type(value) ~= "table" then
+			return nil
+		end
+
+		value = value[part]
+	end
+
+	return value
+end
+
+local function applyColorProperty(instance, property, colorMap)
+	local ok, value = pcall(function()
+		return instance[property]
+	end)
+
+	if not ok or typeof(value) ~= "Color3" then
+		return
+	end
+
+	local mapped = colorMap[packColor(value)]
+
+	if mapped then
+		pcall(function()
+			instance[property] = mapped
+		end)
+	end
+end
+
+local function applyFont(instance, font)
+	if not font or not font.family then
+		return
+	end
+
+	pcall(function()
+		instance.FontFace = Font.new(font.family, font.weight or Enum.FontWeight.Regular)
+	end)
+end
+
+local function applyGradient(gradient, colorMap)
+	local ok, sequence = pcall(function()
+		return gradient.ColorSequence
+	end)
+
+	if not ok or typeof(sequence) ~= "ColorSequence" then
+		return
+	end
+
+	local keypoints = {}
+
+	for index, keypoint in ipairs(sequence.Keypoints) do
+		keypoints[index] = ColorSequenceKeypoint.new(
+			keypoint.Time,
+			colorMap[packColor(keypoint.Value)] or keypoint.Value
+		)
+	end
+
+	pcall(function()
+		gradient.ColorSequence = ColorSequence.new(keypoints)
+	end)
+end
+
+local function applyToInstance(instance, maps, radiusMap, typeMap, font)
+	if not instance or instance.Parent == nil then
+		return
+	end
+
+	local className = instance.ClassName
+
+	if instance:IsA("GuiObject") then
+		applyColorProperty(instance, "BackgroundColor3", maps.background)
+		applyColorProperty(instance, "BorderColor3", maps.stroke)
+	end
+
+	if instance:IsA("ImageLabel") or instance:IsA("ImageButton") then
+		applyColorProperty(instance, "ImageColor3", maps.image)
+
+		if instance.ImageColor3 == Color3.new(1, 1, 1) then
+			local image = instance.Image
+
+			if
+				type(image) == "string"
+				and (string.find(image, "^builtin://") ~= nil or string.find(image, "^data:image/svg") ~= nil)
+			then
+				instance.ImageColor3 = UI.tokens.color.text
+			end
+		end
+	end
+
+	if instance:IsA("TextLabel") or instance:IsA("TextButton") or instance:IsA("TextBox") then
+		applyColorProperty(instance, "TextColor3", maps.text)
+		applyColorProperty(instance, "TextStrokeColor3", maps.text)
+		applyFont(instance, font)
+
+		local newSize = typeMap[instance.TextSize]
+
+		if newSize then
+			pcall(function()
+				instance.TextSize = newSize
+			end)
+		end
+	end
+
+	if instance:IsA("TextBox") then
+		applyColorProperty(instance, "PlaceholderColor3", maps.placeholder)
+		applyColorProperty(instance, "CaretColor3", maps.caret)
+		applyColorProperty(instance, "SelectionColor3", maps.selection)
+		applyColorProperty(instance, "FocusColor3", maps.focus)
+	end
+
+	if instance:IsA("ScrollingFrame") then
+		applyColorProperty(instance, "ScrollBarImageColor3", maps.stroke)
+	end
+
+	if className == "UICorner" then
+		local ok, corner = pcall(function()
+			return instance.CornerRadius
+		end)
+
+		if ok and typeof(corner) == "UDim" and corner.Scale == 0 then
+			local mapped = radiusMap[corner.Offset]
+
+			if mapped then
+				pcall(function()
+					instance.CornerRadius = UDim.new(0, mapped)
+				end)
+			end
+		end
+	elseif className == "UIStroke" then
+		applyColorProperty(instance, "Color", maps.stroke)
+	elseif className == "UIShadow" then
+		applyColorProperty(instance, "Color3", maps.background)
+	elseif className == "UIBackdrop" then
+		applyColorProperty(instance, "TintColor3", maps.background)
+	elseif className == "UIGradient" then
+		applyGradient(instance, maps.background)
+	end
+end
+
+local function remapRecordColor(record, field, map)
+	local value = record[field]
+
+	if typeof(value) ~= "Color3" then
+		return
+	end
+
+	local mapped = map[packColor(value)]
+
+	if mapped then
+		record[field] = mapped
+	end
+end
+
+local function applyButtonRecords(maps)
+	local colors = UI.tokens.color
+
+	for _, record in ipairs(shared.buttons) do
+		local previous = {
+			record.color,
+			record.hoverColor,
+			record.pressedColor,
+			record.defaultColor,
+			record.defaultHoverColor,
+		}
+
+		remapRecordColor(record, "defaultColor", maps.background)
+		remapRecordColor(record, "defaultHoverColor", maps.hover)
+		remapRecordColor(record, "pressedColor", maps.pressed)
+
+		if record.state == "selected" then
+			record.color = colors.selection
+			record.hoverColor = colors.selectionHover
+		elseif record.state == "accent" then
+			record.color = colors.accentSoft
+			record.hoverColor = colors.accent
+		else
+			record.color = record.defaultColor
+			record.hoverColor = record.defaultHoverColor
+		end
+
+		local current = UI.isAlive(record.gui) and record.gui.BackgroundColor3 or nil
+		local known = false
+
+		for _, value in ipairs(previous) do
+			if current and current == value then
+				known = true
+
+				break
+			end
+		end
+
+		if known then
+			record.gui.BackgroundColor3 = record.color
+		end
+	end
+end
+
+local function applyThemeBindings()
+	for instance, bindings in pairs(shared.themeBindings) do
+		if instance and instance.Parent ~= nil then
+			for _, binding in ipairs(bindings) do
+				local value = resolveToken(binding.key)
+
+				if value ~= nil then
+					pcall(function()
+						instance[binding.property] = value
+					end)
+				end
+			end
+		end
+	end
+end
+
+function UI.setTheme(name)
+	local spec
+
+	if name == "System" then
+		spec = systemThemeSpec()
+		shared.engineTheme = StudioThemeService.SelectedTheme
+	else
+		spec = resolveTheme(name)
+	end
+
+	if not spec then
+		return false, "unknown theme: " .. tostring(name)
+	end
+
+	local old = { color = {}, radius = {}, type = {} }
+
+	for key, value in pairs(UI.tokens.color) do
+		old.color[key] = value
+	end
+
+	for key, value in pairs(UI.tokens.radius) do
+		old.radius[key] = value
+	end
+
+	for key, value in pairs(UI.tokens.type) do
+		old.type[key] = value
+	end
+
+	local maps = {
+		background = buildKeyMap(old.color, spec.color, BACKGROUND_KEYS),
+		text = buildKeyMap(old.color, spec.color, TEXT_KEYS),
+		stroke = buildKeyMap(old.color, spec.color, STROKE_KEYS),
+		image = buildKeyMap(old.color, spec.color, IMAGE_KEYS),
+		placeholder = buildKeyMap(old.color, spec.color, PLACEHOLDER_KEYS),
+		caret = buildKeyMap(old.color, spec.color, CARET_KEYS),
+		selection = buildKeyMap(old.color, spec.color, SELECTION_KEYS),
+		hover = buildKeyMap(old.color, spec.color, HOVER_KEYS),
+		pressed = buildKeyMap(old.color, spec.color, PRESSED_KEYS),
+		focus = buildKeyMap(old.color, spec.color, CARET_KEYS),
+	}
+
+	local radiusMap = buildNumberMap(old.radius, spec.radius)
+	local typeMap = buildNumberMap(old.type, spec.type)
+
+	for key, value in pairs(spec.color) do
+		UI.tokens.color[key] = value
+	end
+
+	for key, value in pairs(spec.space) do
+		UI.tokens.space[key] = value
+	end
+
+	for key, value in pairs(spec.radius) do
+		UI.tokens.radius[key] = value
+	end
+
+	for key, value in pairs(spec.type) do
+		UI.tokens.type[key] = value
+	end
+
+	for key, value in pairs(spec.font) do
+		UI.tokens.font[key] = value
+	end
+
+	syncLegacyColors()
+
+	for instance in pairs(shared.themeObjects) do
+		applyToInstance(instance, maps, radiusMap, typeMap, spec.font)
+	end
+
+	applyButtonRecords(maps)
+	applyThemeBindings()
+
+	shared.themeName = name
+
+	for _, callback in ipairs(shared.themeListeners) do
+		pcall(callback, name, UI.tokens)
+	end
+
+	return true
+end
+
+function UI.refreshTheme()
+	return UI.setTheme(shared.themeName)
+end
+
+function UI.onThemeChanged(callback)
+	if type(callback) ~= "function" then
+		error("callback must be a function")
+	end
+
+	table.insert(shared.themeListeners, callback)
+
+	return {
+		Disconnect = function()
+			for index, value in ipairs(shared.themeListeners) do
+				if value == callback then
+					table.remove(shared.themeListeners, index)
+
+					break
+				end
+			end
+		end,
+	}
+end
+
+local function trackTree(root)
+	if not root then
+		return
+	end
+
+	for _, descendant in ipairs(root:GetDescendants()) do
+		UI.track(descendant)
+	end
+
+	if shared.trackedRoots[root] then
+		return
+	end
+
+	shared.trackedRoots[root] = true
+
+	pcall(function()
+		root.DescendantAdded:Connect(function(descendant)
+			UI.track(descendant)
+		end)
+	end)
+end
+
+function UI.trackRoot(root)
+	pcall(trackTree, root)
+
+	return root
+end
+
+RunService.Heartbeat:Connect(function()
+	if shared.themeName ~= "System" then
+		return
+	end
+
+	local theme = StudioThemeService.SelectedTheme
+
+	if theme == shared.engineTheme then
+		return
+	end
+
+	shared.engineTheme = theme
+
+	UI.setTheme("System")
+end)
 end
 
 function UI.corner(parent, radius)
@@ -2795,10 +3513,13 @@ function UI.setButtonState(record, state)
 	local colors = UI.tokens.color
 
 	if state == "selected" then
+		record.state = "selected"
 		record.color, record.hoverColor = colors.selection, colors.selectionHover
 	elseif state == "accent" then
+		record.state = "accent"
 		record.color, record.hoverColor = colors.accentSoft, colors.accent
 	else
+		record.state = nil
 		record.color, record.hoverColor = record.defaultColor, record.defaultHoverColor
 	end
 
@@ -5546,6 +6267,7 @@ function UI.tree(parent, position, size, data, options)
 					radius = 0,
 					border = false,
 					textY = 0,
+					selected = selected,
 				}
 			)
 
@@ -6372,10 +7094,17 @@ function UI.dropdown(parent, value, position, size, chevronIcon, options)
 			local showSearch = options.showSearch ~= false
 			local searchHeight = showSearch and 34 or 0
 
-			local fixedMenuPosition = options.menuPosition()
+			local menuPositionOption = options.menuPosition
+			local fixedMenuPosition
+
+			if type(menuPositionOption) == "function" then
+				fixedMenuPosition = menuPositionOption()
+			elseif typeof(menuPositionOption) == "UDim2" then
+				fixedMenuPosition = menuPositionOption
+			end
 
 			if fixedMenuPosition then
-				local overlay = UI.RootOverlay()
+				local overlay = options.menuParent or UI.RootOverlay()
 				local screen = workspace:GetWindowDimensions()
 				local edge = options.menuMargin or 4
 
@@ -6669,7 +7398,7 @@ function UI.dropdown(parent, value, position, size, chevronIcon, options)
 				ScrollBarFadeDelay = 0.45,
 				ScrollBarFadeSpeed = 12,
 				ClipsDescendants = true,
-			}, UI.root())
+			}, options.menuParent or UI.root())
 			UI.corner(menu, options.radius or UI.tokens.radius.sm)
 
 			if options.backdrop then
@@ -6737,6 +7466,7 @@ function UI.dropdown(parent, value, position, size, chevronIcon, options)
 						paddingX = UI.tokens.space.md,
 						icon = type(item) == "table" and item.icon or nil,
 						iconSize = options.iconSize or 14,
+						selected = selected,
 					}
 				)
 
@@ -8452,7 +9182,13 @@ function UI.contextMenu(parent, value, position, size, chevronIcon, options)
 		if position ~= nil then
 			point = toPoint(position)
 		elseif options.menuPosition then
-			point = toPoint(options.menuPosition())
+			local menuPosition = options.menuPosition
+
+			if type(menuPosition) == "function" then
+				menuPosition = menuPosition()
+			end
+
+			point = toPoint(menuPosition)
 		else
 			point = UserInputService:GetMouseLocation()
 		end

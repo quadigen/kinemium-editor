@@ -83,6 +83,7 @@ local gui = Instance.new("ScreenGui")
 gui.Name = "TerrainEditor"
 gui.RenderOnTop = true
 gui.Parent = game.CoreGui
+UI.trackRoot(gui)
 
 local panel, content = UI.window("Terrain", UDim2.fromOffset(120, 120), UDim2.fromOffset(320, 480), "Terrain", {
 	closable = true,

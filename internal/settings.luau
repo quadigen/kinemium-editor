@@ -43,7 +43,7 @@ return function(page, windowControls, gui)
 		language = "English",
 		updateChannel = "Stable",
 
-		theme = "Dark",
+		theme = UI.getTheme(),
 		compactMode = false,
 		animations = true,
 
@@ -154,10 +154,11 @@ return function(page, windowControls, gui)
 							control = {
 								type = "dropdown",
 								key = "theme",
-								items = {
-									"Dark",
-									"Light",
-								},
+								items = UI.getThemes(),
+
+								onChanged = function(value)
+									UI.setTheme(value)
+								end,
 							},
 						},
 						{
@@ -540,6 +541,7 @@ return function(page, windowControls, gui)
 
 					menuWidth = 152,
 					maxVisibleItems = 7,
+					menuParent = UI.contextMenuOverlay(),
 
 					color = tokens.color.input,
 					hoverColor = tokens.color.hover,

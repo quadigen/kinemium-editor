@@ -26,10 +26,8 @@ local ICONS = {
 }
 
 local state = {
-	systemTheme = true,
-	lightTheme = "Light",
-	darkTheme = "Dark",
-	theme = "Dark",
+	systemTheme = UI.getTheme() == "System",
+	theme = UI.getTheme() ~= "System" and UI.getTheme() or "Dark",
 	monochrome = false,
 	twitterEmoji = true,
 	pageZoom = "100%",
@@ -111,28 +109,28 @@ local function buildCategories(session, onLogout)
 							kind = "switch",
 							key = "systemTheme",
 							title = "System Theme",
-							description = "Follow your operating system's theme.",
+							description = "Follow the engine's current Studio theme.",
 							rerender = true,
-						},
-						{
-							kind = "dropdown",
-							key = "lightTheme",
-							title = "Light Theme",
-							items = { "Light", "Dark" },
-						},
-						{
-							kind = "dropdown",
-							key = "darkTheme",
-							title = "Dark Theme",
-							items = { "Light", "Dark" },
+
+							onChanged = function(value)
+								if value then
+									UI.setTheme("System")
+								else
+									UI.setTheme(state.theme)
+								end
+							end,
 						},
 						{
 							kind = "dropdown",
 							key = "theme",
 							title = "Theme",
 							description = "Theme used when system theme is disabled.",
-							items = { "Light", "Dark" },
+							items = { "Dark", "Light" },
 							disabledKey = "systemTheme",
+
+							onChanged = function(value)
+								UI.setTheme(value)
+							end,
 						},
 						{
 							kind = "switch",
@@ -1175,6 +1173,14 @@ return function(parent)
 		end
 
 		ensureWindow()
+
+		local currentTheme = UI.getTheme()
+
+		state.systemTheme = currentTheme == "System"
+
+		if not state.systemTheme then
+			state.theme = currentTheme
+		end
 
 		if settingsOpen then
 			settingsWindow.Visible = true

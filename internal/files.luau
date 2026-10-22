@@ -993,6 +993,8 @@ return function(content, windowControls)
 			radius = isSelected and tokens.radius.sm or 0,
 
 			border = false,
+
+			selected = isSelected,
 		})
 
 		attachRowInput(row, entry, pane)
@@ -1134,6 +1136,7 @@ return function(content, windowControls)
 			hoverColor = isSelected and colors.selection or colors.hover,
 			radius = tokens.radius.sm,
 			border = false,
+			selected = isSelected,
 		})
 
 		tile.BackgroundTransparency = baseTransparency

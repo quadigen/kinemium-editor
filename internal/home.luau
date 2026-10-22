@@ -10,6 +10,7 @@ local settings_page = require("@internal/settings")
 local gui = Instance.new("ScreenGui")
 gui.Name = "Home"
 gui.Parent = game.CoreGui
+UI.trackRoot(gui)
 
 local DiscordRPC = game:GetService("DiscordRPC")
 

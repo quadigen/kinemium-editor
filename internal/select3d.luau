@@ -7,7 +7,7 @@ local Selection = game:GetService("Selection")
 local UserInputService = game:GetService("UserInputService")
 
 local editor_ui = require("@internal/editor_ui")
-local accent = editor_ui.tokens.color.accent
+local tokens = editor_ui.tokens
 
 local MAX_PICK_SIZE = 100
 local MAX_RAY_DISTANCE = 2000
@@ -48,9 +48,13 @@ local drag = {
 local highlight = Instance.new("Highlight")
 highlight.Name = "SelectionHighlight"
 highlight.FillTransparency = 1
-highlight.OutlineColor = accent
+highlight.OutlineColor = tokens.color.accent
 highlight.Enabled = false
 highlight.Parent = workspace
+
+editor_ui.onThemeChanged(function()
+	highlight.OutlineColor = tokens.color.accent
+end)
 
 local hud = nil
 
@@ -686,7 +690,7 @@ local function endDrag(commit: boolean)
 	drag.lastMode = nil
 
 	highlight.FillTransparency = 1
-	highlight.OutlineColor = accent
+	highlight.OutlineColor = tokens.color.accent
 	setHover(nil)
 	hideReadout()
 end

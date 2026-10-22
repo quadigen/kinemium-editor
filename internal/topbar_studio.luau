@@ -11,6 +11,7 @@ local gui = Instance.new("ScreenGui")
 gui.Name = "Home"
 gui.RenderOnTop = true
 gui.Parent = game.CoreGui
+UI.trackRoot(gui)
 
 local size = UDim2.new(0, 600, 0.6, 0)
 local position = UDim2.new(0.5, 0, 0.5, 0)
