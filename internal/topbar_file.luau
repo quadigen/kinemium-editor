@@ -84,6 +84,7 @@ return {
 					gui.Enabled = true
 					UI.root().Enabled = false
 					UI.RootOverlay().Enabled = false
+					UI.widgetOverlay().Enabled = false
 				end
 			end,
 		},

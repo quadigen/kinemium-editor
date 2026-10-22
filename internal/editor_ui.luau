@@ -36,6 +36,16 @@ local function tooltipSmoothTowards(current, target, speed, dt)
 	return tooltipLerp(current, target, t)
 end
 
+local function copyTable(source)
+	local result = {}
+
+	for key, value in pairs(source) do
+		result[key] = value
+	end
+
+	return result
+end
+
 UI.tokens = {
 	color = {
 		canvas = Color3.new(
@@ -506,11 +516,11 @@ do
 		local theme = {
 			name = name,
 			basedOn = spec.basedOn,
-			color = spec.color or {},
-			space = spec.space or {},
-			radius = spec.radius or {},
-			type = spec.type or {},
-			font = spec.font or {},
+			color = copyTable(spec.color or {}),
+			space = copyTable(spec.space or {}),
+			radius = copyTable(spec.radius or {}),
+			type = copyTable(spec.type or {}),
+			font = copyTable(spec.font or {}),
 		}
 
 		if not shared.themes[name] then
@@ -558,8 +568,7 @@ do
 		return mergeSpec(base, theme)
 	end
 
-	shared.engineTheme = StudioThemeService.SelectedTheme
-	shared.themeOrder = { "System" }
+	shared.themeOrder = {}
 
 	UI.registerTheme("Dark", {
 		color = UI.tokens.color,
@@ -1000,16 +1009,6 @@ do
 		end
 	end
 
-	local function copyTable(source)
-		local result = {}
-
-		for key, value in pairs(source) do
-			result[key] = value
-		end
-
-		return result
-	end
-
 	local function buildColorMaps(oldColors, newColors)
 		return {
 			background = buildKeyMap(oldColors, newColors, BACKGROUND_KEYS),
@@ -1173,14 +1172,11 @@ do
 	end
 
 	function UI.setTheme(name)
-		local spec
-
 		if name == "System" then
-			spec = systemThemeSpec()
-			shared.engineTheme = StudioThemeService.SelectedTheme
-		else
-			spec = resolveTheme(name)
+			return false, "system theme is disabled"
 		end
+
+		local spec = resolveTheme(name)
 
 		if not spec then
 			return false, "unknown theme: " .. tostring(name)
@@ -1268,22 +1264,6 @@ do
 	end
 
 	UI.setTheme("Dark")
-
-	RunService.Heartbeat:Connect(function()
-		if shared.themeName ~= "System" then
-			return
-		end
-
-		local theme = StudioThemeService.SelectedTheme
-
-		if theme == shared.engineTheme then
-			return
-		end
-
-		shared.engineTheme = theme
-
-		UI.setTheme("System")
-	end)
 end
 
 function UI.corner(parent, radius)
