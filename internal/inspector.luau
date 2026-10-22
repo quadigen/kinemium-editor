@@ -788,25 +788,33 @@ registerAdapter("EnumItem", {
 	render = function(row, object, property)
 		local value = property.value
 
-		local field, label, controller = UI.dropdown(
-			row,
-			"SmoothPlastic",
-			UDim2.new(0.45, 6, 0, 2),
-			UDim2.new(0.55, -12, 0, 18),
-			"assets/icons/ChevronDown.svg",
-			{
-				items = {
-					"SmoothPlastic",
-					"Metal",
-					"Glass",
-					"Neon",
-				},
+		local field, label
 
-				onChanged = function(value)
-					print("Material:", value)
-				end,
-			}
-		)
+		field, label = UI.button(row, value.Name, UDim2.new(0.45, 6, 0, 2), UDim2.new(0.55, -12, 0, 18), function()
+			openEnumDropdownFor(field, object, property)
+		end, {
+			color = tokens.color.input,
+
+			hoverColor = tokens.color.hover,
+
+			pressedColor = tokens.color.pressed,
+
+			textColor = tokens.color.subtext,
+
+			textSize = tokens.type.caption,
+
+			paddingX = 7,
+
+			textY = 1,
+
+			radius = tokens.radius.xs,
+
+			border = true,
+
+			borderColor = tokens.color.border,
+		})
+
+		UI.image(field, "builtin://icons/ArrowDown.svg", UDim2.new(1, -16, 0.5, -5), UDim2.fromOffset(10, 10))
 
 		return {
 			refresh = function(newValue)

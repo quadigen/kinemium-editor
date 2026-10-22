@@ -212,6 +212,16 @@ local function fontFaceKey(face)
 	return tostring(family) .. "|" .. tostring(weightOk and weight or "")
 end
 
+local function isAlive(instance)
+	if instance == nil then
+		return false
+	end
+
+	return pcall(function()
+		return instance:IsDescendantOf(instance)
+	end)
+end
+
 local function findContainingWindow(gui)
 	local current = gui
 
@@ -735,7 +745,14 @@ do
 	end
 
 	local function applyToInstance(instance, maps, radiusMap, typeMap, font)
-		if not instance or instance.Parent == nil then
+		if instance == nil then
+			return
+		end
+
+		if not isAlive(instance) then
+			shared.themeObjects[instance] = nil
+			shared.themeFontFaces[instance] = nil
+
 			return
 		end
 
@@ -871,7 +888,7 @@ do
 
 	local function applyThemeBindings()
 		for instance, bindings in pairs(shared.themeBindings) do
-			if instance and instance.Parent ~= nil then
+			if isAlive(instance) then
 				for _, binding in ipairs(bindings) do
 					local value = resolveToken(binding.key)
 
@@ -2346,16 +2363,8 @@ function UI.image(parent, path, position, size)
 	}, parent)
 end
 
-local function probeInstanceAlive(gui)
-	return gui:IsDescendantOf(gui)
-end
-
 function UI.isAlive(gui)
-	if gui == nil then
-		return false
-	end
-
-	return pcall(probeInstanceAlive, gui)
+	return isAlive(gui)
 end
 
 function UI.forgetButtons(container)
