@@ -1116,7 +1116,7 @@ function PackageUpload.open(target)
 
 	local connection
 	connection = RunService.Heartbeat:Connect(function(dt)
-		if content.Parent == nil then
+		if not UI.isAlive(content) then
 			connection:Disconnect()
 			return
 		end

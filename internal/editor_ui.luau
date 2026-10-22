@@ -1509,13 +1509,19 @@ function UI.prompt(options)
 	local promptProgress = 0
 	local promptTarget = 0
 	local promptHeartbeat = nil
-	local promptScale = nil
+	local promptBaseSize = nil
+	local promptVisualActive = false
 	local promptBackdropTransparency = backdrop and backdrop.BackgroundTransparency or 1
 	local promptBorderTransparency = controller.border and controller.border.Transparency or nil
 	local promptShadowTransparency = controller.shadow and controller.shadow.Transparency or nil
 
-	if animatePrompt then
-		promptScale = UI.create("UIScale", { Scale = 1 }, panel)
+	local function scaleSize(size, factor)
+		return UDim2.new(
+			size.X.Scale * factor,
+			math.floor(size.X.Offset * factor + 0.5),
+			size.Y.Scale * factor,
+			math.floor(size.Y.Offset * factor + 0.5)
+		)
 	end
 
 	local function applyPrompt(alpha)
@@ -1523,8 +1529,12 @@ function UI.prompt(options)
 
 		local eased = alpha * alpha * (3 - 2 * alpha)
 
-		if promptScale then
-			promptScale.Scale = 0.965 + 0.035 * eased
+		if animatePrompt and promptVisualActive and promptBaseSize then
+			if eased >= 1 then
+				panel.Size = promptBaseSize
+			else
+				panel.Size = scaleSize(promptBaseSize, 0.98 + 0.02 * eased)
+			end
 		end
 
 		if backdrop then
@@ -1548,6 +1558,12 @@ function UI.prompt(options)
 	end
 
 	local function finishPromptClose()
+		if promptBaseSize then
+			panel.Size = promptBaseSize
+		end
+
+		promptVisualActive = false
+
 		if not controller.promptDestroyPending then
 			return
 		end
@@ -2046,6 +2062,12 @@ function UI.prompt(options)
 		self.open = true
 		self.promptDestroyPending = false
 
+		if animatePrompt and not promptVisualActive then
+			promptBaseSize = panel.Size
+		end
+
+		promptVisualActive = animatePrompt
+
 		self.screenGui.Enabled = true
 
 		wakePrompt(1)
@@ -2072,6 +2094,12 @@ function UI.prompt(options)
 
 		self.open = false
 		self.promptDestroyPending = options.destroyOnClose == true
+
+		if animatePrompt and not promptVisualActive then
+			promptBaseSize = panel.Size
+		end
+
+		promptVisualActive = animatePrompt
 
 		if options.onClose then
 			options.onClose(reason, result, self)
@@ -2113,7 +2141,13 @@ function UI.prompt(options)
 	end
 
 	function controller:SetSize(newSize)
-		panel.Size = newSize
+		promptBaseSize = newSize
+
+		if promptVisualActive then
+			applyPrompt(promptProgress)
+		else
+			panel.Size = newSize
+		end
 	end
 
 	function controller:SetPosition(newPosition)
@@ -2299,7 +2333,13 @@ function UI.prompt(options)
 		options.onCreated(controller, content)
 	end
 
+	if not promptBaseSize then
+		promptBaseSize = panel.Size
+	end
+
 	if controller.open then
+		promptVisualActive = animatePrompt
+
 		screenGui.Enabled = true
 
 		if animatePrompt then
@@ -2311,6 +2351,8 @@ function UI.prompt(options)
 			applyPrompt(1)
 		end
 	else
+		promptVisualActive = false
+
 		screenGui.Enabled = false
 
 		applyPrompt(0)
@@ -7588,11 +7630,17 @@ function UI.input(parent, placeholder, position, size, options)
 		end)
 	end
 
-	field.Focused:Connect(function()
-		baseColor = stroke.Color
-		baseTransparency = stroke.Transparency
+	field.MouseButton1Down:Connect(function()
+		task.defer(function()
+			if not UI.isAlive(field) or not field:IsFocused() then
+				return
+			end
 
-		setFocus(1, false)
+			baseColor = stroke.Color
+			baseTransparency = stroke.Transparency
+
+			setFocus(1, false)
+		end)
 	end)
 
 	field.FocusLost:Connect(function()
