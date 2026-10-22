@@ -18,7 +18,6 @@ local shared = {
 	themeOrder = {},
 	themeListeners = {},
 	themeName = "Dark",
-	engineTheme = nil,
 	trackedRoots = setmetatable({}, { __mode = "k" }),
 }
 local MIN_SPAN = 0.0005
@@ -178,7 +177,7 @@ UI.tokens = {
 	space = { xs = 3, sm = 5, md = 8, lg = 12 },
 	radius = { xs = 3, sm = 4, md = 6 },
 	type = { caption = 11, small = 12, body = 13, title = 14 },
-	font = { family = "builtin://fonts/SourceSansPro-Regular.ttf" },
+	font = { family = "builtin://fonts/Montserrat-Regular.ttf" },
 }
 
 local colors = UI.tokens.color
@@ -403,7 +402,7 @@ do
 				md = theme.CornerRadius or 6,
 			},
 			type = { caption = 11, small = 12, body = 13, title = 14 },
-			font = { family = "builtin://fonts/SourceSansPro-Regular.ttf" },
+			font = { family = "builtin://fonts/Montserrat-Regular.ttf" },
 		}
 	end
 
@@ -549,10 +548,6 @@ do
 	end
 
 	local function resolveTheme(name)
-		if name == "System" then
-			return systemThemeSpec()
-		end
-
 		local theme = shared.themes[name]
 
 		if not theme then

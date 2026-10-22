@@ -26,8 +26,7 @@ local ICONS = {
 }
 
 local state = {
-	systemTheme = UI.getTheme() == "System",
-	theme = UI.getTheme() ~= "System" and UI.getTheme() or "Dark",
+	theme = UI.getTheme(),
 	monochrome = false,
 	twitterEmoji = true,
 	pageZoom = "100%",
@@ -109,9 +108,8 @@ local function buildCategories(session, onLogout)
 							kind = "dropdown",
 							key = "theme",
 							title = "Theme",
-							description = "Theme used when system theme is disabled.",
+							description = "Theme used throughout the interface.",
 							items = { "Dark", "Light", "Blue", "Night", "Catppuccin Mocha", "Void" },
-							disabledKey = "systemTheme",
 
 							onChanged = function(value)
 								UI.setTheme(value)
@@ -1148,13 +1146,7 @@ return function(parent)
 
 		ensureWindow()
 
-		local currentTheme = UI.getTheme()
-
-		state.systemTheme = currentTheme == "System"
-
-		if not state.systemTheme then
-			state.theme = currentTheme
-		end
+		state.theme = UI.getTheme()
 
 		if settingsOpen then
 			settingsWindow.Visible = true
