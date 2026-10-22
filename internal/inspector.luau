@@ -787,39 +787,69 @@ registerAdapter("EnumItem", {
 
 	render = function(row, object, property)
 		local value = property.value
+		local enumType = value.EnumType
 
-		local field, label
+		if not enumType then
+			return nil
+		end
 
-		field, label = UI.button(row, value.Name, UDim2.new(0.45, 6, 0, 2), UDim2.new(0.55, -12, 0, 18), function()
-			openEnumDropdownFor(field, object, property)
-		end, {
-			color = tokens.color.input,
+		local ok, enumItems = pcall(function()
+			return enumType:GetEnumItems()
+		end)
 
-			hoverColor = tokens.color.hover,
+		if not ok or type(enumItems) ~= "table" or #enumItems == 0 then
+			return nil
+		end
 
-			pressedColor = tokens.color.pressed,
+		local items = {}
 
-			textColor = tokens.color.subtext,
+		for _, item in ipairs(enumItems) do
+			table.insert(items, {
+				value = item,
+				label = item.Name,
+			})
+		end
 
-			textSize = tokens.type.caption,
+		local formatValue = function(item)
+			return typeof(item) == "EnumItem" and item.Name or tostring(item)
+		end
 
-			paddingX = 7,
-
-			textY = 1,
-
-			radius = tokens.radius.xs,
-
-			border = true,
-
-			borderColor = tokens.color.border,
-		})
-
-		UI.image(field, "builtin://icons/ArrowDown.svg", UDim2.new(1, -16, 0.5, -5), UDim2.fromOffset(10, 10))
+		local _, _, controller = UI.dropdown(
+			row,
+			value,
+			UDim2.new(0.45, 6, 0, 2),
+			UDim2.new(0.55, -12, 0, 18),
+			"builtin://icons/ArrowDown.svg",
+			{
+				items = items,
+				format = formatValue,
+				showSearch = false,
+				maxVisibleItems = 7,
+				itemHeight = 20,
+				menuWidth = 150,
+				textSize = tokens.type.caption,
+				color = tokens.color.input,
+				hoverColor = tokens.color.hover,
+				pressedColor = tokens.color.pressed,
+				textColor = tokens.color.subtext,
+				borderColor = tokens.color.border,
+				menuColor = tokens.color.panelRaised,
+				radius = tokens.radius.xs,
+				paddingX = 7,
+				textY = 1,
+				chevronSize = 10,
+				onChanged = function(newValue)
+					if typeof(newValue) == "EnumItem" then
+						setProperty(object, property.name, newValue)
+					end
+				end,
+			}
+		)
 
 		return {
 			refresh = function(newValue)
-				if typeof(newValue) == "EnumItem" and label.Text ~= newValue.Name then
-					label.Text = newValue.Name
+				if typeof(newValue) == "EnumItem" and controller:GetValue() ~= newValue then
+					controller:SetValue(newValue, true)
 				end
 			end,
 		}

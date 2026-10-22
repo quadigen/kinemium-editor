@@ -563,6 +563,34 @@ do
 		color = UI.tokens.color,
 	})
 
+	UI.registerTheme("Night", {
+		color = {
+			canvas = Color3.fromRGB(12, 12, 18),
+			panel = Color3.fromRGB(18, 18, 27),
+			panelRaised = Color3.fromRGB(25, 25, 37),
+			surface = Color3.fromRGB(31, 31, 46),
+			surfaceAlt = Color3.fromRGB(25, 25, 37),
+			rowEven = Color3.fromRGB(18, 18, 27),
+			rowOdd = Color3.fromRGB(22, 22, 33),
+			hover = Color3.fromRGB(35, 35, 51),
+			pressed = Color3.fromRGB(43, 43, 62),
+			input = Color3.fromRGB(23, 23, 35),
+			border = Color3.fromRGB(47, 47, 65),
+			borderStrong = Color3.fromRGB(124, 108, 255),
+			text = Color3.fromRGB(240, 240, 250),
+			subtext = Color3.fromRGB(180, 180, 200),
+			muted = Color3.fromRGB(115, 115, 140),
+			accent = Color3.fromRGB(124, 108, 255),
+			accentSoft = Color3.fromRGB(39, 35, 65),
+			selection = Color3.fromRGB(75, 65, 150),
+			selectionHover = Color3.fromRGB(91, 79, 175),
+			focus = Color3.fromRGB(145, 132, 255),
+			warning = Color3.fromRGB(240, 180, 90),
+			error = Color3.fromRGB(245, 100, 115),
+			success = Color3.fromRGB(80, 205, 145),
+		},
+	})
+
 	UI.registerTheme("Blue", {
 		color = {
 			canvas = Color3.fromRGB(30, 30, 30),
@@ -7133,6 +7161,10 @@ closeActiveDropdown = function(instant)
 	end
 end
 
+function UI.closeDropdown(instant)
+	closeActiveDropdown(instant == true)
+end
+
 local function resolveDropdownItem(item)
 	if type(item) == "table" then
 		local itemValue = item.value
@@ -7147,8 +7179,6 @@ local function resolveDropdownItem(item)
 	return item, tostring(item), nil, nil
 end
 
--- Drives the open / close animation of a dropdown menu.
--- Usage: create it, add rows while building, call start(), later call dismiss().
 local function createDropdownMenuAnimator(menu, config)
 	local animate = config.animate ~= false
 	local fadeSpeed = config.fadeSpeed or 22
