@@ -320,7 +320,12 @@ function Auth.SignUp(options)
 							return false, base
 						end
 
-						return MatrixService:Register(base, username, password, { registrationToken = registrationToken })
+						return MatrixService:Register(
+							base,
+							username,
+							password,
+							{ registrationToken = registrationToken }
+						)
 					end, function() end, options)
 
 					return false
