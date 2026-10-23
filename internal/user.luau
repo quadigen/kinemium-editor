@@ -653,13 +653,6 @@ return function(parent)
 
 		optionsLabel.TextXAlignment = Enum.TextXAlignment.Left
 
-		local header = UI.group(contentPanel, UDim2.fromOffset(INSET, INSET), UDim2.new(1, -INSET * 2, 0, 60), {
-			color = colors.surface,
-			radius = tokens.radius.sm,
-		})
-
-		UI.stroke(header, colors.border, 1, 0.45)
-
 		local scroller = UI.create("ScrollingFrame", {
 			Name = "SettingsScroller",
 			Position = UDim2.fromOffset(INSET, 76),
