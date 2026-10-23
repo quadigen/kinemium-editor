@@ -1,5 +1,7 @@
 local UI = require("./editor_ui")
 local Project = game:GetService("Project")
+local Filesystem = game:GetService("Filesystem")
+
 local tokens = UI.tokens
 
 local dropdown
@@ -34,7 +36,7 @@ UI.prompt({
 
 				menuWidth = 152,
 				maxVisibleItems = 7,
-				menuParent = UI.contextMenuOverlay(),
+				menuParent = content,
 
 				color = tokens.color.input,
 				hoverColor = tokens.color.hover,
