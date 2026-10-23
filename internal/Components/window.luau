@@ -30,6 +30,11 @@ return function(ctx)
 		local headerColor = options.headerColor or colors.panelRaised
 		local contentColor = options.contentColor or colors.panel
 
+		-- Radius of the concave "submerged" corners where the active tab meets the content.
+		-- Set options.tabFilletRadius = 0 to disable. Keep titleX >= this value so the
+		-- left fillet isn't clipped by the header.
+		local filletRadius = options.tabFilletRadius or 8
+
 		local panel = UI.frame(UI.root(), position, size, colors.panel, radius)
 
 		panel.Name = name
@@ -79,8 +84,40 @@ return function(ctx)
 
 		local indicator = nil
 
+		-- Builds one concave corner. A square in the tab color sits just outside the
+		-- tab's bottom corner; a header-colored circle centered on the square's outer
+		-- top corner is clipped by the square, so only a quarter shows and carves
+		-- the concave curve.
+		local function makeFillet(parent, side, color)
+			local isLeft = side == "left"
+
+			local square = UI.frame(
+				parent,
+				isLeft and UDim2.new(0, -filletRadius, 1, -filletRadius) or UDim2.new(1, 0, 1, -filletRadius),
+				UDim2.fromOffset(filletRadius, filletRadius),
+				color,
+				0
+			)
+
+			square.Name = isLeft and "FilletLeft" or "FilletRight"
+			square.ClipsDescendants = true
+
+			local circle = UI.frame(
+				square,
+				isLeft and UDim2.fromOffset(-filletRadius, -filletRadius) or UDim2.fromOffset(0, -filletRadius),
+				UDim2.fromOffset(filletRadius * 2, filletRadius * 2),
+				headerColor,
+				filletRadius
+			)
+
+			circle.Name = "Cutout"
+
+			return square
+		end
+
 		local function makeTabShape(parent, pos, sz, color)
 			local shape = UI.frame(parent, pos, sz, color, tabRadius)
+			shape.ClipsDescendants = false
 
 			local fill = UI.frame(shape, UDim2.new(0, 0, 1, -tabRadius), UDim2.new(1, 0, 0, tabRadius), color, 0)
 			fill.Name = "BottomFill"
@@ -94,6 +131,11 @@ return function(ctx)
 					1
 				)
 				accent.Name = "ActiveAccent"
+			end
+
+			if filletRadius > 0 then
+				makeFillet(shape, "left", color)
+				makeFillet(shape, "right", color)
 			end
 
 			return shape
