@@ -604,63 +604,123 @@ return function(parent)
 
 		local SIDEBAR_WIDTH = 214
 		local INSET = tokens.space.md
+		local ORIGIN = UDim2.new()
+
+		local function list(parent, props)
+			props = props or {}
+			props.SortOrder = Enum.SortOrder.LayoutOrder
+			return UI.create("UIListLayout", props, parent)
+		end
+
+		local function pad(parent, left, top, right, bottom)
+			return UI.create("UIPadding", {
+				PaddingLeft = UDim.new(0, left or 0),
+				PaddingTop = UDim.new(0, top or 0),
+				PaddingRight = UDim.new(0, right or 0),
+				PaddingBottom = UDim.new(0, bottom or 0),
+			}, parent)
+		end
+
+		local function box(parent, size, props)
+			props = props or {}
+			props.BackgroundTransparency = 1
+			props.BorderSizePixel = 0
+			props.Size = size
+			return UI.create("Frame", props, parent)
+		end
+
+		local function clearKeepingLayout(parent)
+			for _, child in ipairs(parent:GetChildren()) do
+				if not (child:IsA("UIListLayout") or child:IsA("UIPadding")) then
+					child:Destroy()
+				end
+			end
+		end
 
 		local categories = buildCategories(session, function()
 			performLogout(session)
 		end)
 
-		local sidebar = UI.card(page, UDim2.fromOffset(INSET, INSET), UDim2.new(0, SIDEBAR_WIDTH, 1, -INSET * 2), {
+		pad(page, INSET, INSET, INSET, INSET)
+		list(page, {
+			FillDirection = Enum.FillDirection.Horizontal,
+			Padding = UDim.new(0, INSET),
+		})
+
+		local sidebar = UI.card(page, ORIGIN, UDim2.new(0, SIDEBAR_WIDTH, 1, 0), {
 			color = colors.panel,
 			radius = tokens.radius.md,
 			border = true,
 			borderColor = colors.border,
 			borderTransparency = 0.35,
 		})
+		sidebar.LayoutOrder = 1
 
-		local contentPanel = UI.card(
-			page,
-			UDim2.fromOffset(SIDEBAR_WIDTH + INSET * 2, INSET),
-			UDim2.new(1, -(SIDEBAR_WIDTH + INSET * 3), 1, -INSET * 2),
-			{
-				color = colors.panelRaised,
-				radius = tokens.radius.md,
-				border = true,
-				borderColor = colors.border,
-				borderTransparency = 0.35,
-			}
-		)
-
+		local contentPanel = UI.card(page, ORIGIN, UDim2.new(1, -(SIDEBAR_WIDTH + INSET), 1, 0), {
+			color = colors.panelRaised,
+			radius = tokens.radius.md,
+			border = true,
+			borderColor = colors.border,
+			borderTransparency = 0.35,
+		})
+		contentPanel.LayoutOrder = 2
 		contentPanel.ClipsDescendants = true
+
+		pad(sidebar, INSET, INSET, INSET, INSET)
+		list(sidebar, { Padding = UDim.new(0, 4) })
 
 		local search = UI.input(
 			sidebar,
 			"Search settings...",
-			UDim2.fromOffset(INSET, INSET),
-			UDim2.new(1, -INSET * 2, 0, UI.metrics.inputHeight),
-			{
-				textSize = tokens.type.small,
-			}
+			ORIGIN,
+			UDim2.new(1, 0, 0, UI.metrics.inputHeight),
+			{ textSize = tokens.type.small }
 		)
+		search.LayoutOrder = 1
 
-		local optionsLabel = UI.label(
-			sidebar,
-			"Options",
-			UDim2.fromOffset(INSET + 3, 41),
-			UDim2.new(1, -(INSET * 2 + 6), 0, 16),
-			tokens.type.caption,
-			colors.muted
-		)
-
+		local optionsLabel =
+			UI.label(sidebar, "Options", ORIGIN, UDim2.new(1, 0, 0, 16), tokens.type.caption, colors.muted)
+		optionsLabel.LayoutOrder = 2
 		optionsLabel.TextXAlignment = Enum.TextXAlignment.Left
+		pad(optionsLabel, 3, 0, 3, 0)
+
+		local navReserved = UI.metrics.inputHeight + 16 + 30 + 4 * 3
+
+		local navList = box(sidebar, UDim2.new(1, 0, 1, -navReserved), {
+			Name = "NavList",
+			LayoutOrder = 3,
+			ClipsDescendants = true,
+		})
+		list(navList, { Padding = UDim.new(0, 3) })
+
+		local logoutButton = UI.button(sidebar, "Log out", ORIGIN, UDim2.new(1, 0, 0, 30), function()
+			performLogout(session)
+		end, {
+			color = colors.panel,
+			hoverColor = colors.hover,
+			pressedColor = colors.pressed,
+			textColor = colors.error,
+			textSize = tokens.type.small,
+			radius = tokens.radius.sm,
+			border = false,
+			paddingX = 32,
+		})
+		logoutButton.LayoutOrder = 4
+
+		local logoutIcon = UI.image(logoutButton, ICONS.power, UDim2.fromOffset(9, 8), UDim2.fromOffset(14, 14))
+		logoutIcon.ImageColor3 = colors.error
+
+		pad(contentPanel, INSET, INSET, INSET, INSET)
 
 		local scroller = UI.create("ScrollingFrame", {
 			Name = "SettingsScroller",
-			Position = UDim2.fromOffset(INSET, 76),
-			Size = UDim2.new(1, -INSET * 2, 1, -84),
+			Size = UDim2.fromScale(1, 1),
 			BackgroundTransparency = 1,
 			BorderSizePixel = 0,
 			CanvasPosition = Vector2.new(0, 0),
-			CanvasSize = UDim2.new(0, 0, 0, 0),
+			CanvasSize = UDim2.new(),
+			AutomaticCanvasSize = Enum.AutomaticSize.Y,
+			ScrollingDirection = Enum.ScrollingDirection.Y,
 			ScrollingEnabled = true,
 			ScrollSpeed = 38,
 			SmoothScrollingEnabled = true,
@@ -676,6 +736,17 @@ return function(parent)
 			Active = true,
 			InputSink = true,
 		}, contentPanel)
+
+		pad(scroller, 0, 4, 8, 4)
+		local scrollLayout = list(scroller, { Padding = UDim.new(0, 18) })
+
+		local pendingScroll
+		scrollLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+			if pendingScroll then
+				scroller.CanvasPosition = pendingScroll
+				pendingScroll = nil
+			end
+		end)
 
 		local navItems = {}
 		local selectedCategory = categories[1]
@@ -715,66 +786,82 @@ return function(parent)
 			return 0
 		end
 
-		local function rowTitle(card, row, y)
-			local width = UDim2.new(1, -(16 + controlWidth(row) + 24), 0, 18)
-			local position =
-				UDim2.fromOffset(16, row.description and y + 7 or y + math.floor((rowHeight(row) - 18) / 2))
+		local function controlHeight(row)
+			if row.kind == "switch" then
+				return UDim.new(0, 18)
+			elseif row.kind == "dropdown" then
+				return UDim.new(0, UI.metrics.inputHeight)
+			elseif row.kind == "button" then
+				return UDim.new(0, UI.metrics.buttonHeight)
+			end
 
-			local title = UI.label(card, row.title, position, width, tokens.type.body, colors.text)
+			return UDim.new(1, 0)
+		end
 
+		local function createText(rowFrame, row)
+			local text = box(rowFrame, UDim2.new(1, -(controlWidth(row) + 24), 0, 0), {
+				Name = "Text",
+				LayoutOrder = 1,
+				AutomaticSize = Enum.AutomaticSize.Y,
+			})
+			list(text, { Padding = UDim.new(0, 2) })
+
+			local title = UI.label(text, row.title, ORIGIN, UDim2.new(1, 0, 0, 18), tokens.type.body, colors.text)
+			title.LayoutOrder = 1
 			title.TextXAlignment = Enum.TextXAlignment.Left
 
 			if row.description then
-				local description = UI.label(
-					card,
-					row.description,
-					UDim2.fromOffset(16, y + 27),
-					UDim2.new(1, -(16 + controlWidth(row) + 24), 0, 28),
-					tokens.type.caption,
-					colors.subtext
-				)
+				local description =
+					UI.label(text, row.description, ORIGIN, UDim2.new(1, 0, 0, 0), tokens.type.caption, colors.subtext)
 
+				description.LayoutOrder = 2
+				description.AutomaticSize = Enum.AutomaticSize.Y
 				description.TextXAlignment = Enum.TextXAlignment.Left
 				description.TextYAlignment = Enum.TextYAlignment.Top
 				description.TextWrapped = true
 			end
 		end
 
-		local function createControl(card, row, y)
-			local height = rowHeight(row)
+		local function createControl(rowFrame, row)
 			local width = controlWidth(row)
+			local height = controlHeight(row)
+
+			local holder = box(rowFrame, UDim2.new(0, width, height.Scale, height.Offset), {
+				Name = "Control",
+				LayoutOrder = 2,
+			})
+
+			list(holder, {
+				FillDirection = Enum.FillDirection.Horizontal,
+				HorizontalAlignment = Enum.HorizontalAlignment.Right,
+				VerticalAlignment = Enum.VerticalAlignment.Center,
+			})
 
 			if row.kind == "switch" then
-				UI.switch(
-					card,
-					UDim2.new(1, -(width + 16), 0, y + math.floor((height - 18) / 2)),
-					state[row.key] == true,
-					function(value)
-						state[row.key] = value
+				UI.switch(holder, ORIGIN, state[row.key] == true, function(value)
+					state[row.key] = value
 
-						if row.key == "diagnostics" then
-							UI.shared().scriptDiagnostics = value
-						end
+					if row.key == "diagnostics" then
+						UI.shared().scriptDiagnostics = value
+					end
 
-						if row.onChanged then
-							row.onChanged(value)
-						end
+					if row.onChanged then
+						row.onChanged(value)
+					end
 
-						if row.rerender then
-							task.defer(function()
-								if settingsWindow and settingsWindow.Visible then
-									renderCategory(selectedCategory, true)
-								end
-							end)
-						end
-					end,
-					{
-						width = 34,
-						height = 18,
-						enabledColor = colors.accent,
-						disabledColor = colors.input,
-					}
-				)
+					if row.rerender then
+						task.defer(function()
+							if settingsWindow and settingsWindow.Visible then
+								renderCategory(selectedCategory, true)
+							end
+						end)
+					end
+				end, {
+					width = 34,
+					height = 18,
+					enabledColor = colors.accent,
+					disabledColor = colors.input,
+				})
 
 				return
 			end
@@ -787,9 +874,9 @@ return function(parent)
 				local controller
 
 				dropdown, label, controller = UI.dropdown(
-					card,
+					holder,
 					state[row.key],
-					UDim2.new(1, -(width + 16), 0, y + math.floor((height - UI.metrics.inputHeight) / 2)),
+					ORIGIN,
 					UDim2.fromOffset(width, UI.metrics.inputHeight),
 					"builtin://global-icons/chevron-down.svg",
 					{
@@ -842,9 +929,9 @@ return function(parent)
 
 			if row.kind == "button" then
 				UI.button(
-					card,
+					holder,
 					row.buttonText or "Open",
-					UDim2.new(1, -(width + 16), 0, y + math.floor((height - UI.metrics.buttonHeight) / 2)),
+					ORIGIN,
 					UDim2.fromOffset(width, UI.metrics.buttonHeight),
 					row.callback,
 					{
@@ -865,10 +952,10 @@ return function(parent)
 
 			if row.kind == "value" then
 				local value = UI.label(
-					card,
+					holder,
 					tostring(row.value or ""),
-					UDim2.new(1, -(width + 16), 0, y),
-					UDim2.fromOffset(width, height),
+					ORIGIN,
+					UDim2.fromScale(1, 1),
 					tokens.type.small,
 					colors.subtext
 				)
@@ -878,64 +965,64 @@ return function(parent)
 			end
 		end
 
-		local function renderRow(card, row, y)
-			rowTitle(card, row, y)
-			createControl(card, row, y)
+		local function createRow(card, row, order)
+			local rowFrame = box(card, UDim2.new(1, 0, 0, rowHeight(row)), {
+				Name = "Row",
+				LayoutOrder = order,
+			})
+
+			pad(rowFrame, 16, 0, 16, 0)
+			list(rowFrame, {
+				FillDirection = Enum.FillDirection.Horizontal,
+				VerticalAlignment = Enum.VerticalAlignment.Center,
+				Padding = UDim.new(0, 24),
+			})
+
+			createText(rowFrame, row)
+			createControl(rowFrame, row)
 		end
 
-		local function createSection(section, y)
-			local sectionTitle = UI.label(
-				scroller,
-				section.title,
-				UDim2.fromOffset(4, y),
-				UDim2.new(1, -8, 0, 20),
-				tokens.type.small,
-				colors.subtext
-			)
+		local function createSection(section, order)
+			local sectionFrame = box(scroller, UDim2.new(1, 0, 0, 0), {
+				Name = "Section",
+				LayoutOrder = order,
+				AutomaticSize = Enum.AutomaticSize.Y,
+			})
+			list(sectionFrame, { Padding = UDim.new(0, 6) })
 
+			local sectionTitle =
+				UI.label(sectionFrame, section.title, ORIGIN, UDim2.new(1, 0, 0, 20), tokens.type.small, colors.subtext)
+			sectionTitle.LayoutOrder = 1
 			sectionTitle.TextXAlignment = Enum.TextXAlignment.Left
+			pad(sectionTitle, 4, 0, 4, 0)
 
-			y += 26
-
-			local cardHeight = 8
-
-			for _, row in ipairs(section.rows) do
-				cardHeight += rowHeight(row)
-			end
-
-			local card = UI.card(scroller, UDim2.fromOffset(0, y), UDim2.new(1, -8, 0, cardHeight), {
+			local card = UI.card(sectionFrame, ORIGIN, UDim2.new(1, 0, 0, 0), {
 				color = colors.surface,
 				radius = tokens.radius.md,
 				border = true,
 				borderColor = colors.border,
 				borderTransparency = 0.35,
 			})
+			card.LayoutOrder = 2
+			card.AutomaticSize = Enum.AutomaticSize.Y
 
-			local rowY = 4
+			pad(card, 0, 4, 0, 4)
+			list(card, { HorizontalAlignment = Enum.HorizontalAlignment.Center })
 
 			for index, row in ipairs(section.rows) do
-				renderRow(card, row, rowY)
+				createRow(card, row, index * 2 - 1)
 
 				if index < #section.rows then
-					local separator = UI.separator(
-						card,
-						UDim2.fromOffset(16, rowY + rowHeight(row) - 1),
-						UDim2.new(1, -32, 0, 1),
-						colors.border
-					)
+					local separator = UI.separator(card, ORIGIN, UDim2.new(1, -32, 0, 1), colors.border)
 
+					separator.LayoutOrder = index * 2
 					separator.BackgroundTransparency = 0.5
 				end
-
-				rowY += rowHeight(row)
 			end
-
-			return y + cardHeight + 18
 		end
 
 		local function layoutNavigation(autoselect)
 			local query = string.lower(search.Text or "")
-			local y = 60
 			local firstMatch
 			local selectedVisible = false
 
@@ -945,9 +1032,6 @@ return function(parent)
 				nav.button.Visible = matches
 
 				if matches then
-					nav.button.Position = UDim2.fromOffset(INSET, y)
-					y += 33
-
 					firstMatch = firstMatch or nav.category
 
 					if nav.category == selectedCategory then
@@ -962,46 +1046,37 @@ return function(parent)
 		end
 
 		renderCategory = function(category, keepScroll)
-			local canvasPosition = keepScroll and scroller.CanvasPosition or Vector2.new(0, 0)
-
+			pendingScroll = keepScroll and scroller.CanvasPosition or nil
 			selectedCategory = category
 
 			closeDropdowns()
+			clearKeepingLayout(scroller)
 
-			UI.clear(scroller)
-
-			local y = 4
-
-			for _, section in ipairs(category.sections) do
-				y = createSection(section, y)
+			for index, section in ipairs(category.sections) do
+				createSection(section, index)
 			end
 
-			scroller.CanvasSize = UDim2.new(0, 0, 0, y)
-			scroller.CanvasPosition = canvasPosition
+			if not keepScroll then
+				scroller.CanvasPosition = Vector2.new(0, 0)
+			end
 
 			updateNavigation()
 		end
 
-		for _, category in ipairs(categories) do
-			local button, label, record = UI.button(
-				sidebar,
-				category.name,
-				UDim2.fromOffset(INSET, 0),
-				UDim2.new(1, -INSET * 2, 0, 30),
-				function()
-					renderCategory(category)
-				end,
-				{
-					color = colors.panel,
-					hoverColor = colors.hover,
-					pressedColor = colors.pressed,
-					textColor = colors.subtext,
-					textSize = tokens.type.small,
-					radius = tokens.radius.sm,
-					border = false,
-					paddingX = 32,
-				}
-			)
+		for index, category in ipairs(categories) do
+			local button, label, record = UI.button(navList, category.name, ORIGIN, UDim2.new(1, 0, 0, 30), function()
+				renderCategory(category)
+			end, {
+				color = colors.panel,
+				hoverColor = colors.hover,
+				pressedColor = colors.pressed,
+				textColor = colors.subtext,
+				textSize = tokens.type.small,
+				radius = tokens.radius.sm,
+				border = false,
+				paddingX = 32,
+			})
+			button.LayoutOrder = index
 
 			local icon = UI.image(button, category.icon, UDim2.fromOffset(9, 8), UDim2.fromOffset(14, 14))
 			icon.ImageColor3 = colors.subtext
@@ -1018,31 +1093,6 @@ return function(parent)
 				accent = accent,
 			})
 		end
-
-		local logoutButton = UI.button(
-			sidebar,
-			"Log out",
-			UDim2.fromOffset(INSET, 0),
-			UDim2.new(1, -INSET * 2, 0, 30),
-			function()
-				performLogout(session)
-			end,
-			{
-				color = colors.panel,
-				hoverColor = colors.hover,
-				pressedColor = colors.pressed,
-				textColor = colors.error,
-				textSize = tokens.type.small,
-				radius = tokens.radius.sm,
-				border = false,
-				paddingX = 32,
-			}
-		)
-
-		logoutButton.Position = UDim2.new(0, INSET, 1, -40)
-
-		local logoutIcon = UI.image(logoutButton, ICONS.power, UDim2.fromOffset(9, 8), UDim2.fromOffset(14, 14))
-		logoutIcon.ImageColor3 = colors.error
 
 		scroller:GetPropertyChangedSignal("CanvasPosition"):Connect(function()
 			local active = shared.activeDropdown
