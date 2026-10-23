@@ -647,7 +647,7 @@ return function(parent)
 			Padding = UDim.new(0, INSET),
 		})
 
-		local sidebar = UI.card(page, ORIGIN, UDim2.new(0, SIDEBAR_WIDTH, 1, 0), {
+		local sidebar = UI.card(page, ORIGIN, UDim2.new(0, SIDEBAR_WIDTH, 1, -INSET * 2), {
 			color = colors.panel,
 			radius = tokens.radius.md,
 			border = true,
@@ -656,7 +656,7 @@ return function(parent)
 		})
 		sidebar.LayoutOrder = 1
 
-		local contentPanel = UI.card(page, ORIGIN, UDim2.new(1, -(SIDEBAR_WIDTH + INSET), 1, 0), {
+		local contentPanel = UI.card(page, ORIGIN, UDim2.new(1, -(SIDEBAR_WIDTH + INSET * 3), 1, -INSET * 2), {
 			color = colors.panelRaised,
 			radius = tokens.radius.md,
 			border = true,
@@ -673,27 +673,27 @@ return function(parent)
 			sidebar,
 			"Search settings...",
 			ORIGIN,
-			UDim2.new(1, 0, 0, UI.metrics.inputHeight),
+			UDim2.new(1, -INSET * 2, 0, UI.metrics.inputHeight),
 			{ textSize = tokens.type.small }
 		)
 		search.LayoutOrder = 1
 
 		local optionsLabel =
-			UI.label(sidebar, "Options", ORIGIN, UDim2.new(1, 0, 0, 16), tokens.type.caption, colors.muted)
+			UI.label(sidebar, "Options", ORIGIN, UDim2.new(1, -INSET * 2, 0, 16), tokens.type.caption, colors.muted)
 		optionsLabel.LayoutOrder = 2
 		optionsLabel.TextXAlignment = Enum.TextXAlignment.Left
 		pad(optionsLabel, 3, 0, 3, 0)
 
 		local navReserved = UI.metrics.inputHeight + 16 + 30 + 4 * 3
 
-		local navList = box(sidebar, UDim2.new(1, 0, 1, -navReserved), {
+		local navList = box(sidebar, UDim2.new(1, -INSET * 2, 1, -(navReserved + INSET * 2)), {
 			Name = "NavList",
 			LayoutOrder = 3,
 			ClipsDescendants = true,
 		})
 		list(navList, { Padding = UDim.new(0, 3) })
 
-		local logoutButton = UI.button(sidebar, "Log out", ORIGIN, UDim2.new(1, 0, 0, 30), function()
+		local logoutButton = UI.button(sidebar, "Log out", ORIGIN, UDim2.new(1, -INSET * 2, 0, 30), function()
 			performLogout(session)
 		end, {
 			color = colors.panel,
@@ -714,7 +714,7 @@ return function(parent)
 
 		local scroller = UI.create("ScrollingFrame", {
 			Name = "SettingsScroller",
-			Size = UDim2.fromScale(1, 1),
+			Size = UDim2.new(1, -INSET * 2, 1, -INSET * 2),
 			BackgroundTransparency = 1,
 			BorderSizePixel = 0,
 			CanvasPosition = Vector2.new(0, 0),
@@ -799,7 +799,7 @@ return function(parent)
 		end
 
 		local function createText(rowFrame, row)
-			local text = box(rowFrame, UDim2.new(1, -(controlWidth(row) + 24), 0, 0), {
+			local text = box(rowFrame, UDim2.new(1, -(controlWidth(row) + 56), 0, 0), {
 				Name = "Text",
 				LayoutOrder = 1,
 				AutomaticSize = Enum.AutomaticSize.Y,
@@ -983,7 +983,7 @@ return function(parent)
 		end
 
 		local function createSection(section, order)
-			local sectionFrame = box(scroller, UDim2.new(1, 0, 0, 0), {
+			local sectionFrame = box(scroller, UDim2.new(1, -8, 0, 0), {
 				Name = "Section",
 				LayoutOrder = order,
 				AutomaticSize = Enum.AutomaticSize.Y,
