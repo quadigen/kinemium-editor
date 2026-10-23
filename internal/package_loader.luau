@@ -34,6 +34,7 @@ UI.prompt({
 
 				menuWidth = 152,
 				maxVisibleItems = 7,
+				menuParent = UI.contextMenuOverlay(),
 
 				color = tokens.color.input,
 				hoverColor = tokens.color.hover,
