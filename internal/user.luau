@@ -893,7 +893,7 @@ return function(parent)
 						borderTransparency = 0.2,
 						radius = tokens.radius.sm,
 						textSize = tokens.type.small,
-						menuParent = UI.contextMenuOverlay(),
+						menuParent = UI.toastRoot(),
 						backdrop = true,
 						backdropBlur = 14,
 						backdropTransparency = 0.88,
