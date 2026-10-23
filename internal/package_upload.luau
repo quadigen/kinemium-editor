@@ -651,7 +651,9 @@ function PackageUpload.open(target)
 				color = tokens.color.panelRaised,
 				radius = tokens.radius.md,
 				onHeightChanged = function()
-					layout()
+					if layout then
+						layout()
+					end
 				end,
 				build = function(body)
 					if not def.optional then
