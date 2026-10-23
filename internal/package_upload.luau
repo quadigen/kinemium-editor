@@ -10,7 +10,6 @@ local Project = game:GetService("Project")
 local DialogService = game:GetService("DialogService")
 local Filesystem = game:GetService("Filesystem")
 local HttpService = game:GetService("HttpService")
-local RunService = game:GetService("RunService")
 
 local TYPES = { "package", "model", "plugin", "template", "tool" }
 local VISIBILITIES = { "public", "unlisted", "private" }
@@ -22,8 +21,6 @@ local MIME_TYPES = {
 	webp = "image/webp",
 	gif = "image/gif",
 }
-
-local CHEVRON = "builtin://global-icons/chevron-down.svg"
 
 local LABEL_HEIGHT = 15
 local INPUT_OFFSET = LABEL_HEIGHT + 3
@@ -39,10 +36,6 @@ local ICON_SIZE = 104
 local ANIM_SPEED = 14
 
 local PackageUpload = {}
-
-local function smooth(current, target, speed, dt)
-	return current + (target - current) * (1 - math.exp(-speed * dt))
-end
 
 local function trim(text)
 	return (string.gsub(tostring(text or ""), "^%s*(.-)%s*$", "%1"))
@@ -217,17 +210,12 @@ function PackageUpload.open(target)
 		return section ~= nil and section.enabled
 	end
 
-	-- Dim and lock a text box when its section is disabled.
 	local function setBoxEnabled(box, on)
 		pcall(function()
 			box.TextEditable = on
 			box.TextTransparency = on and 0 or 0.5
 		end)
 	end
-
-	----------------------------------------------------------------------
-	-- Field helpers
-	----------------------------------------------------------------------
 
 	local function addTextBox(parent, labelText, value, placeholder, position, size, maxLength)
 		UI.label(
@@ -369,7 +357,8 @@ function PackageUpload.open(target)
 		return image, placeholder, click, frame
 	end
 
-	local refreshAll -- forward declaration (summaries depend on field state)
+	local refreshAll
+	local layout
 
 	local function chooseImage(preview, placeholder, nameLabel, key)
 		if not isEnabled("Media") then
@@ -406,10 +395,6 @@ function PackageUpload.open(target)
 		nameLabel.TextColor3 = tokens.color.muted
 		refreshAll()
 	end
-
-	----------------------------------------------------------------------
-	-- Prompt (dialog shell + upload logic)
-	----------------------------------------------------------------------
 
 	local _, content, controller = UI.prompt({
 		title = "Upload as Package",
@@ -456,7 +441,6 @@ function PackageUpload.open(target)
 						return false
 					end
 
-					-- Compatibility (falls back to defaults when disabled)
 					local entrypoint = name .. ".kine"
 					local engineConstraint = "*"
 
@@ -478,7 +462,6 @@ function PackageUpload.open(target)
 						end
 					end
 
-					-- About
 					local description = useAbout and trim(fields.description.Text) or ""
 					local tags = useAbout and splitCSV(fields.tags.Text) or {}
 
@@ -487,7 +470,6 @@ function PackageUpload.open(target)
 						return false
 					end
 
-					-- Dependencies
 					local dependencies = {}
 
 					if useDeps then
@@ -640,10 +622,6 @@ function PackageUpload.open(target)
 
 	prompt = controller
 
-	----------------------------------------------------------------------
-	-- Accordion sections
-	----------------------------------------------------------------------
-
 	local cardWidth = 682
 	local innerWidth = cardWidth - CARD_PAD * 2
 	local leftWidth = math.floor((innerWidth - COLUMN_GAP) * 0.56)
@@ -652,103 +630,64 @@ function PackageUpload.open(target)
 	local fullWidth = UDim2.new(1, -CARD_PAD * 2, 0, INPUT_HEIGHT)
 	local bannerWidth = cardWidth - CARD_PAD * 2 - ICON_SIZE - COLUMN_GAP
 
-	-- Y origin of field content inside an optional section's body (below the toggle row).
 	local OPTIONAL_ORIGIN = CARD_PAD + TOGGLE_H + 10
 
-	local function createSection(def)
-		local frame = UI.frame(
-			content,
-			UDim2.fromOffset(0, 0),
-			UDim2.new(1, -6, 0, HEADER_H),
-			tokens.color.panelRaised,
-			tokens.radius.md
-		)
-		frame.Name = def.name
-		frame.ClipsDescendants = true
-		UI.stroke(frame, tokens.color.borderStrong, 1, 0.5)
+	local sourceLabel, namespaceLabel
 
+	local function createSection(def)
 		local section = {
 			def = def,
-			frame = frame,
 			enabled = true,
-			expanded = def.expanded == true,
-			current = def.expanded and (HEADER_H + def.bodyHeight) or HEADER_H,
-			lastHeight = -1,
-			bodyHeight = def.bodyHeight,
 			onEnabled = nil,
 		}
+
+		local frame, control =
+			UI.collapsible(content, def.name, UDim2.fromOffset(0, 0), UDim2.new(1, -6, 0, HEADER_H), {
+				name = def.name,
+				headerHeight = HEADER_H,
+				bodyHeight = def.bodyHeight,
+				expanded = def.expanded == true,
+				animSpeed = ANIM_SPEED,
+				color = tokens.color.panelRaised,
+				radius = tokens.radius.md,
+				onHeightChanged = function()
+					layout()
+				end,
+				build = function(body)
+					if not def.optional then
+						return
+					end
+
+					local _, checkbox = UI.checkbox(
+						body,
+						"Include in upload",
+						UDim2.fromOffset(CARD_PAD, CARD_PAD),
+						true,
+						function(value)
+							section.enabled = value
+
+							if section.onEnabled then
+								section.onEnabled(value)
+							end
+
+							refreshAll()
+						end,
+						{ size = UDim2.new(1, -CARD_PAD * 2, 0, TOGGLE_H) }
+					)
+
+					section.checkbox = checkbox
+				end,
+			})
+
+		section.frame = frame
+		section.control = control
 
 		sections[#sections + 1] = section
 		sectionByName[def.name] = section
 
-		local header, headerLabel = UI.button(
-			frame,
-			def.name,
-			UDim2.fromOffset(0, 0),
-			UDim2.new(1, 0, 0, HEADER_H),
-			function()
-				section.expanded = not section.expanded
-			end,
-			{
-				color = tokens.color.panelRaised,
-				radius = tokens.radius.md,
-				border = false,
-				textColor = tokens.color.text,
-			}
-		)
-		header.Name = def.name .. "Header"
-		headerLabel.Position = UDim2.fromOffset(12, 0)
-		headerLabel.Size = UDim2.new(0, 140, 1, 0)
-		headerLabel.TextXAlignment = Enum.TextXAlignment.Left
-		headerLabel.TextYAlignment = Enum.TextYAlignment.Center
-		section.headerLabel = headerLabel
-
-		local summary = UI.label(
-			header,
-			"",
-			UDim2.new(0, 150, 0, 0),
-			UDim2.new(1, -150 - 34, 0, HEADER_H),
-			tokens.type.caption,
-			tokens.color.muted
-		)
-		summary.TextXAlignment = Enum.TextXAlignment.Right
-		summary.TextYAlignment = Enum.TextYAlignment.Center
-		section.summary = summary
-
-		section.chevron = UI.image(header, CHEVRON, UDim2.new(1, -22, 0.5, -6), UDim2.fromOffset(12, 12))
-		section.chevron.Rotation = section.expanded and 0 or -90
-
-		local body =
-			UI.frame(frame, UDim2.fromOffset(0, HEADER_H), UDim2.new(1, 0, 0, def.bodyHeight), tokens.color.panel)
-		body.Name = "Body"
-		body.BackgroundTransparency = 1
-		body.Visible = section.expanded
-		section.body = body
-
-		UI.separator(body, UDim2.fromOffset(6, 0), UDim2.new(1, -12, 0, 1), tokens.color.surface)
-
-		if def.optional then
-			local _, checkbox = UI.checkbox(
-				body,
-				"Include in upload",
-				UDim2.fromOffset(CARD_PAD, CARD_PAD),
-				true,
-				function(value)
-					section.enabled = value
-					if section.onEnabled then
-						section.onEnabled(value)
-					end
-					refreshAll()
-				end,
-				{ size = UDim2.new(1, -CARD_PAD * 2, 0, TOGGLE_H) }
-			)
-			section.checkbox = checkbox
-		end
-
-		return section, body
+		return section, control.body
 	end
 
-	-- Identity ----------------------------------------------------------
 	do
 		local section, body = createSection({
 			name = "Identity",
@@ -780,7 +719,6 @@ function PackageUpload.open(target)
 		end
 	end
 
-	-- Listing -----------------------------------------------------------
 	do
 		local section, body = createSection({
 			name = "Listing",
@@ -818,7 +756,6 @@ function PackageUpload.open(target)
 		end
 	end
 
-	-- Media -------------------------------------------------------------
 	do
 		local oy = OPTIONAL_ORIGIN
 		local section, body = createSection({
@@ -935,7 +872,6 @@ function PackageUpload.open(target)
 		end
 	end
 
-	-- About -------------------------------------------------------------
 	do
 		local oy = OPTIONAL_ORIGIN
 		local section, body = createSection({
@@ -981,7 +917,6 @@ function PackageUpload.open(target)
 		end
 	end
 
-	-- Compatibility -----------------------------------------------------
 	do
 		local oy = OPTIONAL_ORIGIN
 		local section, body = createSection({
@@ -1026,7 +961,6 @@ function PackageUpload.open(target)
 		end
 	end
 
-	-- Dependencies ------------------------------------------------------
 	do
 		local oy = OPTIONAL_ORIGIN
 		local section, body = createSection({
@@ -1058,23 +992,20 @@ function PackageUpload.open(target)
 		end
 	end
 
-	----------------------------------------------------------------------
-	-- Summaries / state refresh
-	----------------------------------------------------------------------
-
 	refreshAll = function()
 		for _, section in ipairs(sections) do
 			local on = section.enabled
+			local control = section.control
 
 			if on then
 				local ok, text = pcall(section.summaryFn)
-				section.summary.Text = ok and text or ""
+				control:SetSummary(ok and text or "")
 			else
-				section.summary.Text = "Disabled"
+				control:SetSummary("Disabled")
 			end
 
-			section.headerLabel.TextColor3 = on and tokens.color.text or tokens.color.muted
-			section.summary.TextColor3 = on and tokens.color.muted or tokens.color.warning
+			control:SetTitleColor(on and tokens.color.text or tokens.color.muted)
+			control:SetSummaryColor(on and tokens.color.muted or tokens.color.warning)
 		end
 	end
 
@@ -1086,11 +1017,7 @@ function PackageUpload.open(target)
 
 	refreshAll()
 
-	----------------------------------------------------------------------
-	-- Footer labels (positioned after the last section)
-	----------------------------------------------------------------------
-
-	local sourceLabel = UI.label(
+	sourceLabel = UI.label(
 		content,
 		"Source: " .. tostring(target.Name) .. " (" .. tostring(target.ClassName) .. ")",
 		UDim2.fromOffset(2, 0),
@@ -1100,7 +1027,7 @@ function PackageUpload.open(target)
 	)
 	sourceLabel.TextXAlignment = Enum.TextXAlignment.Left
 
-	local namespaceLabel = UI.label(
+	namespaceLabel = UI.label(
 		content,
 		namespace and ("Publishing as namespace: " .. namespace) or "Namespace: taken from your Kinemium session",
 		UDim2.fromOffset(2, 0),
@@ -1110,55 +1037,25 @@ function PackageUpload.open(target)
 	)
 	namespaceLabel.TextXAlignment = Enum.TextXAlignment.Left
 
-	----------------------------------------------------------------------
-	-- Layout + animation
-	----------------------------------------------------------------------
-
-	local connection
-	connection = RunService.Heartbeat:Connect(function(dt)
-		if not UI.isAlive(content) then
-			connection:Disconnect()
-			return
-		end
-
+	layout = function()
 		local y = 0
 
 		for _, section in ipairs(sections) do
-			local target = section.expanded and (HEADER_H + section.bodyHeight) or HEADER_H
-
-			section.current = smooth(section.current, target, ANIM_SPEED, dt)
-
-			if math.abs(section.current - target) < 0.5 then
-				section.current = target
-			end
-
-			local height = math.floor(section.current + 0.5)
-
-			if height ~= section.lastHeight then
-				section.lastHeight = height
-				section.frame.Size = UDim2.new(1, -6, 0, height)
-
-				local alpha = math.clamp((section.current - HEADER_H) / section.bodyHeight, 0, 1)
-				section.chevron.Rotation = -90 * (1 - alpha)
-				section.body.Visible = section.current > HEADER_H + 1
-			end
-
 			section.frame.Position = UDim2.fromOffset(0, y)
-			y += section.current + SECTION_GAP
+			y += section.control:GetHeight() + SECTION_GAP
 		end
 
 		y += 6
-		sourceLabel.Position = UDim2.fromOffset(2, y)
-		namespaceLabel.Position = UDim2.fromOffset(2, y + LABEL_HEIGHT + 3)
+
+		if sourceLabel and namespaceLabel then
+			sourceLabel.Position = UDim2.fromOffset(2, y)
+			namespaceLabel.Position = UDim2.fromOffset(2, y + LABEL_HEIGHT + 3)
+		end
 
 		content.CanvasSize = UDim2.fromOffset(0, y + LABEL_HEIGHT * 2 + 20)
-	end)
+	end
 
-	content.Destroying:Connect(function()
-		if connection then
-			connection:Disconnect()
-		end
-	end)
+	layout()
 
 	return prompt
 end

@@ -266,27 +266,8 @@ end
 
 local function setSelected(name)
 	for _, section in ipairs(sections) do
-		local open = section.page.Name == name
-
-		if section.expanded ~= open then
-			section.expanded = open
-
-			if open then
-				if section.page.OpenCallback then
-					section.page.OpenCallback()
-				end
-			else
-				for _, dd in ipairs(section.dropdowns) do
-					dd:Close()
-				end
-
-				if section.page.CloseCallback then
-					section.page.CloseCallback()
-				end
-			end
-		end
+		section.control:SetExpanded(section.page.Name == name)
 	end
-
 	selected = name
 	updateStatus()
 end
@@ -697,82 +678,62 @@ local function buildRow(section, page, field, y)
 	end
 end
 
+local function updateCanvas()
+	local total = 0
+
+	for _, section in ipairs(sections) do
+		total += section.control:GetHeight()
+	end
+
+	scroll.CanvasSize = UDim2.new(1, 0, 0, LIST_PAD * 2 + total + LIST_GAP * (#sections - 1))
+end
+
 for index, page in ipairs(pages) do
 	values[page.Name] = {}
 
-	local frame = UI.frame(
-		scroll,
-		UDim2.new(),
-		UDim2.new(1, -SECTION_INSET, 0, HEADER_H),
-		tokens.color.panelRaised,
-		tokens.radius.sm
-	)
-	frame.Name = page.Name
-	frame.LayoutOrder = index
-	frame.ClipsDescendants = true
-	UI.stroke(frame, tokens.color.borderStrong, 1, 0.6)
-
 	local section = {
 		page = page,
-		frame = frame,
-		bodyHeight = 1,
-		current = HEADER_H,
-		lastHeight = -1,
-		expanded = false,
 		dropdowns = {},
 		rows = {},
 	}
 
-	sectionByName[page.Name] = section
-
-	local labelX = page.Icon and 30 or 10
-
-	local header, headerLabel = UI.button(
-		frame,
-		page.Name,
-		UDim2.fromOffset(0, 0),
-		UDim2.new(1, 0, 0, HEADER_H),
-		function()
-			setSelected(section.expanded and nil or page.Name)
+	local frame, control = UI.collapsible(scroll, page.Name, UDim2.new(), UDim2.new(1, -SECTION_INSET, 0, HEADER_H), {
+		name = page.Name,
+		layoutOrder = index,
+		icon = page.Icon,
+		chevron = CHEVRON,
+		headerHeight = HEADER_H,
+		animSpeed = ANIM_SPEED,
+		color = tokens.color.panelRaised,
+		radius = tokens.radius.sm,
+		controlled = true,
+		onToggle = function(wantExpanded)
+			setSelected(wantExpanded and page.Name or nil)
 		end,
-		{
-			icon = page.Icon,
-			color = tokens.color.panelRaised,
-			radius = tokens.radius.sm,
-			border = false,
-			textColor = tokens.color.text,
-		}
-	)
+		onOpen = function()
+			if page.OpenCallback then
+				page.OpenCallback()
+			end
+		end,
+		onClose = function()
+			for _, dd in ipairs(section.dropdowns) do
+				dd:Close()
+			end
 
-	header.Name = page.Name .. "Header"
-	headerLabel.Position = UDim2.fromOffset(labelX, 0)
-	headerLabel.Size = UDim2.new(1, -(labelX + 30), 1, 0)
-	headerLabel.TextXAlignment = Enum.TextXAlignment.Left
-	headerLabel.TextYAlignment = Enum.TextYAlignment.Center
-	section.headerLabel = headerLabel
+			if page.CloseCallback then
+				page.CloseCallback()
+			end
+		end,
+		onHeightChanged = updateCanvas,
+	})
 
-	local summary = UI.label(
-		header,
-		"",
-		UDim2.new(1, -190, 0, 0),
-		UDim2.fromOffset(160, HEADER_H),
-		tokens.type.caption,
-		tokens.color.muted
-	)
-	summary.TextXAlignment = Enum.TextXAlignment.Right
-	summary.TextYAlignment = Enum.TextYAlignment.Center
-	section.summary = summary
+	section.frame = frame
+	section.control = control
+	section.body = control.body
+	section.headerLabel = control.headerLabel
+	section.summary = control.summary
 
-	section.chevron = UI.image(header, CHEVRON, UDim2.new(1, -22, 0.5, -6), UDim2.fromOffset(12, 12))
-	section.chevron.Rotation = -90
-
-	local body = UI.frame(frame, UDim2.fromOffset(0, HEADER_H), UDim2.new(1, 0, 0, 100), tokens.color.panel)
-	body.Name = "Body"
-	body.BackgroundTransparency = 1
-	body.Visible = false
-	section.body = body
-
-	UI.separator(body, UDim2.fromOffset(6, 0), UDim2.new(1, -12, 0, 1), tokens.color.surface)
+	sectionByName[page.Name] = section
 
 	local y = BODY_PAD + 2
 
@@ -785,7 +746,7 @@ for index, page in ipairs(pages) do
 
 	if not page.Global then
 		local preview = UI.label(
-			body,
+			section.body,
 			"",
 			UDim2.fromOffset(BODY_PAD, y),
 			UDim2.new(1, -(resetW + BODY_PAD * 2 + 4), 0, 22),
@@ -798,7 +759,7 @@ for index, page in ipairs(pages) do
 	end
 
 	UI.button(
-		body,
+		section.body,
 		"Reset to Defaults",
 		UDim2.new(1, -(resetW + BODY_PAD), 0, y),
 		UDim2.fromOffset(resetW, 22),
@@ -810,12 +771,13 @@ for index, page in ipairs(pages) do
 
 	y += 22 + BODY_PAD
 
-	section.bodyHeight = y
-	body.Size = UDim2.new(1, 0, 0, y)
+	control:SetBodyHeight(y)
 
 	table.insert(sections, section)
 	refreshSection(section)
 end
+
+updateCanvas()
 
 setAllEnabled = function(on)
 	for _, section in ipairs(sections) do
@@ -1136,33 +1098,6 @@ exportAllLabel, exportAllRecord = allLabel, allRecord
 updateStatus()
 
 local heartbeat = RunService.Heartbeat:Connect(function(dt)
-	local total = 0
-
-	for _, section in ipairs(sections) do
-		local target = section.expanded and (HEADER_H + section.bodyHeight) or HEADER_H
-
-		section.current = smooth(section.current, target, ANIM_SPEED, dt)
-
-		if math.abs(section.current - target) < 0.5 then
-			section.current = target
-		end
-
-		local height = math.floor(section.current + 0.5)
-
-		if height ~= section.lastHeight then
-			section.lastHeight = height
-			section.frame.Size = UDim2.new(1, -SECTION_INSET, 0, height)
-
-			local alpha = math.clamp((section.current - HEADER_H) / section.bodyHeight, 0, 1)
-			section.chevron.Rotation = -90 * (1 - alpha)
-			section.body.Visible = section.current > HEADER_H + 1
-		end
-
-		total += section.current
-	end
-
-	scroll.CanvasSize = UDim2.new(1, 0, 0, LIST_PAD * 2 + total + LIST_GAP * (#sections - 1))
-
 	if progress then
 		progressShown = smooth(progressShown, progressTarget, 10, dt)
 
