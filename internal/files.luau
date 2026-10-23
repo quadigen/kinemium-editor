@@ -173,6 +173,63 @@ registerFileType({
 })
 
 registerFileType({
+	name = "ZIP",
+	extensions = { "zip" },
+	icon = "builtin://global-icons/zip.svg",
+	thumbnail = true,
+
+	onOpen = function(ctx)
+		openImageViewer(ctx)
+	end,
+
+	onDrop = function(ctx)
+		local parent = selectedObject()
+
+		if parent:IsA("ImageLabel") or parent:IsA("ImageButton") then
+			parent.Image = ctx.Path
+			return
+		end
+
+		if parent == nil then
+			toastMessage("warning", "Nothing selected", "Select an object to drop the image onto.")
+			return
+		end
+
+		local new = Instance.new("ImageLabel")
+		new.Image = ctx.Path
+		new.Parent = parent
+	end,
+
+	contextItems = {
+		{ label = "Open in Image Viewer", icon = "builtin://icons/ImageLabel.svg", callback = openImageViewer },
+		{
+			label = "Import as ImageLabel",
+			icon = "builtin://icons/ImageLabel.svg",
+			callback = function(ctx)
+				local parent = selectedObject()
+				if parent then
+					local new = Instance.new("ImageLabel")
+					new.Image = ctx.Path
+					new.Parent = parent
+				end
+			end,
+		},
+		{
+			label = "Import as Decal",
+			icon = "builtin://icons/Decal.svg",
+			callback = function(ctx)
+				local parent = selectedObject()
+				if parent then
+					local new = Instance.new("Decal")
+					new.Image = ctx.Path
+					new.Parent = parent
+				end
+			end,
+		},
+	},
+})
+
+registerFileType({
 	name = "Image",
 	extensions = { "png", "jpg", "jpeg", "webp", "gif", "bmp" },
 	icon = "builtin://icons/ImageLabel.svg",

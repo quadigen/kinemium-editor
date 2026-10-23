@@ -25,8 +25,6 @@ return function(ctx)
 		local pressScale = options.pressScale or 0.12 -- icon shrinks by this fraction on press
 		local hoverEnabled = options.hoveringEnabled ~= false
 
-		-- Colours are read live every frame so theme changes apply automatically.
-		-- options.colors still overrides individual keys, as before.
 		local function pick(key, fallback)
 			local override = options.colors and options.colors[key]
 			return override or fallback
