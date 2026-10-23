@@ -6,6 +6,8 @@ local http = game:GetService("HttpService")
 local colors = UI.tokens.color
 local tokens = UI.tokens
 
+local rowHeight = 44
+
 shared.CurrentSession = MatrixService:GetSession()
 
 local function svgIcon(body)
@@ -729,10 +731,6 @@ return function(parent)
 			end
 		end
 
-		local function rowHeight(row)
-			return row.description and 58 or 44
-		end
-
 		local function controlWidth(row)
 			if row.kind == "switch" then
 				return 34
@@ -747,33 +745,8 @@ return function(parent)
 			return 0
 		end
 
-		local function rowTitle(card, row, y)
-			local width = UDim2.new(1, -(16 + controlWidth(row) + 24), 0, 18)
-			local position =
-				UDim2.fromOffset(16, row.description and y + 7 or y + math.floor((rowHeight(row) - 18) / 2))
-
-			local title = UI.label(card, row.title, position, width, tokens.type.body, colors.text)
-
-			title.TextXAlignment = Enum.TextXAlignment.Left
-
-			if row.description then
-				local description = UI.label(
-					card,
-					row.description,
-					UDim2.fromOffset(16, y + 27),
-					UDim2.new(1, -(16 + controlWidth(row) + 24), 0, 28),
-					tokens.type.caption,
-					colors.subtext
-				)
-
-				description.TextXAlignment = Enum.TextXAlignment.Left
-				description.TextYAlignment = Enum.TextYAlignment.Top
-				description.TextWrapped = true
-			end
-		end
-
 		local function createControl(card, row, y)
-			local height = rowHeight(row)
+			local height = 44
 			local width = controlWidth(row)
 
 			if row.kind == "switch" then
@@ -911,7 +884,6 @@ return function(parent)
 		end
 
 		local function renderRow(card, row, y)
-			rowTitle(card, row, y)
 			createControl(card, row, y)
 		end
 
@@ -932,7 +904,7 @@ return function(parent)
 			local cardHeight = 8
 
 			for _, row in ipairs(section.rows) do
-				cardHeight += rowHeight(row)
+				cardHeight += rowHeight
 			end
 
 			local card = UI.card(scroller, UDim2.fromOffset(0, y), UDim2.new(1, -8, 0, cardHeight), {
@@ -951,7 +923,7 @@ return function(parent)
 				if index < #section.rows then
 					local separator = UI.separator(
 						card,
-						UDim2.fromOffset(16, rowY + rowHeight(row) - 1),
+						UDim2.fromOffset(16, rowY + rowHeight - 1),
 						UDim2.new(1, -32, 0, 1),
 						colors.border
 					)
@@ -959,7 +931,7 @@ return function(parent)
 					separator.BackgroundTransparency = 0.5
 				end
 
-				rowY += rowHeight(row)
+				rowY += rowHeight
 			end
 
 			return y + cardHeight + 18

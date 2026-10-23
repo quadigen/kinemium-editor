@@ -52,7 +52,6 @@ UI.tokens = {
 			StudioThemeService.SelectedTheme.BaseColor.G,
 			StudioThemeService.SelectedTheme.BaseColor.B
 		),
-
 		panel = Color3.new(
 			StudioThemeService.SelectedTheme.BgColor.R,
 			StudioThemeService.SelectedTheme.BgColor.G,
@@ -9779,7 +9778,6 @@ function UI.card(parent, position, size, options)
 	local colors = UI.tokens.color
 
 	local card =
-		
 UI.frame(parent, position, size, options.color or colors.surface, options.radius or UI.tokens.radius.md)
 
 	if options.border ~= false then
