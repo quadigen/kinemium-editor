@@ -9,6 +9,7 @@ local Project = game:GetService("Project")
 local dialog = game:GetService("DialogService")
 local export_service = game:GetService("ExportService")
 local filesystem = game:GetService("Filesystem")
+local Packages = game:GetService("Packages")
 local util = require("@internal/util")
 
 local StudioThemeService = game:GetService("StudioThemeService")
@@ -1934,6 +1935,308 @@ return function(content, windowControls)
 		end
 	end
 
+	local function safePackageFolderName(value)
+		local name = tostring(value or "")
+
+		name = name:gsub("[\\/:*?\"<>|]", "_")
+		name = name:gsub("%s+$", "")
+		name = name:gsub("%.+$", "")
+
+		if #name > 200 then
+			name = string.sub(name, 1, 200)
+			name = name:gsub("%s+$", "")
+			name = name:gsub("%.+$", "")
+		end
+
+		if name == "" then
+			return "package"
+		end
+
+		return name
+	end
+
+	local function formatPackageSize(bytes)
+		bytes = tonumber(bytes) or 0
+
+		if bytes >= 1024 * 1024 then
+			return string.format("%.1f MB", bytes / (1024 * 1024))
+		elseif bytes >= 1024 then
+			return string.format("%.1f KB", bytes / 1024)
+		end
+
+		return string.format("%d B", math.floor(bytes))
+	end
+
+	local function uniquePackageFolderName(directory, baseName)
+		local existing = {}
+		local entries = readEntries(directory)
+
+		if entries ~= nil then
+			for _, entry in ipairs(entries) do
+				existing[string.lower(entry.Name)] = true
+			end
+		end
+
+		if not existing[string.lower(baseName)] then
+			return baseName
+		end
+
+		local index = 2
+
+		while true do
+			local candidate = string.format("%s (%d)", baseName, index)
+
+			if not existing[string.lower(candidate)] then
+				return candidate
+			end
+
+			index += 1
+		end
+	end
+
+	local function importDownloadedPackage(package, directory)
+		local packageName = tostring(package.name or "")
+
+		if packageName == "" then
+			packageName = "package"
+		end
+
+		local version = tostring(package.version or "")
+
+		if version == "" then
+			version = "?"
+		end
+
+		local folderBase = safePackageFolderName(packageName .. "@" .. version)
+		local folderName = uniquePackageFolderName(directory, folderBase)
+
+		local createOk, created = pcall(function()
+			return filesystem:CreateFolder(directory, folderName)
+		end)
+
+		if not createOk or type(created) ~= "string" or created == "" then
+			return nil, `Could not create {folderName}.`
+		end
+
+		local entries = readEntries(package.path)
+
+		if entries == nil then
+			pcall(function()
+				filesystem:DeletePath(created)
+			end)
+
+			return nil, "Could not read the downloaded package."
+		end
+
+		local copied = 0
+
+		for _, entry in ipairs(entries) do
+			if entry.Name ~= ".kinemium-package" then
+				local copyOk, copiedPath = pcall(function()
+					return filesystem:CopyPath(entry.Path, created)
+				end)
+
+				if not copyOk or type(copiedPath) ~= "string" or copiedPath == "" then
+					pcall(function()
+						filesystem:DeletePath(created)
+					end)
+
+					return nil, `Could not copy {entry.Name}.`
+				end
+
+				copied += 1
+			end
+		end
+
+		if copied == 0 then
+			pcall(function()
+				filesystem:DeletePath(created)
+			end)
+
+			return nil, "The downloaded package is empty."
+		end
+
+		return created
+	end
+
+	local function openImportPackage(directory)
+		if directory == nil then
+			return
+		end
+
+		local listOk, packages = pcall(function()
+			return Packages:ListDownloadedPackages()
+		end)
+
+		if not listOk or type(packages) ~= "table" then
+			toastMessage(
+				"error",
+				"Could not read downloaded packages",
+				"Try again after the Packages service is available."
+			)
+
+			return
+		end
+
+		local list = {}
+
+		for _, package in ipairs(packages) do
+			if type(package) == "table" and type(package.path) == "string" and package.path ~= "" then
+				local dirOk, isDir = pcall(function()
+					return filesystem:IsDirectory(package.path)
+				end)
+
+				if dirOk and isDir then
+					list[#list + 1] = package
+				end
+			end
+		end
+
+		table.sort(list, function(a, b)
+			local aTime = tonumber(a.downloadedAt) or 0
+			local bTime = tonumber(b.downloadedAt) or 0
+
+			if aTime ~= bTime then
+				return aTime > bTime
+			end
+
+			local aKey = tostring(a.namespace or "")
+				.. "/"
+				.. tostring(a.name or "")
+				.. "@"
+				.. tostring(a.version or "")
+			local bKey = tostring(b.namespace or "")
+				.. "/"
+				.. tostring(b.name or "")
+				.. "@"
+				.. tostring(b.version or "")
+
+			return aKey < bKey
+		end)
+
+		local _, content, controller = UI.prompt({
+			title = "Import Package",
+			description = `Choose a downloaded package to import into {nameOf(directory)}.`,
+			size = UDim2.fromOffset(560, 520),
+			padding = 14,
+			scrollable = true,
+			destroyOnClose = true,
+			buttons = {
+				{
+					id = "cancel",
+					text = "Cancel",
+					role = "secondary",
+				},
+			},
+		})
+
+		local ROW_HEIGHT = 58
+		local ROW_GAP = 6
+
+		content.CanvasSize = UDim2.fromOffset(0, math.max(#list * (ROW_HEIGHT + ROW_GAP), 56))
+
+		if #list == 0 then
+			local empty = UI.label(
+				content,
+				"No downloaded packages. Download one from the Marketplace first.",
+				UDim2.fromOffset(4, 4),
+				UDim2.new(1, -8, 0, 48),
+				tokens.type.body,
+				tokens.color.muted
+			)
+
+			empty.TextWrapped = true
+			empty.TextXAlignment = Enum.TextXAlignment.Left
+			empty.TextYAlignment = Enum.TextYAlignment.Top
+
+			return
+		end
+
+		for index, package in ipairs(list) do
+			local namespace = tostring(package.namespace or "")
+			local packageName = tostring(package.name or "")
+
+			if packageName == "" then
+				packageName = "Unknown Package"
+			end
+
+			local version = tostring(package.version or "")
+
+			if version == "" then
+				version = "?"
+			end
+
+			local row, rowLabel = UI.button(
+				content,
+				"",
+				UDim2.fromOffset(0, (index - 1) * (ROW_HEIGHT + ROW_GAP)),
+				UDim2.new(1, -6, 0, ROW_HEIGHT),
+				function()
+					controller:Close("import")
+
+					local created, err = importDownloadedPackage(package, directory)
+
+					if created == nil then
+						toastMessage("error", "Could not import package", err or "Unknown error.")
+						return
+					end
+
+					expanded[directory] = true
+					selectedPath = created
+					lastHash = ""
+
+					rebuild()
+
+					toastMessage(
+						"success",
+						"Package imported",
+						`Imported {packageName}@{version} into {nameOf(directory)}.`
+					)
+				end,
+				{
+					color = tokens.color.surfaceAlt,
+					hoverColor = tokens.color.hover,
+					pressedColor = tokens.color.pressed,
+					radius = tokens.radius.md,
+					border = false,
+				}
+			)
+
+			row.Name = "PackageRow" .. tostring(index)
+			rowLabel.Visible = false
+
+			local title = UI.label(
+				row,
+				packageName,
+				UDim2.fromOffset(12, 8),
+				UDim2.new(1, -24, 0, 20),
+				tokens.type.body,
+				tokens.color.text
+			)
+
+			title.TextXAlignment = Enum.TextXAlignment.Left
+			title.TextTruncate = Enum.TextTruncate.AtEnd
+
+			local metaText = "v" .. version .. "  |  " .. formatPackageSize(package.size)
+
+			if namespace ~= "" then
+				metaText = namespace .. "  |  " .. metaText
+			end
+
+			local meta = UI.label(
+				row,
+				metaText,
+				UDim2.fromOffset(12, 30),
+				UDim2.new(1, -24, 0, 16),
+				tokens.type.caption,
+				tokens.color.muted
+			)
+
+			meta.TextXAlignment = Enum.TextXAlignment.Left
+			meta.TextTruncate = Enum.TextTruncate.AtEnd
+		end
+	end
+
 	local contextMenu
 	local contextMenuOptions
 	local contextTarget = nil
@@ -1992,6 +2295,8 @@ return function(content, windowControls)
 						beginRename(path)
 					elseif action == "import" then
 						importFile(targetDirectoryFor(path))
+					elseif action == "import_package" then
+						openImportPackage(targetDirectoryFor(path))
 					elseif action == "duplicate" then
 						duplicateEntry(path)
 					elseif action == "copypath" then
@@ -2029,6 +2334,7 @@ return function(content, windowControls)
 			{ label = "Copy", value = "copy", icon = "builtin://global-icons/copy.svg" },
 			{ label = "Paste", value = "paste", icon = "builtin://global-icons/paste_clipboard.svg" },
 			{ label = "Import File..", value = "import", icon = "builtin://global-icons/folder.svg" },
+			{ label = "Import Package..", value = "import_package", icon = "builtin://global-icons/package.svg" },
 		}
 
 		contextCustom = {}
