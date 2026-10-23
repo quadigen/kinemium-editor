@@ -1391,6 +1391,7 @@ local componentModules = {
 	require("./Components/topbar_button"),
 	require("./Components/button_list"),
 	require("./Components/tooltip"),
+	require("./Components/collapsible"),
 }
 
 local components = {
