@@ -62,7 +62,7 @@ return function(ctx)
 
 		UI.frame(header, UDim2.new(0, 0, 1, -radius), UDim2.new(1, 0, 0, radius), headerColor)
 
-		--UI.frame(header, UDim2.new(0, 8, 1, -1), UDim2.new(1, -16, 0, 1), colors.border)
+		UI.frame(header, UDim2.new(0, 8, 1, -1), UDim2.new(1, -16, 0, 1), colors.border)
 
 		local tabHeight = headerHeight - tabTop
 		local activeTabColor = options.activeTabColor or contentColor

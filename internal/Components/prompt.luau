@@ -331,16 +331,6 @@ return function(ctx)
 
 			controller.header = header
 
-			if options.accent ~= false then
-				controller.accent = UI.frame(
-					header,
-					UDim2.fromOffset(0, options.accentInset or 7),
-					UDim2.fromOffset(options.accentWidth or 3, headerHeight - (options.accentInset or 7) * 2),
-					options.accentColor or colors.accent,
-					1
-				)
-			end
-
 			local titleX = options.titleX or 12
 
 			if options.icon then
