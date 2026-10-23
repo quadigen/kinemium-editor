@@ -36,7 +36,7 @@ UI.prompt({
 
 				menuWidth = 152,
 				maxVisibleItems = 7,
-				menuParent = content,
+				menuParent = dropdown,
 
 				color = tokens.color.input,
 				hoverColor = tokens.color.hover,
