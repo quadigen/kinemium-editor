@@ -34,7 +34,6 @@ UI.prompt({
 			{
 				items = items,
 
-				menuWidth = 152,
 				maxVisibleItems = 7,
 
 				color = tokens.color.input,
