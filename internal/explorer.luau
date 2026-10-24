@@ -97,6 +97,10 @@ local function selectObject(data)
 	local obj = data[1]
 	Selection:Set(data)
 
+	if not obj then
+		return
+	end
+
 	local project = Project:GetActiveProject()
 	local details = `In {project and project.Name or _RUNTIME.version.display}`
 	local state = "Editing " .. obj.Name
