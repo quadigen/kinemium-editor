@@ -2207,6 +2207,19 @@ function CodeEditor:showRanked(ranked, prefix, range)
 	self.suggestionScroll = 0
 
 	self:renderSuggestions()
+
+	KIND_COLORS.Keyword = tokens.color.accent
+	KIND_COLORS.Global = tokens.color.accent
+	KIND_COLORS.Table = tokens.color.warning
+	KIND_COLORS.Function = tokens.color.success
+	KIND_COLORS.Method = tokens.color.success
+	KIND_COLORS.Value = tokens.color.subtext
+	KIND_COLORS.Type = tokens.color.subtext
+	KIND_COLORS.Property = tokens.color.text
+	KIND_COLORS.Member = tokens.color.text
+	KIND_COLORS.Event = tokens.color.warning
+	KIND_COLORS.Instance = tokens.color.text
+	KIND_COLORS.Local = tokens.color.subtext
 end
 
 function CodeEditor:serviceArgumentAt()

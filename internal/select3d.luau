@@ -103,32 +103,6 @@ local function createHud()
 	}, bar)
 
 	local parts = { bar = bar }
-	local order = 0
-
-	local function makeLabel(key, text, color)
-		order += 1
-		local label = editor_ui.label(
-			bar,
-			text,
-			UDim2.fromOffset(0, 0),
-			UDim2.fromOffset(0, HUD_HEIGHT),
-			tokens.type.small,
-			color
-		)
-		label.Name = key
-		label.AutomaticSize = Enum.AutomaticSize.X
-		label.LayoutOrder = order
-		label.ZIndex = HUD_Z + 1
-		parts[key] = label
-		return label
-	end
-
-	makeLabel("mode", "MOVE MODE", colors.accent)
-	makeLabel("snap", "", colors.text)
-
-	for _, hint in ipairs(HUD_HINTS) do
-		makeLabel(hint.key, hint.text, colors.muted)
-	end
 
 	return parts
 end
