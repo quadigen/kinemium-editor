@@ -9,6 +9,7 @@ local Project = game:GetService("Project")
 local dialog = game:GetService("DialogService")
 local export_service = game:GetService("ExportService")
 local filesystem = game:GetService("Filesystem")
+local zip = game:GetService("ZipService")
 local Packages = game:GetService("Packages")
 local util = require("@internal/util")
 
@@ -111,6 +112,67 @@ local function toastMessage(kind, title, message)
 	end)
 end
 
+local function parentDir(path)
+	local index = path:gsub("\\", "/"):match("^.*()/")
+	return index and path:sub(1, index - 1) or ""
+end
+
+local function joinDir(parent, name)
+	local sep = parent:find("\\") and "\\" or "/"
+	local last = parent:sub(-1)
+	if last == "/" or last == "\\" then
+		return parent .. name
+	end
+	return parent .. sep .. name
+end
+
+local function extractZip(ctx, intoSubfolder)
+	local parent = parentDir(ctx.Path)
+	local target = parent
+
+	if intoSubfolder then
+		local stem = ctx.Name:gsub("%.[^%.]*$", "")
+
+		local existing = {}
+		local ok, entries = pcall(function()
+			return Project:GetProjectEntries(parent)
+		end)
+		if ok and type(entries) == "table" then
+			for _, e in ipairs(entries) do
+				existing[string.lower(e.Name)] = true
+			end
+		end
+
+		local name, i = stem, 2
+		while existing[string.lower(name)] do
+			name = string.format("%s (%d)", stem, i)
+			i += 1
+		end
+
+		local created
+		ok, created = pcall(function()
+			return filesystem:CreateFolder(parent, name)
+		end)
+		if not ok or type(created) ~= "string" or created == "" then
+			toastMessage("error", "Extract failed", `Could not create folder {name}.`)
+			return
+		end
+		target = created
+	end
+
+	local ok, result = pcall(function()
+		return zip:ExtractZip(ctx.Path, target)
+	end)
+
+	if ok and result then
+		toastMessage("success", "Extracted", `Extracted {ctx.Name}.`)
+		ctx.Select(target)
+		ctx.Refresh()
+	else
+		toastMessage("error", "Extract failed", `Could not extract {ctx.Name}.`)
+	end
+end
+
 local openImageViewer = ImageViewer.Open
 local viewerBlocksInput = ImageViewer.BlocksInput
 
@@ -177,54 +239,25 @@ registerFileType({
 	name = "ZIP",
 	extensions = { "zip" },
 	icon = "builtin://global-icons/zip.svg",
-	thumbnail = true,
+	thumbnail = false,
 
 	onOpen = function(ctx)
-		openImageViewer(ctx)
-	end,
-
-	onDrop = function(ctx)
-		local parent = selectedObject()
-
-		if parent:IsA("ImageLabel") or parent:IsA("ImageButton") then
-			parent.Image = ctx.Path
-			return
-		end
-
-		if parent == nil then
-			toastMessage("warning", "Nothing selected", "Select an object to drop the image onto.")
-			return
-		end
-
-		local new = Instance.new("ImageLabel")
-		new.Image = ctx.Path
-		new.Parent = parent
+		extractZip(ctx, true)
 	end,
 
 	contextItems = {
-		{ label = "Open in Image Viewer", icon = "builtin://icons/ImageLabel.svg", callback = openImageViewer },
 		{
-			label = "Import as ImageLabel",
-			icon = "builtin://icons/ImageLabel.svg",
+			label = "Extract to Folder",
+			icon = "builtin://global-icons/folder.svg",
 			callback = function(ctx)
-				local parent = selectedObject()
-				if parent then
-					local new = Instance.new("ImageLabel")
-					new.Image = ctx.Path
-					new.Parent = parent
-				end
+				extractZip(ctx, true)
 			end,
 		},
 		{
-			label = "Import as Decal",
-			icon = "builtin://icons/Decal.svg",
+			label = "Extract Here",
+			icon = "builtin://global-icons/folder.svg",
 			callback = function(ctx)
-				local parent = selectedObject()
-				if parent then
-					local new = Instance.new("Decal")
-					new.Image = ctx.Path
-					new.Parent = parent
-				end
+				extractZip(ctx, false)
 			end,
 		},
 	},
@@ -1938,7 +1971,7 @@ return function(content, windowControls)
 	local function safePackageFolderName(value)
 		local name = tostring(value or "")
 
-		name = name:gsub("[\\/:*?\"<>|]", "_")
+		name = name:gsub('[\\/:*?"<>|]', "_")
 		name = name:gsub("%s+$", "")
 		name = name:gsub("%.+$", "")
 
