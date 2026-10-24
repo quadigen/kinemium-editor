@@ -325,7 +325,9 @@ local function createConsole()
 	end
 
 	local function formatTime(timestamp)
-		return DateTime.fromUnixTimestamp(timestamp):FormatLocalTime("HH:mm:ss", "en-us")
+		local seconds = math.floor(tonumber(timestamp) or 0) % 86400
+
+		return string.format("%02d:%02d:%02d", seconds // 3600, (seconds % 3600) // 60, seconds % 60)
 	end
 
 	local function formatValue(value, depth, seen)
