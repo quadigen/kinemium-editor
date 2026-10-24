@@ -1713,7 +1713,13 @@ end
 -- Documents ------------------------------------------------------------------
 
 function CodeEditor:isScriptInstance(instance)
-	return instance ~= nil and (instance:IsA("Script") or instance:IsA("ModuleScript") or instance:IsA("LocalScript"))
+	return instance ~= nil
+		and (
+			instance:IsA("Script")
+			or instance:IsA("PostProcess")
+			or instance:IsA("ModuleScript")
+			or instance:IsA("LocalScript")
+		)
 end
 
 function CodeEditor:tabWidthFor(name)

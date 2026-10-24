@@ -502,7 +502,12 @@ local function addRow(instance, depth, y)
 	row.Activated:Connect(function(input, clickCount)
 		-- double click
 		if clickCount == 2 then
-			if instance:IsA("Script") or instance:IsA("ModuleScript") or instance:IsA("LocalScript") then
+			if
+				instance:IsA("Script")
+				or instance:IsA("ModuleScript")
+				or instance:IsA("LocalScript")
+				or instance:IsA("PostProcess")
+			then
 				viewport.OpenScript(instance)
 			else
 				viewport.CloseAllScripts()
@@ -661,23 +666,18 @@ end)
 
 local function deleteInstance(instance)
 	if isProtected(instance) then
-		print("is protected")
 		return
 	end
 
 	viewport.CloseScript(instance)
-	print(1)
 
 	expanded[instance] = nil
 	renaming = nil
 
-	print(2)
 	selectObject({})
 
-	print(3)
 	instance:Destroy()
 
-	print(4)
 	lastHash = ""
 end
 
