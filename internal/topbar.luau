@@ -326,62 +326,6 @@ local function applyTheme()
 	updateCategoryAppearance()
 end
 
-rebuildFlyout = function()
-	UI.clear(flyout)
-
-	local colors = palette()
-
-	local x = 6
-
-	if #selectedCategory.buttons == 0 then
-		UI.label(
-			flyout,
-			"No tools in this category",
-			UDim2.fromOffset(12, 24),
-			UDim2.new(1, -24, 0, 18),
-			tokens.type.small,
-			colors.muted
-		)
-
-		return
-	end
-
-	for _, definition in ipairs(selectedCategory.buttons) do
-		if definition.type == "separator" then
-			UI.separator(flyout, UDim2.fromOffset(x + 4, 10), UDim2.fromOffset(1, FLYOUT_HEIGHT - 20), colors.border)
-
-			x += 13
-		elseif definition.type == "custom" then
-			local width = definition.width or 100
-
-			local element =
-				definition.create(flyout, colors, UDim2.fromOffset(x, 6), UDim2.fromOffset(width, FLYOUT_HEIGHT - 12))
-
-			if element then
-				element.Name = definition.name or "CustomElement"
-			end
-
-			x += width + 3
-		else
-			UI.TopbarButton(flyout, definition, {
-				position = UDim2.fromOffset(x, 6),
-				size = UDim2.fromOffset(definition.width or 52, FLYOUT_HEIGHT - 12),
-				colors = colors,
-				radius = buttonRadius(),
-				onClick = safeAction(function(item)
-					fireRoute(definition.route)
-
-					if definition.callback then
-						definition.callback(item)
-					end
-				end),
-			})
-
-			x += (definition.width or 52) + 3
-		end
-	end
-end
-
 setExpanded = function(value)
 	expanded = value == true
 
@@ -439,6 +383,79 @@ flyout.Name = "CategoryDropdown"
 flyout.ClipsDescendants = true
 
 flyoutStroke = UI.stroke(flyout, initialColors.border, 1, 0.55)
+
+local flyoutLayout = Instance.new("UIListLayout")
+flyoutLayout.FillDirection = Enum.FillDirection.Horizontal
+flyoutLayout.SortOrder = Enum.SortOrder.LayoutOrder
+flyoutLayout.VerticalAlignment = Enum.VerticalAlignment.Center
+flyoutLayout.HorizontalAlignment = Enum.HorizontalAlignment.Left
+flyoutLayout.Padding = UDim.new(0, 3)
+flyoutLayout.Parent = flyout
+
+local flyoutPadding = Instance.new("UIPadding")
+flyoutPadding.PaddingLeft = UDim.new(0, 6)
+flyoutPadding.Parent = flyout
+
+local flyoutKeep = {
+	[flyoutLayout] = true,
+	[flyoutPadding] = true,
+	[flyoutStroke] = true,
+}
+
+rebuildFlyout = function()
+	UI.clear(flyout, flyoutKeep)
+
+	local colors = palette()
+
+	if #selectedCategory.buttons == 0 then
+		UI.label(
+			flyout,
+			"No tools in this category",
+			UDim2.new(),
+			UDim2.new(1, -24, 0, 18),
+			tokens.type.small,
+			colors.muted
+		)
+
+		return
+	end
+
+	for _, definition in ipairs(selectedCategory.buttons) do
+		if definition.type == "separator" then
+			-- transparent holder so the layout can space the 1px line
+			local holder = UI.create("Frame", {
+				Name = "Separator",
+				Size = UDim2.fromOffset(10, FLYOUT_HEIGHT - 20),
+				BackgroundTransparency = 1,
+				BorderSizePixel = 0,
+			}, flyout)
+
+			UI.separator(holder, UDim2.fromOffset(4, 0), UDim2.new(0, 1, 1, 0), colors.border)
+		elseif definition.type == "custom" then
+			local width = definition.width or 100
+
+			local element = definition.create(flyout, colors, UDim2.new(), UDim2.fromOffset(width, FLYOUT_HEIGHT - 12))
+
+			if element then
+				element.Name = definition.name or "CustomElement"
+			end
+		else
+			UI.TopbarButton(flyout, definition, {
+				position = UDim2.new(),
+				size = UDim2.fromOffset(definition.width or 52, FLYOUT_HEIGHT - 12),
+				colors = colors,
+				radius = buttonRadius(),
+				onClick = safeAction(function(item)
+					fireRoute(definition.route)
+
+					if definition.callback then
+						definition.callback(item)
+					end
+				end),
+			})
+		end
+	end
+end
 
 local headerX = 35
 
