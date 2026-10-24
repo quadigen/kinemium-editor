@@ -710,6 +710,88 @@ registerAdapter("Vector2", {
 	end,
 })
 
+local axisColors = {
+	X = Color3.fromRGB(232, 84, 74),
+	Y = Color3.fromRGB(104, 196, 84),
+	Z = Color3.fromRGB(66, 133, 244),
+}
+
+local RESET_SPACE = 24
+local BADGE_WIDTH = 16
+
+local originals = setmetatable({}, { __mode = "k" })
+
+local function originalValue(object, name, current)
+	originals[object] = originals[object] or {}
+
+	if originals[object][name] == nil then
+		originals[object][name] = current
+	end
+
+	return originals[object][name]
+end
+
+local function axisField(row, axis, value, index, count, line)
+	line = line or 0
+
+	local slotScale = 0.55 / count
+	local xScale = 0.45 + slotScale * (index - 1)
+	local y = 2 + line * PROPERTY_HEIGHT
+
+	local badge = UI.frame(
+		row,
+		UDim2.new(xScale, 6, 0, y),
+		UDim2.fromOffset(BADGE_WIDTH, 18),
+		axisColors[axis:sub(1, 1)] or tokens.color.accent,
+		tokens.radius.xs
+	)
+
+	UI.create("TextLabel", {
+		Size = UDim2.fromScale(1, 1),
+		BackgroundTransparency = 1,
+		Text = axis:sub(1, 1),
+		TextSize = tokens.type.caption,
+		TextColor3 = Color3.new(1, 1, 1),
+		TextXAlignment = Enum.TextXAlignment.Center,
+		TextYAlignment = Enum.TextYAlignment.Center,
+	}, badge)
+
+	return valueField(row, formatNumber(value), {
+		position = UDim2.new(xScale, 6 + BADGE_WIDTH + 2, 0, y),
+		size = UDim2.new(slotScale, -(6 + BADGE_WIDTH + 4 + RESET_SPACE / count), 0, 18),
+	})
+end
+
+local function resetButton(row, line, onClick)
+	local y = 2 + (line or 0) * PROPERTY_HEIGHT
+
+	local button = UI.button(row, "↺", UDim2.new(1, -(RESET_SPACE - 2), 0, y), UDim2.fromOffset(18, 18), onClick, {
+		color = tokens.color.panel,
+		hoverColor = tokens.color.hover,
+		textSize = tokens.type.small,
+		textColor = tokens.color.muted,
+		textY = 1,
+		paddingX = 0,
+		radius = tokens.radius.xs,
+		border = false,
+	})
+
+	button.Visible = false
+
+	return button
+end
+
+local function rowSubLabel(row, text, line)
+	UI.label(
+		row,
+		text,
+		UDim2.fromOffset(7, 3 + line * PROPERTY_HEIGHT),
+		UDim2.new(0.45, -8, 0, 17),
+		tokens.type.caption,
+		colors.subtext
+	)
+end
+
 local vector3Adapter = {
 	height = PROPERTY_HEIGHT,
 
@@ -719,39 +801,39 @@ local vector3Adapter = {
 		end
 
 		local value = property.value
+		local original = originalValue(object, property.name, value)
 
-		local xField = componentField(row, "X", value.X, 1, 3)
+		local xField = axisField(row, "X", value.X, 1, 3)
+		local yField = axisField(row, "Y", value.Y, 2, 3)
+		local zField = axisField(row, "Z", value.Z, 3, 3)
 
-		local yField = componentField(row, "Y", value.Y, 2, 3)
+		local reset = resetButton(row, 0, function()
+			setProperty(object, property.name, original)
+		end)
+		reset.Visible = value ~= original
 
-		local zField = componentField(row, "Z", value.Z, 3, 3)
+		watchComponentFields({ xField, yField, zField }, object, property.name, function()
+			local x = parseComponent(xField.Text)
+			local y = parseComponent(yField.Text)
+			local z = parseComponent(zField.Text)
 
-		watchComponentFields(
-			{
-				xField,
-				yField,
-				zField,
-			},
-			object,
-			property.name,
-			function()
-				local x = parseComponent(xField.Text)
-
-				local y = parseComponent(yField.Text)
-
-				local z = parseComponent(zField.Text)
-
-				if x == nil or y == nil or z == nil then
-					return nil
-				end
-
-				return Vector3.new(x, y, z)
+			if x == nil or y == nil or z == nil then
+				return nil
 			end
-		)
 
-		return componentController({ xField, yField, zField }, function(newValue)
+			return Vector3.new(x, y, z)
+		end)
+
+		local fields = componentController({ xField, yField, zField }, function(newValue)
 			return { formatNumber(newValue.X), formatNumber(newValue.Y), formatNumber(newValue.Z) }
 		end)
+
+		return {
+			refresh = function(newValue)
+				fields.refresh(newValue)
+				reset.Visible = newValue ~= original
+			end,
+		}
 	end,
 }
 
@@ -991,18 +1073,27 @@ registerAdapter("CFrame", {
 		end
 
 		local value = property.value
+		local original = originalValue(object, property.name, value)
+
 		local rx, ry, rz = value:ToOrientation()
 		rx, ry, rz = math.deg(rx), math.deg(ry), math.deg(rz)
 
-		local fields = {
-			componentField(row, "X", value.X, 1, 3, 0),
-			componentField(row, "Y", value.Y, 2, 3, 0),
-			componentField(row, "Z", value.Z, 3, 3, 0),
+		rowSubLabel(row, "Rotation", 1)
 
-			componentField(row, "RX", rx, 1, 3, 1),
-			componentField(row, "RY", ry, 2, 3, 1),
-			componentField(row, "RZ", rz, 3, 3, 1),
+		local fields = {
+			axisField(row, "X", value.X, 1, 3, 0),
+			axisField(row, "Y", value.Y, 2, 3, 0),
+			axisField(row, "Z", value.Z, 3, 3, 0),
+
+			axisField(row, "X", rx, 1, 3, 1),
+			axisField(row, "Y", ry, 2, 3, 1),
+			axisField(row, "Z", rz, 3, 3, 1),
 		}
+
+		local reset = resetButton(row, 0, function()
+			setProperty(object, property.name, original)
+		end)
+		reset.Visible = value ~= original
 
 		watchComponentFields(fields, object, property.name, function()
 			local v = {}
@@ -1027,13 +1118,13 @@ registerAdapter("CFrame", {
 			if rotationEdited then
 				rotation = CFrame.fromOrientation(math.rad(v[4]), math.rad(v[5]), math.rad(v[6]))
 			else
-				rotation = CFrame.new(-current.Position) * current -- rotation only
+				rotation = CFrame.new(-current.Position) * current
 			end
 
 			return CFrame.new(v[1], v[2], v[3]) * rotation
 		end)
 
-		return componentController(fields, function(newValue)
+		local controller = componentController(fields, function(newValue)
 			local a, b, c = newValue:ToOrientation()
 			return {
 				formatNumber(newValue.X),
@@ -1044,6 +1135,13 @@ registerAdapter("CFrame", {
 				formatNumber(math.deg(c)),
 			}
 		end)
+
+		return {
+			refresh = function(newValue)
+				controller.refresh(newValue)
+				reset.Visible = newValue ~= original
+			end,
+		}
 	end,
 })
 
