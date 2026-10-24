@@ -657,18 +657,23 @@ end)
 
 local function deleteInstance(instance)
 	if isProtected(instance) then
+		print("is protected")
 		return
 	end
 
 	viewport.CloseScript(instance)
+	print(1)
 
 	expanded[instance] = nil
 	renaming = nil
 
+	print(2)
 	selectObject({})
 
+	print(3)
 	instance:Destroy()
 
+	print(4)
 	lastHash = ""
 end
 
