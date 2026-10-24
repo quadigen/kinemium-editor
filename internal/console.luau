@@ -325,17 +325,7 @@ local function createConsole()
 	end
 
 	local function formatTime(timestamp)
-		local ok, text = pcall(function()
-			return DateTime.fromUnixTimestamp(timestamp):FormatLocalTime("HH:mm:ss", "en-us")
-		end)
-
-		if ok and type(text) == "string" then
-			return text
-		end
-
-		local seconds = math.floor(tonumber(timestamp) or 0) % 86400
-
-		return string.format("%02d:%02d:%02d", seconds // 3600, (seconds % 3600) // 60, seconds % 60)
+		return DateTime.fromUnixTimestamp(timestamp):FormatLocalTime("HH:mm:ss", "en-us")
 	end
 
 	local function formatValue(value, depth, seen)
@@ -503,28 +493,6 @@ local function createConsole()
 			submitCommand()
 		end
 	end)
-
-	do
-		local ok, UserInputService = pcall(function()
-			return game:GetService("UserInputService")
-		end)
-
-		if ok and UserInputService then
-			UserInputService.InputBegan:Connect(function(input)
-				if not command:IsFocused() or #commandHistory == 0 then
-					return
-				end
-
-				if input.KeyCode == Enum.KeyCode.Up then
-					historyIndex = math.max(1, historyIndex - 1)
-					command.Text = commandHistory[historyIndex] or ""
-				elseif input.KeyCode == Enum.KeyCode.Down then
-					historyIndex = math.min(#commandHistory + 1, historyIndex + 1)
-					command.Text = commandHistory[historyIndex] or ""
-				end
-			end)
-		end
-	end
 
 	local elapsed = 0
 
