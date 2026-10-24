@@ -929,8 +929,14 @@ openContextMenu = function(instance, screenPoint)
 			end,
 		}
 
-		local controller =
-			UI.contextMenu(content, "", UDim2.fromOffset(-400, -400), UDim2.fromOffset(1, 1), nil, contextMenuOptions)
+		local controller = UI.contextMenu(
+			UI.contextMenuOverlay(),
+			"",
+			UDim2.fromOffset(-400, -400),
+			UDim2.fromOffset(1, 1),
+			nil,
+			contextMenuOptions
+		)
 
 		contextMenu = controller
 	end
@@ -1050,7 +1056,7 @@ local function beginDragVisual()
 		BorderSizePixel = 0,
 		Active = false,
 		ZIndex = 5000,
-	}, UI.root())
+	}, UI.widgetOverlay())
 
 	UI.corner(dragLayer, tokens.radius.sm)
 
