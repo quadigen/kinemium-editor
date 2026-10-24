@@ -9,7 +9,7 @@ local RunService = game:GetService("RunService")
 
 local CHEVRON = "builtin://global-icons/chevron-down.svg"
 
-local UI = require("@internal/editor_ui")
+local UI = require("./editor_ui")
 local colors = UI.tokens.color
 
 local VOXEL = 4
@@ -79,12 +79,6 @@ local strokeId = 0
 local painting = false
 local lastPos, lastTime = nil, 0
 
-local gui = Instance.new("ScreenGui")
-gui.Name = "TerrainEditor"
-gui.RenderOnTop = true
-gui.Parent = game.CoreGui
-UI.trackRoot(gui)
-
 local panel, content = UI.window("Terrain", UDim2.fromOffset(120, 120), UDim2.fromOffset(320, 480), "Terrain", {
 	closable = true,
 })
@@ -92,7 +86,7 @@ content.BackgroundTransparency = 1
 panel.Visible = false
 panel.BackgroundTransparency = 0.5
 panel.ClipsDescendants = true
-panel.Parent = gui
+panel.Parent = UI.widgetOverlay()
 
 UI.backdrop(panel, 15, Color3.new(0, 0, 0))
 
