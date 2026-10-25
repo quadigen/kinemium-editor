@@ -9,3 +9,4 @@ part2.Parent = workspace
 local weld = Instance.new("WeldConstraint")
 weld.Part0 = part1
 weld.Part1 = part2
+weld.Parent = workspace
