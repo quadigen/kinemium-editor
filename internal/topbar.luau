@@ -24,8 +24,9 @@ local root = UI.widgetOverlay()
 local tokens = UI.tokens
 
 local FLYOUT_HEIGHT = 70
-local FLYOUT_GAP = 5
-local FLYOUT_BOTTOM_PADDING = 5
+
+local FLYOUT_GAP = 0
+local FLYOUT_BOTTOM_PADDING = 0
 
 local expanded = true
 local selectedCategory
@@ -37,8 +38,8 @@ local topbarStroke
 local headerSurface
 local headerBottomFill
 local logoPlate
+local headerLine
 local flyout
-local flyoutStroke
 local collapseButton
 local collapseIcon
 
@@ -238,9 +239,9 @@ local function updateTopbarGeometry()
 
 	headerSurface.Size = UDim2.new(1, 0, 0, headerHeight)
 
-	flyout.Position = UDim2.fromOffset(5, headerHeight + FLYOUT_GAP)
+	flyout.Position = UDim2.fromOffset(0, headerHeight + FLYOUT_GAP)
 
-	flyout.Size = UDim2.new(1, -10, 0, FLYOUT_HEIGHT)
+	flyout.Size = UDim2.new(1, 0, 0, FLYOUT_HEIGHT)
 
 	flyout.Visible = expanded
 end
@@ -286,10 +287,8 @@ local function applyTheme()
 
 	topbarStroke.Transparency = 0.45
 
-	if flyoutStroke then
-		flyoutStroke.Color = colors.border
-
-		flyoutStroke.Transparency = 0.55
+	if headerLine then
+		headerLine.BackgroundColor3 = tokens.color.border
 	end
 
 	if collapseButton then
@@ -348,6 +347,8 @@ headerBottomFill = UI.frame(
 	initialColors.panel
 )
 
+headerLine = UI.frame(headerSurface, UDim2.new(0, 8, 1, -1), UDim2.new(1, -16, 0, 1), tokens.color.border)
+
 logoPlate =
 	UI.frame(headerSurface, UDim2.fromOffset(5, 4), UDim2.fromOffset(25, 25), initialColors.surface, buttonRadius())
 
@@ -355,17 +356,15 @@ logoPlate.Name = "Logo"
 
 UI.image(logoPlate, "builtin://global-icons/KinemiumWhite.png", UDim2.fromOffset(2, 2), UDim2.fromOffset(21, 21))
 
-flyout = UI.group(topbar, UDim2.fromOffset(5, baseHeaderHeight() + FLYOUT_GAP), UDim2.new(1, -10, 0, FLYOUT_HEIGHT), {
+flyout = UI.group(topbar, UDim2.fromOffset(0, baseHeaderHeight() + FLYOUT_GAP), UDim2.new(1, 0, 0, FLYOUT_HEIGHT), {
 	color = initialColors.surface,
 
-	radius = windowRadius(),
+	radius = 0,
 })
 
 flyout.Name = "CategoryDropdown"
 
 flyout.ClipsDescendants = true
-
-flyoutStroke = UI.stroke(flyout, initialColors.border, 1, 0.55)
 
 rebuildFlyout = function()
 	local page = toolbarTabs and toolbarTabs.pages[selectedCategory.name]
@@ -493,7 +492,7 @@ menuBar, menuBarController = UI.menuBar(headerSurface, UDim2.fromOffset(headerX,
 	menuWidth = 200,
 })
 
-headerX += menuBarController:GetWidth() + 6
+headerX += menuBarController:GetWidth() + 10
 
 local tabDefinitions = {}
 
@@ -516,13 +515,13 @@ _, toolbarTabs = UI.tabs(nil, nil, nil, {
 	contentFrame = flyout,
 	startX = headerX,
 
-	barHeight = 28,
+	barHeight = baseHeaderHeight(),
 	tabTop = 4,
 	tabGap = 2,
 	tabPaddingX = 8,
 	tabRadius = buttonRadius(),
 	tabTextSize = tokens.type.small,
-	tabFilletRadius = 0,
+	tabFilletRadius = 8,
 
 	barColor = initialColors.panel,
 	contentColor = initialColors.surface,
