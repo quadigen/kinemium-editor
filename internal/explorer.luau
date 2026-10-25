@@ -1177,12 +1177,44 @@ UserInputService.InputEnded:Connect(function(input: InputObject)
 	animateDrop(drag.target ~= nil)
 end)
 
+local function createInstance(className)
+	local parent = selectedObject() or workspace
+
+	local ok, object = pcall(Instance.new, className)
+
+	if not ok or not object then
+		return
+	end
+
+	object.Name = className
+	object.Parent = parent
+
+	expanded[parent] = true
+
+	selectObject({ object })
+	lastHash = ""
+end
+
 UserInputService.InputBegan:Connect(function(input: InputObject, gameProcessed: boolean)
 	if gameProcessed then
 		return
 	end
 
 	local typing = UserInputService:GetFocusedTextBox() ~= nil
+
+	if input.KeyCode == Enum.KeyCode.KeypadEnter then
+		if gameProcessed or typing or not explorerTabActive() then
+			return
+		end
+
+		local firstClass = classItems[1]
+
+		if firstClass then
+			createInstance(firstClass.value)
+		end
+
+		return
+	end
 
 	if input.UserInputType == Enum.UserInputType.MouseButton2 then
 		if not mouseInList() then
@@ -1201,9 +1233,6 @@ UserInputService.InputBegan:Connect(function(input: InputObject, gameProcessed: 
 			commitRename()
 		end
 
-		-- A mouse InputObject carries no meaningful KeyCode. Without this guard
-		-- the click falls through to the keyboard handling below and can match
-		-- Delete/Backspace, destroying the selected object on every click.
 		return
 	end
 
@@ -1211,8 +1240,6 @@ UserInputService.InputBegan:Connect(function(input: InputObject, gameProcessed: 
 		return
 	end
 
-	-- The Files tab registers its own keyboard handling for the same window, so
-	-- only the selected tab may consume keys.
 	if not explorerTabActive() then
 		return
 	end
