@@ -690,6 +690,7 @@ RunService.RenderStepped:Connect(function()
 
 	local cf = visible and brushCFrame() or nil
 	local show = cf ~= nil and cfg.showPreview and not overUI()
+	local isOverUI = overUI()
 
 	for shape, p in pairs(previews) do
 		local active = show and shape == cfg.shape
@@ -700,6 +701,12 @@ RunService.RenderStepped:Connect(function()
 		end
 
 		p.highlight.Enabled = active
+
+		if isOverUI then
+			p.highlight.Enabled = false
+		else
+			p.highlight.Enabled = true
+		end
 	end
 
 	if not cf then

@@ -90,27 +90,27 @@ return {
 				layout.Padding = UDim.new(0, 5)
 				layout.Parent = container
 
-				for _, button in pairs(buttons) do
-					local new = UI.TopbarButton(container, button, {
+				local controllers = {}
+
+				for index, button in ipairs(buttons) do
+					local new, _, controller = UI.TopbarButton(container, button, {
 						position = UDim2.fromOffset(0, 0),
 						size = UDim2.new(0, 52, 1, 0),
 						colors = colors,
-						hoveringEnabled = false,
 						radius = tokens.radius.sm,
 					})
+
+					new.LayoutOrder = index
+					table.insert(controllers, controller)
 
 					new.MouseButton1Click:Connect(function()
 						if button.callback then
 							button.callback()
 						end
 
-						for _, otherButton in pairs(container:GetChildren()) do
-							if otherButton:IsA("TextButton") then
-								otherButton.BackgroundColor3 = colors.surface
-							end
+						for _, other in ipairs(controllers) do
+							other:SetSelected(other == controller, true)
 						end
-
-						new.BackgroundColor3 = colors.accent
 					end)
 				end
 			end,
