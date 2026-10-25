@@ -111,7 +111,7 @@ local function updateGizmos()
 
 	handles.Adornee = adornee
 	arcHandles.Adornee = adornee
-	handles.Visible = is3D and adornee ~= nil and activeTool ~= "Paint" and activeTool ~= "Rotate"
+	handles.Visible = is3D and adornee ~= nil and (activeTool == "Move" or activeTool == "Size")
 	arcHandles.Visible = is3D and adornee ~= nil and activeTool == "Rotate"
 
 	if activeTool == "Move" then
@@ -227,6 +227,24 @@ if PlaytestService["StartSinglePlayer"] then
 	end)
 end
 
+local uiEditor = UIEditor.new({
+	overlay = viewportOverlay,
+	canPick = true,
+	clearOnEmpty = renderer.Dimension == "2D",
+	contextOnEmpty = renderer.Dimension == "2D",
+	getTool = function()
+		return activeTool
+	end,
+	getSnap = function()
+		return snapEnabled
+	end,
+	snapStep = 4,
+	rotateSnap = 15,
+	smoothDrag = true,
+	guides = true,
+	shortcuts = true,
+})
+
 local toolbar = UI.group(
 	viewportOverlay,
 	UDim2.fromOffset(renderer.Dimension == "2D" and 22 or 8, 8),
@@ -318,24 +336,6 @@ local function updateTools()
 		UI.setButtonState(record, active and "accent" or "default")
 	end
 end
-
-local uiEditor = UIEditor.new({
-	overlay = viewportOverlay,
-	canPick = true,
-	clearOnEmpty = renderer.Dimension == "2D",
-	contextOnEmpty = renderer.Dimension == "2D",
-	getTool = function()
-		return activeTool
-	end,
-	getSnap = function()
-		return snapEnabled
-	end,
-	snapStep = 4,
-	rotateSnap = 15,
-	smoothDrag = true,
-	guides = true,
-	shortcuts = true,
-})
 
 for index, definition in ipairs(renderer.Dimension == "2D" and tools2D or tools3D) do
 	local current = definition
@@ -669,8 +669,9 @@ return {
 		end
 	end,
 
-	ActivateTool = function(tool: "size" | "rotate" | "position")
+	ActivateTool = function(tool: "select" | "size" | "rotate" | "position")
 		local tools = {
+			select = "Select",
 			size = "Size",
 			rotate = "Rotate",
 			position = "Move",

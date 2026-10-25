@@ -44,7 +44,7 @@ return {
 		{
 			name = "3d_actions",
 			type = "custom",
-			width = 208,
+			width = 223,
 			create = function(parent, colors, position, size)
 				local selectedTool = "select"
 				local buttons = {
@@ -100,6 +100,10 @@ return {
 					})
 
 					new.MouseButton1Click:Connect(function()
+						if button.callback then
+							button.callback()
+						end
+
 						for _, otherButton in pairs(container:GetChildren()) do
 							if otherButton:IsA("TextButton") then
 								otherButton.BackgroundColor3 = colors.surface

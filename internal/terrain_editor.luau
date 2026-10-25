@@ -612,8 +612,12 @@ local function tryApply(cf)
 	end
 end
 
-mouse.Button1Down:Connect(function()
-	if not panel.Visible or overUI() then
+UserInputService.InputBegan:Connect(function(input, processed)
+	if input.UserInputType ~= Enum.UserInputType.MouseButton1 then
+		return
+	end
+
+	if processed or not panel.Visible or overUI() then
 		return
 	end
 
@@ -631,8 +635,10 @@ mouse.Button1Down:Connect(function()
 	tryApply(cf)
 end)
 
-mouse.Button1Up:Connect(function()
-	painting = false
+UserInputService.InputEnded:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseButton1 then
+		painting = false
+	end
 end)
 
 local function scaleBrush(factor)
