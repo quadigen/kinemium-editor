@@ -240,56 +240,62 @@ for _, item in ipairs(classItems) do
 	end
 end
 
-local dropdown = UI.dropdown(content, "", UDim2.new(1, -32, 0, 6), UDim2.fromOffset(26, UI.metrics.inputHeight), nil, {
-	items = classItems,
-	categories = categories,
+local dropdown, label, ctrl =
+	UI.dropdown(content, "", UDim2.new(1, -32, 0, 6), UDim2.fromOffset(26, UI.metrics.inputHeight), nil, {
+		items = classItems,
+		categories = categories,
 
-	searchPlaceholder = "Search classes...",
+		searchPlaceholder = "Search classes...",
 
-	icon = "builtin://icons/Plus.svg",
-	iconSize = 14,
-	backdrop = true,
+		icon = "builtin://icons/Plus.svg",
+		iconSize = 14,
+		backdrop = true,
 
-	color = tokens.color.input,
-	hoverColor = tokens.color.hover,
-	closeOnOutsideClick = false,
-	menuWidth = 190,
-	menuSide = "left",
-	itemBgTransparency = 1,
-	BackgroundTransparency = 0.5,
-	menuPosition = function()
-		local coordinates = theme.ExplorerCoordinates
+		color = tokens.color.input,
+		hoverColor = tokens.color.hover,
+		closeOnOutsideClick = false,
+		menuWidth = 190,
+		menuSide = "left",
+		itemBgTransparency = 1,
+		BackgroundTransparency = 0.5,
+		menuPosition = function()
+			local coordinates = theme.ExplorerCoordinates
 
-		return UDim2.new(
-			coordinates.Position.X.Scale,
-			coordinates.Position.X.Offset - 196,
-			coordinates.Position.Y.Scale,
-			coordinates.Position.Y.Offset + 5 + UI.metrics.windowHeader + 6
-		)
-	end,
+			return UDim2.new(
+				coordinates.Position.X.Scale,
+				coordinates.Position.X.Offset - 196,
+				coordinates.Position.Y.Scale,
+				coordinates.Position.Y.Offset + 5 + UI.metrics.windowHeader + 6
+			)
+		end,
 
-	maxVisibleItems = 10,
-	itemHeight = UI.metrics.inputHeight,
+		maxVisibleItems = 10,
+		itemHeight = UI.metrics.inputHeight,
 
-	onChanged = function(className)
-		local parent = selectedObject() or workspace
+		onChanged = function(className)
+			local parent = selectedObject() or workspace
 
-		local ok, object = pcall(Instance.new, className)
+			local ok, object = pcall(Instance.new, className)
 
-		if not ok or not object then
-			return
-		end
+			if not ok or not object then
+				return
+			end
 
-		object.Name = className
-		object.Parent = parent
+			object.Name = className
+			object.Parent = parent
 
-		expanded[parent] = true
+			expanded[parent] = true
 
-		selectObject({
-			object,
-		})
-	end,
-})
+			selectObject({
+				object,
+			})
+		end,
+	})
+
+dropdown.MouseButton1Click:Connect(function()
+	print("hello world")
+	print(ctrl.SearchBox)
+end)
 
 local serviceOrder = {
 	Workspace = 1,

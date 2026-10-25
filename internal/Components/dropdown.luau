@@ -29,7 +29,6 @@ return function(ctx)
 			active.menu:Destroy()
 		end
 
-		-- lets the trigger button animate its chevron / border back to closed
 		if active.wake then
 			active.wake()
 		end
@@ -545,6 +544,7 @@ return function(ctx)
 					)
 
 					search.ZIndex = (options.menuZIndex or 100000) + 1
+					controller.SearchBox = search
 				end
 
 				local list = UI.create("ScrollingFrame", {

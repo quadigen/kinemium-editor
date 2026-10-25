@@ -70,6 +70,7 @@ local viewportOverlay = UI.frame(rootOverlay, getViewportPosition(), getViewport
 
 viewportOverlay.Name = "ViewportOverlay"
 viewportOverlay.BackgroundTransparency = 1
+viewportOverlay.ClipsDescendants = true
 
 local dropHighlight = UI.frame(viewportOverlay, UDim2.fromOffset(0, 0), UDim2.fromScale(1, 1), colors.accent)
 
