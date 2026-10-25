@@ -1,11 +1,8 @@
-local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 
 return function(ctx)
 	local UI = ctx.UI
 	local shared = ctx.shared
-	local colors = UI.tokens.color
-	local tooltipSmoothTowards = ctx.tooltipSmoothTowards
 
 	function UI.window(name, position, size, title, options)
 		options = options or {}
@@ -21,18 +18,13 @@ return function(ctx)
 		local hasTabs = #tabs > 0
 
 		local headerHeight = options.headerHeight or 30
-		local tabGap = options.tabGap or 2
 		local tabTop = options.tabTop or 4
 		local tabPaddingX = options.tabPaddingX or 12
 		local tabRadius = options.tabRadius or UI.tokens.radius.sm
-		local tabSpeed = options.tabSpeed or 18
 
 		local headerColor = options.headerColor or colors.panelRaised
 		local contentColor = options.contentColor or colors.panel
 
-		-- Radius of the concave "submerged" corners where the active tab meets the content.
-		-- Set options.tabFilletRadius = 0 to disable. Keep titleX >= this value so the
-		-- left fillet isn't clipped by the header.
 		local filletRadius = options.tabFilletRadius or 8
 
 		local panel = UI.frame(UI.root(), position, size, colors.panel, radius)
@@ -66,91 +58,29 @@ return function(ctx)
 		header.ClipsDescendants = true
 
 		UI.frame(header, UDim2.new(0, 0, 1, -radius), UDim2.new(1, 0, 0, radius), headerColor)
-
 		UI.frame(header, UDim2.new(0, 8, 1, -1), UDim2.new(1, -16, 0, 1), colors.border)
 
 		local tabHeight = headerHeight - tabTop
-		local activeTabColor = options.activeTabColor or contentColor
-		local inactiveTabColor = options.inactiveTabColor or headerColor
-		local tabHoverColor = options.tabHoverColor or colors.hover
-
-		local activeText = options.activeTabTextColor or colors.text
-		local inactiveText = options.inactiveTabTextColor or colors.muted
-
 		local titleTab = nil
 		local titleText = tostring(title or name)
-
 		local titleLabel
-
-		local indicator = nil
-
-		-- Builds one concave corner. A square in the tab color sits just outside the
-		-- tab's bottom corner; a header-colored circle centered on the square's outer
-		-- top corner is clipped by the square, so only a quarter shows and carves
-		-- the concave curve.
-		local function makeFillet(parent, side, color)
-			local isLeft = side == "left"
-
-			local square = UI.frame(
-				parent,
-				isLeft and UDim2.new(0, -filletRadius, 1, -filletRadius) or UDim2.new(1, 0, 1, -filletRadius),
-				UDim2.fromOffset(filletRadius, filletRadius),
-				color,
-				0
-			)
-
-			square.Name = isLeft and "FilletLeft" or "FilletRight"
-			square.ClipsDescendants = true
-
-			local circle = UI.frame(
-				square,
-				isLeft and UDim2.fromOffset(-filletRadius, -filletRadius) or UDim2.fromOffset(0, -filletRadius),
-				UDim2.fromOffset(filletRadius * 2, filletRadius * 2),
-				headerColor,
-				filletRadius
-			)
-
-			circle.Name = "Cutout"
-
-			return square
-		end
-
-		local function makeTabShape(parent, pos, sz, color)
-			local shape = UI.frame(parent, pos, sz, color, tabRadius)
-			shape.ClipsDescendants = false
-
-			local fill = UI.frame(shape, UDim2.new(0, 0, 1, -tabRadius), UDim2.new(1, 0, 0, tabRadius), color, 0)
-			fill.Name = "BottomFill"
-
-			if options.tabAccentColor then
-				local accent = UI.frame(
-					shape,
-					UDim2.fromOffset(tabRadius + 2, 0),
-					UDim2.new(1, -(tabRadius + 2) * 2, 0, 2),
-					options.tabAccentColor,
-					1
-				)
-				accent.Name = "ActiveAccent"
-			end
-
-			if filletRadius > 0 then
-				makeFillet(shape, "left", color)
-				makeFillet(shape, "right", color)
-			end
-
-			return shape
-		end
 
 		if not hasTabs then
 			local function titleWidth(text)
 				return options.titleTabWidth or (#text * 7 + tabPaddingX * 2)
 			end
 
-			titleTab = makeTabShape(
+			titleTab = UI.tabShape(
 				header,
 				UDim2.fromOffset(titleX, tabTop),
 				UDim2.fromOffset(titleWidth(titleText), tabHeight),
-				activeTabColor
+				options.activeTabColor or contentColor,
+				{
+					radius = tabRadius,
+					filletRadius = filletRadius,
+					barColor = headerColor,
+					accentColor = options.tabAccentColor,
+				}
 			)
 
 			titleTab.Name = "TitleTab"
@@ -174,12 +104,6 @@ return function(ctx)
 			titleLabel =
 				UI.label(header, titleText, UDim2.fromOffset(titleX, 0), UDim2.fromOffset(0, 0), 12, colors.text)
 			titleLabel.Visible = false
-
-			indicator =
-				makeTabShape(header, UDim2.fromOffset(titleX, tabTop), UDim2.fromOffset(0, tabHeight), activeTabColor)
-
-			indicator.Name = "TabIndicator"
-			indicator.Visible = false
 		end
 
 		titleLabel.Name = "Title"
@@ -230,8 +154,6 @@ return function(ctx)
 			)
 
 			dragHandle.Name = "DragHandle"
-
-			local UserInputService = game:GetService("UserInputService")
 
 			local dragging = false
 			local dragStartX, dragStartY = 0, 0
@@ -293,10 +215,7 @@ return function(ctx)
 			table.insert(
 				connections,
 				UserInputService.InputEnded:Connect(function(input)
-					if
-						input.UserInputType == Enum.UserInputType.MouseButton1
-						or input.UserInputType == Enum.UserInputType.Touch
-					then
+					if isPointer(input) then
 						dragging = false
 						startPos = nil
 
@@ -312,244 +231,50 @@ return function(ctx)
 			end)
 		end
 
-		local tabButtons = {}
-		local pages = {}
-		local selectedTab = nil
-
-		local contentY = headerHeight
-
-		local content = UI.frame(panel, UDim2.fromOffset(0, contentY), UDim2.new(1, 0, 1, -contentY), contentColor)
+		local content =
+			UI.frame(panel, UDim2.fromOffset(0, headerHeight), UDim2.new(1, 0, 1, -headerHeight), contentColor)
 
 		content.Name = "Content"
 		content.ClipsDescendants = true
 
-		local controller = {}
-
-		local function getTabName(tab)
-			if type(tab) == "table" then
-				return tab.name or tab.id or tab.text or "Tab"
-			end
-
-			return tostring(tab)
-		end
-
-		local function getTabText(tab)
-			if type(tab) == "table" then
-				return tab.text or tab.title or tab.name or tab.id or "Tab"
-			end
-
-			return tostring(tab)
-		end
-
-		local anim = {
-			x = titleX,
-			w = 0,
-			running = false,
-			snap = false,
-		}
-
-		local function wake()
-			anim.running = true
-		end
-
-		local function step(dt)
-			if not anim.running then
-				return
-			end
-
-			local moving = false
-
-			for tabName, data in pairs(tabButtons) do
-				local active = tabName == selectedTab
-
-				local activeTarget = active and 1 or 0
-				local hoverTarget = (data.hovered and not active) and 1 or 0
-
-				if anim.snap then
-					data.activeAlpha = activeTarget
-					data.hoverAlpha = hoverTarget
-				else
-					data.activeAlpha = tooltipSmoothTowards(data.activeAlpha, activeTarget, tabSpeed, dt)
-					data.hoverAlpha = tooltipSmoothTowards(data.hoverAlpha, hoverTarget, tabSpeed, dt)
-				end
-
-				if math.abs(data.activeAlpha - activeTarget) < 0.005 then
-					data.activeAlpha = activeTarget
-				else
-					moving = true
-				end
-
-				if math.abs(data.hoverAlpha - hoverTarget) < 0.005 then
-					data.hoverAlpha = hoverTarget
-				else
-					moving = true
-				end
-
-				data.label.TextColor3 = inactiveText:Lerp(activeText, data.activeAlpha)
-				data.button.BackgroundTransparency = 1 - data.hoverAlpha
-			end
-
-			local current = selectedTab and tabButtons[selectedTab]
-
-			if current and indicator then
-				indicator.Visible = true
-
-				if anim.snap then
-					anim.x, anim.w = current.x, current.width
-				else
-					anim.x = tooltipSmoothTowards(anim.x, current.x, tabSpeed, dt)
-					anim.w = tooltipSmoothTowards(anim.w, current.width, tabSpeed, dt)
-				end
-
-				if math.abs(anim.x - current.x) < 0.25 and math.abs(anim.w - current.width) < 0.25 then
-					anim.x, anim.w = current.x, current.width
-				else
-					moving = true
-				end
-
-				indicator.Position = UDim2.fromOffset(anim.x, tabTop)
-				indicator.Size = UDim2.fromOffset(anim.w, tabHeight)
-			end
-
-			anim.snap = false
-			anim.running = moving
-		end
-
-		local heartbeat = nil
+		local tabsController = nil
 
 		if hasTabs then
-			heartbeat = RunService.Heartbeat:Connect(step)
+			local _, controller = UI.tabs(nil, nil, nil, {
+				tabs = tabs,
+				selectedTab = options.selectedTab,
+				barFrame = header,
+				contentFrame = content,
+				startX = titleX,
+				barHeight = headerHeight,
+				barColor = headerColor,
+				contentColor = contentColor,
 
-			panel.Destroying:Connect(function()
-				if heartbeat then
-					heartbeat:Disconnect()
-					heartbeat = nil
-				end
-			end)
-		end
+				tabGap = options.tabGap,
+				tabTop = tabTop,
+				tabPaddingX = tabPaddingX,
+				tabRadius = tabRadius,
+				tabSpeed = options.tabSpeed,
+				tabWidth = options.tabWidth,
+				tabTextSize = options.tabTextSize,
+				tabFilletRadius = filletRadius,
+				tabAccentColor = options.tabAccentColor,
 
-		function controller.selectTab(tabName)
-			if not pages[tabName] then
-				return
-			end
+				activeTabColor = options.activeTabColor,
+				inactiveTabColor = options.inactiveTabColor,
+				tabHoverColor = options.tabHoverColor,
+				tabPressedColor = options.tabPressedColor,
+				activeTabTextColor = options.activeTabTextColor,
+				inactiveTabTextColor = options.inactiveTabTextColor,
 
-			if selectedTab == tabName then
-				return
-			end
+				onTabChanged = function(tabName, previousTab, page)
+					if options.onTabChanged then
+						options.onTabChanged(tabName, previousTab, page, panel)
+					end
+				end,
+			})
 
-			local previousTab = selectedTab
-
-			selectedTab = tabName
-
-			for pageName, page in pairs(pages) do
-				page.Visible = pageName == selectedTab
-			end
-
-			if previousTab == nil then
-				anim.snap = true
-			end
-
-			wake()
-
-			if options.onTabChanged then
-				options.onTabChanged(tabName, previousTab, pages[tabName], panel)
-			end
-		end
-
-		function controller.getSelectedTab()
-			return selectedTab
-		end
-
-		function controller.getPage(tabName)
-			return pages[tabName]
-		end
-
-		if hasTabs then
-			local x = titleX
-
-			for index, tab in ipairs(tabs) do
-				local tabName = getTabName(tab)
-				local tabText = getTabText(tab)
-
-				local tabWidth = options.tabWidth
-				if type(tab) == "table" and tab.width then
-					tabWidth = tab.width
-				end
-				tabWidth = tabWidth or (#tabText * 7 + tabPaddingX * 2)
-
-				local page = UI.frame(content, UDim2.fromOffset(0, 0), UDim2.new(1, 0, 1, 0), contentColor)
-
-				page.Name = tabName
-				page.Visible = false
-				page.ClipsDescendants = true
-
-				pages[tabName] = page
-
-				local button, label, record
-
-				button, label, record = UI.button(
-					header,
-					tabText,
-					UDim2.fromOffset(x, tabTop),
-					UDim2.fromOffset(tabWidth, tabHeight),
-					function()
-						controller.selectTab(tabName)
-					end,
-					{
-						color = inactiveTabColor,
-						hoverColor = tabHoverColor,
-						pressedColor = options.tabPressedColor or colors.pressed,
-						textColor = inactiveText,
-						textSize = options.tabTextSize or UI.tokens.type.small,
-						textY = 0,
-						radius = tabRadius,
-						border = false,
-						paddingX = tabPaddingX,
-					}
-				)
-
-				button.Name = tabName .. "Tab"
-				button.BackgroundTransparency = 1
-
-				label.TextXAlignment = Enum.TextXAlignment.Center
-				label.TextYAlignment = Enum.TextYAlignment.Center
-
-				local data = {
-					button = button,
-					label = label,
-					record = record,
-					index = index,
-					x = x,
-					width = tabWidth,
-					activeAlpha = 0,
-					hoverAlpha = 0,
-					hovered = false,
-				}
-
-				button.MouseEnter:Connect(function()
-					data.hovered = true
-					wake()
-				end)
-
-				button.MouseLeave:Connect(function()
-					data.hovered = false
-					wake()
-				end)
-
-				tabButtons[tabName] = data
-
-				x += tabWidth + tabGap
-			end
-
-			local initialTab = options.selectedTab
-
-			if not initialTab then
-				initialTab = getTabName(tabs[1])
-			end
-
-			controller.selectTab(initialTab)
-
-			step(0)
+			tabsController = controller
 		end
 
 		local clip = UI.frame(panel, UDim2.fromOffset(0, 0), UDim2.new(1, 0, 1, 0), colors.panel, radius)
@@ -565,19 +290,23 @@ return function(ctx)
 			{
 				title = titleLabel,
 				titleTab = titleTab,
-				indicator = indicator,
+				indicator = tabsController and tabsController.indicator or nil,
 				closeButton = closeButton,
 				dragHandle = dragHandle,
 				border = border,
 				clip = clip,
 
 				tabBar = nil,
-				tabs = tabButtons,
-				pages = pages,
+				tabs = tabsController and tabsController.tabs or {},
+				pages = tabsController and tabsController.pages or {},
 
-				selectTab = controller.selectTab,
-				getSelectedTab = controller.getSelectedTab,
-				getPage = controller.getPage,
+				selectTab = tabsController and tabsController.selectTab or function() end,
+				getSelectedTab = tabsController and tabsController.getSelectedTab or function()
+					return nil
+				end,
+				getPage = tabsController and tabsController.getPage or function()
+					return nil
+				end,
 			}
 	end
 

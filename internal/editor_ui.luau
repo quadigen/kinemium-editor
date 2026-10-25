@@ -1392,6 +1392,7 @@ local componentModules = {
 	require("./Components/button_list"),
 	require("./Components/tooltip"),
 	require("./Components/collapsible"),
+	require("./Components/tabs"),
 }
 
 local components = {
