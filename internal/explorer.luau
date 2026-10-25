@@ -733,7 +733,8 @@ local function beginRename(instance, row)
 	)
 
 	renaming.Text = instance.Name
-
+	renaming:CaptureFocus()
+just
 	-- Preselecting is cosmetic; a runtime that rejects the native call must not
 	-- take the whole rename down with it.
 	pcall(function()
