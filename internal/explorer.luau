@@ -293,8 +293,7 @@ local dropdown, label, ctrl =
 	})
 
 dropdown.MouseButton1Click:Connect(function()
-	print("hello world")
-	print(ctrl.SearchBox)
+	ctrl.SearchBox:CaptureFocus()
 end)
 
 local serviceOrder = {
