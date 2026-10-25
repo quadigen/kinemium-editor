@@ -32,9 +32,6 @@ local selectedCategory
 
 local lastTheme = theme
 
-local categoryRecords = {}
-local categoryPositions = {}
-
 local topbar
 local topbarStroke
 local headerSurface
@@ -42,11 +39,13 @@ local headerBottomFill
 local logoPlate
 local flyout
 local flyoutStroke
-local selectedIndicator
 local collapseButton
 local collapseIcon
 
-local categoryLabels = {}
+local toolbarTabs
+
+local categoryByName = {}
+local pageKeep = {}
 
 local rebuildFlyout
 local setExpanded
@@ -246,34 +245,24 @@ local function updateTopbarGeometry()
 	flyout.Visible = expanded
 end
 
-local function updateCategoryAppearance()
+local function applyTabColors()
+	if not toolbarTabs then
+		return
+	end
+
 	local colors = palette()
 
-	for category, record in pairs(categoryRecords) do
-		local isSelected = category == selectedCategory
-
-		record.color = isSelected and colors.surface or colors.panel
-
-		record.defaultColor = record.color
-
-		record.hoverColor = colors.raised
-
-		record.defaultHoverColor = colors.raised
-
-		record.pressedColor = colors.input
-
-		if UI.isAlive(record.gui) then
-			record.gui.BackgroundColor3 = record.color
-		end
-	end
-
-	local position = categoryPositions[selectedCategory]
-
-	if position then
-		selectedIndicator.Position = UDim2.fromOffset(position.x + 7, baseHeaderHeight() - 3)
-
-		selectedIndicator.Size = UDim2.fromOffset(math.max(position.width - 14, 8), 2)
-	end
+	toolbarTabs.setColors({
+		bar = colors.panel,
+		content = colors.surface,
+		activeTab = colors.surface,
+		inactiveTab = colors.panel,
+		hover = colors.raised,
+		pressed = colors.input,
+		activeText = colors.text,
+		inactiveText = colors.subtext,
+		accent = colors.accent,
+	})
 end
 
 local function applyTheme()
@@ -303,8 +292,6 @@ local function applyTheme()
 		flyoutStroke.Transparency = 0.55
 	end
 
-	selectedIndicator.BackgroundColor3 = colors.accent
-
 	if collapseButton then
 		collapseButton.BackgroundColor3 = colors.panel
 	end
@@ -319,11 +306,7 @@ local function applyTheme()
 		})
 	end
 
-	for category, label in pairs(categoryLabels) do
-		label.TextColor3 = category == selectedCategory and colors.text or colors.subtext
-	end
-
-	updateCategoryAppearance()
+	applyTabColors()
 end
 
 setExpanded = function(value)
@@ -384,32 +367,20 @@ flyout.ClipsDescendants = true
 
 flyoutStroke = UI.stroke(flyout, initialColors.border, 1, 0.55)
 
-local flyoutLayout = Instance.new("UIListLayout")
-flyoutLayout.FillDirection = Enum.FillDirection.Horizontal
-flyoutLayout.SortOrder = Enum.SortOrder.LayoutOrder
-flyoutLayout.VerticalAlignment = Enum.VerticalAlignment.Center
-flyoutLayout.HorizontalAlignment = Enum.HorizontalAlignment.Left
-flyoutLayout.Padding = UDim.new(0, 3)
-flyoutLayout.Parent = flyout
-
-local flyoutPadding = Instance.new("UIPadding")
-flyoutPadding.PaddingLeft = UDim.new(0, 6)
-flyoutPadding.Parent = flyout
-
-local flyoutKeep = {
-	[flyoutLayout] = true,
-	[flyoutPadding] = true,
-	[flyoutStroke] = true,
-}
-
 rebuildFlyout = function()
-	UI.clear(flyout, flyoutKeep)
+	local page = toolbarTabs and toolbarTabs.pages[selectedCategory.name]
+
+	if not page then
+		return
+	end
+
+	UI.clear(page, pageKeep[page])
 
 	local colors = palette()
 
 	if #selectedCategory.buttons == 0 then
 		UI.label(
-			flyout,
+			page,
 			"No tools in this category",
 			UDim2.new(),
 			UDim2.new(1, -24, 0, 18),
@@ -422,25 +393,24 @@ rebuildFlyout = function()
 
 	for _, definition in ipairs(selectedCategory.buttons) do
 		if definition.type == "separator" then
-			-- transparent holder so the layout can space the 1px line
 			local holder = UI.create("Frame", {
 				Name = "Separator",
 				Size = UDim2.fromOffset(10, FLYOUT_HEIGHT - 20),
 				BackgroundTransparency = 1,
 				BorderSizePixel = 0,
-			}, flyout)
+			}, page)
 
 			UI.separator(holder, UDim2.fromOffset(4, 0), UDim2.new(0, 1, 1, 0), colors.border)
 		elseif definition.type == "custom" then
 			local width = definition.width or 100
 
-			local element = definition.create(flyout, colors, UDim2.new(), UDim2.fromOffset(width, FLYOUT_HEIGHT - 12))
+			local element = definition.create(page, colors, UDim2.new(), UDim2.fromOffset(width, FLYOUT_HEIGHT - 12))
 
 			if element then
 				element.Name = definition.name or "CustomElement"
 			end
 		else
-			UI.TopbarButton(flyout, definition, {
+			UI.TopbarButton(page, definition, {
 				position = UDim2.new(),
 				size = UDim2.fromOffset(definition.width or 52, FLYOUT_HEIGHT - 12),
 				colors = colors,
@@ -525,68 +495,85 @@ menuBar, menuBarController = UI.menuBar(headerSurface, UDim2.fromOffset(headerX,
 
 headerX += menuBarController:GetWidth() + 6
 
-selectedIndicator = UI.frame(
-	headerSurface,
-	UDim2.fromOffset(headerX, baseHeaderHeight()),
-	UDim2.fromOffset(20, 2),
-	initialColors.accent,
-	1
-)
+local tabDefinitions = {}
 
 for _, category in ipairs(toolbarCategories) do
-	local current = category
+	categoryByName[category.name] = category
 
-	local width = #current.name * 8 + 22
+	table.insert(tabDefinitions, {
+		name = category.name,
+		text = category.name,
+		width = #category.name * 8 + 22,
+	})
+end
 
-	categoryPositions[current] = {
-		x = headerX,
-		width = width,
-	}
+local _
+_, toolbarTabs = UI.tabs(nil, nil, nil, {
+	tabs = tabDefinitions,
+	selectedTab = selectedCategory.name,
 
-	local categoryButton, label, record = UI.button(
-		headerSurface,
-		current.name,
-		UDim2.fromOffset(headerX, 4),
-		UDim2.fromOffset(width, 24),
-		function()
-			if selectedCategory == current and expanded then
-				setExpanded(false)
-				return
-			end
+	barFrame = headerSurface,
+	contentFrame = flyout,
+	startX = headerX,
 
-			selectedCategory = current
+	barHeight = 28,
+	tabTop = 4,
+	tabGap = 2,
+	tabPaddingX = 8,
+	tabRadius = buttonRadius(),
+	tabTextSize = tokens.type.small,
+	tabFilletRadius = 0,
 
-			updateCategoryAppearance()
-			rebuildFlyout()
+	barColor = initialColors.panel,
+	contentColor = initialColors.surface,
+	activeTabColor = initialColors.surface,
+	inactiveTabColor = initialColors.panel,
+	tabHoverColor = initialColors.raised,
+	tabPressedColor = initialColors.input,
+	activeTabTextColor = initialColors.text,
+	inactiveTabTextColor = initialColors.subtext,
+	tabAccentColor = initialColors.accent,
+
+	onTabChanged = function(tabName)
+		selectedCategory = categoryByName[tabName] or selectedCategory
+
+		if not toolbarTabs then
+			return
+		end
+
+		rebuildFlyout()
+
+		if not expanded then
 			setExpanded(true)
-		end,
-		{
-			color = current == selectedCategory and initialColors.surface or initialColors.panel,
+		end
+	end,
 
-			hoverColor = initialColors.raised,
+	onTabClicked = function(_, wasSelected)
+		if wasSelected then
+			setExpanded(not expanded)
+		end
+	end,
+})
 
-			pressedColor = initialColors.input,
+for _, category in ipairs(toolbarCategories) do
+	local page = toolbarTabs.pages[category.name]
 
-			textColor = initialColors.text,
+	local layout = Instance.new("UIListLayout")
+	layout.FillDirection = Enum.FillDirection.Horizontal
+	layout.SortOrder = Enum.SortOrder.LayoutOrder
+	layout.VerticalAlignment = Enum.VerticalAlignment.Center
+	layout.HorizontalAlignment = Enum.HorizontalAlignment.Left
+	layout.Padding = UDim.new(0, 3)
+	layout.Parent = page
 
-			textSize = tokens.type.small,
+	local padding = Instance.new("UIPadding")
+	padding.PaddingLeft = UDim.new(0, 6)
+	padding.Parent = page
 
-			textY = 3,
-			paddingX = 8,
-
-			border = false,
-
-			radius = buttonRadius(),
-		}
-	)
-
-	categoryButton.Name = current.name .. "Dropdown"
-
-	categoryRecords[current] = record
-
-	categoryLabels[current] = label
-
-	headerX += width + 2
+	pageKeep[page] = {
+		[layout] = true,
+		[padding] = true,
+	}
 end
 
 local collapseSize = 24
@@ -690,7 +677,6 @@ UI.EngineTopbar = {
 
 user(topbar)
 rebuildFlyout()
-updateCategoryAppearance()
 setExpanded(true)
 applyTheme()
 

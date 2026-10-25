@@ -83,6 +83,7 @@ return function(ctx)
 		local activeTabColor = options.activeTabColor or contentColor
 		local inactiveTabColor = options.inactiveTabColor or barColor
 		local tabHoverColor = options.tabHoverColor or colors.hover
+		local tabPressedColor = options.tabPressedColor or colors.pressed
 
 		local activeText = options.activeTabTextColor or colors.text
 		local inactiveText = options.inactiveTabTextColor or colors.muted
@@ -260,6 +261,53 @@ return function(ctx)
 			return pages[tabName]
 		end
 
+		function controller.setColors(c)
+			c = c or {}
+
+			barColor = c.bar or barColor
+			contentColor = c.content or contentColor
+			activeTabColor = c.activeTab or activeTabColor
+			inactiveTabColor = c.inactiveTab or inactiveTabColor
+			tabHoverColor = c.hover or tabHoverColor
+			tabPressedColor = c.pressed or tabPressedColor
+			activeText = c.activeText or activeText
+			inactiveText = c.inactiveText or inactiveText
+
+			indicator.BackgroundColor3 = activeTabColor
+
+			for _, d in ipairs(indicator:GetDescendants()) do
+				if d.Name == "BottomFill" or d.Name == "FilletLeft" or d.Name == "FilletRight" then
+					d.BackgroundColor3 = activeTabColor
+				elseif d.Name == "Cutout" then
+					d.BackgroundColor3 = barColor
+				elseif d.Name == "ActiveAccent" and c.accent then
+					d.BackgroundColor3 = c.accent
+				end
+			end
+
+			for _, page in pairs(pages) do
+				page.BackgroundColor3 = contentColor
+			end
+
+			for _, data in pairs(tabButtons) do
+				local record = data.record
+
+				if record then
+					record.color = inactiveTabColor
+					record.defaultColor = inactiveTabColor
+					record.hoverColor = tabHoverColor
+					record.defaultHoverColor = tabHoverColor
+					record.pressedColor = tabPressedColor
+
+					if UI.isAlive(record.gui) then
+						record.gui.BackgroundColor3 = inactiveTabColor
+					end
+				end
+			end
+
+			wake()
+		end
+
 		local x = startX
 
 		for index, tab in ipairs(tabs) do
@@ -288,12 +336,18 @@ return function(ctx)
 				UDim2.fromOffset(x, tabTop),
 				UDim2.fromOffset(tabWidth, tabHeight),
 				function()
+					local wasSelected = selectedTab == tabName
+
 					controller.selectTab(tabName)
+
+					if options.onTabClicked then
+						options.onTabClicked(tabName, wasSelected)
+					end
 				end,
 				{
 					color = inactiveTabColor,
 					hoverColor = tabHoverColor,
-					pressedColor = options.tabPressedColor or colors.pressed,
+					pressedColor = tabPressedColor,
 					textColor = inactiveText,
 					textSize = options.tabTextSize or UI.tokens.type.small,
 					textY = 0,
