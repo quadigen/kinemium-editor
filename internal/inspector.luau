@@ -8,7 +8,7 @@ local StudioThemeService = game:GetService("StudioThemeService")
 local theme = StudioThemeService.SelectedTheme
 local Selection = game:GetService("Selection")
 local docker = require("@internal/docker")
-local picker = require("@internal/instance_picker")
+local picker = require("./picker")
 
 local colors = UI.colors
 local tokens = UI.tokens
