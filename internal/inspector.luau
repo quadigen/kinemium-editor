@@ -8,9 +8,42 @@ local StudioThemeService = game:GetService("StudioThemeService")
 local theme = StudioThemeService.SelectedTheme
 local Selection = game:GetService("Selection")
 local docker = require("@internal/docker")
+local picker = require("@internal/instance_picker")
 
 local colors = UI.colors
 local tokens = UI.tokens
+
+local instanceProperties = {
+	PrimaryPart = true,
+	Adornee = true,
+	Part0 = true,
+	Part1 = true,
+	Attachment0 = true,
+	Attachment1 = true,
+	CameraSubject = true,
+	SoundGroup = true,
+}
+
+local instanceFilters = {
+	PrimaryPart = function(i)
+		return i:IsA("BasePart")
+	end,
+	Part0 = function(i)
+		return i:IsA("BasePart")
+	end,
+	Part1 = function(i)
+		return i:IsA("BasePart")
+	end,
+}
+
+local function resolveDatatype(object, name, value)
+	if value == nil then
+		if instanceProperties[name] or (name == "Value" and object:IsA("ObjectValue")) then
+			return "Instance"
+		end
+	end
+	return typeof(value)
+end
 
 local categories = {
 	Name = "Object",
@@ -668,7 +701,87 @@ registerAdapter("EnumItem", {
 	end,
 })
 
-registerAdapter("Instance", readonlyAdapter())
+local function instanceName(value)
+	return value ~= nil and value.Name or "nil"
+end
+
+registerAdapter("Instance", {
+	height = PROPERTY_HEIGHT,
+
+	render = function(row, object, property)
+		if readonlyProperties[property.name] then
+			return textFieldController(readonlyField(row, property.value), displayValue)
+		end
+
+		local picking = false
+
+		local field = valueField(row, instanceName(property.value), {
+			size = UDim2.new(0.55, -12 - 46, 0, 18),
+			textEditable = false,
+		})
+
+		local function restore()
+			picking = false
+			if UI.isAlive(field) then
+				field.Text = instanceName(propertyValue(object, property.name))
+			end
+		end
+
+		UI.button(row, "Pick", UDim2.new(1, -52, 0, 2), UDim2.fromOffset(28, 18), function()
+			if picker.isActive() then
+				picker.cancel()
+				return
+			end
+
+			picking = true
+			field.Text = "Picking..."
+
+			picker.pick({
+				filter = instanceFilters[property.name],
+				hint = "Select " .. property.name,
+				onPicked = function(instance)
+					setProperty(object, property.name, instance)
+					restore()
+				end,
+				onCancel = restore,
+			})
+		end, {
+			color = tokens.color.input,
+			hoverColor = tokens.color.hover,
+			textSize = tokens.type.caption,
+			textColor = tokens.color.subtext,
+			radius = tokens.radius.xs,
+			border = false,
+		})
+
+		UI.button(row, "X", UDim2.new(1, -22, 0, 2), UDim2.fromOffset(18, 18), function()
+			picker.cancel()
+			setProperty(object, property.name, nil)
+			restore()
+		end, {
+			color = tokens.color.input,
+			hoverColor = tokens.color.hover,
+			textSize = tokens.type.caption,
+			textColor = tokens.color.subtext,
+			radius = tokens.radius.xs,
+			border = false,
+		})
+
+		return {
+			refresh = function(newValue)
+				if not picking and UI.isAlive(field) then
+					field.Text = instanceName(newValue)
+				end
+			end,
+		}
+	end,
+})
+
+Selection.SelectionChanged:Connect(function()
+	picker.cancel()
+	lastStructure = ""
+	signatureClock = SIGNATURE_INTERVAL
+end)
 
 registerAdapter("Vector2", {
 	height = PROPERTY_HEIGHT,
@@ -1178,21 +1291,18 @@ registerAdapter("userdata", readonlyAdapter())
 
 local fallbackAdapter = readonlyAdapter()
 
-local function adapterFor(value)
-	local datatype = typeof(value)
-
+local function adapterFor(property)
+	local datatype = property.datatype or typeof(property.value)
 	return adapters[datatype] or fallbackAdapter, datatype
 end
 
 local function propertyEditorHeight(property)
-	local adapter = adapterFor(property.value)
-
+	local adapter = adapterFor(property)
 	return adapter.height or PROPERTY_HEIGHT
 end
 
 local function renderPropertyAdapter(row, object, property)
-	local adapter = adapterFor(property.value)
-
+	local adapter = adapterFor(property)
 	return adapter.render(row, object, property)
 end
 
