@@ -715,29 +715,36 @@ return function(parent, createProfileButton)
 			end
 		end
 
-		pad(page, INSET, INSET, INSET, INSET)
+		-- Sidebar groups (like Obsidian's "Options" / "Core plugins" headings)
+		local OPTION_CATEGORIES = { General = true, Editor = true, Studio = true, Projects = true }
+
+		local function groupOf(category)
+			return category.group or (OPTION_CATEGORIES[category.name] and "Options" or "Advanced")
+		end
+
+		-- Sidebar and content sit flush against each other, split by a 1px divider.
 		list(page, {
 			FillDirection = Enum.FillDirection.Horizontal,
-			Padding = UDim.new(0, INSET),
+			Padding = UDim.new(0, 0),
 		})
 
-		local sidebar = UI.card(page, ORIGIN, UDim2.new(0, SIDEBAR_WIDTH, 1, -INSET * 2), {
+		local sidebar = UI.card(page, ORIGIN, UDim2.new(0, SIDEBAR_WIDTH, 1, 0), {
 			color = colors.panel,
-			radius = tokens.radius.md,
-			border = true,
-			borderColor = colors.border,
-			borderTransparency = 0.35,
+			radius = 0,
+			border = false,
 		})
 		sidebar.LayoutOrder = 1
 
-		local contentPanel = UI.card(page, ORIGIN, UDim2.new(1, -(SIDEBAR_WIDTH + INSET * 3), 1, -INSET * 2), {
+		local divider = UI.separator(page, ORIGIN, UDim2.new(0, 1, 1, 0), colors.border)
+		divider.LayoutOrder = 2
+		divider.BackgroundTransparency = 0.5
+
+		local contentPanel = UI.card(page, ORIGIN, UDim2.new(1, -(SIDEBAR_WIDTH + 1), 1, 0), {
 			color = colors.panelRaised,
-			radius = tokens.radius.md,
-			border = true,
-			borderColor = colors.border,
-			borderTransparency = 0.35,
+			radius = 0,
+			border = false,
 		})
-		contentPanel.LayoutOrder = 2
+		contentPanel.LayoutOrder = 3
 		contentPanel.ClipsDescendants = true
 
 		pad(sidebar, INSET, INSET, INSET, INSET)
@@ -751,12 +758,6 @@ return function(parent, createProfileButton)
 			{ textSize = tokens.type.small }
 		)
 		search.LayoutOrder = 1
-
-		local optionsLabel =
-			UI.label(sidebar, "Options", ORIGIN, UDim2.new(1, -INSET * 2, 0, 16), tokens.type.caption, colors.muted)
-		optionsLabel.LayoutOrder = 2
-		optionsLabel.TextXAlignment = Enum.TextXAlignment.Left
-		pad(optionsLabel, 3, 0, 3, 0)
 
 		local navReserved = UI.metrics.inputHeight + 16 + 30 + 4 * 3
 
@@ -784,11 +785,11 @@ return function(parent, createProfileButton)
 		local logoutIcon = UI.image(logoutButton, ICONS.power, UDim2.fromOffset(9, 8), UDim2.fromOffset(14, 14))
 		logoutIcon.ImageColor3 = colors.error
 
-		pad(contentPanel, INSET, INSET, INSET, INSET)
+		pad(contentPanel, 24, 16, 16, 16)
 
 		local scroller = UI.create("ScrollingFrame", {
 			Name = "SettingsScroller",
-			Size = UDim2.new(1, -INSET * 2, 1, -INSET * 2),
+			Size = UDim2.new(1, -40, 1, -32),
 			BackgroundTransparency = 1,
 			BorderSizePixel = 0,
 			CanvasPosition = Vector2.new(0, 0),
@@ -812,7 +813,7 @@ return function(parent, createProfileButton)
 		}, contentPanel)
 
 		pad(scroller, 0, 4, 8, 4)
-		local scrollLayout = list(scroller, { Padding = UDim.new(0, 18) })
+		local scrollLayout = list(scroller, { Padding = UDim.new(0, 24) })
 
 		local pendingScroll
 		scrollLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
@@ -823,6 +824,7 @@ return function(parent, createProfileButton)
 		end)
 
 		local navItems = {}
+		local groupLabels = {}
 		local selectedCategory = categories[1]
 		local renderCategory
 
@@ -838,12 +840,11 @@ return function(parent, createProfileButton)
 				nav.button.BackgroundColor3 = nav.record.color
 				nav.label.TextColor3 = selected and colors.text or colors.subtext
 				nav.icon.ImageColor3 = selected and colors.text or colors.subtext
-				nav.accent.Visible = selected
 			end
 		end
 
 		local function rowHeight(row)
-			return row.description and 58 or 44
+			return row.description and 64 or 50
 		end
 
 		local function controlWidth(row)
@@ -964,7 +965,7 @@ return function(parent, createProfileButton)
 						textColor = colors.subtext,
 						menuColor = colors.panelRaised,
 						borderColor = colors.border,
-						borderTransparency = 0.2,
+						borderTransparency = 1,
 						radius = tokens.radius.sm,
 						textSize = tokens.type.small,
 						menuParent = UI.contextMenuOverlay(),
@@ -1009,14 +1010,13 @@ return function(parent, createProfileButton)
 					UDim2.fromOffset(width, UI.metrics.buttonHeight),
 					row.callback,
 					{
-						color = colors.panelRaised,
+						color = colors.input,
 						hoverColor = colors.hover,
 						pressedColor = colors.pressed,
 						textColor = row.danger and colors.error or colors.text,
 						textSize = tokens.type.small,
 						radius = tokens.radius.sm,
-						border = true,
-						borderColor = colors.border,
+						border = false,
 						paddingX = tokens.space.md,
 					}
 				)
@@ -1043,9 +1043,10 @@ return function(parent, createProfileButton)
 			local rowFrame = box(card, UDim2.new(1, 0, 0, rowHeight(row)), {
 				Name = "Row",
 				LayoutOrder = order,
+				AutomaticSize = Enum.AutomaticSize.Y,
 			})
 
-			pad(rowFrame, 16, 0, 16, 0)
+			pad(rowFrame, 18, 12, 18, 12)
 			list(rowFrame, {
 				FillDirection = Enum.FillDirection.Horizontal,
 				VerticalAlignment = Enum.VerticalAlignment.Center,
@@ -1064,18 +1065,24 @@ return function(parent, createProfileButton)
 			})
 			list(sectionFrame, { Padding = UDim.new(0, 6) })
 
-			local sectionTitle =
-				UI.label(sectionFrame, section.title, ORIGIN, UDim2.new(1, 0, 0, 20), tokens.type.small, colors.subtext)
+			local sectionTitle = UI.label(
+				sectionFrame,
+				section.title,
+				ORIGIN,
+				UDim2.new(1, 0, 0, 26),
+				tokens.type.heading or tokens.type.body,
+				colors.text
+			)
 			sectionTitle.LayoutOrder = 1
 			sectionTitle.TextXAlignment = Enum.TextXAlignment.Left
-			pad(sectionTitle, 4, 0, 4, 0)
+			pad(sectionTitle, 16, 0, 4, 0)
 
 			local card = UI.card(sectionFrame, ORIGIN, UDim2.new(1, 0, 0, 0), {
 				color = colors.surface,
 				radius = tokens.radius.md,
 				border = true,
 				borderColor = colors.border,
-				borderTransparency = 0.35,
+				borderTransparency = 0.7,
 			})
 			card.LayoutOrder = 2
 			card.AutomaticSize = Enum.AutomaticSize.Y
@@ -1087,7 +1094,7 @@ return function(parent, createProfileButton)
 				createRow(card, row, index * 2 - 1)
 
 				if index < #section.rows then
-					local separator = UI.separator(card, ORIGIN, UDim2.new(1, -32, 0, 1), colors.border)
+					local separator = UI.separator(card, ORIGIN, UDim2.new(1, -36, 0, 1), colors.border)
 
 					separator.LayoutOrder = index * 2
 					separator.BackgroundTransparency = 0.5
@@ -1099,11 +1106,16 @@ return function(parent, createProfileButton)
 			local query = string.lower(search.Text or "")
 			local firstMatch
 			local selectedVisible = false
+			local groupVisible = {}
 
 			for _, nav in ipairs(navItems) do
 				local matches = query == "" or string.find(string.lower(nav.category.name), query, 1, true) ~= nil
 
 				nav.button.Visible = matches
+
+				if matches then
+					groupVisible[nav.group] = true
+				end
 
 				if matches then
 					firstMatch = firstMatch or nav.category
@@ -1112,6 +1124,10 @@ return function(parent, createProfileButton)
 						selectedVisible = true
 					end
 				end
+			end
+
+			for group, groupLabel in pairs(groupLabels) do
+				groupLabel.Visible = groupVisible[group] == true
 			end
 
 			if autoselect and not selectedVisible and firstMatch then
@@ -1137,7 +1153,25 @@ return function(parent, createProfileButton)
 			updateNavigation()
 		end
 
-		for index, category in ipairs(categories) do
+		local navOrder = 0
+		local lastGroup
+
+		for _, category in ipairs(categories) do
+			local group = groupOf(category)
+
+			if group ~= lastGroup then
+				lastGroup = group
+				navOrder = navOrder + 1
+
+				local groupLabel =
+					UI.label(navList, group, ORIGIN, UDim2.new(1, 0, 0, 24), tokens.type.caption, colors.muted)
+				groupLabel.LayoutOrder = navOrder
+				groupLabel.TextXAlignment = Enum.TextXAlignment.Left
+				pad(groupLabel, 8, 0, 0, 0)
+
+				groupLabels[group] = groupLabel
+			end
+
 			local button, label, record = UI.button(navList, category.name, ORIGIN, UDim2.new(1, 0, 0, 30), function()
 				renderCategory(category)
 			end, {
@@ -1150,13 +1184,11 @@ return function(parent, createProfileButton)
 				border = false,
 				paddingX = 32,
 			})
-			button.LayoutOrder = index
+			navOrder = navOrder + 1
+			button.LayoutOrder = navOrder
 
 			local icon = UI.image(button, category.icon, UDim2.fromOffset(9, 8), UDim2.fromOffset(14, 14))
 			icon.ImageColor3 = colors.subtext
-
-			local accent = UI.frame(button, UDim2.fromOffset(3, 7), UDim2.fromOffset(2, 16), colors.accent, 1)
-			accent.Visible = false
 
 			table.insert(navItems, {
 				category = category,
@@ -1164,7 +1196,7 @@ return function(parent, createProfileButton)
 				label = label,
 				record = record,
 				icon = icon,
-				accent = accent,
+				group = group,
 			})
 		end
 
