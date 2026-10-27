@@ -1227,6 +1227,29 @@ do
 		return UI.setTheme(shared.themeName)
 	end
 
+	function UI.setReduceMotion(value)
+		shared.reduceMotion = value == true
+		if shared.reduceMotion and shared.themeTransition then
+			local transition = shared.themeTransition
+			if transition.connection then
+				transition.connection:Disconnect()
+				transition.connection = nil
+			end
+			shared.themeTransition = nil
+			local maps = buildColorMaps(transition.previous, transition.target)
+			for key, val in pairs(transition.target) do
+				UI.tokens.color[key] = val
+			end
+			syncLegacyColors()
+			for instance in pairs(shared.themeObjects) do
+				applyToInstance(instance, maps, transition.radiusMap, transition.typeMap, transition.font)
+			end
+			applyButtonRecords(maps)
+			applyThemeBindings()
+			notifyThemeChanged(transition.name)
+		end
+	end
+
 	function UI.onThemeChanged(callback)
 		if type(callback) ~= "function" then
 			error("callback must be a function")
@@ -1414,5 +1437,50 @@ end
 function UI.shared()
 	return shared
 end
+
+task.defer(function()
+	local ok, Studio = pcall(function()
+		return game:GetService("Studio")
+	end)
+	if not ok or not Studio then
+		return
+	end
+	local savedReduce = false
+	local ok2, reduceVal = pcall(function()
+		return Studio:GetSetting("reduceMotion", false)
+	end)
+	if ok2 and reduceVal == true then
+		savedReduce = true
+	end
+	if savedReduce then
+		UI.setReduceMotion(true)
+	end
+	local ok3, diag = pcall(function()
+		return Studio:GetSetting("diagnostics", true)
+	end)
+	if ok3 and diag ~= nil then
+		shared.scriptDiagnostics = diag ~= false
+	end
+	local ok4, theme = pcall(function()
+		return Studio:GetSetting("theme", nil)
+	end)
+	if ok4 and type(theme) == "string" and theme ~= "" then
+		UI.setTheme(theme)
+	end
+	if Studio.SettingChanged then
+		local conn = Studio.SettingChanged:Connect(function(key, value)
+			if key == "reduceMotion" then
+				UI.setReduceMotion(value == true)
+			elseif key == "diagnostics" then
+				shared.scriptDiagnostics = value ~= false
+			elseif key == "theme" and type(value) == "string" and value ~= "" then
+				UI.setTheme(value)
+			end
+		end)
+		if conn then
+			shared._studioSettingConn = conn
+		end
+	end
+end)
 
 return UI

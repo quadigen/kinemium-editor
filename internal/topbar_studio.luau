@@ -5,7 +5,8 @@ end
 local UI = require("@internal/editor_ui")
 local plugin_marketplace = require("@internal/marketplace")
 local credits_page = require("@internal/credits")
-local settings_page = require("@internal/settings")
+local user = require("@internal/user")
+local settings_page = user.settings_page or user
 
 local gui = Instance.new("ScreenGui")
 gui.Name = "Home"

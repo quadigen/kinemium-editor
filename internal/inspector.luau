@@ -214,7 +214,7 @@ local function setCanvas(animated)
 		canvasTween = nil
 	end
 
-	if animated then
+	if animated and not (UI.shared and UI.shared().reduceMotion) then
 		canvasTween = TweenService:Create(list, TOGGLE_INFO, { CanvasSize = goal })
 		canvasTween:Play()
 	else
@@ -225,6 +225,12 @@ end
 local function animateBubble(anim)
 	if anim.tween then
 		anim.tween:Cancel()
+		anim.tween = nil
+	end
+
+	if UI.shared and UI.shared().reduceMotion then
+		anim.bubble.Size = UDim2.new(1, 0, 0, anim.target)
+		return
 	end
 
 	anim.tween = TweenService:Create(anim.bubble, TOGGLE_INFO, {

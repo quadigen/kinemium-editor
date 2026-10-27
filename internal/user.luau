@@ -1219,3 +1219,10 @@ return function(parent)
 
 	profileButton.AnchorPoint = Vector2.new(1, 0)
 end
+
+
+function User.mount(parent)
+	local ok,res=pcall(User.settings_page,parent)
+	if ok and res~=nil then return res end
+	return nil
+end

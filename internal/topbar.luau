@@ -674,7 +674,11 @@ UI.EngineTopbar = {
 	end,
 }
 
-user(topbar)
+if type(user) == "table" and type(user.mount) == "function" then
+	user.mount(topbar)
+elseif type(user) == "function" then
+	user(topbar)
+end
 rebuildFlyout()
 setExpanded(true)
 applyTheme()

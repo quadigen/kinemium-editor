@@ -1114,6 +1114,11 @@ local function animateDrop(reparent)
 	end
 
 	local layer = dragLayer
+	if UI.shared and UI.shared().reduceMotion then
+		layer.BackgroundTransparency = 1
+		apply()
+		return
+	end
 
 	local tween = TweenService:Create(layer, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
 		BackgroundTransparency = 1,

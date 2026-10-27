@@ -42,6 +42,15 @@ local function tween(object, properties, duration, style, direction, delay)
 		return nil
 	end
 
+	if UI.shared and UI.shared().reduceMotion then
+		local ok = pcall(function()
+			for property, value in pairs(properties) do
+				object[property] = value
+			end
+		end)
+		return nil
+	end
+
 	local ok, result = pcall(function()
 		local info = TweenInfo.new(
 			duration,
