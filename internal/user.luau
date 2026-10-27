@@ -2,6 +2,7 @@ local Auth = require("@internal/auth")
 local UI = require("@internal/editor_ui")
 local MatrixService = game:GetService("MatrixService")
 local http = game:GetService("HttpService")
+local Studio = game:GetService("Studio")
 
 local colors = UI.tokens.color
 local tokens = UI.tokens
@@ -55,6 +56,45 @@ local state = {
 	syncLogging = false,
 	debugLabels = false,
 }
+
+-- Persistence through the Studio service ------------------------------------
+
+local function hydrateKey(key)
+	local saved = Studio:GetSetting(key)
+
+	if saved ~= nil then
+		state[key] = saved
+	end
+end
+
+local function saveSetting(key, value)
+	state[key] = value
+	Studio:SetSetting(key, value) -- writes studio-settings.json and fires SettingChanged
+end
+
+-- Load saved values for everything state already knows about.
+for key in pairs(state) do
+	hydrateKey(key)
+end
+
+-- Apply saved settings that have side effects outside this UI.
+if type(state.theme) == "string" and state.theme ~= UI.getTheme() then
+	UI.setTheme(state.theme)
+end
+
+local savedDiagnostics = Studio:GetSetting("diagnostics")
+if savedDiagnostics ~= nil then
+	UI.shared().scriptDiagnostics = savedDiagnostics
+end
+
+-- Keep state in sync when something else changes a setting (e.g. Studio.Theme = "Light").
+Studio.SettingChanged:Connect(function(key, value)
+	state[key] = value
+
+	if key == "theme" and value ~= UI.getTheme() then
+		UI.setTheme(value)
+	end
+end)
 
 local function SetImage(session, image)
 	local ok, profile = MatrixService:GetProfile(session)
@@ -553,6 +593,8 @@ local function buildCategories(session, onLogout)
 end
 
 return function(parent, createProfileButton)
+	-- When createProfileButton is explicitly false, no profile button and no window
+	-- are created. The settings GUI is built directly inside `parent` instead.
 	local embedded = createProfileButton == false
 
 	local tooltip
@@ -598,6 +640,7 @@ return function(parent, createProfileButton)
 			settingsWindow.Visible = false
 		end
 
+		-- Embedded mode has no window to hide, so clear the settings out of the parent.
 		if embedded and settingsPage then
 			UI.clear(settingsPage)
 		end
@@ -656,6 +699,21 @@ return function(parent, createProfileButton)
 		local categories = buildCategories(session, function()
 			performLogout(session)
 		end)
+
+		-- Pull saved values for every row from the Studio service.
+		for _, category in ipairs(categories) do
+			for _, section in ipairs(category.sections) do
+				for _, row in ipairs(section.rows) do
+					if row.key then
+						hydrateKey(row.key)
+
+						if state[row.key] == nil and row.kind == "dropdown" then
+							state[row.key] = row.items[1]
+						end
+					end
+				end
+			end
+		end
 
 		pad(page, INSET, INSET, INSET, INSET)
 		list(page, {
@@ -855,7 +913,7 @@ return function(parent, createProfileButton)
 
 			if row.kind == "switch" then
 				UI.switch(holder, ORIGIN, state[row.key] == true, function(value)
-					state[row.key] = value
+					saveSetting(row.key, value)
 
 					if row.key == "diagnostics" then
 						UI.shared().scriptDiagnostics = value
@@ -920,7 +978,7 @@ return function(parent, createProfileButton)
 							return UDim2.fromOffset(math.floor(position.X), math.floor(position.Y + size.Y + 2))
 						end,
 						onChanged = function(value)
-							state[row.key] = value
+							saveSetting(row.key, value)
 
 							if row.onChanged then
 								row.onChanged(value)
@@ -1137,6 +1195,7 @@ return function(parent, createProfileButton)
 		renderCategory(selectedCategory)
 	end
 
+	-- Embedded mode: no profile button, no window. Build the settings straight into `parent`.
 	if embedded then
 		settingsPage = parent
 		settingsOpen = true
