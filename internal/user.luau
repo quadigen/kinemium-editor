@@ -593,8 +593,6 @@ local function buildCategories(session, onLogout)
 end
 
 return function(parent, createProfileButton)
-	-- When createProfileButton is explicitly false, no profile button and no window
-	-- are created. The settings GUI is built directly inside `parent` instead.
 	local embedded = createProfileButton == false
 
 	local tooltip
