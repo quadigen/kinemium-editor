@@ -552,13 +552,23 @@ local function buildCategories(session, onLogout)
 	}
 end
 
-return function(parent)
+return function(parent, createProfileButton)
+	local embedded = createProfileButton == false
+
 	local tooltip
 	local profileButton, image
 	local settingsOpen = false
 	local settingsWindow
 	local settingsPage
 	local dropdowns = {}
+
+	local function isSettingsVisible()
+		if embedded then
+			return settingsOpen
+		end
+
+		return settingsWindow ~= nil and settingsWindow.Visible
+	end
 
 	local function closeDropdowns()
 		local active = dropdowns
@@ -576,7 +586,9 @@ return function(parent)
 		shared.CurrentSession = nil
 		settingsOpen = false
 
-		image.Image = "builtin://icons/Play.svg"
+		if image then
+			image.Image = "builtin://icons/Play.svg"
+		end
 
 		if tooltip then
 			tooltip:SetText("Not logged in")
@@ -584,6 +596,10 @@ return function(parent)
 
 		if settingsWindow then
 			settingsWindow.Visible = false
+		end
+
+		if embedded and settingsPage then
+			UI.clear(settingsPage)
 		end
 
 		task.spawn(function()
@@ -851,7 +867,7 @@ return function(parent)
 
 					if row.rerender then
 						task.defer(function()
-							if settingsWindow and settingsWindow.Visible then
+							if isSettingsVisible() then
 								renderCategory(selectedCategory, true)
 							end
 						end)
@@ -1119,6 +1135,15 @@ return function(parent)
 
 		layoutNavigation(false)
 		renderCategory(selectedCategory)
+	end
+
+	if embedded then
+		settingsPage = parent
+		settingsOpen = true
+
+		buildSettings(settingsPage, shared.CurrentSession)
+
+		return
 	end
 
 	local function ensureWindow()

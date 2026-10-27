@@ -6,8 +6,6 @@ local project_manager = require("@internal/projects")
 local plugin_marketplace = require("@internal/marketplace")
 local credits_page = require("@internal/credits")
 local user = require("@internal/user")
-print(user)
-local settings_page = user.settings_page or user
 
 local gui = Instance.new("ScreenGui")
 gui.Name = "Home"
@@ -41,4 +39,4 @@ UI.RootOverlay().Enabled = false
 project_manager(windowControls.pages.Projects, windowControls, gui)
 plugin_marketplace(windowControls.pages.Marketplace, windowControls, gui)
 credits_page(windowControls.pages.Credits, windowControls, gui)
-settings_page(windowControls.pages.Settings, windowControls, gui)
+settings_page(windowControls.pages.Settings, false)
