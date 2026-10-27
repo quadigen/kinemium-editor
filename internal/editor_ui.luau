@@ -19,6 +19,8 @@ local shared = {
 	themeListeners = {},
 	themeName = "Dark",
 	trackedRoots = setmetatable({}, { __mode = "k" }),
+	focusInputs = setmetatable({}, { __mode = "k" }),
+	focusInputConnection = nil,
 }
 local THEME_ANIMATION_DURATION = 0.24
 local EMPTY_MAP = {}

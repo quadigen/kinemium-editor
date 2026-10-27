@@ -1,8 +1,34 @@
 local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
 
 return function(ctx)
 	local UI = ctx.UI
+	local shared = ctx.shared
 	local tooltipSmoothTowards = ctx.tooltipSmoothTowards
+
+	local function ensureFocusWatcher()
+		if shared.focusInputConnection then
+			return
+		end
+
+		shared.focusInputConnection = UserInputService.InputBegan:Connect(function()
+			task.defer(function()
+				local ok, focused = pcall(function()
+					return UserInputService:GetFocusedTextBox()
+				end)
+
+				if not ok or not focused then
+					return
+				end
+
+				local watcher = shared.focusInputs and shared.focusInputs[focused]
+
+				if watcher then
+					watcher()
+				end
+			end)
+		end)
+	end
 
 	function UI.input(parent, placeholder, position, size, options)
 		options = options or {}
@@ -121,11 +147,32 @@ return function(ctx)
 			end)
 		end
 
+		local function handleFocus()
+			if focusTarget == 1 or not UI.isAlive(field) or not field:IsFocused() then
+				return
+			end
+
+			if focusAlpha <= 0.001 then
+				baseColor = stroke.Color
+				baseTransparency = stroke.Transparency
+			end
+
+			setFocus(1, false)
+		end
+
+		shared.focusInputs[field] = handleFocus
+
+		ensureFocusWatcher()
+
 		field.FocusLost:Connect(function()
 			setFocus(0, false)
 		end)
 
-		field.Destroying:Connect(stopFocusAnimation)
+		field.Destroying:Connect(function()
+			shared.focusInputs[field] = nil
+
+			stopFocusAnimation()
+		end)
 
 		return field, field, stroke
 	end
