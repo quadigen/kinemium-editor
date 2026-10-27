@@ -39,4 +39,4 @@ UI.RootOverlay().Enabled = false
 project_manager(windowControls.pages.Projects, windowControls, gui)
 plugin_marketplace(windowControls.pages.Marketplace, windowControls, gui)
 credits_page(windowControls.pages.Credits, windowControls, gui)
-settings_page(windowControls.pages.Settings, false)
+user(windowControls.pages.Settings, false)
