@@ -515,7 +515,6 @@ _, toolbarTabs = UI.tabs(nil, nil, nil, {
 	contentFrame = flyout,
 	startX = headerX,
 
-	barHeight = baseHeaderHeight(),
 	tabTop = 4,
 	tabGap = 2,
 	tabPaddingX = 8,
