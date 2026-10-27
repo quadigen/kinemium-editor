@@ -196,7 +196,7 @@ return function(ctx)
 			local current = selectedTab and tabButtons[selectedTab]
 
 			if current then
-				indicator.Visible = options.EnableIndicator or false
+				indicator.Visible = true
 
 				if anim.snap then
 					anim.x, anim.w = current.x, current.width

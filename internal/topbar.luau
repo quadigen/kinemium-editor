@@ -531,7 +531,6 @@ _, toolbarTabs = UI.tabs(nil, nil, nil, {
 	tabPressedColor = initialColors.input,
 	activeTabTextColor = initialColors.text,
 	inactiveTabTextColor = initialColors.subtext,
-	tabAccentColor = initialColors.accent,
 
 	onTabChanged = function(tabName)
 		selectedCategory = categoryByName[tabName] or selectedCategory
