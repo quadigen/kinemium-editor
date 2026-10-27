@@ -7,12 +7,6 @@ local plugin_marketplace = require("@internal/marketplace")
 local credits_page = require("@internal/credits")
 local user = require("@internal/user")
 
-local gui = Instance.new("ScreenGui")
-gui.Name = "Home"
-gui.RenderOnTop = true
-gui.Parent = game.CoreGui
-UI.trackRoot(gui)
-
 local size = UDim2.new(0, 600, 0.6, 0)
 local position = UDim2.new(0.5, 0, 0.5, 0)
 
@@ -25,7 +19,7 @@ local MarketplaceWindow, _, _, Marketplace_windowControls = UI.window("Marketpla
 })
 MarketplaceWindow.AnchorPoint = Vector2.new(0.5, 0.5)
 MarketplaceWindow.Visible = false
-MarketplaceWindow.Parent = gui
+MarketplaceWindow.Parent = UI.widgetOverlay()
 
 local CreditsWindow, _, _, Credits_windowControls = UI.window("Credits", position, size, "Credits", {
 	tabs = {
@@ -36,10 +30,10 @@ local CreditsWindow, _, _, Credits_windowControls = UI.window("Credits", positio
 })
 CreditsWindow.AnchorPoint = Vector2.new(0.5, 0.5)
 CreditsWindow.Visible = false
-CreditsWindow.Parent = gui
+CreditsWindow.Parent = UI.widgetOverlay()
 
 local SettingsWindow, _, _, Settings_windowControls =
-	UI.window("Settings", position, UDim2.new(0, 600, 0.9, 0), "Settings", {
+	UI.window("Settings", position, UDim2.new(0.5, 0, 0.9, 0), "Settings", {
 		tabs = {
 			"Settings",
 		},
@@ -48,7 +42,7 @@ local SettingsWindow, _, _, Settings_windowControls =
 	})
 SettingsWindow.AnchorPoint = Vector2.new(0.5, 0.5)
 SettingsWindow.Visible = false
-SettingsWindow.Parent = gui
+SettingsWindow.Parent = UI.widgetOverlay()
 
 plugin_marketplace(Marketplace_windowControls.pages.Marketplace, Marketplace_windowControls, gui)
 credits_page(Credits_windowControls.pages.Credits, Credits_windowControls, gui)
