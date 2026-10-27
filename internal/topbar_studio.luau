@@ -6,7 +6,6 @@ local UI = require("@internal/editor_ui")
 local plugin_marketplace = require("@internal/marketplace")
 local credits_page = require("@internal/credits")
 local user = require("@internal/user")
-local settings_page = user.settings_page or user
 
 local gui = Instance.new("ScreenGui")
 gui.Name = "Home"
@@ -53,7 +52,7 @@ SettingsWindow.Parent = gui
 
 plugin_marketplace(Marketplace_windowControls.pages.Marketplace, Marketplace_windowControls, gui)
 credits_page(Credits_windowControls.pages.Credits, Credits_windowControls, gui)
-settings_page(Settings_windowControls.pages.Settings, Settings_windowControls, gui)
+user(Settings_windowControls.pages.Settings, false)
 
 return {
 	name = "Studio",
