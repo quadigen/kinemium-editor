@@ -2,6 +2,7 @@ local Auth = require("@internal/auth")
 local UI = require("@internal/editor_ui")
 local MatrixService = game:GetService("MatrixService")
 local http = game:GetService("HttpService")
+local settings = require("./settings")
 
 local colors = UI.tokens.color
 local tokens = UI.tokens
@@ -169,3 +170,7 @@ local function dropdownItems(values)
 
 	return result
 end
+
+return {
+	settings_page = settings,
+}
