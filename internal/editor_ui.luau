@@ -10,6 +10,7 @@ local shared = {
 	windows = {},
 	windowControllers = {},
 	scriptDiagnostics = true,
+	reduceMotion = false,
 
 	themeObjects = setmetatable({}, { __mode = "k" }),
 	themeBindings = setmetatable({}, { __mode = "k" }),
@@ -30,6 +31,9 @@ local function tooltipLerp(a, b, t)
 end
 
 local function tooltipSmoothTowards(current, target, speed, dt)
+	if shared.reduceMotion then
+		return target
+	end
 	local t = 1 - math.exp(-speed * dt)
 
 	return tooltipLerp(current, target, t)
@@ -1202,7 +1206,7 @@ do
 		local radiusMap = buildNumberMap(old.radius, spec.radius)
 		local typeMap = buildNumberMap(old.type, spec.type)
 
-		local animate = THEME_ANIMATION_DURATION > 0 and mapsHaveChanges(maps) and next(shared.themeObjects) ~= nil
+		local animate = THEME_ANIMATION_DURATION > 0 and not shared.reduceMotion and mapsHaveChanges(maps) and next(shared.themeObjects) ~= nil
 
 		if not animate then
 			applyThemeNow(spec, maps, radiusMap, typeMap)
