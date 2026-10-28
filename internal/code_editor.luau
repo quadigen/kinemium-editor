@@ -92,6 +92,13 @@ local SUPPRESS_ON_CURRENT_LINE = false
 -- Ctrl+S trims trailing whitespace and ensures the file ends with a single newline (like Zed).
 local TRIM_ON_SAVE = true
 
+-- Typing an opening bracket or quote inserts the closing one; typing the closer types over it,
+-- and Backspace between an empty pair removes both.
+local AUTO_CLOSE_PAIRS = true
+
+-- Pressing Enter after `then`, `do` or `function(...)` inserts the matching `end` when the block is unclosed.
+local AUTO_END_BLOCKS = true
+
 local COMMIT_DELAY = 0.35 -- debounce for file-backed documents (scripts write immediately)
 local MAX_FIND_MATCHES = 5000
 local MAX_CLOSED_TABS = 10
@@ -610,6 +617,47 @@ local function bracketPairs(text)
 	end
 
 	return map
+end
+
+local QUOTES = { ['"'] = true, ["'"] = true, ["`"] = true }
+
+-- Rough count of unclosed blocks (function/if/do/repeat minus end/until). Strings and comments are stripped first.
+local function blockBalance(text)
+	text = (string.gsub(text, "%-%-[^\n]*", ""))
+	text = (string.gsub(text, '"[^"\n]*"', ""))
+	text = (string.gsub(text, "'[^'\n]*'", ""))
+
+	local balance = 0
+
+	for word in string.gmatch(text, "[%a_][%w_]*") do
+		if word == "function" or word == "if" or word == "do" or word == "repeat" then
+			balance += 1
+		elseif word == "end" or word == "until" then
+			balance -= 1
+		end
+	end
+
+	return balance
+end
+
+-- Identifier touching `cursor`: returns start and (exclusive) finish, or nil.
+local function identifierAt(text, cursor)
+	local start = cursor
+	local finish = cursor
+
+	while start > 1 and string.match(string.sub(text, start - 1, start - 1), "[%w_]") ~= nil do
+		start -= 1
+	end
+
+	while finish <= #text and string.match(string.sub(text, finish, finish), "[%w_]") ~= nil do
+		finish += 1
+	end
+
+	if finish == start then
+		return nil
+	end
+
+	return start, finish
 end
 
 local function splitPath(path)
@@ -1291,6 +1339,8 @@ function CodeEditor.new(parent)
 	self.diagnosticPinned = false
 	self.pinnedCursor = nil
 	self.lastMouse = Vector2.new(0, 0)
+	self.lastText = ""
+	self.pendingCloser = nil
 	self.toastExpires = nil
 
 	local tabStrip = UI.create("ScrollingFrame", {
@@ -2944,6 +2994,13 @@ function CodeEditor:acceptSuggestion(index)
 		return
 	end
 
+	if suggestion.jumpLine ~= nil then
+		self:dismissSuggestions()
+		self:GoToLine(suggestion.jumpLine)
+
+		return
+	end
+
 	self.usage[suggestion.name] = (self.usage[suggestion.name] or 0) + 1
 
 	self:dismissSuggestions()
@@ -3676,6 +3733,305 @@ function CodeEditor:jumpToMatchingBracket()
 	box.CursorPosition = partner > index and (partner + 1) or partner
 end
 
+-- Auto-pairing and auto-`end` ---------------------------------------------------------
+
+-- Inserts `end` (or `end)`) below a freshly opened block when the document is missing one.
+function CodeEditor:autoEnd(text, cursor)
+	local box = self.TextBox
+	local lineStart = lineBounds(text, cursor - 1)
+	local prevLine = string.sub(text, lineStart, cursor - 2)
+	local _, lineEnd = lineBounds(text, cursor)
+
+	if string.match(string.sub(text, cursor, lineEnd - 1), "%S") ~= nil then
+		return
+	end
+
+	local trimmed = string.match(prevLine, "^%s*(.-)%s*$")
+	local closer = "end"
+
+	if string.match(trimmed, "%f[%w_]then$") ~= nil then
+		if string.match(trimmed, "^elseif%f[^%w_]") ~= nil then
+			return
+		end
+	elseif string.match(trimmed, "%f[%w_]do$") ~= nil then
+		-- loop or do-block
+	elseif string.match(trimmed, "%f[%w_]function%f[^%w_].*%)$") ~= nil then
+		local _, openCount = string.gsub(trimmed, "%(", "")
+		local _, closeCount = string.gsub(trimmed, "%)", "")
+
+		if openCount > closeCount then
+			closer = "end)"
+		end
+	else
+		return
+	end
+
+	if blockBalance(text) <= 0 then
+		return
+	end
+
+	local indent = string.match(prevLine, "^[ \t]*") or ""
+
+	box:ReplaceRange(cursor, cursor, "\n" .. indent .. closer)
+	box.CursorPosition = cursor
+	self.lastText = box.Text
+end
+
+-- Looks at what the last edit was and reacts: type-over, auto-close, auto-end, paired Backspace.
+function CodeEditor:autoEdit()
+	if self.applyingSuggestion or not (AUTO_CLOSE_PAIRS or AUTO_END_BLOCKS) then
+		return
+	end
+
+	local box = self.TextBox
+	local old = self.lastText or ""
+	local text = box.Text
+	local cursor = math.max(box.CursorPosition or 1, 1)
+	local _, _, hasSelection = self:getSelection()
+
+	if hasSelection then
+		self.pendingCloser = nil
+
+		return
+	end
+
+	if #text == #old + 1 and cursor >= 2 then
+		-- confirm this was a single character typed right before the caret
+		if
+			string.sub(text, 1, cursor - 2) ~= string.sub(old, 1, cursor - 2)
+			or string.sub(text, cursor) ~= string.sub(old, cursor - 1)
+		then
+			self.pendingCloser = nil
+
+			return
+		end
+
+		local typed = string.sub(text, cursor - 1, cursor - 1)
+		local before = string.sub(text, cursor - 2, cursor - 2)
+		local after = string.sub(text, cursor, cursor)
+
+		if AUTO_CLOSE_PAIRS and self.pendingCloser == cursor - 1 and after == typed then
+			if CLOSE_BRACKETS[typed] ~= nil or QUOTES[typed] then
+				self.pendingCloser = nil
+				box:ReplaceRange(cursor, cursor + 1, "")
+				self.lastText = box.Text
+
+				return
+			end
+		end
+
+		self.pendingCloser = nil
+
+		if typed == "\n" then
+			if AUTO_END_BLOCKS then
+				self:autoEnd(text, cursor)
+			end
+
+			return
+		end
+
+		if not AUTO_CLOSE_PAIRS or not (OPEN_BRACKETS[typed] ~= nil or QUOTES[typed]) then
+			return
+		end
+
+		if insideCommentOrString(old, cursor - 1) then
+			return
+		end
+
+		if QUOTES[typed] and (string.match(before, "[%w_]") ~= nil or string.match(after, "[%w_]") ~= nil) then
+			return
+		end
+
+		if after ~= "" and string.match(after, "[%s%)%]%},;]") == nil then
+			return
+		end
+
+		box:ReplaceRange(cursor, cursor, OPEN_BRACKETS[typed] or typed)
+		box.CursorPosition = cursor
+		self.pendingCloser = cursor
+		self.lastText = box.Text
+	elseif #text == #old - 1 then
+		self.pendingCloser = nil
+
+		if not AUTO_CLOSE_PAIRS then
+			return
+		end
+
+		if
+			string.sub(text, 1, cursor - 1) ~= string.sub(old, 1, cursor - 1)
+			or string.sub(text, cursor) ~= string.sub(old, cursor + 1)
+		then
+			return
+		end
+
+		local removed = string.sub(old, cursor, cursor)
+		local after = string.sub(text, cursor, cursor)
+
+		if after ~= "" and (OPEN_BRACKETS[removed] == after or (QUOTES[removed] and removed == after)) then
+			box:ReplaceRange(cursor, cursor + 1, "")
+			self.lastText = box.Text
+		end
+	else
+		self.pendingCloser = nil
+	end
+end
+
+-- More Zed-style commands ----------------------------------------------------------
+
+-- Ctrl+Shift+Space: grow the selection to the next enclosing bracket pair (inside, then including brackets).
+function CodeEditor:selectEnclosing()
+	if not self:hasDocument() then
+		return
+	end
+
+	local first, finish = self:getSelection()
+	local map = bracketPairs(self.TextBox.Text)
+	local bestStart, bestFinish, bestSize
+
+	for open, close in pairs(map) do
+		if open < close then
+			for _, range in ipairs({ { open + 1, close }, { open, close + 1 } }) do
+				local rangeStart, rangeFinish = range[1], range[2]
+
+				if
+					rangeFinish > rangeStart
+					and rangeStart <= first
+					and rangeFinish >= finish
+					and (rangeStart < first or rangeFinish > finish)
+				then
+					local size = rangeFinish - rangeStart
+
+					if bestSize == nil or size < bestSize then
+						bestStart, bestFinish, bestSize = rangeStart, rangeFinish, size
+					end
+				end
+			end
+		end
+	end
+
+	if bestStart == nil then
+		self:notify("No enclosing brackets")
+
+		return
+	end
+
+	self:setSelection(bestStart, bestFinish)
+end
+
+-- Ctrl+Alt+S: sort the selected lines (Ctrl+Alt+Shift+S for descending).
+function CodeEditor:sortLines(descending)
+	if not self:hasDocument() then
+		return
+	end
+
+	local text, blockStart, blockEnd = self:selectedBlock()
+	local lines = string.split(string.sub(text, blockStart, blockEnd - 1), "\n")
+
+	if #lines < 2 then
+		self:notify("Select multiple lines to sort")
+
+		return
+	end
+
+	table.sort(lines, function(a, b)
+		if descending then
+			return a > b
+		end
+
+		return a < b
+	end)
+
+	local replaced = table.concat(lines, "\n")
+
+	self.TextBox:ReplaceRange(blockStart, blockEnd, replaced)
+	self:setSelection(blockStart, blockStart + #replaced)
+end
+
+-- Ctrl+Shift+U: toggle the selection (or the word at the caret) between UPPER and lower case.
+function CodeEditor:toggleCase()
+	if not self:hasDocument() then
+		return
+	end
+
+	local text = self.TextBox.Text
+	local first, finish, hasSelection = self:getSelection()
+
+	if not hasSelection then
+		first, finish = identifierAt(text, first)
+
+		if first == nil then
+			return
+		end
+	end
+
+	local selected = string.sub(text, first, finish - 1)
+	local converted = selected == string.upper(selected) and string.lower(selected) or string.upper(selected)
+
+	if converted == selected then
+		return
+	end
+
+	self.TextBox:ReplaceRange(first, finish, converted)
+	self:setSelection(first, finish)
+end
+
+-- Ctrl+E: search for the word under the caret (or the selection).
+function CodeEditor:findWordUnderCursor()
+	if not self:hasDocument() then
+		return
+	end
+
+	local first, _, hasSelection = self:getSelection()
+
+	if not hasSelection then
+		local start, finish = identifierAt(self.TextBox.Text, first)
+
+		if start ~= nil then
+			self:setSelection(start, finish)
+		end
+	end
+
+	self:openFind(false)
+end
+
+-- Ctrl+Shift+O: list the functions in this file and jump to one.
+function CodeEditor:showSymbols()
+	if not self:hasDocument() then
+		return
+	end
+
+	local ranked = {}
+	local lineNumber = 0
+
+	for line in string.gmatch(self.TextBox.Text .. "\n", "([^\n]*)\n") do
+		lineNumber += 1
+
+		local name = string.match(line, "^%s*local%s+function%s+([%w_%.:]+)")
+			or string.match(line, "^%s*function%s+([%w_%.:]+)")
+			or string.match(line, "^%s*local%s+([%w_]+)%s*=%s*function")
+			or string.match(line, "^%s*([%w_%.:]+)%s*=%s*function")
+
+		if name ~= nil then
+			table.insert(ranked, {
+				name = name,
+				kind = "Function",
+				detail = "Ln " .. lineNumber,
+				score = lineNumber,
+				jumpLine = lineNumber,
+				quote = false,
+			})
+		end
+	end
+
+	if #ranked == 0 then
+		self:notify("No functions found")
+
+		return
+	end
+
+	self:showRanked(ranked, "", { start = 1, finish = 1 })
+end
+
 -- Diagnostics --------------------------------------------------------------------
 
 function CodeEditor:hideDiagnosticPopup()
@@ -3842,6 +4198,8 @@ function CodeEditor:handleShortcut(keyCode)
 		self:deleteLines()
 	elseif keyCode == K.Slash then
 		self:toggleComment()
+	elseif keyCode == K.S and altHeld() then
+		self:sortLines(shiftHeld())
 	elseif keyCode == K.S then
 		self:saveActive()
 	elseif keyCode == K.W then
@@ -3850,8 +4208,16 @@ function CodeEditor:handleShortcut(keyCode)
 		self:reopenClosed()
 	elseif keyCode == K.Tab then
 		self:cycleDocument(shiftHeld() and -1 or 1)
+	elseif keyCode == K.Space and shiftHeld() then
+		self:selectEnclosing()
 	elseif keyCode == K.Space then
 		self:forceSuggestions()
+	elseif keyCode == K.U and shiftHeld() then
+		self:toggleCase()
+	elseif keyCode == K.E then
+		self:findWordUnderCursor()
+	elseif keyCode == K.O and shiftHeld() then
+		self:showSymbols()
 	elseif keyCode == K.L then
 		self:selectLine()
 	elseif keyCode == K.J then
@@ -3875,8 +4241,12 @@ end
 function CodeEditor:wireEditor()
 	self:connect(self.TextBox.TextChanged, function()
 		if self.suppressTextSync then
+			self.lastText = self.TextBox.Text
+
 			return
 		end
+
+		self:autoEdit()
 
 		if self.activeDocument ~= nil then
 			self.activeDocument.source = self.TextBox.Text
@@ -3900,6 +4270,8 @@ function CodeEditor:wireEditor()
 		if self.goToVisible then
 			self:updateGoToHint()
 		end
+
+		self.lastText = self.TextBox.Text
 	end)
 
 	self:connect(self.findInput.TextChanged, function()
