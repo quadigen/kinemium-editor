@@ -80,6 +80,18 @@ local SUGGEST_LINE_HEIGHT = 22
 local DIAGNOSTIC_WIDTH = 320
 local DIAGNOSTIC_DELAY = 0.18
 
+-- Width of one monospace column in the editor font. Used to place the error popup under the
+-- errored word. Tune this if the popup sits a few pixels left/right of the error.
+local CODE_CHAR_WIDTH = 8
+
+-- While the script has a syntax error, hide completions. By default only errors on *other*
+-- lines block them, because most half-typed statements (`game.`) are errors on the current
+-- line. Set to true to block completions on any error. Ctrl+Space always forces them.
+local SUPPRESS_ON_CURRENT_LINE = false
+
+-- Ctrl+S trims trailing whitespace and ensures the file ends with a single newline (like Zed).
+local TRIM_ON_SAVE = true
+
 local COMMIT_DELAY = 0.35 -- debounce for file-backed documents (scripts write immediately)
 local MAX_FIND_MATCHES = 5000
 local MAX_CLOSED_TABS = 10
@@ -431,6 +443,9 @@ end
 -- Pure helpers
 --------------------------------------------------------------------------------
 
+local OPEN_BRACKETS = { ["("] = ")", ["["] = "]", ["{"] = "}" }
+local CLOSE_BRACKETS = { [")"] = "(", ["]"] = "[", ["}"] = "{" }
+
 local function parseMember(entry)
 	return entry
 end
@@ -530,6 +545,71 @@ local function insideCommentOrString(text, cursor)
 	end
 
 	return quote ~= nil
+end
+
+-- Maps the index of every balanced bracket to the index of its partner. Strings and comments are skipped.
+local function bracketPairs(text)
+	local map = {}
+	local stack = {}
+	local index = 1
+	local length = #text
+
+	while index <= length do
+		local character = string.sub(text, index, index)
+
+		if character == "-" and string.sub(text, index + 1, index + 1) == "-" then
+			local level = string.match(text, "^%-%-%[(=*)%[", index)
+
+			if level ~= nil then
+				local _, finish = string.find(text, "]" .. level .. "]", index, true)
+
+				index = (finish or length) + 1
+			else
+				local newline = string.find(text, "\n", index, true)
+
+				index = (newline or length) + 1
+			end
+		elseif character == '"' or character == "'" or character == "`" then
+			index += 1
+
+			while index <= length do
+				local inner = string.sub(text, index, index)
+
+				if inner == "\\" then
+					index += 2
+				elseif inner == character or inner == "\n" then
+					break
+				else
+					index += 1
+				end
+			end
+
+			index += 1
+		elseif character == "[" and string.match(text, "^%[=*%[", index) ~= nil then
+			local level = string.match(text, "^%[(=*)%[", index)
+			local _, finish = string.find(text, "]" .. level .. "]", index, true)
+
+			index = (finish or length) + 1
+		elseif OPEN_BRACKETS[character] ~= nil then
+			table.insert(stack, { index = index, character = character })
+
+			index += 1
+		elseif CLOSE_BRACKETS[character] ~= nil then
+			local top = stack[#stack]
+
+			if top ~= nil and top.character == CLOSE_BRACKETS[character] then
+				stack[#stack] = nil
+				map[top.index] = index
+				map[index] = top.index
+			end
+
+			index += 1
+		else
+			index += 1
+		end
+	end
+
+	return map
 end
 
 local function splitPath(path)
@@ -1207,6 +1287,10 @@ function CodeEditor.new(parent)
 
 	self.currentDiagnostic = nil
 	self.diagnosticActive = false
+	self.diagnosticShown = nil
+	self.diagnosticPinned = false
+	self.pinnedCursor = nil
+	self.lastMouse = Vector2.new(0, 0)
 	self.toastExpires = nil
 
 	local tabStrip = UI.create("ScrollingFrame", {
@@ -1585,6 +1669,14 @@ function CodeEditor:update(delta)
 
 	self:syncTheme()
 
+	if self.diagnosticShown ~= nil then
+		if self.diagnosticPinned and self.TextBox.CursorPosition ~= self.pinnedCursor then
+			self:hideDiagnosticPopup()
+		else
+			self:placeDiagnosticPopup() -- follows the error while scrolling
+		end
+	end
+
 	if self.findVisible or self.goToVisible then
 		self:placeFindWidget()
 	end
@@ -1780,11 +1872,42 @@ function CodeEditor:scheduleCommit(document)
 	end)
 end
 
+-- Trims trailing whitespace and guarantees a single final newline, keeping the caret on the same line/column.
+function CodeEditor:tidyForSave()
+	local box = self.TextBox
+	local text = box.Text
+
+	local cleaned = string.gsub(text, "[ \t]+(\r?\n)", "%1")
+	cleaned = string.gsub(cleaned, "[ \t]+$", "")
+	cleaned = string.gsub(cleaned, "\n+$", "")
+
+	if cleaned ~= "" then
+		cleaned ..= "\n"
+	end
+
+	if cleaned == text then
+		return
+	end
+
+	local line, column = lineColumn(text, math.max(box.CursorPosition or 1, 1))
+
+	box:ReplaceRange(1, #text + 1, cleaned)
+
+	local lineStart = positionOfLine(cleaned, line)
+	local _, lineEnd = lineBounds(cleaned, lineStart)
+
+	box.CursorPosition = math.min(lineStart + column - 1, lineEnd)
+end
+
 function CodeEditor:saveActive()
 	local document = self.activeDocument
 
 	if document == nil then
 		return
+	end
+
+	if TRIM_ON_SAVE then
+		self:tidyForSave()
 	end
 
 	document.source = self.TextBox.Text
@@ -2200,6 +2323,11 @@ function CodeEditor:goToDiagnostic()
 	end
 
 	self:GoToLine(diagnostic.Line, diagnostic.Column)
+
+	-- keep the popup open on the error until the caret moves
+	self:showDiagnosticPopup(diagnostic)
+	self.diagnosticPinned = true
+	self.pinnedCursor = self.TextBox.CursorPosition
 end
 
 function CodeEditor:openGoTo()
@@ -2368,6 +2496,37 @@ function CodeEditor:dismissSuggestions()
 	self:dismissArgumentHint()
 end
 
+-- Hides only the completion list; the argument hint stays (it is useful while typing a call).
+function CodeEditor:hideSuggestionList()
+	self.suggestions = {}
+	self.suggestionIndex = 1
+	self.suggestPrefix = nil
+	self.suggestRange = nil
+	self.suggestionScroll = 0
+
+	if UI.isAlive(self.Popup) then
+		self.Popup.Visible = false
+	end
+end
+
+-- True while a syntax error should keep the completion list closed.
+function CodeEditor:suggestionsBlocked()
+	local diagnostic = self.currentDiagnostic
+
+	if diagnostic == nil or self.forceSuggest then
+		return false
+	end
+
+	if SUPPRESS_ON_CURRENT_LINE then
+		return true
+	end
+
+	local box = self.TextBox
+	local line = lineColumn(box.Text, math.max(box.CursorPosition or 1, 1))
+
+	return diagnostic.Line ~= line
+end
+
 function CodeEditor:refreshSuggestions()
 	self:updateSuggestionList()
 
@@ -2378,6 +2537,12 @@ function CodeEditor:updateSuggestionList()
 	local box = self.TextBox
 	local text = box.Text
 	local cursor = box.CursorPosition or 1
+
+	if self:suggestionsBlocked() then
+		self:hideSuggestionList()
+
+		return
+	end
 
 	local service = self:serviceArgumentAt()
 
@@ -3384,16 +3549,201 @@ function CodeEditor:toggleComment()
 	end
 end
 
+-- Zed-style editing commands -----------------------------------------------------
+
+-- Ctrl+L: select the current line(s); press again to extend by one more line.
+function CodeEditor:selectLine()
+	if not self:hasDocument() then
+		return
+	end
+
+	local text, blockStart, blockEnd, first, finish, hasSelection = self:selectedBlock()
+	local target = math.min(blockEnd + 1, #text + 1)
+
+	if hasSelection and first == blockStart and finish == target and blockEnd <= #text then
+		local _, nextEnd = lineBounds(text, target)
+
+		target = math.min(nextEnd + 1, #text + 1)
+	end
+
+	self:setSelection(blockStart, target)
+end
+
+-- Ctrl+Enter: open a new line below (keeps indentation). Ctrl+Shift+Enter: open one above.
+function CodeEditor:insertLine(above)
+	if not self:hasDocument() then
+		return
+	end
+
+	local text, blockStart, blockEnd = self:selectedBlock()
+
+	if above then
+		local indent = string.match(string.sub(text, blockStart, blockEnd - 1), "^[ \t]*") or ""
+
+		self.TextBox:ReplaceRange(blockStart, blockStart, indent .. "\n")
+		self.TextBox.CursorPosition = blockStart + #indent
+	else
+		local lastStart = lineBounds(text, blockEnd)
+		local indent = string.match(string.sub(text, lastStart, blockEnd - 1), "^[ \t]*") or ""
+
+		self.TextBox:ReplaceRange(blockEnd, blockEnd, "\n" .. indent)
+		self.TextBox.CursorPosition = blockEnd + 1 + #indent
+	end
+end
+
+-- Ctrl+J: join the selected lines (or the current line with the next one) into one.
+function CodeEditor:joinLines()
+	if not self:hasDocument() then
+		return
+	end
+
+	local text, blockStart, blockEnd = self:selectedBlock()
+	local rangeEnd = blockEnd
+
+	if string.find(string.sub(text, blockStart, blockEnd - 1), "\n", 1, true) == nil then
+		if blockEnd > #text then
+			return
+		end
+
+		local _, nextEnd = lineBounds(text, blockEnd + 1)
+
+		rangeEnd = nextEnd
+	end
+
+	local lines = string.split(string.sub(text, blockStart, rangeEnd - 1), "\n")
+	local joined = (string.gsub(lines[1], "%s+$", ""))
+	local joinPoint = #joined
+
+	for index = 2, #lines do
+		local trimmed = string.match(lines[index], "^%s*(.-)%s*$")
+
+		if trimmed ~= "" then
+			joined ..= (joined == "" and "" or " ") .. trimmed
+		end
+	end
+
+	self.TextBox:ReplaceRange(blockStart, rangeEnd, joined)
+	self.TextBox.CursorPosition = blockStart + joinPoint
+end
+
+-- Ctrl+] / Ctrl+[: indent or outdent every selected line.
+function CodeEditor:shiftIndent(direction)
+	if not self:hasDocument() then
+		return
+	end
+
+	local text, blockStart, blockEnd = self:selectedBlock()
+	local lines = string.split(string.sub(text, blockStart, blockEnd - 1), "\n")
+	local out = {}
+
+	for index, line in ipairs(lines) do
+		if direction > 0 then
+			out[index] = string.match(line, "%S") and ("\t" .. line) or line
+		elseif string.sub(line, 1, 1) == "\t" then
+			out[index] = string.sub(line, 2)
+		else
+			out[index] = (string.gsub(line, "^ ? ? ? ?", ""))
+		end
+	end
+
+	local replaced = table.concat(out, "\n")
+
+	self.TextBox:ReplaceRange(blockStart, blockEnd, replaced)
+	self:setSelection(blockStart, blockStart + #replaced)
+end
+
+-- Ctrl+Shift+\: jump to the bracket that pairs with the one at (or just before) the caret.
+function CodeEditor:jumpToMatchingBracket()
+	if not self:hasDocument() then
+		return
+	end
+
+	local box = self.TextBox
+	local cursor = math.max(box.CursorPosition or 1, 1)
+	local map = bracketPairs(box.Text)
+
+	local index = map[cursor] ~= nil and cursor or (map[cursor - 1] ~= nil and cursor - 1 or nil)
+
+	if index == nil then
+		self:notify("No matching bracket")
+
+		return
+	end
+
+	local partner = map[index]
+
+	-- land after a closing bracket, on an opening one
+	box.CursorPosition = partner > index and (partner + 1) or partner
+end
+
 -- Diagnostics --------------------------------------------------------------------
 
 function CodeEditor:hideDiagnosticPopup()
+	self.diagnosticShown = nil
+	self.diagnosticPinned = false
+
 	if UI.isAlive(self.DiagnosticPopup) then
 		self.DiagnosticPopup.Visible = false
 	end
 end
 
-function CodeEditor:showDiagnosticPopup(diagnostic, x, y)
+-- Screen position of the start of the error, derived from the caret.
+function CodeEditor:diagnosticAnchor(diagnostic)
+	local box = self.TextBox
+	local caret = box.CaretScreenPosition
+
+	if caret == nil then
+		return self.lastMouse
+	end
+
+	local caretLine, caretColumn = lineColumn(box.Text, math.max(box.CursorPosition or 1, 1))
+
+	return Vector2.new(
+		caret.X + (diagnostic.Column - caretColumn) * CODE_CHAR_WIDTH,
+		caret.Y + (diagnostic.Line - caretLine) * SUGGEST_LINE_HEIGHT
+	)
+end
+
+function CodeEditor:placeDiagnosticPopup()
+	local diagnostic = self.diagnosticShown
+
+	if diagnostic == nil or diagnostic.Column == nil or not UI.isAlive(self.DiagnosticPopup) then
+		return
+	end
+
+	local box = self.TextBox
+	local anchor = self:diagnosticAnchor(diagnostic)
+	local top = box.AbsolutePosition.Y
+	local bottom = top + box.AbsoluteSize.Y
+
+	-- error line scrolled out of view
+	if anchor.Y < top - SUGGEST_LINE_HEIGHT or anchor.Y > bottom then
+		self.DiagnosticPopup.Visible = false
+
+		return
+	end
+
+	local camera = workspace.CurrentCamera
+	local screen = camera and camera.ViewportSize or Vector2.new(1280, 720)
+	local height = self.DiagnosticPopup.Size.Y.Offset
+
+	local x = math.clamp(anchor.X, 8, math.max(8, screen.X - DIAGNOSTIC_WIDTH - 8))
+	local y = anchor.Y + SUGGEST_LINE_HEIGHT + 2
+
+	if y + height > screen.Y - 8 then
+		y = math.max(8, anchor.Y - height - 4)
+	end
+
+	self.DiagnosticPopup.Position = UDim2.fromOffset(math.floor(x), math.floor(y))
+	self.DiagnosticPopup.Visible = true
+end
+
+function CodeEditor:showDiagnosticPopup(diagnostic)
 	if not UI.isAlive(self.DiagnosticPopup) then
+		return
+	end
+
+	if self.diagnosticShown == diagnostic and self.DiagnosticPopup.Visible then
 		return
 	end
 
@@ -3406,22 +3756,9 @@ function CodeEditor:showDiagnosticPopup(diagnostic, x, y)
 	local measured =
 		TextService:GetTextSize(message, fontSize("small"), TAB_FONT, Vector2.new(DIAGNOSTIC_WIDTH - 20, 2000))
 
-	local height = math.max(54, math.ceil(measured.Y) + 34)
-
-	self.DiagnosticPopup.Size = UDim2.fromOffset(DIAGNOSTIC_WIDTH, height)
-
-	local camera = workspace.CurrentCamera
-	local screen = camera and camera.ViewportSize or Vector2.new(1280, 720)
-
-	local px = math.max(8, math.min(x + 14, screen.X - DIAGNOSTIC_WIDTH - 8))
-	local py = y + 18
-
-	if py + height > screen.Y - 8 then
-		py = math.max(8, y - height - 12)
-	end
-
-	self.DiagnosticPopup.Position = UDim2.fromOffset(math.floor(px), math.floor(py))
-	self.DiagnosticPopup.Visible = true
+	self.DiagnosticPopup.Size = UDim2.fromOffset(DIAGNOSTIC_WIDTH, math.max(54, math.ceil(measured.Y) + 34))
+	self.diagnosticShown = diagnostic
+	self:placeDiagnosticPopup()
 end
 
 function CodeEditor:refreshDiagnostics()
@@ -3478,6 +3815,13 @@ function CodeEditor:refreshDiagnostics()
 				Message = message,
 			},
 		})
+
+		-- the error is new: drop any stale tooltip and close completions it now blocks
+		self:hideDiagnosticPopup()
+
+		if self:suggestionsBlocked() then
+			self:hideSuggestionList()
+		end
 	end)
 end
 
@@ -3508,6 +3852,19 @@ function CodeEditor:handleShortcut(keyCode)
 		self:cycleDocument(shiftHeld() and -1 or 1)
 	elseif keyCode == K.Space then
 		self:forceSuggestions()
+	elseif keyCode == K.L then
+		self:selectLine()
+	elseif keyCode == K.J then
+		self:joinLines()
+	elseif keyCode == K.Return or keyCode == K.KeypadEnter then
+		self:dismissSuggestions()
+		self:insertLine(shiftHeld())
+	elseif keyCode == K.RightBracket then
+		self:shiftIndent(1)
+	elseif keyCode == K.LeftBracket then
+		self:shiftIndent(-1)
+	elseif keyCode == K.BackSlash and shiftHeld() then
+		self:jumpToMatchingBracket()
 	else
 		return false
 	end
@@ -3616,18 +3973,23 @@ function CodeEditor:wireEditor()
 	end)
 
 	self:connect(self.TextBox.MouseMoved, function(x, y)
-		local absolute = self.TextBox.AbsolutePosition
-		local diagnostic = self.TextBox:DiagnosticAtPoint(x - absolute.X, y - absolute.Y)
+		self.lastMouse = Vector2.new(x, y)
 
-		if diagnostic ~= nil and UI.shared().scriptDiagnostics then
-			self:showDiagnosticPopup(diagnostic, x, y)
-		else
+		local absolute = self.TextBox.AbsolutePosition
+		local hit = self.TextBox:DiagnosticAtPoint(x - absolute.X, y - absolute.Y)
+		local current = self.currentDiagnostic
+
+		if hit ~= nil and current ~= nil and UI.shared().scriptDiagnostics then
+			self:showDiagnosticPopup(current) -- anchored to the error, not the mouse
+		elseif not self.diagnosticPinned then
 			self:hideDiagnosticPopup()
 		end
 	end)
 
 	self:connect(self.TextBox.MouseLeave, function()
-		self:hideDiagnosticPopup()
+		if not self.diagnosticPinned then
+			self:hideDiagnosticPopup()
+		end
 	end)
 
 	self:connect(self.TextBox.KeyDown, function(input)
