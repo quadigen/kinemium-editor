@@ -45,6 +45,32 @@ return function(ctx)
 			panel.BackgroundTransparency = options.panelTransparency or 0.08
 		end
 
+		local backgroundImageLabel = nil
+		if options.backgroundImage and options.backgroundImage ~= "" then
+			local imageScaleType = options.backgroundImageScaleType or Enum.ScaleType.Crop
+			if type(imageScaleType) == "string" then
+				imageScaleType = Enum.ScaleType[imageScaleType] or Enum.ScaleType.Crop
+			end
+
+			backgroundImageLabel = UI.create("ImageLabel", {
+				Name = "BackgroundImage",
+				Position = UDim2.fromScale(0, 0),
+				Size = UDim2.fromScale(1, 1),
+				BackgroundTransparency = 1,
+				Image = options.backgroundImage,
+				ImageTransparency = options.backgroundImageTransparency or 0,
+				ImageColor3 = options.backgroundImageColor or Color3.new(1, 1, 1),
+				ScaleType = imageScaleType,
+				ZIndex = panel.ZIndex,
+				Active = false,
+				Selectable = false,
+			}, panel)
+
+			UI.create("UICorner", {
+				CornerRadius = UDim.new(0, radius),
+			}, backgroundImageLabel)
+		end
+
 		local border = UI.stroke(
 			panel,
 			options.borderColor or colors.borderStrong,
@@ -57,8 +83,13 @@ return function(ctx)
 		header.Name = "Header"
 		header.ClipsDescendants = true
 
-		UI.frame(header, UDim2.new(0, 0, 1, -radius), UDim2.new(1, 0, 0, radius), headerColor)
+		local headerBottomFill = UI.frame(header, UDim2.new(0, 0, 1, -radius), UDim2.new(1, 0, 0, radius), headerColor)
 		UI.frame(header, UDim2.new(0, 8, 1, -1), UDim2.new(1, -16, 0, 1), colors.border)
+
+		if options.headerTransparency ~= nil then
+			header.BackgroundTransparency = options.headerTransparency
+			headerBottomFill.BackgroundTransparency = options.headerTransparency
+		end
 
 		local tabHeight = headerHeight - tabTop
 		local titleTab = nil
@@ -225,8 +256,8 @@ return function(ctx)
 			)
 
 			panel.Destroying:Connect(function()
-				for _, c in ipairs(connections) do
-					c:Disconnect()
+				for _, connection in ipairs(connections) do
+					connection:Disconnect()
 				end
 			end)
 		end
@@ -236,6 +267,12 @@ return function(ctx)
 
 		content.Name = "Content"
 		content.ClipsDescendants = true
+
+		if options.contentTransparency ~= nil then
+			content.BackgroundTransparency = options.contentTransparency
+		elseif backgroundImageLabel then
+			content.BackgroundTransparency = 1
+		end
 
 		local tabsController = nil
 
@@ -295,6 +332,7 @@ return function(ctx)
 				dragHandle = dragHandle,
 				border = border,
 				clip = clip,
+				backgroundImage = backgroundImageLabel,
 
 				tabBar = nil,
 				tabs = tabsController and tabsController.tabs or {},
