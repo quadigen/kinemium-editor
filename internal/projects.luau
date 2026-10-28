@@ -72,6 +72,9 @@ return function(page, windowControls, gui)
 		UI.root().Enabled = true
 		UI.widgetOverlay().Enabled = true
 		UI.RootOverlay().Enabled = true
+		if shared.ScriptLayer then
+			shared.ScriptLayer.Enabled = true
+		end
 	end
 
 	local function validate(props)
@@ -318,6 +321,9 @@ return function(page, windowControls, gui)
 			UI.root().Enabled = true
 			UI.widgetOverlay().Enabled = true
 			UI.RootOverlay().Enabled = true
+			if shared.ScriptLayer then
+				shared.ScriptLayer.Enabled = true
+			end
 
 			Explorer.filesController.Refresh()
 			refreshList()

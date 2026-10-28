@@ -85,6 +85,9 @@ return {
 					UI.root().Enabled = false
 					UI.RootOverlay().Enabled = false
 					UI.widgetOverlay().Enabled = false
+					if shared.ScriptLayer then
+						shared.ScriptLayer.Enabled = false
+					end
 				end
 			end,
 		},

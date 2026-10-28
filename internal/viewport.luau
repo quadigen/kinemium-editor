@@ -33,7 +33,9 @@ local scriptLayer = UI.create("ScreenGui", {
 	Name = "ScriptEditorLayer",
 	DisplayOrder = 1000,
 	IgnoreGuiInset = true,
-}, UI.widgetOverlay())
+}, game.CoreGui)
+
+shared.ScriptLayer = scriptLayer
 
 scriptLayer.RenderOnTop = true
 
