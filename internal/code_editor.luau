@@ -55,14 +55,7 @@ local function colorsChanged(snapshot)
 	return false
 end
 
---------------------------------------------------------------------------------
--- Constants
---------------------------------------------------------------------------------
-
-local TAB_STRIP_HEIGHT = 30
-local TAB_TOP = 4
-local TAB_GAP = 2
-local TAB_START_X = 10
+local TAB_STRIP_HEIGHT = 26
 local STATUS_HEIGHT = 20
 local FIND_WIDTH = 340
 local FIND_HEIGHT = 28
@@ -83,31 +76,19 @@ local SUGGEST_LINE_HEIGHT = 22
 local DIAGNOSTIC_WIDTH = 320
 local DIAGNOSTIC_DELAY = 0.18
 
--- Width of one monospace column in the editor font. Used to place the error popup under the
--- errored word. Tune this if the popup sits a few pixels left/right of the error.
 local CODE_CHAR_WIDTH = 8
-
--- While the script has a syntax error, hide completions. By default only errors on *other*
--- lines block them, because most half-typed statements (`game.`) are errors on the current
--- line. Set to true to block completions on any error. Ctrl+Space always forces them.
 local SUPPRESS_ON_CURRENT_LINE = false
 
--- Ctrl+S trims trailing whitespace and ensures the file ends with a single newline (like Zed).
 local TRIM_ON_SAVE = true
-
--- Typing an opening bracket or quote inserts the closing one; typing the closer types over it,
--- and Backspace between an empty pair removes both.
 local AUTO_CLOSE_PAIRS = true
 
--- Pressing Enter after `then`, `do` or `function(...)` inserts the matching `end` when the block is unclosed.
 local AUTO_END_BLOCKS = true
 
-local COMMIT_DELAY = 0.35 -- debounce for file-backed documents (scripts write immediately)
+local COMMIT_DELAY = 0.35
 local MAX_FIND_MATCHES = 5000
 local MAX_CLOSED_TABS = 10
 local POPUP_LERP_SPEED = 26
 
--- If find/replace selections look off by one in your build, change this to 1.
 local SELECTION_BASE = 0
 
 local iconRoot = "builtin://global-icons/"
@@ -149,10 +130,6 @@ local KIND_COLOR_KEYS = {
 local function kindColor(kind)
 	return C(KIND_COLOR_KEYS[kind] or "text")
 end
-
---------------------------------------------------------------------------------
--- Static language data (compact form, expanded at load)
---------------------------------------------------------------------------------
 
 local SIGNATURES = {}
 local SIGNATURES_LOWER = {}
@@ -423,7 +400,6 @@ addMembers(
 	writeu16:F writeu32:F writeu8:F]]
 )
 
--- Snippets: "$0" marks where the cursor ends up. Newlines inherit the current line's indentation.
 local SNIPPETS = {
 	{ name = "fori", detail = "numeric for", body = "for i = 1, $0 do\n\t\nend" },
 	{ name = "foreach", detail = "ipairs loop", body = "for _, value in ipairs($0) do\n\t\nend" },
@@ -449,10 +425,6 @@ for _, snippet in ipairs(SNIPPETS) do
 	})
 end
 
---------------------------------------------------------------------------------
--- Pure helpers
---------------------------------------------------------------------------------
-
 local OPEN_BRACKETS = { ["("] = ")", ["["] = "]", ["{"] = "}" }
 local CLOSE_BRACKETS = { [")"] = "(", ["]"] = "[", ["}"] = "{" }
 
@@ -470,7 +442,6 @@ local function approach(current, target, delta)
 	return current + (target - current) * weight
 end
 
--- Returns first index of the line containing `position`, and the (exclusive) index of its newline / end.
 local function lineBounds(text, position)
 	position = math.clamp(position, 1, #text + 1)
 
@@ -529,7 +500,6 @@ local function positionOfLine(text, line)
 	return position, current
 end
 
--- Heuristic: is the cursor inside a string or a `--` comment on its own line?
 local function insideCommentOrString(text, cursor)
 	local lineStart = lineBounds(text, cursor)
 	local before = string.sub(text, lineStart, cursor - 1)
@@ -557,7 +527,6 @@ local function insideCommentOrString(text, cursor)
 	return quote ~= nil
 end
 
--- Maps the index of every balanced bracket to the index of its partner. Strings and comments are skipped.
 local function bracketPairs(text)
 	local map = {}
 	local stack = {}
@@ -624,7 +593,6 @@ end
 
 local QUOTES = { ['"'] = true, ["'"] = true, ["`"] = true }
 
--- Rough count of unclosed blocks (function/if/do/repeat minus end/until). Strings and comments are stripped first.
 local function blockBalance(text)
 	text = (string.gsub(text, "%-%-[^\n]*", ""))
 	text = (string.gsub(text, '"[^"\n]*"', ""))
@@ -643,7 +611,6 @@ local function blockBalance(text)
 	return balance
 end
 
--- Identifier touching `cursor`: returns start and (exclusive) finish, or nil.
 local function identifierAt(text, cursor)
 	local start = cursor
 	local finish = cursor
@@ -880,7 +847,6 @@ local function transparentFrame(parent, name)
 	}, parent)
 end
 
--- Caches for things that rarely change
 local serviceCache = nil
 local serviceSetCache = nil
 local serviceCacheTime = 0
@@ -1205,14 +1171,8 @@ local function diagnosticSpan(source, lineNumber, message)
 	return 1, 1
 end
 
---------------------------------------------------------------------------------
--- CodeEditor
---------------------------------------------------------------------------------
-
 local CodeEditor = {}
 CodeEditor.__index = CodeEditor
-
--- Theme binding -------------------------------------------------------------
 
 function CodeEditor:bindTheme(instance, property, key)
 	if instance == nil then
@@ -1308,8 +1268,6 @@ function CodeEditor:RefreshTheme()
 	self:syncTheme()
 end
 
--- Construction --------------------------------------------------------------
-
 function CodeEditor.new(parent)
 	local self = setmetatable({}, CodeEditor)
 
@@ -1344,8 +1302,6 @@ function CodeEditor.new(parent)
 	self.lastMouse = Vector2.new(0, 0)
 	self.lastText = ""
 	self.pendingCloser = nil
-	self.tabsController = nil
-	self.nextDocumentId = 0
 	self.toastExpires = nil
 
 	local tabStrip = UI.create("ScrollingFrame", {
@@ -1372,13 +1328,6 @@ function CodeEditor.new(parent)
 	self:bindTheme(tabStrip, "BackgroundColor3", "panel")
 	self:bindTheme(tabStrip, "ScrollBarImageColor3", "subtext")
 
-	-- UI.tabs wants a content frame for its pages; the editor itself is the content, so this stays hidden.
-	local tabPages = UI.frame(parent, UDim2.fromOffset(0, 0), UDim2.fromOffset(0, 0), C("input"), 0)
-
-	tabPages.Name = "TabPages"
-	tabPages.Visible = false
-	self.TabPages = tabPages
-
 	local editor = UI.create("TextBox", {
 		Name = "CodeEditor",
 		Size = UDim2.new(1, 0, 1, -(TAB_STRIP_HEIGHT + STATUS_HEIGHT)),
@@ -1388,7 +1337,7 @@ function CodeEditor.new(parent)
 		Active = true,
 		AutoIndent = true,
 		ShowMinimap = true,
-		BackgroundTransparency = 0, -- opaque, so the active tab blends into it
+		BackgroundTransparency = 0.3,
 	}, parent)
 
 	self:bindTheme(editor, "BackgroundColor3", "input")
@@ -1397,7 +1346,6 @@ function CodeEditor.new(parent)
 	UI.create("SyntaxHighlighter", { Parent = editor })
 	UI.create("UIBackdrop", { Parent = editor })
 
-	-- Status bar
 	local statusBar =
 		UI.frame(parent, UDim2.new(0, 0, 1, -STATUS_HEIGHT), UDim2.new(1, 0, 0, STATUS_HEIGHT), C("panel"), 0)
 
@@ -1436,7 +1384,6 @@ function CodeEditor.new(parent)
 		return self.diagnosticActive and C("error") or C("subtext")
 	end)
 
-	-- Overlay layer
 	local suggestionLayer = UI.create("ScreenGui", {
 		Name = "CodeEditorSuggestions",
 		DisplayOrder = 2100,
@@ -1549,7 +1496,6 @@ function CodeEditor.new(parent)
 	self.diagnosticSerial = 0
 	self.rows = {}
 
-	-- Find / replace widget
 	local find = UI.frame(
 		suggestionLayer,
 		UDim2.fromOffset(0, 0),
@@ -1622,7 +1568,6 @@ function CodeEditor.new(parent)
 	self.findCaseSensitive = false
 	self.findWholeWord = false
 
-	-- Go to line widget
 	local goTo = UI.frame(
 		suggestionLayer,
 		UDim2.fromOffset(0, 0),
@@ -1697,12 +1642,7 @@ function CodeEditor:Destroy()
 
 	self.connections = {}
 
-	if self.tabsController ~= nil then
-		self.tabsController.destroy()
-		self.tabsController = nil
-	end
-
-	for _, instance in ipairs({ self.SuggestionLayer, self.TabStrip, self.TabPages, self.TextBox, self.StatusBar }) do
+	for _, instance in ipairs({ self.SuggestionLayer, self.TabStrip, self.TextBox, self.StatusBar }) do
 		if UI.isAlive(instance) then
 			instance:Destroy()
 		end
@@ -1723,8 +1663,6 @@ function CodeEditor:registerRenderStep()
 	end)
 end
 
--- Per-frame update ---------------------------------------------------------
-
 function CodeEditor:update(delta)
 	if self.destroyed then
 		return
@@ -1740,7 +1678,7 @@ function CodeEditor:update(delta)
 		if self.diagnosticPinned and self.TextBox.CursorPosition ~= self.pinnedCursor then
 			self:hideDiagnosticPopup()
 		else
-			self:placeDiagnosticPopup() -- follows the error while scrolling
+			self:placeDiagnosticPopup()
 		end
 	end
 
@@ -1840,9 +1778,6 @@ function CodeEditor:notify(text, seconds)
 	self.toastExpires = os.clock() + (seconds or 1.8)
 end
 
--- Selection helpers ----------------------------------------------------------
-
--- Returns start, finish (1-based, finish exclusive), hasSelection
 function CodeEditor:getSelection()
 	local box = self.TextBox
 	local first = box.SelectionStart
@@ -1868,8 +1803,6 @@ function CodeEditor:setSelection(first, finish)
 	box.SelectionStart = first - 1 + SELECTION_BASE
 	box.SelectionEnd = finish - 1 + SELECTION_BASE
 end
-
--- Documents ------------------------------------------------------------------
 
 function CodeEditor:isScriptInstance(instance)
 	return instance ~= nil
@@ -1939,7 +1872,6 @@ function CodeEditor:scheduleCommit(document)
 	end)
 end
 
--- Trims trailing whitespace and guarantees a single final newline, keeping the caret on the same line/column.
 function CodeEditor:tidyForSave()
 	local box = self.TextBox
 	local text = box.Text
@@ -1989,132 +1921,95 @@ function CodeEditor:hasDocument()
 end
 
 function CodeEditor:rebuildTabs()
-	if self.tabsController ~= nil then
-		self.tabsController.destroy()
-		self.tabsController = nil
-	end
-
 	UI.clear(self.TabStrip)
-	UI.clear(self.TabPages)
 
-	local tabs = {}
-	local byId = {}
-	local activeId = nil
-	local canvasWidth = TAB_START_X
+	local x = 0
+	local activeX, activeWidth = 0, 0
 
 	for _, document in ipairs(self.documents) do
-		if document.id == nil then
-			self.nextDocumentId += 1
-			document.id = "Doc" .. self.nextDocumentId
-		end
+		local isActive = document == self.activeDocument
+		local background = isActive and C("surfaceAlt") or C("panel")
 
 		local width = self:tabWidthFor(document.name)
 
-		table.insert(tabs, { name = document.id, text = document.name, width = width })
-
-		byId[document.id] = document
-		canvasWidth += width + TAB_GAP
-
-		if document == self.activeDocument then
-			activeId = document.id
-		end
-	end
-
-	-- UI.tabs draws the bar, the hover/active animation and the active tab that merges into the editor below it.
-	local _, controller = UI.tabs(self.TabStrip, UDim2.new(), UDim2.new(), {
-		tabs = tabs,
-		barFrame = self.TabStrip,
-		contentFrame = self.TabPages,
-		barHeight = TAB_STRIP_HEIGHT,
-		tabTop = TAB_TOP,
-		tabGap = TAB_GAP,
-		startX = TAB_START_X,
-		tabRadius = cornerRadius("sm"),
-		barColor = C("panel"),
-		contentColor = C("input"),
-		activeTabColor = C("input"),
-		inactiveTabColor = C("panel"),
-		tabHoverColor = C("hover"),
-		activeTabTextColor = C("text"),
-		inactiveTabTextColor = C("subtext"),
-		tabAccentColor = C("accent"),
-		tabTextSize = fontSize("small"),
-		selectedTab = activeId,
-		onTabClicked = function(tabName)
-			local document = byId[tabName]
-
-			if document ~= nil then
+		local tab, _, record = UI.button(
+			self.TabStrip,
+			"",
+			UDim2.fromOffset(x, 0),
+			UDim2.fromOffset(width, TAB_STRIP_HEIGHT),
+			function()
 				self:focusDocument(document)
-			end
-		end,
-	})
+			end,
+			{
+				color = background,
+				hoverColor = C("hover"),
+				textColor = C("subtext"),
+				radius = 0,
+				border = false,
+			}
+		)
 
-	self.tabsController = controller
+		document.tab = tab
+		document.tabRecord = record
+		document.tabWidth = width
 
-	for _, document in ipairs(self.documents) do
-		local data = controller.tabs[document.id]
+		document.tabLabel = UI.label(
+			tab,
+			document.name,
+			UDim2.fromOffset(10, 6),
+			UDim2.new(1, -TAB_CLOSE_SIZE - 16, 0, 14),
+			fontSize("small"),
+			isActive and C("text") or C("subtext")
+		)
 
-		if data ~= nil then
-			document.tab = data.button
-			document.tabRecord = data.record
-			document.tabLabel = data.label
-			document.tabWidth = data.width
-
-			-- leave room for the close button
-			data.label.Position = UDim2.fromOffset(8, 0)
-			data.label.Size = UDim2.new(1, -(TAB_CLOSE_SIZE + 14), 1, 0)
-
-			pcall(function()
-				data.label.TextTruncate = Enum.TextTruncate.AtEnd
-			end)
-
-			local closeButton = UI.iconButton(
-				data.button,
-				"builtin://global-icons/x.svg",
-				UDim2.new(1, -TAB_CLOSE_SIZE - 4, 0.5, -math.floor(TAB_CLOSE_SIZE / 2)),
-				UDim2.fromOffset(TAB_CLOSE_SIZE, TAB_CLOSE_SIZE),
-				function()
-					self:closeDocument(document)
-				end,
-				{
-					color = C("panel"),
-					hoverColor = C("hover"),
-					radius = cornerRadius("xs"),
-					border = false,
-					iconSize = 10,
-				}
-			)
-
-			-- the tab itself provides the background, so the close button stays see-through
-			pcall(function()
-				closeButton.BackgroundTransparency = 1
-			end)
-		end
-	end
-
-	self.TabStrip.CanvasSize = UDim2.fromOffset(canvasWidth + 8, 0)
-
-	-- keep the active tab visible
-	local active = activeId ~= nil and controller.tabs[activeId] or nil
-
-	if active ~= nil then
 		pcall(function()
-			local viewWidth = self.TabStrip.AbsoluteSize.X
-			local position = self.TabStrip.CanvasPosition.X
-			local left = active.x - TAB_START_X
-			local right = active.x + active.width + TAB_START_X
-
-			if viewWidth > 0 then
-				if left < position then
-					position = left
-				elseif right > position + viewWidth then
-					position = right - viewWidth
-				end
-
-				self.TabStrip.CanvasPosition = Vector2.new(math.max(position, 0), 0)
-			end
+			document.tabLabel.TextTruncate = Enum.TextTruncate.AtEnd
 		end)
+
+		UI.iconButton(
+			tab,
+			"builtin://global-icons/x.svg",
+			UDim2.new(1, -TAB_CLOSE_SIZE - 4, 0.5, -math.floor(TAB_CLOSE_SIZE / 2)),
+			UDim2.fromOffset(TAB_CLOSE_SIZE, TAB_CLOSE_SIZE),
+			function()
+				self:closeDocument(document)
+			end,
+			{
+				color = background,
+				hoverColor = C("error"),
+				radius = 0,
+				border = false,
+				iconSize = 10,
+			}
+		)
+
+		if isActive then
+			UI.frame(tab, UDim2.new(0, 0, 1, -2), UDim2.new(1, 0, 0, 2), C("accent"), 0)
+
+			activeX, activeWidth = x, width
+		end
+
+		x += width
 	end
+
+	self.TabStrip.CanvasSize = UDim2.fromOffset(x, 0)
+
+	UI.frame(self.TabStrip, UDim2.new(0, 0, 1, -1), UDim2.new(1, 0, 0, 1), C("border"), 0)
+
+	pcall(function()
+		local viewWidth = self.TabStrip.AbsoluteSize.X
+		local position = self.TabStrip.CanvasPosition.X
+
+		if viewWidth > 0 then
+			if activeX < position then
+				position = activeX
+			elseif activeX + activeWidth > position + viewWidth then
+				position = activeX + activeWidth - viewWidth
+			end
+
+			self.TabStrip.CanvasPosition = Vector2.new(math.max(position, 0), 0)
+		end
+	end)
 end
 
 function CodeEditor:loadDocument(document)
@@ -2396,8 +2291,6 @@ function CodeEditor:activeSource()
 	return self.TextBox.Text
 end
 
--- Go to line -----------------------------------------------------------------
-
 function CodeEditor:GoToLine(line, column)
 	if not self:hasDocument() then
 		return
@@ -2427,7 +2320,6 @@ function CodeEditor:goToDiagnostic()
 
 	self:GoToLine(diagnostic.Line, diagnostic.Column)
 
-	-- keep the popup open on the error until the caret moves
 	self:showDiagnosticPopup(diagnostic)
 	self.diagnosticPinned = true
 	self.pinnedCursor = self.TextBox.CursorPosition
@@ -2473,8 +2365,6 @@ function CodeEditor:updateGoToHint()
 		self.goToHint.Text = "Line " .. math.floor(requested)
 	end
 end
-
--- Status bar -----------------------------------------------------------------
 
 function CodeEditor:updateStatus()
 	if not self.TextBox.Visible then
@@ -2528,8 +2418,6 @@ function CodeEditor:updateStatus()
 
 	self.StatusInfo.Text = info
 end
-
--- Suggestions ----------------------------------------------------------------
 
 function CodeEditor:collectCandidates(segments, ends_with_dot, aliases)
 	local receiver = {}
@@ -2599,7 +2487,6 @@ function CodeEditor:dismissSuggestions()
 	self:dismissArgumentHint()
 end
 
--- Hides only the completion list; the argument hint stays (it is useful while typing a call).
 function CodeEditor:hideSuggestionList()
 	self.suggestions = {}
 	self.suggestionIndex = 1
@@ -2612,7 +2499,6 @@ function CodeEditor:hideSuggestionList()
 	end
 end
 
--- True while a syntax error should keep the completion list closed.
 function CodeEditor:suggestionsBlocked()
 	local diagnostic = self.currentDiagnostic
 
@@ -2892,7 +2778,6 @@ function CodeEditor:renderArgumentHint()
 		return
 	end
 
-	-- a trailing "..." accepts any further argument
 	if current == nil and #params > 0 and params[#params] == "..." then
 		current = "..."
 	end
@@ -3098,8 +2983,6 @@ function CodeEditor:forceSuggestions()
 	self:refreshSuggestions()
 end
 
--- Find / replace ---------------------------------------------------------------
-
 local function paintToggle(entry, active)
 	if not entry or not UI.isAlive(entry.gui) then
 		return
@@ -3167,7 +3050,6 @@ function CodeEditor:buildFindButtons()
 		self.findButtons[id] = { gui = button, label = label, record = record, text = findText[id] }
 	end
 
-	-- replace-mode expander
 	local toggle, _, toggleRecord = UI.button(
 		host,
 		self.replaceMode and "v" or ">",
@@ -3190,7 +3072,6 @@ function CodeEditor:buildFindButtons()
 
 	self.findButtons.expand = { gui = toggle, record = toggleRecord }
 
-	-- replace actions (second row)
 	local allX = FIND_WIDTH - 8 - 36
 	local oneX = allX - 4 - 56
 
@@ -3313,7 +3194,6 @@ function CodeEditor:updateFindCount()
 	self.findCount.Text = ("%d of %d%s"):format(index, total, suffix)
 end
 
--- direction: 0 = first match at/after the selection, 1 = next, -1 = previous
 function CodeEditor:runFind(direction)
 	self:scanFindMatches()
 
@@ -3371,7 +3251,6 @@ function CodeEditor:replaceCurrent()
 		return
 	end
 
-	-- replace the match under the selection, otherwise jump to the next one first
 	local first, finish, hasSelection = self:getSelection()
 	local target
 
@@ -3519,8 +3398,6 @@ function CodeEditor:markFindToggle(id, on)
 	paintToggle(self.findButtons[id], on)
 end
 
--- Line operations ---------------------------------------------------------------
-
 function CodeEditor:selectedBlock()
 	local text = self.TextBox.Text
 	local first, finish, hasSelection = self:getSelection()
@@ -3644,7 +3521,7 @@ function CodeEditor:toggleComment()
 		else
 			local indent = string.match(line, "^%s*")
 
-			out[index] = indent .. "-- " .. string.sub(line, #indent + 1)
+			out[index] = indent .. ""
 		end
 	end
 
@@ -3659,9 +3536,6 @@ function CodeEditor:toggleComment()
 	end
 end
 
--- Zed-style editing commands -----------------------------------------------------
-
--- Ctrl+L: select the current line(s); press again to extend by one more line.
 function CodeEditor:selectLine()
 	if not self:hasDocument() then
 		return
@@ -3679,7 +3553,6 @@ function CodeEditor:selectLine()
 	self:setSelection(blockStart, target)
 end
 
--- Ctrl+Enter: open a new line below (keeps indentation). Ctrl+Shift+Enter: open one above.
 function CodeEditor:insertLine(above)
 	if not self:hasDocument() then
 		return
@@ -3701,7 +3574,6 @@ function CodeEditor:insertLine(above)
 	end
 end
 
--- Ctrl+J: join the selected lines (or the current line with the next one) into one.
 function CodeEditor:joinLines()
 	if not self:hasDocument() then
 		return
@@ -3736,7 +3608,6 @@ function CodeEditor:joinLines()
 	self.TextBox.CursorPosition = blockStart + joinPoint
 end
 
--- Ctrl+] / Ctrl+[: indent or outdent every selected line.
 function CodeEditor:shiftIndent(direction)
 	if not self:hasDocument() then
 		return
@@ -3762,7 +3633,6 @@ function CodeEditor:shiftIndent(direction)
 	self:setSelection(blockStart, blockStart + #replaced)
 end
 
--- Ctrl+Shift+\: jump to the bracket that pairs with the one at (or just before) the caret.
 function CodeEditor:jumpToMatchingBracket()
 	if not self:hasDocument() then
 		return
@@ -3782,13 +3652,9 @@ function CodeEditor:jumpToMatchingBracket()
 
 	local partner = map[index]
 
-	-- land after a closing bracket, on an opening one
 	box.CursorPosition = partner > index and (partner + 1) or partner
 end
 
--- Auto-pairing and auto-`end` ---------------------------------------------------------
-
--- Inserts `end` (or `end)`) below a freshly opened block when the document is missing one.
 function CodeEditor:autoEnd(text, cursor)
 	local box = self.TextBox
 	local lineStart = lineBounds(text, cursor - 1)
@@ -3807,7 +3673,6 @@ function CodeEditor:autoEnd(text, cursor)
 			return
 		end
 	elseif string.match(trimmed, "%f[%w_]do$") ~= nil then
-		-- loop or do-block
 	elseif string.match(trimmed, "%f[%w_]function%f[^%w_].*%)$") ~= nil then
 		local _, openCount = string.gsub(trimmed, "%(", "")
 		local _, closeCount = string.gsub(trimmed, "%)", "")
@@ -3830,7 +3695,6 @@ function CodeEditor:autoEnd(text, cursor)
 	self.lastText = box.Text
 end
 
--- Looks at what the last edit was and reacts: type-over, auto-close, auto-end, paired Backspace.
 function CodeEditor:autoEdit()
 	if self.applyingSuggestion or not (AUTO_CLOSE_PAIRS or AUTO_END_BLOCKS) then
 		return
@@ -3849,7 +3713,6 @@ function CodeEditor:autoEdit()
 	end
 
 	if #text == #old + 1 and cursor >= 2 then
-		-- confirm this was a single character typed right before the caret
 		if
 			string.sub(text, 1, cursor - 2) ~= string.sub(old, 1, cursor - 2)
 			or string.sub(text, cursor) ~= string.sub(old, cursor - 1)
@@ -3929,9 +3792,6 @@ function CodeEditor:autoEdit()
 	end
 end
 
--- More Zed-style commands ----------------------------------------------------------
-
--- Ctrl+Shift+Space: grow the selection to the next enclosing bracket pair (inside, then including brackets).
 function CodeEditor:selectEnclosing()
 	if not self:hasDocument() then
 		return
@@ -3971,7 +3831,6 @@ function CodeEditor:selectEnclosing()
 	self:setSelection(bestStart, bestFinish)
 end
 
--- Ctrl+Alt+S: sort the selected lines (Ctrl+Alt+Shift+S for descending).
 function CodeEditor:sortLines(descending)
 	if not self:hasDocument() then
 		return
@@ -4000,7 +3859,6 @@ function CodeEditor:sortLines(descending)
 	self:setSelection(blockStart, blockStart + #replaced)
 end
 
--- Ctrl+Shift+U: toggle the selection (or the word at the caret) between UPPER and lower case.
 function CodeEditor:toggleCase()
 	if not self:hasDocument() then
 		return
@@ -4028,7 +3886,6 @@ function CodeEditor:toggleCase()
 	self:setSelection(first, finish)
 end
 
--- Ctrl+E: search for the word under the caret (or the selection).
 function CodeEditor:findWordUnderCursor()
 	if not self:hasDocument() then
 		return
@@ -4047,7 +3904,6 @@ function CodeEditor:findWordUnderCursor()
 	self:openFind(false)
 end
 
--- Ctrl+Shift+O: list the functions in this file and jump to one.
 function CodeEditor:showSymbols()
 	if not self:hasDocument() then
 		return
@@ -4085,8 +3941,6 @@ function CodeEditor:showSymbols()
 	self:showRanked(ranked, "", { start = 1, finish = 1 })
 end
 
--- Diagnostics --------------------------------------------------------------------
-
 function CodeEditor:hideDiagnosticPopup()
 	self.diagnosticShown = nil
 	self.diagnosticPinned = false
@@ -4096,7 +3950,6 @@ function CodeEditor:hideDiagnosticPopup()
 	end
 end
 
--- Screen position of the start of the error, derived from the caret.
 function CodeEditor:diagnosticAnchor(diagnostic)
 	local box = self.TextBox
 	local caret = box.CaretScreenPosition
@@ -4125,7 +3978,6 @@ function CodeEditor:placeDiagnosticPopup()
 	local top = box.AbsolutePosition.Y
 	local bottom = top + box.AbsoluteSize.Y
 
-	-- error line scrolled out of view
 	if anchor.Y < top - SUGGEST_LINE_HEIGHT or anchor.Y > bottom then
 		self.DiagnosticPopup.Visible = false
 
@@ -4225,7 +4077,6 @@ function CodeEditor:refreshDiagnostics()
 			},
 		})
 
-		-- the error is new: drop any stale tooltip and close completions it now blocks
 		self:hideDiagnosticPopup()
 
 		if self:suggestionsBlocked() then
@@ -4233,8 +4084,6 @@ function CodeEditor:refreshDiagnostics()
 		end
 	end)
 end
-
--- Input wiring ----------------------------------------------------------------------
 
 function CodeEditor:handleShortcut(keyCode)
 	local K = Enum.KeyCode
@@ -4405,7 +4254,7 @@ function CodeEditor:wireEditor()
 		local current = self.currentDiagnostic
 
 		if hit ~= nil and current ~= nil and UI.shared().scriptDiagnostics then
-			self:showDiagnosticPopup(current) -- anchored to the error, not the mouse
+			self:showDiagnosticPopup(current)
 		elseif not self.diagnosticPinned then
 			self:hideDiagnosticPopup()
 		end
