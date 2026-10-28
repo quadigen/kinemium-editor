@@ -2,7 +2,7 @@ if (IsServer or IsClient) or IsPlaytest then
 	return nil
 end
 
-local UI = require("@internal/editor_ui")
+local UI = require("./editor_ui")
 local CodeEditor = require("@internal/code_editor")
 local docker = require("@internal/docker")
 local UIEditor = require("@internal/ui_editor")
@@ -33,7 +33,7 @@ local scriptLayer = UI.create("ScreenGui", {
 	Name = "ScriptEditorLayer",
 	DisplayOrder = 1000,
 	IgnoreGuiInset = true,
-}, game.CoreGui)
+}, UI.widgetOverlay())
 
 scriptLayer.RenderOnTop = true
 
