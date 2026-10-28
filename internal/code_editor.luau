@@ -59,7 +59,10 @@ end
 -- Constants
 --------------------------------------------------------------------------------
 
-local TAB_STRIP_HEIGHT = 26
+local TAB_STRIP_HEIGHT = 30
+local TAB_TOP = 4
+local TAB_GAP = 2
+local TAB_START_X = 10
 local STATUS_HEIGHT = 20
 local FIND_WIDTH = 340
 local FIND_HEIGHT = 28
@@ -1341,6 +1344,8 @@ function CodeEditor.new(parent)
 	self.lastMouse = Vector2.new(0, 0)
 	self.lastText = ""
 	self.pendingCloser = nil
+	self.tabsController = nil
+	self.nextDocumentId = 0
 	self.toastExpires = nil
 
 	local tabStrip = UI.create("ScrollingFrame", {
@@ -1367,6 +1372,13 @@ function CodeEditor.new(parent)
 	self:bindTheme(tabStrip, "BackgroundColor3", "panel")
 	self:bindTheme(tabStrip, "ScrollBarImageColor3", "subtext")
 
+	-- UI.tabs wants a content frame for its pages; the editor itself is the content, so this stays hidden.
+	local tabPages = UI.frame(parent, UDim2.fromOffset(0, 0), UDim2.fromOffset(0, 0), C("input"), 0)
+
+	tabPages.Name = "TabPages"
+	tabPages.Visible = false
+	self.TabPages = tabPages
+
 	local editor = UI.create("TextBox", {
 		Name = "CodeEditor",
 		Size = UDim2.new(1, 0, 1, -(TAB_STRIP_HEIGHT + STATUS_HEIGHT)),
@@ -1376,7 +1388,7 @@ function CodeEditor.new(parent)
 		Active = true,
 		AutoIndent = true,
 		ShowMinimap = true,
-		BackgroundTransparency = 0.3,
+		BackgroundTransparency = 0, -- opaque, so the active tab blends into it
 	}, parent)
 
 	self:bindTheme(editor, "BackgroundColor3", "input")
@@ -1685,7 +1697,12 @@ function CodeEditor:Destroy()
 
 	self.connections = {}
 
-	for _, instance in ipairs({ self.SuggestionLayer, self.TabStrip, self.TextBox, self.StatusBar }) do
+	if self.tabsController ~= nil then
+		self.tabsController.destroy()
+		self.tabsController = nil
+	end
+
+	for _, instance in ipairs({ self.SuggestionLayer, self.TabStrip, self.TabPages, self.TextBox, self.StatusBar }) do
 		if UI.isAlive(instance) then
 			instance:Destroy()
 		end
@@ -1972,96 +1989,132 @@ function CodeEditor:hasDocument()
 end
 
 function CodeEditor:rebuildTabs()
-	UI.clear(self.TabStrip)
+	if self.tabsController ~= nil then
+		self.tabsController.destroy()
+		self.tabsController = nil
+	end
 
-	local x = 0
-	local activeX, activeWidth = 0, 0
+	UI.clear(self.TabStrip)
+	UI.clear(self.TabPages)
+
+	local tabs = {}
+	local byId = {}
+	local activeId = nil
+	local canvasWidth = TAB_START_X
 
 	for _, document in ipairs(self.documents) do
-		local isActive = document == self.activeDocument
-		local background = isActive and C("surfaceAlt") or C("panel")
+		if document.id == nil then
+			self.nextDocumentId += 1
+			document.id = "Doc" .. self.nextDocumentId
+		end
 
 		local width = self:tabWidthFor(document.name)
 
-		local tab, _, record = UI.button(
-			self.TabStrip,
-			"",
-			UDim2.fromOffset(x, 0),
-			UDim2.fromOffset(width, TAB_STRIP_HEIGHT),
-			function()
-				self:focusDocument(document)
-			end,
-			{
-				color = background,
-				hoverColor = C("hover"),
-				textColor = C("subtext"),
-				radius = 0,
-				border = false,
-			}
-		)
+		table.insert(tabs, { name = document.id, text = document.name, width = width })
 
-		document.tab = tab
-		document.tabRecord = record
-		document.tabWidth = width
+		byId[document.id] = document
+		canvasWidth += width + TAB_GAP
 
-		document.tabLabel = UI.label(
-			tab,
-			document.name,
-			UDim2.fromOffset(10, 6),
-			UDim2.new(1, -TAB_CLOSE_SIZE - 16, 0, 14),
-			fontSize("small"),
-			isActive and C("text") or C("subtext")
-		)
-
-		pcall(function()
-			document.tabLabel.TextTruncate = Enum.TextTruncate.AtEnd
-		end)
-
-		UI.iconButton(
-			tab,
-			"builtin://global-icons/x.svg",
-			UDim2.new(1, -TAB_CLOSE_SIZE - 4, 0.5, -math.floor(TAB_CLOSE_SIZE / 2)),
-			UDim2.fromOffset(TAB_CLOSE_SIZE, TAB_CLOSE_SIZE),
-			function()
-				self:closeDocument(document)
-			end,
-			{
-				color = background,
-				hoverColor = C("error"),
-				radius = 0,
-				border = false,
-				iconSize = 10,
-			}
-		)
-
-		if isActive then
-			UI.frame(tab, UDim2.new(0, 0, 1, -2), UDim2.new(1, 0, 0, 2), C("accent"), 0)
-
-			activeX, activeWidth = x, width
+		if document == self.activeDocument then
+			activeId = document.id
 		end
-
-		x += width
 	end
 
-	self.TabStrip.CanvasSize = UDim2.fromOffset(x, 0)
+	-- UI.tabs draws the bar, the hover/active animation and the active tab that merges into the editor below it.
+	local _, controller = UI.tabs(self.TabStrip, UDim2.new(), UDim2.new(), {
+		tabs = tabs,
+		barFrame = self.TabStrip,
+		contentFrame = self.TabPages,
+		barHeight = TAB_STRIP_HEIGHT,
+		tabTop = TAB_TOP,
+		tabGap = TAB_GAP,
+		startX = TAB_START_X,
+		tabRadius = cornerRadius("sm"),
+		barColor = C("panel"),
+		contentColor = C("input"),
+		activeTabColor = C("input"),
+		inactiveTabColor = C("panel"),
+		tabHoverColor = C("hover"),
+		activeTabTextColor = C("text"),
+		inactiveTabTextColor = C("subtext"),
+		tabAccentColor = C("accent"),
+		tabTextSize = fontSize("small"),
+		selectedTab = activeId,
+		onTabClicked = function(tabName)
+			local document = byId[tabName]
 
-	UI.frame(self.TabStrip, UDim2.new(0, 0, 1, -1), UDim2.new(1, 0, 0, 1), C("border"), 0)
+			if document ~= nil then
+				self:focusDocument(document)
+			end
+		end,
+	})
+
+	self.tabsController = controller
+
+	for _, document in ipairs(self.documents) do
+		local data = controller.tabs[document.id]
+
+		if data ~= nil then
+			document.tab = data.button
+			document.tabRecord = data.record
+			document.tabLabel = data.label
+			document.tabWidth = data.width
+
+			-- leave room for the close button
+			data.label.Position = UDim2.fromOffset(8, 0)
+			data.label.Size = UDim2.new(1, -(TAB_CLOSE_SIZE + 14), 1, 0)
+
+			pcall(function()
+				data.label.TextTruncate = Enum.TextTruncate.AtEnd
+			end)
+
+			local closeButton = UI.iconButton(
+				data.button,
+				"builtin://global-icons/x.svg",
+				UDim2.new(1, -TAB_CLOSE_SIZE - 4, 0.5, -math.floor(TAB_CLOSE_SIZE / 2)),
+				UDim2.fromOffset(TAB_CLOSE_SIZE, TAB_CLOSE_SIZE),
+				function()
+					self:closeDocument(document)
+				end,
+				{
+					color = C("panel"),
+					hoverColor = C("hover"),
+					radius = cornerRadius("xs"),
+					border = false,
+					iconSize = 10,
+				}
+			)
+
+			-- the tab itself provides the background, so the close button stays see-through
+			pcall(function()
+				closeButton.BackgroundTransparency = 1
+			end)
+		end
+	end
+
+	self.TabStrip.CanvasSize = UDim2.fromOffset(canvasWidth + 8, 0)
 
 	-- keep the active tab visible
-	pcall(function()
-		local viewWidth = self.TabStrip.AbsoluteSize.X
-		local position = self.TabStrip.CanvasPosition.X
+	local active = activeId ~= nil and controller.tabs[activeId] or nil
 
-		if viewWidth > 0 then
-			if activeX < position then
-				position = activeX
-			elseif activeX + activeWidth > position + viewWidth then
-				position = activeX + activeWidth - viewWidth
+	if active ~= nil then
+		pcall(function()
+			local viewWidth = self.TabStrip.AbsoluteSize.X
+			local position = self.TabStrip.CanvasPosition.X
+			local left = active.x - TAB_START_X
+			local right = active.x + active.width + TAB_START_X
+
+			if viewWidth > 0 then
+				if left < position then
+					position = left
+				elseif right > position + viewWidth then
+					position = right - viewWidth
+				end
+
+				self.TabStrip.CanvasPosition = Vector2.new(math.max(position, 0), 0)
 			end
-
-			self.TabStrip.CanvasPosition = Vector2.new(math.max(position, 0), 0)
-		end
-	end)
+		end)
+	end
 end
 
 function CodeEditor:loadDocument(document)
