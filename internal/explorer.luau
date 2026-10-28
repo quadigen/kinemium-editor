@@ -29,6 +29,7 @@ local panel, _, _, windowControls =
 			"Explorer",
 			"Files",
 		},
+		backgroundImage = "builtin://global-icons/giphy.gif",
 		selectedTab = "Explorer",
 	})
 panel.Parent = gui
