@@ -66,9 +66,10 @@ local TAB_MAX_WIDTH = 240
 local TAB_CLOSE_SIZE = 18
 local TAB_FONT = "builtin://fonts/Montserrat-Regular.ttf"
 
-local SUGGEST_WIDTH = 268
+local SUGGEST_WIDTH = 340
+local SUGGEST_DETAIL_WIDTH = 124
 local SUGGEST_ROW_HEIGHT = 25
-local SUGGEST_MAX_ROWS = 7
+local SUGGEST_MAX_ROWS = 8
 local SUGGEST_PADDING = 4
 local SUGGEST_ICON_SIZE = 12
 local SUGGEST_LINE_HEIGHT = 22
@@ -91,6 +92,10 @@ local POPUP_LERP_SPEED = 26
 
 local SELECTION_BASE = 0
 
+-- Intellisense tuning
+local MAX_TABLE_ENTRIES = 400 -- cap on keys listed for a runtime table (shared, _G, ...)
+local REFLECTION_INHERIT_OPTIONS = { IncludeInherited = true } -- options table passed to ReflectionService getters
+
 local iconRoot = "builtin://global-icons/"
 
 local KIND_ICONS = {
@@ -106,6 +111,7 @@ local KIND_ICONS = {
 	Value = "grid.svg",
 	Function = "api.png",
 	Method = "api.png",
+	Callback = "api.png",
 	Event = "info.png",
 	Service = "info.png",
 }
@@ -117,6 +123,7 @@ local KIND_COLOR_KEYS = {
 	Table = "warning",
 	Function = "success",
 	Method = "success",
+	Callback = "success",
 	Value = "subtext",
 	Type = "subtext",
 	Property = "text",
@@ -630,30 +637,6 @@ local function identifierAt(text, cursor)
 	return start, finish
 end
 
-local function splitPath(path)
-	local segments = {}
-	local current = ""
-
-	for index = 1, #path do
-		local character = string.sub(path, index, index)
-
-		if character == "." then
-			table.insert(segments, current)
-			current = ""
-		else
-			current ..= character
-		end
-	end
-
-	local ends_with_dot = current == ""
-
-	if not ends_with_dot then
-		table.insert(segments, current)
-	end
-
-	return segments, ends_with_dot
-end
-
 local function scoreMatch(name, prefix)
 	if prefix == "" then
 		return 1
@@ -690,90 +673,6 @@ local function scoreMatch(name, prefix)
 	end
 
 	return nil
-end
-
-local function resolveSignature(callee)
-	if callee == nil then
-		return nil
-	end
-
-	return SIGNATURES[callee] or SIGNATURES_LOWER[string.lower(callee)]
-end
-
-local function isGetServiceCall(callee)
-	if callee == nil then
-		return false
-	end
-
-	return string.lower(callee) == "getservice" or string.find(callee, "%.getservice$") ~= nil
-end
-
-local function callContextAt(text, cursor)
-	local head = string.sub(text, 1, math.max(cursor - 1, 0))
-
-	local depth = 0
-	local open = nil
-
-	for index = #head, 1, -1 do
-		local character = string.sub(head, index, index)
-
-		if character == ")" or character == "]" or character == "}" then
-			depth += 1
-		elseif character == "[" or character == "{" then
-			if depth == 0 then
-				return nil
-			end
-
-			depth -= 1
-		elseif character == "(" then
-			if depth == 0 then
-				open = index
-				break
-			end
-
-			depth -= 1
-		end
-	end
-
-	if open == nil then
-		return nil
-	end
-
-	local finish = open - 1
-	local start = finish
-
-	while start >= 1 do
-		local character = string.sub(head, start, start)
-
-		if string.match(character, "[%w_%.]") == nil then
-			break
-		end
-
-		start -= 1
-	end
-
-	local callee = string.sub(head, start + 1, finish)
-
-	if callee == "" then
-		return nil
-	end
-
-	local index = 0
-	local nested = 0
-
-	for position = open + 1, #head do
-		local character = string.sub(head, position, position)
-
-		if character == "(" or character == "[" or character == "{" then
-			nested += 1
-		elseif character == ")" or character == "]" or character == "}" then
-			nested -= 1
-		elseif character == "," and nested == 0 then
-			index += 1
-		end
-	end
-
-	return callee, index, open
 end
 
 local MAGIC_CHARACTERS = {
@@ -976,128 +875,6 @@ local function collectEnumMembers(receiver)
 	return enumTypeCandidates()
 end
 
-local function resolveRoot(name)
-	if name == "game" then
-		return game
-	end
-
-	if name == "workspace" then
-		return workspace
-	end
-
-	return nil
-end
-
-local function resolveInstance(segments, upto, aliases)
-	if upto <= 0 then
-		return nil
-	end
-
-	local root = resolveRoot(segments[1])
-
-	if root == nil and aliases ~= nil then
-		local service = aliases[segments[1]]
-
-		if service ~= nil then
-			root = resolveRoot(service)
-
-			if root == nil then
-				local ok, resolved = pcall(function()
-					return game:GetService(service)
-				end)
-
-				if ok then
-					root = resolved
-				else
-					root = game:FindFirstChild(service)
-				end
-			end
-		end
-	end
-
-	if root == nil then
-		root = game:FindFirstChild(segments[1])
-	end
-
-	if root == nil then
-		return nil
-	end
-
-	for index = 2, upto do
-		local child = root:FindFirstChild(segments[index])
-
-		if child == nil then
-			return nil
-		end
-
-		root = child
-	end
-
-	return root
-end
-
-local function resolveLongestPrefix(segments, aliases)
-	local instance = nil
-	local resolved = 0
-
-	for index = 1, #segments do
-		local candidate = resolveInstance(segments, index, aliases)
-
-		if candidate == nil then
-			break
-		end
-
-		instance = candidate
-		resolved = index
-	end
-
-	return instance, resolved
-end
-
-local function collectReflectionMembers(instance)
-	local results = {}
-
-	local ReflectionService = game:GetService("ReflectionService")
-
-	local lists = {
-		{ kind = "Property", method = "GetPropertiesOfClass" },
-		{ kind = "Method", method = "GetMethodsOfClass" },
-		{ kind = "Event", method = "GetEventsOfClass" },
-	}
-
-	for _, list in ipairs(lists) do
-		local ok, members = pcall(function()
-			return ReflectionService[list.method](ReflectionService, instance.ClassName)
-		end)
-
-		if ok and type(members) == "table" then
-			for _, member in ipairs(members) do
-				local name = type(member) == "table" and member.Name or member
-
-				if type(name) == "string" then
-					table.insert(results, { name = name, kind = list.kind })
-				end
-			end
-		end
-	end
-
-	return results
-end
-
-local function collectInstanceMembers(instance)
-	local members = {}
-
-	for _, child in ipairs(instance:GetChildren()) do
-		table.insert(members, { name = child.Name, kind = "Instance", detail = child.ClassName })
-	end
-
-	for _, member in ipairs(collectReflectionMembers(instance)) do
-		table.insert(members, member)
-	end
-
-	return members
-end
-
 local function collectDocumentWords(source)
 	local words = {}
 	local seen = {}
@@ -1117,28 +894,1124 @@ local function collectDocumentWords(source)
 	return words
 end
 
-local function collectServiceAliases(source)
-	refreshServiceCache()
+--------------------------------------------------------------------------------
+-- Intellisense engine
+--
+-- Expressions are parsed into "chains" (game:GetService("Players").LocalPlayer.),
+-- evaluated against the live environment (game / workspace / shared / _G / script,
+-- local aliases, a few side-effect-free calls) and the resulting value is turned
+-- into completion candidates. Instances use ReflectionService; plain tables are
+-- enumerated at runtime; datatypes fall back to the static member tables.
+--------------------------------------------------------------------------------
 
-	local aliases = {}
+local IDENTIFIER = "^[%a_][%w_]*$"
 
-	for name, service in
-		string.gmatch(source, "local%s+([%a_][%w_]*)%s*=%s*[%a_][%w_]*[%.:]GetService%s*%(%s*[\"']([^\"']+)[\"']")
-	do
-		aliases[name] = service
+-- Static "this is a datatype" constructors, so `local v = Vector3.new()` types `v`.
+local DATATYPES = {}
+
+for name in
+	string.gmatch(
+		[[Vector2 Vector3 Vector2int16 Vector3int16 Color3 CFrame Quaternion UDim UDim2 Ray Rect Region3
+		Region3int16 NumberRange NumberSequence ColorSequence TweenInfo BrickColor Random DateTime
+		PhysicalProperties Axes]],
+		"[%w_]+"
+	)
+do
+	DATATYPES[name] = true
+end
+
+-- Methods whose result we may evaluate (read-only lookups) -> the real method to call.
+local SAFE_CALLS = {
+	GetService = "GetService",
+	FindFirstChild = "FindFirstChild",
+	WaitForChild = "FindFirstChild", -- never yield while typing
+	FindFirstChildOfClass = "FindFirstChildOfClass",
+	FindFirstChildWhichIsA = "FindFirstChildWhichIsA",
+	FindFirstAncestor = "FindFirstAncestor",
+	FindFirstAncestorOfClass = "FindFirstAncestorOfClass",
+	FindFirstAncestorWhichIsA = "FindFirstAncestorWhichIsA",
+}
+
+-- What a string literal argument (first argument) of a given method should complete to.
+local STRING_ARGUMENTS = {
+	GetService = "service",
+	IsA = "class",
+	FindFirstChildOfClass = "class",
+	FindFirstChildWhichIsA = "class",
+	FindFirstAncestorOfClass = "class",
+	FindFirstAncestorWhichIsA = "class",
+	FindFirstChild = "child",
+	WaitForChild = "child",
+	GetPropertyChangedSignal = "property",
+	GetAttribute = "attribute",
+	SetAttribute = "attribute",
+	GetAttributeChangedSignal = "attribute",
+	new = "class", -- only valid as Instance.new
+}
+
+-- Virtual values: "something of this class/type" without touching a real object.
+local VirtualMeta = {}
+
+local function virtualOf(typeName)
+	return setmetatable({ typeName = typeName }, VirtualMeta)
+end
+
+local function isVirtual(value)
+	return type(value) == "table" and getmetatable(value) == VirtualMeta
+end
+
+local function filterMethods(list)
+	local out = {}
+
+	for _, entry in ipairs(list) do
+		if entry.kind == "Method" or entry.kind == "Function" then
+			table.insert(out, entry)
+		end
 	end
 
-	for name, target in string.gmatch(source, "local%s+([%a_][%w_]*)%s*=%s*([%a_][%w_]*)%s") do
-		if aliases[name] == nil then
-			if target == "game" or target == "workspace" then
-				aliases[name] = target
-			elseif serviceSetCache[target] then
-				aliases[name] = target
+	return out
+end
+
+-- Chain parsing ---------------------------------------------------------------
+
+-- Walks backwards from the cursor over `ident . : ( ... )` and returns where the chain starts.
+local function chainStart(text, cursor)
+	local index = cursor - 1
+
+	while index >= 1 do
+		local character = string.sub(text, index, index)
+
+		if string.match(character, "[%w_%.:]") ~= nil then
+			index -= 1
+		elseif character == ")" then
+			local depth = 0
+			local scan = index
+
+			while scan >= 1 do
+				local inner = string.sub(text, scan, scan)
+
+				if inner == ")" then
+					depth += 1
+				elseif inner == "(" then
+					depth -= 1
+
+					if depth == 0 then
+						break
+					end
+				end
+
+				scan -= 1
+			end
+
+			if scan < 1 then
+				break
+			end
+
+			index = scan - 1
+		else
+			break
+		end
+	end
+
+	return index + 1
+end
+
+-- "a.b:c(\"x\").d" -> { {name="a", sepAfter="."}, {name="b", sepAfter=":"}, {name="c", args="\"x\"", sepAfter="."}, {name="d"} }
+-- Returns segments, trailingSeparator, endsWithSeparator (nil segments on a parse failure).
+local function parseChain(raw)
+	local segments = {}
+	local position = 1
+	local length = #raw
+
+	while position <= length do
+		local name = string.match(raw, "^[%a_][%w_]*", position)
+
+		if name == nil then
+			return nil
+		end
+
+		position += #name
+
+		local segment = { name = name }
+
+		if string.sub(raw, position, position) == "(" then
+			local depth = 0
+			local scan = position
+
+			while scan <= length do
+				local character = string.sub(raw, scan, scan)
+
+				if character == "(" then
+					depth += 1
+				elseif character == ")" then
+					depth -= 1
+
+					if depth == 0 then
+						break
+					end
+				end
+
+				scan += 1
+			end
+
+			if scan > length then
+				return nil
+			end
+
+			segment.args = string.sub(raw, position + 1, scan - 1)
+			position = scan + 1
+		end
+
+		table.insert(segments, segment)
+
+		local separator = string.sub(raw, position, position)
+
+		if separator == "" then
+			break
+		end
+
+		if separator ~= "." and separator ~= ":" then
+			return nil
+		end
+
+		segment.sepAfter = separator
+		position += 1
+
+		if position > length then
+			return segments, separator, true
+		end
+	end
+
+	return segments, nil, false
+end
+
+local function callContextAt(text, cursor)
+	local head = string.sub(text, 1, math.max(cursor - 1, 0))
+
+	local depth = 0
+	local open = nil
+
+	for index = #head, 1, -1 do
+		local character = string.sub(head, index, index)
+
+		if character == ")" or character == "]" or character == "}" then
+			depth += 1
+		elseif character == "[" or character == "{" then
+			if depth == 0 then
+				return nil
+			end
+
+			depth -= 1
+		elseif character == "(" then
+			if depth == 0 then
+				open = index
+
+				break
+			end
+
+			depth -= 1
+		end
+	end
+
+	if open == nil then
+		return nil
+	end
+
+	local callee = string.sub(head, chainStart(head, open), open - 1)
+
+	if callee == "" then
+		return nil
+	end
+
+	local index = 0
+	local nested = 0
+
+	for position = open + 1, #head do
+		local character = string.sub(head, position, position)
+
+		if character == "(" or character == "[" or character == "{" then
+			nested += 1
+		elseif character == ")" or character == "]" or character == "}" then
+			nested -= 1
+		elseif character == "," and nested == 0 then
+			index += 1
+		end
+	end
+
+	return callee, index, open
+end
+
+-- Reflection ------------------------------------------------------------------
+
+local function describeType(value)
+	if value == nil then
+		return nil
+	end
+
+	if type(value) == "string" then
+		return value
+	end
+
+	if type(value) == "table" then
+		local name = value.Name or value.TypeName or value.Type
+
+		if type(name) == "string" then
+			return name
+		end
+
+		if type(name) == "table" then
+			return describeType(name)
+		end
+	end
+
+	local ok, text = pcall(tostring, value)
+
+	return ok and text or nil
+end
+
+local function describeParams(list)
+	if type(list) ~= "table" then
+		return nil
+	end
+
+	local params = {}
+
+	for _, parameter in ipairs(list) do
+		if type(parameter) == "string" then
+			table.insert(params, parameter)
+		elseif type(parameter) == "table" then
+			local name = parameter.Name or "arg"
+			local typeName = describeType(parameter.Type)
+
+			table.insert(params, typeName and (name .. ": " .. typeName) or name)
+		end
+	end
+
+	return params
+end
+
+local function describeReturns(value)
+	if value == nil then
+		return nil
+	end
+
+	if type(value) == "table" and #value > 0 then
+		local names = {}
+
+		for _, entry in ipairs(value) do
+			table.insert(names, describeType(entry) or "?")
+		end
+
+		return table.concat(names, ", ")
+	end
+
+	return describeType(value)
+end
+
+local function hasTag(member, wanted)
+	local tags = member.Tags
+
+	if type(tags) ~= "table" then
+		return false
+	end
+
+	for key, value in next, tags do
+		if value == wanted or (key == wanted and value == true) then
+			return true
+		end
+	end
+
+	return false
+end
+
+local reflectionServiceCache = nil
+
+local function reflectionService()
+	if reflectionServiceCache == nil then
+		local ok, service = pcall(function()
+			return game:GetService("ReflectionService")
+		end)
+
+		reflectionServiceCache = ok and service or false
+	end
+
+	return reflectionServiceCache or nil
+end
+
+-- Calls ReflectionService:<method>(className[, options]) trying a list of method names.
+local function callReflection(service, methodNames, className)
+	for _, methodName in ipairs(methodNames) do
+		for _, options in ipairs({ REFLECTION_INHERIT_OPTIONS, false }) do
+			local ok, result = pcall(function()
+				if options then
+					return service[methodName](service, className, options)
+				end
+
+				return service[methodName](service, className)
+			end)
+
+			if ok and type(result) == "table" then
+				return result
 			end
 		end
 	end
 
+	return nil
+end
+
+local classListCache = nil
+local classParents = {}
+
+local function loadClasses()
+	if classListCache ~= nil then
+		return classListCache
+	end
+
+	classListCache = {}
+
+	local service = reflectionService()
+
+	if service == nil then
+		return classListCache
+	end
+
+	local ok, classes = pcall(function()
+		return service:GetClasses()
+	end)
+
+	if not ok or type(classes) ~= "table" then
+		return classListCache
+	end
+
+	for key, entry in next, classes do
+		local name = nil
+		local parent = nil
+
+		if type(entry) == "string" then
+			name = entry
+		elseif type(entry) == "table" then
+			name = entry.Name
+			parent = describeType(entry.Superclass or entry.Parent or entry.Base)
+		end
+
+		if name == nil and type(key) == "string" then
+			name = key
+		end
+
+		if type(name) == "string" then
+			table.insert(classListCache, { name = name, kind = "Type", detail = "Class" })
+
+			if parent ~= nil and parent ~= "" and parent ~= name then
+				classParents[name] = parent
+			end
+		end
+	end
+
+	table.sort(classListCache, function(a, b)
+		return a.name < b.name
+	end)
+
+	return classListCache
+end
+
+local MEMBER_LISTS = {
+	{ kind = "Property", methods = { "GetPropertiesOfClass" } },
+	{ kind = "Method", methods = { "GetFunctionsOfClass", "GetMethodsOfClass" } },
+	{ kind = "Event", methods = { "GetEventsOfClass" } },
+	{ kind = "Callback", methods = { "GetCallbacksOfClass" } },
+}
+
+local classMemberCache = {}
+
+local function buildMember(kind, member, key)
+	local name = nil
+
+	if type(member) == "table" then
+		name = member.Name
+
+		if name == nil and type(key) == "string" then
+			name = key
+		end
+	elseif type(member) == "string" then
+		name = member
+	end
+
+	if type(name) ~= "string" then
+		return nil
+	end
+
+	local entry = { name = name, kind = kind }
+
+	if type(member) ~= "table" then
+		return entry
+	end
+
+	if hasTag(member, "Hidden") or hasTag(member, "NotBrowsable") then
+		return nil
+	end
+
+	entry.deprecated = hasTag(member, "Deprecated")
+
+	if kind == "Property" then
+		entry.detail = describeType(member.Type or member.ValueType)
+	elseif kind == "Method" or kind == "Callback" then
+		entry.params = describeParams(member.Parameters or member.Params)
+		entry.returns = describeReturns(member.ReturnType or member.ReturnTypes or member.Returns)
+		entry.detail = entry.returns and ("-> " .. entry.returns) or nil
+	elseif kind == "Event" then
+		entry.params = describeParams(member.Parameters or member.Params)
+	end
+
+	return entry
+end
+
+-- { list = { entries... }, map = { [name] = entry } } including inherited members.
+local function classMembers(className)
+	local cached = classMemberCache[className]
+
+	if cached ~= nil then
+		return cached
+	end
+
+	local result = { list = {}, map = {} }
+
+	classMemberCache[className] = result
+
+	local service = reflectionService()
+
+	if service == nil then
+		return result
+	end
+
+	loadClasses()
+
+	local chain = {}
+	local current = className
+
+	while current ~= nil and #chain < 32 do
+		table.insert(chain, current)
+		current = classParents[current]
+	end
+
+	for _, name in ipairs(chain) do
+		for _, spec in ipairs(MEMBER_LISTS) do
+			local members = callReflection(service, spec.methods, name)
+
+			if members ~= nil then
+				for key, member in next, members do
+					local entry = buildMember(spec.kind, member, key)
+
+					if entry ~= nil and result.map[entry.name] == nil then
+						result.map[entry.name] = entry
+
+						table.insert(result.list, entry)
+					end
+				end
+			end
+		end
+	end
+
+	return result
+end
+
+-- Instances -------------------------------------------------------------------
+
+local function instanceClassName(instance)
+	local ok, className = pcall(function()
+		return instance.ClassName
+	end)
+
+	if ok and type(className) == "string" then
+		return className
+	end
+
+	return nil
+end
+
+local function childEntries(instance, identifiersOnly)
+	local entries = {}
+	local ok, children = pcall(function()
+		return instance:GetChildren()
+	end)
+
+	if not ok or type(children) ~= "table" then
+		return entries
+	end
+
+	local seen = {}
+
+	for _, child in ipairs(children) do
+		local nameOk, name = pcall(function()
+			return child.Name
+		end)
+
+		if
+			nameOk
+			and type(name) == "string"
+			and not seen[name]
+			and (not identifiersOnly or string.match(name, IDENTIFIER) ~= nil)
+		then
+			seen[name] = true
+
+			table.insert(entries, { name = name, kind = "Instance", detail = instanceClassName(child) or "Instance" })
+		end
+	end
+
+	return entries
+end
+
+local function instanceCandidates(instance, methodsOnly)
+	local members = {}
+
+	if not methodsOnly then
+		for _, entry in ipairs(childEntries(instance, true)) do
+			table.insert(members, entry)
+		end
+	end
+
+	local className = instanceClassName(instance)
+
+	if className ~= nil then
+		for _, entry in ipairs(classMembers(className).list) do
+			if not methodsOnly or entry.kind == "Method" then
+				table.insert(members, entry)
+			end
+		end
+	end
+
+	return members
+end
+
+-- Runtime tables / values -------------------------------------------------------
+
+local function arityOf(value)
+	local ok, arity, vararg = pcall(debug.info, value, "a")
+
+	if ok and type(arity) == "number" then
+		return arity, vararg == true
+	end
+
+	return nil, false
+end
+
+local function arityParams(value)
+	local arity, vararg = arityOf(value)
+
+	if arity == nil then
+		return nil
+	end
+
+	local params = {}
+
+	for index = 1, arity do
+		params[index] = "arg" .. index
+	end
+
+	if vararg then
+		table.insert(params, "...")
+	end
+
+	return params
+end
+
+-- Returns kind, detail for a runtime value.
+local function describeValue(value)
+	local valueType = typeof(value)
+
+	if valueType == "function" then
+		local arity, vararg = arityOf(value)
+
+		if arity ~= nil then
+			return "Function", ("fn(%d%s)"):format(arity, vararg and "+" or "")
+		end
+
+		return "Function", "function"
+	elseif valueType == "table" then
+		local count = 0
+
+		pcall(function()
+			for _ in next, value do
+				count += 1
+
+				if count >= 99 then
+					break
+				end
+			end
+		end)
+
+		return "Table", count >= 99 and "table {99+}" or ("table {" .. count .. "}")
+	elseif valueType == "string" then
+		local preview = string.gsub(string.sub(value, 1, 14), "%c", " ")
+
+		if #value > 14 then
+			preview ..= ".."
+		end
+
+		return "Value", '"' .. preview .. '"'
+	elseif valueType == "number" or valueType == "boolean" then
+		return "Value", tostring(value)
+	elseif valueType == "Instance" then
+		return "Instance", instanceClassName(value) or "Instance"
+	end
+
+	return "Value", valueType
+end
+
+local function tableCandidates(source, methodsOnly)
+	local list = {}
+	local seen = {}
+	local count = 0
+
+	local function collect(tbl)
+		pcall(function()
+			for key, value in next, tbl do
+				if type(key) == "string" and not seen[key] and string.match(key, IDENTIFIER) ~= nil then
+					local kind, detail = describeValue(value)
+
+					if not methodsOnly or kind == "Function" then
+						seen[key] = true
+						count += 1
+
+						table.insert(list, {
+							name = key,
+							kind = kind,
+							detail = detail,
+							params = kind == "Function" and arityParams(value) or nil,
+						})
+
+						if count >= MAX_TABLE_ENTRIES then
+							return
+						end
+					end
+				end
+			end
+		end)
+	end
+
+	collect(source)
+
+	local metaOk, meta = pcall(getmetatable, source)
+
+	if metaOk and type(meta) == "table" and count < MAX_TABLE_ENTRIES then
+		local indexOk, index = pcall(rawget, meta, "__index")
+
+		if indexOk and type(index) == "table" then
+			collect(index)
+		end
+	end
+
+	return list
+end
+
+local function valueCandidates(value, methodsOnly)
+	if value == nil then
+		return nil
+	end
+
+	local typeName
+
+	if isVirtual(value) then
+		typeName = value.typeName
+
+		local info = classMembers(typeName)
+
+		if #info.list > 0 then
+			return methodsOnly and filterMethods(info.list) or info.list
+		end
+	else
+		typeName = typeof(value)
+
+		if typeName == "Instance" then
+			return instanceCandidates(value, methodsOnly)
+		end
+
+		if typeName == "table" then
+			return tableCandidates(value, methodsOnly)
+		end
+	end
+
+	local builtin = collectBuiltinMembers(typeName)
+
+	if builtin == nil then
+		return nil
+	end
+
+	return methodsOnly and filterMethods(builtin) or builtin
+end
+
+-- Evaluation ------------------------------------------------------------------
+
+local function firstStringArgument(args)
+	return string.match(args, '^%s*"([^"]*)"') or string.match(args, "^%s*'([^']*)'")
+end
+
+local function rootValue(name, document)
+	if name == "game" then
+		return game
+	end
+
+	if name == "workspace" then
+		return workspace
+	end
+
+	if name == "shared" then
+		return shared
+	end
+
+	if name == "_G" then
+		return _G
+	end
+
+	if name == "script" then
+		return document and document.instance or nil
+	end
+
+	return nil
+end
+
+local PRIMITIVES = { ["nil"] = true, boolean = true, number = true, string = true, ["function"] = true, thread = true }
+
+local function step(value, segment)
+	local name = segment.name
+
+	if segment.args ~= nil then
+		if isVirtual(value) then
+			return name == "Clone" and value or nil
+		end
+
+		if typeof(value) ~= "Instance" then
+			return nil
+		end
+
+		if name == "Clone" then
+			local className = instanceClassName(value)
+
+			return className and virtualOf(className) or nil
+		end
+
+		local method = SAFE_CALLS[name]
+		local argument = firstStringArgument(segment.args)
+
+		if method == nil or argument == nil then
+			return nil
+		end
+
+		local ok, result = pcall(function()
+			return value[method](value, argument)
+		end)
+
+		if ok and typeof(result) == "Instance" then
+			return result
+		end
+
+		return nil
+	end
+
+	if isVirtual(value) then
+		local entry = classMembers(value.typeName).map[name]
+
+		if entry ~= nil and entry.kind == "Property" and entry.detail ~= nil then
+			return virtualOf(entry.detail)
+		end
+
+		return nil
+	end
+
+	local valueType = typeof(value)
+
+	if valueType == "table" then
+		local ok, result = pcall(rawget, value, name)
+
+		if ok and result ~= nil then
+			return result
+		end
+
+		local metaOk, meta = pcall(getmetatable, value)
+
+		if metaOk and type(meta) == "table" then
+			local indexOk, index = pcall(rawget, meta, "__index")
+
+			if indexOk and type(index) == "table" then
+				local innerOk, inner = pcall(rawget, index, name)
+
+				if innerOk then
+					return inner
+				end
+			end
+		end
+
+		return nil
+	end
+
+	if valueType == "Instance" then
+		local ok, child = pcall(function()
+			return value:FindFirstChild(name)
+		end)
+
+		if ok and child ~= nil then
+			return child
+		end
+	end
+
+	if PRIMITIVES[valueType] then
+		return nil
+	end
+
+	local ok, result = pcall(function()
+		return value[name]
+	end)
+
+	if ok then
+		return result
+	end
+
+	return nil
+end
+
+local function evalChain(segments, count, aliases, document, depth)
+	depth = depth or 0
+
+	if count < 1 or depth > 8 then
+		return nil
+	end
+
+	local first = segments[1]
+
+	if first.args ~= nil then
+		return nil
+	end
+
+	local value = nil
+	local startIndex = 2
+	local second = segments[2]
+
+	if first.name == "Instance" and count >= 2 and second.name == "new" and second.args ~= nil then
+		local className = firstStringArgument(second.args)
+
+		if className == nil then
+			return nil
+		end
+
+		value = virtualOf(className)
+		startIndex = 3
+	elseif
+		DATATYPES[first.name]
+		and count >= 2
+		and second.args ~= nil
+		and (aliases == nil or aliases[first.name] == nil)
+	then
+		value = virtualOf(first.name)
+		startIndex = 3
+	else
+		value = rootValue(first.name, document)
+
+		if value == nil and aliases ~= nil and aliases[first.name] ~= nil then
+			local alias = aliases[first.name]
+
+			value = evalChain(alias, #alias, aliases, document, depth + 1)
+		end
+
+		if value == nil then
+			local ok, service = pcall(function()
+				return game:FindFirstChild(first.name)
+			end)
+
+			if ok then
+				value = service
+			end
+		end
+	end
+
+	if value == nil then
+		return nil
+	end
+
+	for index = startIndex, count do
+		value = step(value, segments[index])
+
+		if value == nil then
+			return nil
+		end
+	end
+
+	return value
+end
+
+-- `local x = <chain>` -> aliases[x] = parsed chain
+local function collectAliases(source)
+	local aliases = {}
+
+	for name, rhs in string.gmatch(source, "local%s+([%a_][%w_]*)%s*=%s*([^\n]+)") do
+		rhs = string.gsub(rhs, "%s*%-%-.*$", "")
+		rhs = string.gsub(rhs, "[%s;]+$", "")
+
+		local segments, _, endsWithSeparator = parseChain(rhs)
+
+		if segments ~= nil and not endsWithSeparator and #segments > 0 then
+			aliases[name] = segments
+		end
+	end
+
 	return aliases
+end
+
+-- Returns params (array of strings), returns (string?) for a call expression's callee.
+local function lookupSignature(callee, aliases, document)
+	if callee == nil then
+		return nil
+	end
+
+	local static = SIGNATURES[callee] or SIGNATURES_LOWER[string.lower(callee)]
+
+	if static ~= nil then
+		return static, nil
+	end
+
+	local segments, _, endsWithSeparator = parseChain(callee)
+
+	if segments == nil or endsWithSeparator or #segments == 0 then
+		return nil
+	end
+
+	local count = #segments
+	local name = segments[count].name
+
+	if count >= 2 then
+		local receiver = evalChain(segments, count - 1, aliases, document)
+
+		if receiver ~= nil then
+			local typeName = isVirtual(receiver) and receiver.typeName or typeof(receiver)
+			local className = nil
+
+			if isVirtual(receiver) then
+				className = receiver.typeName
+			elseif typeName == "Instance" then
+				className = instanceClassName(receiver)
+			end
+
+			if className ~= nil then
+				local entry = classMembers(className).map[name]
+
+				if entry ~= nil and entry.params ~= nil then
+					return entry.params, entry.returns
+				end
+			end
+
+			if typeName ~= "table" and typeName ~= "Instance" then
+				local typed = SIGNATURES[typeName .. "." .. name]
+
+				if typed ~= nil then
+					local method = segments[count - 1].sepAfter == ":"
+
+					if method and (typed[1] == "self" or typeName == "string") then
+						return { table.unpack(typed, 2) }, nil
+					end
+
+					return typed, nil
+				end
+			end
+		end
+	end
+
+	local value = evalChain(segments, count, aliases, document)
+
+	if type(value) == "function" then
+		local params = arityParams(value)
+
+		if params ~= nil then
+			return params, nil
+		end
+	end
+
+	return nil
+end
+
+-- Candidates for a string literal argument (see STRING_ARGUMENTS).
+local function stringCandidates(info, aliases, document)
+	local provider = info.provider
+
+	if provider == "service" then
+		return serviceCandidates()
+	end
+
+	if provider == "class" then
+		return loadClasses()
+	end
+
+	local segments = info.segments
+	local receiverCount = #segments - 1
+
+	if receiverCount < 1 then
+		return nil
+	end
+
+	local receiver = evalChain(segments, receiverCount, aliases, document)
+
+	if receiver == nil then
+		return nil
+	end
+
+	if provider == "child" then
+		if typeof(receiver) ~= "Instance" then
+			return nil
+		end
+
+		return childEntries(receiver, false)
+	end
+
+	if provider == "property" then
+		local className = nil
+
+		if isVirtual(receiver) then
+			className = receiver.typeName
+		elseif typeof(receiver) == "Instance" then
+			className = instanceClassName(receiver)
+		end
+
+		if className == nil then
+			return nil
+		end
+
+		local out = {}
+
+		for _, entry in ipairs(classMembers(className).list) do
+			if entry.kind == "Property" then
+				table.insert(out, entry)
+			end
+		end
+
+		return out
+	end
+
+	if provider == "attribute" then
+		if typeof(receiver) ~= "Instance" then
+			return nil
+		end
+
+		local ok, attributes = pcall(function()
+			return receiver:GetAttributes()
+		end)
+
+		if not ok or type(attributes) ~= "table" then
+			return nil
+		end
+
+		local out = {}
+
+		for key, value in next, attributes do
+			if type(key) == "string" then
+				table.insert(out, { name = key, kind = "Value", detail = typeof(value) })
+			end
+		end
+
+		table.sort(out, function(a, b)
+			return a.name < b.name
+		end)
+
+		return out
+	end
+
+	return nil
 end
 
 local function diagnosticSpan(source, lineNumber, message)
@@ -2419,40 +3292,146 @@ function CodeEditor:updateStatus()
 	self.StatusInfo.Text = info
 end
 
-function CodeEditor:collectCandidates(segments, ends_with_dot, aliases)
-	local receiver = {}
+-- Intellisense (editor side) ------------------------------------------------------
 
-	local count = ends_with_dot and #segments or #segments - 1
+function CodeEditor:ensureAliases()
+	local text = self.TextBox.Text
 
-	for index = 1, count do
-		receiver[index] = segments[index]
+	if self.aliasSource ~= text then
+		self.aliasSource = text
+		self.aliasCache = collectAliases(text)
 	end
 
-	if #receiver > 0 then
-		local enum = collectEnumMembers(receiver)
+	return self.aliasCache
+end
 
-		if enum ~= nil and #enum > 0 then
-			return enum
-		end
-
-		local instance, resolved = resolveLongestPrefix(receiver, aliases)
-
-		if instance ~= nil and resolved == #receiver then
-			local members = collectInstanceMembers(instance)
-
-			if #members > 0 then
-				return members
-			end
-		else
-			local members = collectBuiltinMembers(table.concat(receiver, "."))
-
-			if members ~= nil then
-				return members
-			end
-		end
-	end
-
+function CodeEditor:documentWords()
 	local source = self:activeSource()
+
+	if self.wordCacheSource ~= source then
+		self.wordCacheSource = source
+		self.wordCache = collectDocumentWords(source)
+	end
+
+	return self.wordCache
+end
+
+-- Describes the expression being typed: its receiver chain, the prefix being completed and the range to replace.
+function CodeEditor:chainAtCursor(forced)
+	local text = self.TextBox.Text
+	local cursor = math.max(self.TextBox.CursorPosition or 1, 1)
+
+	local finish = cursor
+
+	while finish <= #text and string.match(string.sub(text, finish, finish), "[%w_]") ~= nil do
+		finish += 1
+	end
+
+	local raw = string.sub(text, chainStart(text, cursor), cursor - 1)
+	local segments, _, endsWithSeparator = parseChain(raw)
+
+	if segments == nil then
+		-- Receiver we can't parse (e.g. `(a + b).`): only complete bare identifiers.
+		local before = string.sub(text, 1, cursor - 1)
+		local prefix = string.match(before, "[%a_][%w_]*$") or ""
+		local preceding = string.sub(before, #before - #prefix, #before - #prefix)
+
+		if preceding == "." or preceding == ":" or (prefix == "" and not forced) then
+			return nil
+		end
+
+		return {
+			segments = {},
+			receiverCount = 0,
+			prefix = prefix,
+			sep = nil,
+			range = { start = cursor - #prefix, finish = finish },
+		}
+	end
+
+	if #segments == 0 then
+		if not forced then
+			return nil
+		end
+
+		return {
+			segments = segments,
+			receiverCount = 0,
+			prefix = "",
+			sep = nil,
+			range = { start = cursor, finish = cursor },
+		}
+	end
+
+	if endsWithSeparator then
+		return {
+			segments = segments,
+			receiverCount = #segments,
+			prefix = "",
+			sep = segments[#segments].sepAfter,
+			range = { start = cursor, finish = cursor },
+		}
+	end
+
+	local last = segments[#segments]
+
+	if last.args ~= nil then
+		return nil
+	end
+
+	local receiverCount = #segments - 1
+
+	return {
+		segments = segments,
+		receiverCount = receiverCount,
+		prefix = last.name,
+		sep = receiverCount > 0 and segments[receiverCount].sepAfter or nil,
+		range = { start = cursor - #last.name, finish = finish },
+	}
+end
+
+function CodeEditor:collectCandidates(chain)
+	local aliases = self:ensureAliases()
+
+	if chain.receiverCount > 0 then
+		local segments = chain.segments
+		local methodsOnly = chain.sep == ":"
+		local names = {}
+
+		for index = 1, chain.receiverCount do
+			if segments[index].args ~= nil then
+				names = nil
+
+				break
+			end
+
+			names[index] = segments[index].name
+		end
+
+		if names ~= nil and aliases[names[1]] == nil then
+			local enum = collectEnumMembers(names)
+
+			if enum ~= nil and #enum > 0 then
+				return enum
+			end
+
+			local builtin = collectBuiltinMembers(table.concat(names, "."))
+
+			if builtin ~= nil then
+				return methodsOnly and filterMethods(builtin) or builtin
+			end
+		end
+
+		local value = evalChain(segments, chain.receiverCount, aliases, self.activeDocument)
+		local members = valueCandidates(value, methodsOnly)
+
+		if members ~= nil and #members > 0 then
+			return members
+		end
+
+		return self:documentWords()
+	end
+
 	local candidates = {}
 
 	for _, list in ipairs({ KEYWORDS, GLOBALS, SNIPPET_CANDIDATES }) do
@@ -2461,12 +3440,7 @@ function CodeEditor:collectCandidates(segments, ends_with_dot, aliases)
 		end
 	end
 
-	if self.wordCacheSource ~= source then
-		self.wordCacheSource = source
-		self.wordCache = collectDocumentWords(source)
-	end
-
-	for _, word in ipairs(self.wordCache) do
+	for _, word in ipairs(self:documentWords()) do
 		table.insert(candidates, word)
 	end
 
@@ -2533,18 +3507,17 @@ function CodeEditor:updateSuggestionList()
 		return
 	end
 
-	local service = self:serviceArgumentAt()
-
-	if service ~= nil then
-		self.forceSuggest = false
-		self:showServiceList(service.prefix, service.start, service.finish)
-
-		return
-	end
-
 	local forced = self.forceSuggest
 
 	self.forceSuggest = false
+
+	local stringArgument = self:stringArgumentAt(forced)
+
+	if stringArgument ~= nil then
+		self:showStringList(stringArgument)
+
+		return
+	end
 
 	if cursor >= 1 and insideCommentOrString(text, cursor) then
 		self:dismissSuggestions()
@@ -2552,46 +3525,19 @@ function CodeEditor:updateSuggestionList()
 		return
 	end
 
-	local word = box:GetWordRangeAtCursor()
+	local chain = self:chainAtCursor(forced)
 
-	if word == nil then
-		if forced then
-			word = { text = "", start = cursor, finish = cursor }
-		else
-			self:dismissSuggestions()
-
-			return
-		end
-	end
-
-	local path = word.text or ""
-
-	if path == "" and not forced then
+	if chain == nil then
 		self:dismissSuggestions()
 
 		return
-	end
-
-	local segments, ends_with_dot = splitPath(path)
-
-	local prefix = ends_with_dot and "" or (segments[#segments] or "")
-
-	if prefix == "" and not ends_with_dot and not forced then
-		self:dismissSuggestions()
-
-		return
-	end
-
-	if self.aliasSource ~= text then
-		self.aliasSource = text
-		self.aliasCache = collectServiceAliases(text)
 	end
 
 	local ranked = {}
 
-	for _, candidate in ipairs(self:collectCandidates(segments, ends_with_dot, self.aliasCache)) do
-		local skip = candidate.kind == "Local" and candidate.name == prefix
-		local score = not skip and scoreMatch(candidate.name, prefix) or nil
+	for _, candidate in ipairs(self:collectCandidates(chain)) do
+		local skip = candidate.kind == "Local" and candidate.name == chain.prefix
+		local score = not skip and scoreMatch(candidate.name, chain.prefix) or nil
 
 		if score ~= nil then
 			table.insert(ranked, {
@@ -2599,19 +3545,21 @@ function CodeEditor:updateSuggestionList()
 				kind = candidate.kind,
 				detail = candidate.detail,
 				snippet = candidate.snippet,
-				score = candidate.snippet and score + 0.5 or score,
+				params = candidate.params,
+				deprecated = candidate.deprecated,
+				score = score + (candidate.snippet and 0.5 or 0) + (candidate.deprecated and 0.25 or 0),
 				quote = false,
 			})
 		end
 	end
 
-	if #ranked == 1 and ranked[1].name == prefix then
+	if #ranked == 1 and ranked[1].name == chain.prefix then
 		self:dismissSuggestions()
 
 		return
 	end
 
-	self:showRanked(ranked, prefix, self:completionRange(word, segments, ends_with_dot))
+	self:showRanked(ranked, chain.prefix, chain.range)
 end
 
 function CodeEditor:showRanked(ranked, prefix, range)
@@ -2647,55 +3595,98 @@ function CodeEditor:showRanked(ranked, prefix, range)
 	self:renderSuggestions()
 end
 
-function CodeEditor:serviceArgumentAt()
-	local callee, _, open = callContextAt(self.TextBox.Text, self.TextBox.CursorPosition)
+-- Detects a string-literal argument that has a known completion source, e.g. GetService("|"), Instance.new("|").
+function CodeEditor:stringArgumentAt(forced)
+	local text = self.TextBox.Text
+	local cursor = math.max(self.TextBox.CursorPosition or 1, 1)
+	local callee, index, open = callContextAt(text, cursor)
 
-	if not isGetServiceCall(callee) then
+	if callee == nil or index ~= 0 then
 		return nil
 	end
 
-	local cursor = self.TextBox.CursorPosition
-	local argumentStart = open + 1
+	local segments, _, endsWithSeparator = parseChain(callee)
+
+	if segments == nil or endsWithSeparator or #segments == 0 then
+		return nil
+	end
+
+	local method = segments[#segments].name
+	local provider = STRING_ARGUMENTS[method]
+
+	if provider == nil then
+		return nil
+	end
+
+	if method == "new" and not (#segments == 2 and segments[1].name == "Instance") then
+		return nil
+	end
+
+	local raw = string.sub(text, open + 1, cursor - 1)
+	local lead, quote, typed = string.match(raw, "^(%s*)([\"']?)(.*)$")
+
+	if string.find(typed, "[\"'\\]") ~= nil then
+		return nil
+	end
+
+	-- Only pop up inside a quote (or when explicitly requested) so Enter isn't hijacked while typing variables.
+	if quote == "" and not forced then
+		return nil
+	end
+
+	local finish = cursor
+	local hasClose = false
+
+	if quote ~= "" then
+		while finish <= #text do
+			local character = string.sub(text, finish, finish)
+
+			if character == quote then
+				hasClose = true
+
+				break
+			end
+
+			if character == "\n" or character == ")" or character == "," then
+				break
+			end
+
+			finish += 1
+		end
+	end
 
 	return {
-		prefix = string.sub(self.TextBox.Text, argumentStart, cursor - 1),
-		start = argumentStart,
-		finish = cursor,
+		provider = provider,
+		segments = segments,
+		prefix = typed,
+		start = open + 1 + #lead + #quote,
+		finish = finish,
+		quote = quote,
+		hasClose = hasClose,
 	}
 end
 
-function CodeEditor:showServiceList(prefix, start, finish)
+function CodeEditor:showStringList(info)
+	local candidates = stringCandidates(info, self:ensureAliases(), self.activeDocument)
 	local ranked = {}
 
-	for _, candidate in ipairs(serviceCandidates()) do
-		local score = scoreMatch(candidate.name, prefix)
+	for _, candidate in ipairs(candidates or {}) do
+		local score = scoreMatch(candidate.name, info.prefix)
 
 		if score ~= nil then
 			table.insert(ranked, {
 				name = candidate.name,
 				kind = candidate.kind,
 				detail = candidate.detail,
-				score = score,
-				quote = true,
+				deprecated = candidate.deprecated,
+				score = score + (candidate.deprecated and 0.25 or 0),
+				quote = info.quote == "",
+				needsClose = (info.quote ~= "" and not info.hasClose) and info.quote or nil,
 			})
 		end
 	end
 
-	self:showRanked(ranked, prefix, { start = start, finish = finish })
-end
-
-function CodeEditor:completionRange(word, segments, ends_with_dot)
-	if ends_with_dot then
-		return { start = word.finish, finish = word.finish }
-	end
-
-	local offset = 0
-
-	for index = 1, #segments - 1 do
-		offset += #segments[index] + 1
-	end
-
-	return { start = word.start + offset, finish = word.finish }
+	self:showRanked(ranked, info.prefix, { start = info.start, finish = info.finish })
 end
 
 function CodeEditor:visibleRowCount()
@@ -2762,7 +3753,7 @@ function CodeEditor:renderArgumentHint()
 		return
 	end
 
-	local params = resolveSignature(callee)
+	local params, returns = lookupSignature(callee, self:ensureAliases(), self.activeDocument)
 
 	if params == nil then
 		self:dismissArgumentHint()
@@ -2789,26 +3780,37 @@ function CodeEditor:renderArgumentHint()
 	UI.clear(self.HintContent)
 
 	local padding = math.floor(SUGGEST_PADDING / 2)
+	local display = string.match(callee, "[%w_]+[%.:][%w_]+$") or string.match(callee, "[%w_]+$") or callee
 
 	if current ~= nil then
-		UI.label(
+		local currentLabel = UI.label(
 			self.HintContent,
 			current,
 			UDim2.fromOffset(8, padding + 1),
-			UDim2.fromOffset(90, SUGGEST_ROW_HEIGHT - 2),
+			UDim2.fromOffset(112, SUGGEST_ROW_HEIGHT - 2),
 			fontSize("small"),
 			C("accent")
 		)
+
+		pcall(function()
+			currentLabel.TextTruncate = Enum.TextTruncate.AtEnd
+		end)
 	end
 
-	UI.label(
+	local signatureX = current and 124 or 8
+
+	local signatureLabel = UI.label(
 		self.HintContent,
-		callee .. "(" .. table.concat(params, ", ") .. ")",
-		UDim2.fromOffset(current and 102 or 8, padding + 1),
-		UDim2.new(1, -12, 1, -padding - 2),
+		display .. "(" .. table.concat(params, ", ") .. ")" .. (returns and (" -> " .. returns) or ""),
+		UDim2.fromOffset(signatureX, padding + 1),
+		UDim2.new(1, -(signatureX + 6), 1, -padding - 2),
 		fontSize("caption"),
 		C("subtext")
 	)
+
+	pcall(function()
+		signatureLabel.TextTruncate = Enum.TextTruncate.AtEnd
+	end)
 
 	self.hintSignature = callee
 
@@ -2889,19 +3891,23 @@ function CodeEditor:renderSuggestions()
 			row,
 			suggestion.name,
 			UDim2.fromOffset(SUGGEST_ICON_SIZE + 11, 3),
-			UDim2.new(1, -76 - SUGGEST_ICON_SIZE, 1, -6),
+			UDim2.new(1, -(SUGGEST_DETAIL_WIDTH + 18 + SUGGEST_ICON_SIZE), 1, -6),
 			fontSize("small"),
-			isSelected and C("text") or kindColor(suggestion.kind)
+			isSelected and C("text") or (suggestion.deprecated and C("muted") or kindColor(suggestion.kind))
 		)
 
-		UI.label(
+		local detailLabel = UI.label(
 			row,
-			suggestion.detail or suggestion.kind or "",
-			UDim2.new(1, -70, 0, 3),
-			UDim2.fromOffset(64, SUGGEST_ROW_HEIGHT - 6),
+			(suggestion.deprecated and "deprecated " or "") .. (suggestion.detail or suggestion.kind or ""),
+			UDim2.new(1, -(SUGGEST_DETAIL_WIDTH + 6), 0, 3),
+			UDim2.fromOffset(SUGGEST_DETAIL_WIDTH, SUGGEST_ROW_HEIGHT - 6),
 			fontSize("caption"),
 			C("muted")
 		)
+
+		pcall(function()
+			detailLabel.TextTruncate = Enum.TextTruncate.AtEnd
+		end)
 
 		table.insert(self.rows, row)
 	end
@@ -2945,6 +3951,8 @@ function CodeEditor:acceptSuggestion(index)
 
 	self.applyingSuggestion = true
 
+	local closerPosition = nil
+
 	if suggestion.snippet ~= nil then
 		local text = self.TextBox.Text
 		local lineStart = lineBounds(text, range.start)
@@ -2956,22 +3964,35 @@ function CodeEditor:acceptSuggestion(index)
 		self.TextBox:ReplaceRange(range.start, range.finish, clean)
 		self.TextBox.CursorPosition = range.start + (marker and marker - 1 or #clean)
 	else
-		local insert = suggestion.quote and ('"' .. suggestion.name .. '"') or suggestion.name
+		local insert = suggestion.name
 
+		if suggestion.quote then
+			insert = '"' .. insert .. '"'
+		elseif suggestion.needsClose ~= nil then
+			insert ..= suggestion.needsClose
+		end
+
+		local cursorOffset = #insert
 		local callable = suggestion.kind == "Method" or suggestion.kind == "Function"
 
-		if callable then
-			insert ..= "("
+		if callable and string.sub(self.TextBox.Text, range.finish, range.finish) ~= "(" then
+			insert ..= "()"
+
+			-- Known zero-argument callables put the cursor after the parens, everything else between them.
+			if suggestion.params == nil or #suggestion.params > 0 then
+				cursorOffset = #insert - 1
+				closerPosition = range.start + cursorOffset
+			else
+				cursorOffset = #insert
+			end
 		end
 
 		self.TextBox:ReplaceRange(range.start, range.finish, insert)
-
-		if callable then
-			self.TextBox.CursorPosition = range.start + #insert
-		end
+		self.TextBox.CursorPosition = range.start + cursorOffset
 	end
 
 	self.applyingSuggestion = false
+	self.pendingCloser = closerPosition
 
 	self.TextBox:CaptureFocus()
 
@@ -3521,7 +4542,7 @@ function CodeEditor:toggleComment()
 		else
 			local indent = string.match(line, "^%s*")
 
-			out[index] = indent .. ""
+			out[index] = indent .. "-- " .. string.sub(line, #indent + 1)
 		end
 	end
 
