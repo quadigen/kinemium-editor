@@ -188,8 +188,8 @@ SignalPipe:Connect(function(signal, value)
 	end
 
 	if signal == "ChangeTheme" then
-		if type(value) == "string" then
-			UI.setTheme(value)
+		if type(value) == "table" then
+			UI.setTheme(value.Name)
 		end
 	end
 
