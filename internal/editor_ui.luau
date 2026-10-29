@@ -3,7 +3,7 @@ local UI = {}
 local StudioThemeService = game:GetService("StudioThemeService")
 local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
-local shared_ui = {
+local shared = {
 	buttons = {},
 	root = nil,
 	background = nil,
@@ -34,7 +34,7 @@ local function tooltipLerp(a, b, t)
 end
 
 local function tooltipSmoothTowards(current, target, speed, dt)
-	if shared_ui.reduceMotion then
+	if shared.reduceMotion then
 		return target
 	end
 	local t = 1 - math.exp(-speed * dt)
@@ -313,7 +313,7 @@ function UI.track(object)
 			or object:IsA("UIBackdrop")
 		)
 	then
-		shared_ui.themeObjects[object] = true
+		shared.themeObjects[object] = true
 	end
 
 	return object
@@ -330,7 +330,7 @@ function UI.create(className, properties, parent)
 				object.FontFace = face
 			end)
 
-			shared_ui.themeFontFaces[object] = fontFaceKey(object.FontFace)
+			shared.themeFontFaces[object] = fontFaceKey(object.FontFace)
 		end
 	end
 
@@ -510,11 +510,11 @@ do
 			font = copyTable(spec.font or {}),
 		}
 
-		if not shared_ui.themes[name] then
-			table.insert(shared_ui.themeOrder, name)
+		if not shared.themes[name] then
+			table.insert(shared.themeOrder, name)
 		end
 
-		shared_ui.themes[name] = theme
+		shared.themes[name] = theme
 
 		return theme
 	end
@@ -536,7 +536,7 @@ do
 	end
 
 	local function resolveTheme(name)
-		local theme = shared_ui.themes[name]
+		local theme = shared.themes[name]
 
 		if not theme then
 			return nil
@@ -551,7 +551,7 @@ do
 		return mergeSpec(base, theme)
 	end
 
-	shared_ui.themeOrder = {}
+	shared.themeOrder = {}
 
 	UI.registerTheme("Dark", {
 		color = UI.tokens.color,
@@ -735,13 +735,13 @@ do
 	})
 
 	function UI.getTheme()
-		return shared_ui.themeName
+		return shared.themeName
 	end
 
 	function UI.getThemes()
 		local list = {}
 
-		for index, name in ipairs(shared_ui.themeOrder) do
+		for index, name in ipairs(shared.themeOrder) do
 			list[index] = name
 		end
 
@@ -753,11 +753,11 @@ do
 			return instance
 		end
 
-		local bindings = shared_ui.themeBindings[instance]
+		local bindings = shared.themeBindings[instance]
 
 		if not bindings then
 			bindings = {}
-			shared_ui.themeBindings[instance] = bindings
+			shared.themeBindings[instance] = bindings
 		end
 
 		for _, binding in ipairs(bindings) do
@@ -810,7 +810,7 @@ do
 			return
 		end
 
-		local previousKey = shared_ui.themeFontFaces[instance]
+		local previousKey = shared.themeFontFaces[instance]
 
 		if previousKey == nil then
 			return
@@ -821,7 +821,7 @@ do
 		end)
 
 		if not ok or currentKey ~= previousKey then
-			shared_ui.themeFontFaces[instance] = nil
+			shared.themeFontFaces[instance] = nil
 
 			return
 		end
@@ -836,7 +836,7 @@ do
 			instance.FontFace = face
 		end)
 
-		shared_ui.themeFontFaces[instance] = fontFaceKey(instance.FontFace)
+		shared.themeFontFaces[instance] = fontFaceKey(instance.FontFace)
 	end
 
 	local function applyGradient(gradient, colorMap)
@@ -866,8 +866,8 @@ do
 		end
 
 		if not isAlive(instance) then
-			shared_ui.themeObjects[instance] = nil
-			shared_ui.themeFontFaces[instance] = nil
+			shared.themeObjects[instance] = nil
+			shared.themeFontFaces[instance] = nil
 
 			return
 		end
@@ -961,7 +961,7 @@ do
 	local function applyButtonRecords(maps)
 		local colors = UI.tokens.color
 
-		for _, record in ipairs(shared_ui.buttons) do
+		for _, record in ipairs(shared.buttons) do
 			local previous = {
 				record.color,
 				record.hoverColor,
@@ -1009,7 +1009,7 @@ do
 	end
 
 	local function applyThemeBindings()
-		for instance, bindings in pairs(shared_ui.themeBindings) do
+		for instance, bindings in pairs(shared.themeBindings) do
 			if isAlive(instance) then
 				for _, binding in ipairs(bindings) do
 					local value = resolveToken(binding.key)
@@ -1068,7 +1068,7 @@ do
 	end
 
 	local function notifyThemeChanged(name)
-		for _, callback in ipairs(shared_ui.themeListeners) do
+		for _, callback in ipairs(shared.themeListeners) do
 			pcall(callback, name, UI.tokens)
 		end
 	end
@@ -1081,7 +1081,7 @@ do
 		applyThemeDimensions(spec)
 		syncLegacyColors()
 
-		for instance in pairs(shared_ui.themeObjects) do
+		for instance in pairs(shared.themeObjects) do
 			applyToInstance(instance, maps, radiusMap, typeMap, spec.font)
 		end
 
@@ -1090,13 +1090,13 @@ do
 	end
 
 	local function finishThemeTransition(notify)
-		local transition = shared_ui.themeTransition
+		local transition = shared.themeTransition
 
 		if not transition then
 			return
 		end
 
-		shared_ui.themeTransition = nil
+		shared.themeTransition = nil
 
 		if transition.connection then
 			transition.connection:Disconnect()
@@ -1110,7 +1110,7 @@ do
 
 		syncLegacyColors()
 
-		for instance in pairs(shared_ui.themeObjects) do
+		for instance in pairs(shared.themeObjects) do
 			applyToInstance(instance, maps, transition.radiusMap, transition.typeMap, transition.font)
 		end
 
@@ -1136,13 +1136,13 @@ do
 
 		applyThemeDimensions(spec)
 
-		shared_ui.themeName = name
-		shared_ui.themeTransition = transition
+		shared.themeName = name
+		shared.themeTransition = transition
 
 		local firstStep = true
 
 		transition.connection = RunService.Heartbeat:Connect(function(dt)
-			if shared_ui.themeTransition ~= transition then
+			if shared.themeTransition ~= transition then
 				return
 			end
 
@@ -1170,7 +1170,7 @@ do
 			local stepTypeMap = firstStep and typeMap or EMPTY_MAP
 			local stepFont = firstStep and spec.font or nil
 
-			for instance in pairs(shared_ui.themeObjects) do
+			for instance in pairs(shared.themeObjects) do
 				applyToInstance(instance, maps, stepRadiusMap, stepTypeMap, stepFont)
 			end
 
@@ -1210,14 +1210,14 @@ do
 		local typeMap = buildNumberMap(old.type, spec.type)
 
 		local animate = THEME_ANIMATION_DURATION > 0
-			and not shared_ui.reduceMotion
+			and not shared.reduceMotion
 			and mapsHaveChanges(maps)
-			and next(shared_ui.themeObjects) ~= nil
+			and next(shared.themeObjects) ~= nil
 
 		if not animate then
 			applyThemeNow(spec, maps, radiusMap, typeMap)
 
-			shared_ui.themeName = name
+			shared.themeName = name
 
 			notifyThemeChanged(name)
 
@@ -1230,24 +1230,24 @@ do
 	end
 
 	function UI.refreshTheme()
-		return UI.setTheme(shared_ui.themeName)
+		return UI.setTheme(shared.themeName)
 	end
 
 	function UI.setReduceMotion(value)
-		shared_ui.reduceMotion = value == true
-		if shared_ui.reduceMotion and shared_ui.themeTransition then
-			local transition = shared_ui.themeTransition
+		shared.reduceMotion = value == true
+		if shared.reduceMotion and shared.themeTransition then
+			local transition = shared.themeTransition
 			if transition.connection then
 				transition.connection:Disconnect()
 				transition.connection = nil
 			end
-			shared_ui.themeTransition = nil
+			shared.themeTransition = nil
 			local maps = buildColorMaps(transition.previous, transition.target)
 			for key, val in pairs(transition.target) do
 				UI.tokens.color[key] = val
 			end
 			syncLegacyColors()
-			for instance in pairs(shared_ui.themeObjects) do
+			for instance in pairs(shared.themeObjects) do
 				applyToInstance(instance, maps, transition.radiusMap, transition.typeMap, transition.font)
 			end
 			applyButtonRecords(maps)
@@ -1261,13 +1261,13 @@ do
 			error("callback must be a function")
 		end
 
-		table.insert(shared_ui.themeListeners, callback)
+		table.insert(shared.themeListeners, callback)
 
 		return {
 			Disconnect = function()
-				for index, value in ipairs(shared_ui.themeListeners) do
+				for index, value in ipairs(shared.themeListeners) do
 					if value == callback then
-						table.remove(shared_ui.themeListeners, index)
+						table.remove(shared.themeListeners, index)
 
 						break
 					end
@@ -1285,11 +1285,11 @@ do
 			UI.track(descendant)
 		end
 
-		if shared_ui.trackedRoots[root] then
+		if shared.trackedRoots[root] then
 			return
 		end
 
-		shared_ui.trackedRoots[root] = true
+		shared.trackedRoots[root] = true
 
 		pcall(function()
 			root.DescendantAdded:Connect(function(descendant)
@@ -1318,7 +1318,7 @@ function UI.forgetButtons(container)
 
 	local retained = {}
 
-	for _, item in ipairs(shared_ui.buttons) do
+	for _, item in ipairs(shared.buttons) do
 		local gui = item.gui
 
 		if gui ~= nil and gui ~= container and UI.isAlive(gui) and not gui:IsDescendantOf(container) then
@@ -1328,7 +1328,7 @@ function UI.forgetButtons(container)
 		end
 	end
 
-	shared_ui.buttons = retained
+	shared.buttons = retained
 end
 
 function UI.clear(parent, keep)
@@ -1354,7 +1354,7 @@ function UI.clear(parent, keep)
 
 	local retained = {}
 
-	for _, item in ipairs(shared_ui.buttons) do
+	for _, item in ipairs(shared.buttons) do
 		local gui = item.gui
 
 		if gui ~= nil and not doomed[gui] and UI.isAlive(gui) then
@@ -1364,7 +1364,7 @@ function UI.clear(parent, keep)
 		end
 	end
 
-	shared_ui.buttons = retained
+	shared.buttons = retained
 
 	for _, child in ipairs(doomedChildren) do
 		child:Destroy()
@@ -1397,11 +1397,11 @@ local function copyProps(props)
 end
 
 local function mergeProps(component, props)
-	local merged = shared_ui.componentOverrides[component]
+	local merged = shared.componentOverrides[component]
 
 	if not merged then
 		merged = {}
-		shared_ui.componentOverrides[component] = merged
+		shared.componentOverrides[component] = merged
 	end
 
 	for key, value in pairs(props) do
@@ -1412,8 +1412,8 @@ local function mergeProps(component, props)
 end
 
 local function dispatchComponentRefresh(component)
-	local merged = shared_ui.componentOverrides[component] or {}
-	local bindings = shared_ui.componentBindings[component]
+	local merged = shared.componentOverrides[component] or {}
+	local bindings = shared.componentBindings[component]
 	local updated = 0
 
 	if bindings then
@@ -1436,22 +1436,22 @@ function UI.onComponentRefresh(component, apply)
 	nextComponentBindingId += 1
 
 	local token = nextComponentBindingId
-	local bindings = shared_ui.componentBindings[component]
+	local bindings = shared.componentBindings[component]
 
 	if not bindings then
 		bindings = {}
-		shared_ui.componentBindings[component] = bindings
+		shared.componentBindings[component] = bindings
 	end
 
 	bindings[token] = apply
 
-	if shared_ui.componentOverrides[component] then
-		pcall(apply, shared_ui.componentOverrides[component], component)
+	if shared.componentOverrides[component] then
+		pcall(apply, shared.componentOverrides[component], component)
 	end
 
 	return {
 		Disconnect = function()
-			local current = shared_ui.componentBindings[component]
+			local current = shared.componentBindings[component]
 
 			if current then
 				current[token] = nil
@@ -1470,11 +1470,11 @@ function UI.setComponentProps(component, props)
 end
 
 function UI.getComponentProps(component)
-	return copyProps(shared_ui.componentOverrides[component])
+	return copyProps(shared.componentOverrides[component])
 end
 
 function UI.clearComponentProps(component)
-	shared_ui.componentOverrides[component] = nil
+	shared.componentOverrides[component] = nil
 
 	return dispatchComponentRefresh(component)
 end
@@ -1494,14 +1494,14 @@ end
 function UI.getComponentNames()
 	local names, seen = {}, {}
 
-	for name in pairs(shared_ui.componentBindings) do
+	for name in pairs(shared.componentBindings) do
 		if not seen[name] then
 			seen[name] = true
 			table.insert(names, name)
 		end
 	end
 
-	for name in pairs(shared_ui.componentOverrides) do
+	for name in pairs(shared.componentOverrides) do
 		if not seen[name] then
 			seen[name] = true
 			table.insert(names, name)
@@ -1571,7 +1571,7 @@ local componentModules = {
 
 local components = {
 	UI = UI,
-	shared_ui = shared_ui,
+	shared = shared,
 	tooltipSmoothTowards = tooltipSmoothTowards,
 }
 
@@ -1579,8 +1579,8 @@ for _, install in ipairs(componentModules) do
 	install(components)
 end
 
-function UI.shared_ui()
-	return shared_ui
+function UI.shared()
+	return shared
 end
 
 task.defer(function()
@@ -1604,7 +1604,7 @@ task.defer(function()
 		return Studio:GetSetting("diagnostics", true)
 	end)
 	if ok3 and diag ~= nil then
-		shared_ui.scriptDiagnostics = diag ~= false
+		shared.scriptDiagnostics = diag ~= false
 	end
 	local ok4, theme = pcall(function()
 		return Studio:GetSetting("theme", nil)
@@ -1617,17 +1617,15 @@ task.defer(function()
 			if key == "reduceMotion" then
 				UI.setReduceMotion(value == true)
 			elseif key == "diagnostics" then
-				shared_ui.scriptDiagnostics = value ~= false
+				shared.scriptDiagnostics = value ~= false
 			elseif key == "theme" and type(value) == "string" and value ~= "" then
 				UI.setTheme(value)
 			end
 		end)
 		if conn then
-			shared_ui._studioSettingConn = conn
+			shared._studioSettingConn = conn
 		end
 	end
 end)
-
-shared.UI = UI
 
 return UI

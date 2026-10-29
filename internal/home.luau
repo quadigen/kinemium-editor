@@ -166,6 +166,8 @@ local function callModuleWithArgs(name, method, args)
 	return callModule(name, method)
 end
 
+shared.UI = UI
+
 SignalPipe:Connect(function(signal, value)
 	print("Event: " .. signal)
 	print("Value: ", value)
