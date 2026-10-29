@@ -28,14 +28,13 @@ local widgetInfo = DockWidgetPluginGuiInfo.new(
 -- Create new widget GUI
 local testWidget = plugin:CreateDockWidgetPluginGuiAsync("TestWidget", widgetInfo)
 
-local testButton = Instance.new("TextButton")
+local testButton = Instance.new("TextLabel")
 testButton.BorderSizePixel = 0
 testButton.TextSize = 20
 testButton.TextColor3 = Color3.new(1, 0.2, 0.4)
 testButton.AnchorPoint = Vector2.new(0.5, 0.5)
 testButton.Size = UDim2.new(1, 0, 1, 0)
 testButton.Position = UDim2.new(0.5, 0, 0.5, 0)
-testButton.SizeConstraint = Enum.SizeConstraint.RelativeYY
 testButton.Text = "Click Me"
 testButton.Parent = testWidget
 
