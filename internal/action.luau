@@ -34,7 +34,7 @@ testWidget.Enabled = false
 local function onPluginButtonClicked()
 	print("hello world")
 	print(ReflectionService:GetPropertiesOfClass("DockWidgetPluginGui"))
-	testWidget.Enabled = not testWidget.Enabled
+	testWidget.Enabled = true
 end
 
 newScriptButton.Click:Connect(onPluginButtonClicked)
