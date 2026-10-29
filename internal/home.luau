@@ -1,6 +1,7 @@
 if (IsServer or IsClient) or IsPlaytest then
 	return nil
 end
+shared.Done = false
 local UI = require("@internal/editor_ui")
 local project_manager = require("@internal/projects")
 local plugin_marketplace = require("@internal/marketplace")
@@ -729,3 +730,5 @@ end)
 pcall(function()
 	pluginService:__SyncPluginToolbars()
 end)
+
+shared.Done = true
