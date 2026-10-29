@@ -1,22 +1,36 @@
--- Create new 'DockWidgetPluginGuiInfo' object
-local widgetInfo = DockWidgetPluginGuiInfo.new(
-	Enum.InitialDockState.Float, -- Widget will be initialized in floating panel
-	true, -- Widget will be initially enabled
-	false, -- Don't override the previous enabled state
-	200, -- Default width of the floating window
-	300, -- Default height of the floating window
-	150, -- Minimum width of the floating window (optional)
-	150 -- Minimum height of the floating window (optional)
-)
+-- This code can be pasted into the Command Bar, but only once
+local pluginMenu = plugin:CreatePluginMenu(math.random(), "Test Menu")
+pluginMenu.Name = "Test Menu"
 
--- Create new widget GUI
-local testWidget = plugin:CreateDockWidgetPluginGuiAsync("TestWidget", widgetInfo)
+pluginMenu:AddNewAction("ActionA", "A", "rbxasset://textures/loading/robloxTiltRed.png")
+pluginMenu:AddNewAction("ActionB", "B", "rbxasset://textures/loading/robloxTilt.png")
 
-local testButton = Instance.new("TextLabel")
-testButton.BorderSizePixel = 0
-testButton.TextColor3 = Color3.new(1, 0.2, 0.4)
-testButton.AnchorPoint = Vector2.new(0.5, 0.5)
-testButton.Size = UDim2.new(1, 0, 1, 0)
-testButton.Position = UDim2.new(0.5, 0, 0.5, 0)
-testButton.Text = "Click Me"
-testButton.Parent = testWidget
+local subMenu = plugin:CreatePluginMenu(math.random(), "C", "rbxasset://textures/explosion.png")
+subMenu.Name = "Sub Menu"
+
+subMenu:AddNewAction("ActionD", "D", "rbxasset://textures/whiteCircle.png")
+subMenu:AddNewAction("ActionE", "E", "rbxasset://textures/icon_ROBUX.png")
+
+pluginMenu:AddMenu(subMenu)
+pluginMenu:AddSeparator()
+
+pluginMenu:AddNewAction("ActionF", "F", "rbxasset://textures/sparkle.png")
+
+local toggle = Instance.new("BoolValue")
+toggle.Name = "TogglePluginMenu"
+toggle.Parent = workspace
+
+local function onToggled()
+	if toggle.Value then
+		toggle.Value = false
+
+		local selectedAction = pluginMenu:ShowAsync()
+		if selectedAction then
+			print("Selected Action:", selectedAction.Text, "with ActionId:", selectedAction.ActionId)
+		else
+			print("User did not select an action!")
+		end
+	end
+end
+
+toggle.Changed:Connect(onToggled)
