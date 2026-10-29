@@ -167,6 +167,7 @@ local function callModuleWithArgs(name, method, args)
 end
 
 SignalPipe:Connect(function(signal, value)
+	print(signal, value)
 	if signal == "WidgetOverlayVisible" then
 		if type(value) == "boolean" then
 			UI.widgetOverlay().Enabled = value
