@@ -143,3 +143,5 @@ SignalPipe:Connect(function(signal, value)
 	if signal == "NewCategory" then
 	end
 end)
+
+Studio:Test()
