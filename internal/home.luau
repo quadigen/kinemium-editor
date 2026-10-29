@@ -47,6 +47,8 @@ local windowIndex = {}
 
 SignalPipe:Connect(function(signal, value)
 	print(signal, value)
+	print(type(value))
+	print(typeof(value))
 	if signal == "WidgetOverlayVisible" then
 		if type(value) == "boolean" then
 			UI.widgetOverlay().Enabled = value
@@ -137,6 +139,7 @@ SignalPipe:Connect(function(signal, value)
 			end
 		end
 	end
-end)
 
-Studio:Test()
+	if signal == "NewCategory" then
+	end
+end)
