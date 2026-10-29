@@ -191,6 +191,7 @@ SignalPipe:Connect(function(signal, value)
 		if type(value) == "table" then
 			UI.setTheme(value.Name)
 			print("Set theme to " .. value.Name)
+			print(shared.themes)
 		end
 	end
 
