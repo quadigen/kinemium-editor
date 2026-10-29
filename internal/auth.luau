@@ -337,4 +337,8 @@ function Auth.SignUp(options)
 	return controller
 end
 
+function Auth.Refresh()
+	return UI.refreshAllWindows()
+end
+
 return Auth

@@ -747,4 +747,14 @@ return {
 			painting = false
 		end
 	end,
+
+	Refresh = function()
+		UI.refreshWindow("Terrain")
+		refreshRows()
+		refreshPreviewStyle()
+	end,
+
+	IsVisible = function()
+		return panel.Visible
+	end,
 }

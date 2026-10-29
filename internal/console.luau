@@ -541,4 +541,30 @@ end
 
 return {
 	createConsole = createConsole,
+
+	Refresh = function()
+		UI.refreshWindow("Console")
+	end,
+
+	Show = function()
+		local panel = UI.getWindow("Console")
+
+		if panel then
+			panel.Visible = true
+		end
+	end,
+
+	Hide = function()
+		local panel = UI.getWindow("Console")
+
+		if panel then
+			panel.Visible = false
+		end
+	end,
+
+	IsVisible = function()
+		local panel = UI.getWindow("Console")
+
+		return panel ~= nil and panel.Visible
+	end,
 }

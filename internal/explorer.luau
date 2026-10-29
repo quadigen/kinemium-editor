@@ -1399,4 +1399,34 @@ end)
 
 return {
 	filesController = filesController,
+
+	Refresh = function()
+		if filesController and filesController.Refresh then
+			filesController.Refresh()
+		end
+
+		UI.refreshWindow("Explorer")
+	end,
+
+	Show = function()
+		local panel = UI.getWindow("Explorer")
+
+		if panel then
+			panel.Visible = true
+		end
+	end,
+
+	Hide = function()
+		local panel = UI.getWindow("Explorer")
+
+		if panel then
+			panel.Visible = false
+		end
+	end,
+
+	IsVisible = function()
+		local panel = UI.getWindow("Explorer")
+
+		return panel ~= nil and panel.Visible
+	end,
 }

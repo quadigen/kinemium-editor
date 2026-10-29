@@ -414,6 +414,7 @@ rebuildFlyout = function()
 				size = UDim2.fromOffset(definition.width or 52, FLYOUT_HEIGHT - 12),
 				colors = colors,
 				radius = buttonRadius(),
+				selected = definition.selected == true,
 				onClick = safeAction(function(item)
 					fireRoute(definition.route)
 
@@ -646,33 +647,6 @@ local function refreshTheme()
 	applyWorkspaceLayout()
 end
 
-UI.EngineTopbar = {
-	AddCategory = function(categoryName, buttons)
-		if type(categoryName) ~= "string" or type(buttons) ~= "table" then
-			return
-		end
-
-		local category = {
-			name = categoryName,
-			buttons = buttons,
-		}
-
-		table.insert(toolbarCategories, category)
-	end,
-
-	SetExpanded = function(value)
-		setExpanded(value)
-	end,
-
-	IsExpanded = function()
-		return expanded
-	end,
-
-	GetConsumedHeight = function()
-		return layoutExtraHeight()
-	end,
-}
-
 if type(user) == "table" and type(user.mount) == "function" then
 	user.mount(topbar)
 elseif type(user) == "function" then
@@ -685,3 +659,290 @@ applyTheme()
 renderer.Pool.new("2d", function()
 	refreshTheme()
 end)
+
+local function getCategory(name)
+	for i, category in pairs(toolbarCategories) do
+		if category.name == name then
+			return i, category
+		end
+	end
+	return 0, false
+end
+
+local API
+
+local function refreshCategory(categoryName)
+	local category = categoryName and categoryByName[categoryName]
+
+	if selectedCategory and (categoryName == nil or selectedCategory.name == categoryName) then
+		rebuildFlyout()
+	end
+end
+
+local function findButton(category, buttonName)
+	if not category or type(category.buttons) ~= "table" then
+		return nil, nil
+	end
+
+	for i, button in ipairs(category.buttons) do
+		if button.name == buttonName then
+			return i, button
+		end
+	end
+
+	return nil, nil
+end
+
+local function isValidButton(button)
+	return type(button) == "table"
+		and (button.type == "separator" or button.type == "custom" or type(button.name) == "string")
+end
+
+local function getCategoryInfo(category)
+	if not category then
+		return nil
+	end
+
+	return {
+		name = category.name,
+		buttonCount = #category.buttons,
+		selected = selectedCategory == category,
+	}
+end
+
+API = {
+	AddCategory = function(categoryName, buttons)
+		if
+			type(categoryName) ~= "string"
+			or categoryName == ""
+			or type(buttons) ~= "table"
+			or categoryByName[categoryName]
+		then
+			return false
+		end
+
+		local category = {
+			name = categoryName,
+			buttons = buttons,
+		}
+
+		table.insert(toolbarCategories, category)
+		categoryByName[categoryName] = category
+
+		return true
+	end,
+
+	RemoveCategory = function(categoryName)
+		local index, category = getCategory(categoryName)
+
+		if not category then
+			return false
+		end
+
+		if selectedCategory == category then
+			selectedCategory = homeCategory
+		end
+
+		table.remove(toolbarCategories, index)
+		categoryByName[categoryName] = nil
+
+		if toolbarTabs and toolbarTabs.pages[categoryName] then
+			local page = toolbarTabs.pages[categoryName]
+			pageKeep[page] = nil
+			UI.clear(page)
+			page:Destroy()
+			toolbarTabs.pages[categoryName] = nil
+		end
+
+		if selectedCategory then
+			rebuildFlyout()
+		end
+
+		return true
+	end,
+
+	GetCategory = function(categoryName)
+		return getCategoryInfo(categoryByName[categoryName])
+	end,
+
+	GetCategories = function()
+		local result = {}
+
+		for _, category in ipairs(toolbarCategories) do
+			table.insert(result, getCategoryInfo(category))
+		end
+
+		return result
+	end,
+
+	HasCategory = function(categoryName)
+		return categoryByName[categoryName] ~= nil
+	end,
+
+	SelectCategory = function(categoryName)
+		local category = categoryByName[categoryName]
+
+		if not category then
+			return false
+		end
+
+		if not toolbarTabs.pages[categoryName] then
+			return false
+		end
+
+		selectedCategory = category
+		toolbarTabs.setSelectedTab(categoryName)
+		rebuildFlyout()
+		setExpanded(true)
+
+		return true
+	end,
+
+	GetSelectedCategory = function()
+		return selectedCategory and selectedCategory.name or nil
+	end,
+
+	AddButton = function(categoryName, definition, index)
+		local category = categoryByName[categoryName]
+
+		if not category or not isValidButton(definition) then
+			return false
+		end
+
+		if definition.type ~= "separator" and definition.type ~= "custom" and findButton(category, definition.name) then
+			return false
+		end
+
+		if index ~= nil then
+			if type(index) ~= "number" then
+				return false
+			end
+
+			index = math.floor(index)
+
+			if index < 1 or index > #category.buttons + 1 then
+				return false
+			end
+
+			table.insert(category.buttons, index, definition)
+		else
+			table.insert(category.buttons, definition)
+		end
+
+		refreshCategory(categoryName)
+		return true
+	end,
+
+	RemoveButton = function(categoryName, buttonName)
+		local category = categoryByName[categoryName]
+		local index = findButton(category, buttonName)
+
+		if not index then
+			return false
+		end
+
+		table.remove(category.buttons, index)
+		refreshCategory(categoryName)
+
+		return true
+	end,
+
+	GetButton = function(categoryName, buttonName)
+		local category = categoryByName[categoryName]
+		local _, button = findButton(category, buttonName)
+
+		return button
+	end,
+
+	GetButtons = function(categoryName)
+		local category = categoryByName[categoryName]
+
+		if not category then
+			return nil
+		end
+
+		local result = {}
+
+		for i, button in ipairs(category.buttons) do
+			result[i] = button
+		end
+
+		return result
+	end,
+
+	UpdateButton = function(categoryName, buttonName, properties)
+		local category = categoryByName[categoryName]
+		local _, button = findButton(category, buttonName)
+
+		if not button or type(properties) ~= "table" then
+			return false
+		end
+
+		for key, value in pairs(properties) do
+			button[key] = value
+		end
+
+		refreshCategory(categoryName)
+		return true
+	end,
+
+	MoveButton = function(categoryName, buttonName, newIndex)
+		local category = categoryByName[categoryName]
+
+		if not category or type(newIndex) ~= "number" then
+			return false
+		end
+
+		local oldIndex, button = findButton(category, buttonName)
+
+		if not oldIndex then
+			return false
+		end
+
+		newIndex = math.floor(newIndex)
+
+		if newIndex < 1 or newIndex > #category.buttons then
+			return false
+		end
+
+		table.remove(category.buttons, oldIndex)
+		table.insert(category.buttons, newIndex, button)
+
+		refreshCategory(categoryName)
+		return true
+	end,
+
+	AddSeparator = function(categoryName, index)
+		return API.AddButton(categoryName, {
+			type = "separator",
+		}, index)
+	end,
+
+	SetExpanded = function(value)
+		setExpanded(value == true)
+	end,
+
+	ToggleExpanded = function()
+		setExpanded(not expanded)
+	end,
+
+	IsExpanded = function()
+		return expanded
+	end,
+
+	GetConsumedHeight = function()
+		return layoutExtraHeight()
+	end,
+
+	GetHeight = function()
+		return expandedTopbarHeight()
+	end,
+
+	Refresh = function()
+		refreshTheme()
+		rebuildFlyout()
+		applyTheme()
+	end,
+}
+
+return API

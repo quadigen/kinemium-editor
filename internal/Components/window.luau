@@ -34,6 +34,9 @@ return function(ctx)
 
 		shared.windows[string.lower(name)] = panel
 
+		local windowKey = string.lower(name)
+		local controls = {}
+
 		if options.backdrop == true then
 			UI.create("UIBackdrop", {
 				Enabled = true,
@@ -46,30 +49,50 @@ return function(ctx)
 		end
 
 		local backgroundImageLabel = nil
-		if options.backgroundImage and options.backgroundImage ~= "" then
-			local imageScaleType = options.backgroundImageScaleType or Enum.ScaleType.Crop
-			if type(imageScaleType) == "string" then
-				imageScaleType = Enum.ScaleType[imageScaleType] or Enum.ScaleType.Crop
+		local backgroundImageCorner = nil
+
+		local function resolveScaleType(value)
+			local scaleType = value or Enum.ScaleType.Crop
+
+			if type(scaleType) == "string" then
+				scaleType = Enum.ScaleType[scaleType] or Enum.ScaleType.Crop
 			end
 
-			backgroundImageLabel = UI.create("ImageLabel", {
+			return scaleType
+		end
+
+		local function createBackgroundImage(source, transparency, color, scaleType)
+			local label = UI.create("ImageLabel", {
 				Name = "BackgroundImage",
 				Position = UDim2.fromScale(0, 0),
 				Size = UDim2.fromScale(1, 1),
 				BackgroundTransparency = 1,
-				Image = options.backgroundImage,
-				ImageTransparency = options.backgroundImageTransparency or 0,
-				ImageColor3 = options.backgroundImageColor or Color3.new(1, 1, 1),
-				ScaleType = imageScaleType,
+				Image = source or "",
+				ImageTransparency = transparency or 0,
+				ImageColor3 = color or Color3.new(1, 1, 1),
+				ScaleType = resolveScaleType(scaleType),
 				ZIndex = panel.ZIndex,
 				Active = false,
 				Selectable = false,
 			}, panel)
 
-			UI.create("UICorner", {
+			backgroundImageCorner = UI.create("UICorner", {
 				CornerRadius = UDim.new(0, radius),
-			}, backgroundImageLabel)
+			}, label)
+
+			return label
 		end
+
+		backgroundImageLabel = createBackgroundImage(
+			options.backgroundImage,
+			options.backgroundImageTransparency,
+			options.backgroundImageColor,
+			options.backgroundImageScaleType
+		)
+
+		local hasBackgroundImage = type(options.backgroundImage) == "string" and options.backgroundImage ~= ""
+
+		backgroundImageLabel.Visible = hasBackgroundImage
 
 		local border = UI.stroke(
 			panel,
@@ -270,7 +293,7 @@ return function(ctx)
 
 		if options.contentTransparency ~= nil then
 			content.BackgroundTransparency = options.contentTransparency
-		elseif backgroundImageLabel then
+		elseif hasBackgroundImage then
 			content.BackgroundTransparency = 1
 		end
 
@@ -321,31 +344,175 @@ return function(ctx)
 		clip.InputSink = false
 		clip.Selectable = false
 
-		return panel,
-			content,
-			header,
-			{
-				title = titleLabel,
-				titleTab = titleTab,
-				indicator = tabsController and tabsController.indicator or nil,
-				closeButton = closeButton,
-				dragHandle = dragHandle,
-				border = border,
-				clip = clip,
-				backgroundImage = backgroundImageLabel,
+		local function styleValue(props, key)
+			local value = props[key]
 
-				tabBar = nil,
-				tabs = tabsController and tabsController.tabs or {},
-				pages = tabsController and tabsController.pages or {},
+			if value ~= nil then
+				return value
+			end
 
-				selectTab = tabsController and tabsController.selectTab or function() end,
-				getSelectedTab = tabsController and tabsController.getSelectedTab or function()
-					return nil
-				end,
-				getPage = tabsController and tabsController.getPage or function()
-					return nil
-				end,
-			}
+			return options[key]
+		end
+
+		local function updateCorner(instance, cornerRadius)
+			if not instance then
+				return
+			end
+
+			local corner = instance:FindFirstChildOfClass("UICorner")
+
+			if corner then
+				corner.CornerRadius = UDim.new(0, cornerRadius)
+			end
+		end
+
+		local function applyOverrides(props)
+			local target = props.name or props.window or props.Name
+
+			if type(target) == "string" and string.lower(target) ~= windowKey then
+				return
+			end
+
+			local tokens = UI.tokens.color
+			local nextRadius = styleValue(props, "radius") or UI.tokens.radius.md
+			local nextHeaderColor = styleValue(props, "headerColor") or options.headerColor or tokens.panelRaised
+			local nextContentColor = styleValue(props, "contentColor") or options.contentColor or tokens.panel
+			local image = styleValue(props, "backgroundImage")
+			local imageVisible = type(image) == "string" and image ~= ""
+
+			if imageVisible then
+				backgroundImageLabel.Image = image
+				backgroundImageLabel.ImageTransparency = styleValue(props, "backgroundImageTransparency") or 0
+				backgroundImageLabel.ImageColor3 = styleValue(props, "backgroundImageColor") or Color3.new(1, 1, 1)
+				backgroundImageLabel.ScaleType = resolveScaleType(styleValue(props, "backgroundImageScaleType"))
+			end
+
+			backgroundImageLabel.Visible = imageVisible
+
+			controls.backgroundImage = backgroundImageLabel
+
+			panel.BackgroundColor3 = styleValue(props, "panelColor") or tokens.panel
+
+			local panelTransparency = styleValue(props, "panelTransparency")
+
+			if options.backdrop == true or panelTransparency ~= nil then
+				if panelTransparency == nil then
+					panelTransparency = options.backdrop and 0.08 or 0
+				end
+
+				panel.BackgroundTransparency = panelTransparency
+			end
+
+			local headerTransparency = styleValue(props, "headerTransparency") or 0
+
+			header.BackgroundColor3 = nextHeaderColor
+			headerBottomFill.BackgroundColor3 = nextHeaderColor
+			header.BackgroundTransparency = headerTransparency
+			headerBottomFill.BackgroundTransparency = headerTransparency
+
+			content.BackgroundColor3 = nextContentColor
+
+			local contentTransparency = styleValue(props, "contentTransparency")
+
+			if contentTransparency == nil then
+				contentTransparency = backgroundImageLabel.Visible and 1 or 0
+			end
+
+			content.BackgroundTransparency = contentTransparency
+
+			border.Color = styleValue(props, "borderColor") or tokens.borderStrong
+			border.Thickness = styleValue(props, "borderThickness") or 1
+			border.Transparency = styleValue(props, "borderTransparency") or 0.35
+
+			if titleLabel then
+				titleLabel.TextColor3 = styleValue(props, "titleColor") or tokens.text
+
+				local nextTitle = styleValue(props, "title")
+
+				if type(nextTitle) == "string" and nextTitle ~= "" then
+					titleLabel.Text = nextTitle
+				end
+			end
+
+			if titleTab then
+				local activeColor = styleValue(props, "activeTabColor") or nextContentColor
+				local fill = titleTab:FindFirstChild("BottomFill")
+
+				titleTab.BackgroundColor3 = activeColor
+
+				if fill then
+					fill.BackgroundColor3 = activeColor
+				end
+			end
+
+			updateCorner(panel, nextRadius)
+			updateCorner(clip, nextRadius)
+
+			if backgroundImageCorner then
+				backgroundImageCorner.CornerRadius = UDim.new(0, nextRadius)
+			end
+		end
+
+		controls.title = titleLabel
+		controls.titleTab = titleTab
+		controls.indicator = tabsController and tabsController.indicator or nil
+		controls.closeButton = closeButton
+		controls.dragHandle = dragHandle
+		controls.border = border
+		controls.clip = clip
+		controls.backgroundImage = backgroundImageLabel
+
+		controls.tabBar = nil
+		controls.tabs = tabsController and tabsController.tabs or {}
+		controls.pages = tabsController and tabsController.pages or {}
+
+		controls.selectTab = tabsController and tabsController.selectTab or function() end
+		controls.getSelectedTab = tabsController and tabsController.getSelectedTab or function()
+			return nil
+		end
+		controls.getPage = tabsController and tabsController.getPage or function()
+			return nil
+		end
+
+		local componentKey = "window:" .. windowKey
+
+		local function applyWindowComponent(componentProps)
+			local props = {}
+			local global = shared.componentOverrides.window
+			local globalName = global and (global.name or global.window or global.Name)
+			local globalMatches = type(globalName) ~= "string" or string.lower(globalName) == windowKey
+
+			if globalMatches then
+				for key, value in pairs(global or {}) do
+					props[key] = value
+				end
+			end
+
+			for key, value in pairs(componentProps or {}) do
+				props[key] = value
+			end
+
+			applyOverrides(props)
+		end
+
+		shared.windowBindings[windowKey] = applyWindowComponent
+
+		controls.refreshBindings = {
+			UI.onComponentRefresh("window", applyOverrides),
+			UI.onComponentRefresh(componentKey, applyWindowComponent),
+		}
+
+		panel.Destroying:Connect(function()
+			shared.windowBindings[windowKey] = nil
+
+			for _, binding in ipairs(controls.refreshBindings) do
+				binding:Disconnect()
+			end
+
+			controls.refreshBindings = {}
+		end)
+
+		return panel, content, header, controls
 	end
 
 	function UI.toggleWindow(name)
@@ -358,5 +525,29 @@ return function(ctx)
 
 	function UI.getWindow(name)
 		return shared.windows[string.lower(name)]
+	end
+
+	function UI.refreshWindow(name)
+		local windowKey = string.lower(name)
+
+		if not shared.windowBindings[windowKey] then
+			return false
+		end
+
+		UI.refreshComponent("window:" .. windowKey)
+
+		return true
+	end
+
+	function UI.refreshAllWindows(props)
+		return UI.refreshComponent("window", props)
+	end
+
+	function UI.setWindowProps(name, props)
+		return UI.setComponentProps("window:" .. string.lower(name), props)
+	end
+
+	function UI.clearWindowProps(name)
+		return UI.clearComponentProps("window:" .. string.lower(name))
 	end
 end

@@ -349,4 +349,12 @@ function ImageViewer.Open(ctx)
 	apply(false)
 end
 
+function ImageViewer.Refresh()
+	return UI.refreshAllWindows()
+end
+
+function ImageViewer.IsVisible()
+	return activeViewer ~= nil
+end
+
 return ImageViewer

@@ -621,8 +621,8 @@ renderer.Pool.new("2da", function()
 end)
 
 return {
-	OpenScript = function(instance)
-		editor:OpenScript(instance)
+	OpenScript = function(instance, line)
+		editor:OpenScript(instance, line)
 	end,
 
 	CloseScript = function(instance)
@@ -719,5 +719,15 @@ return {
 
 	GetUIEditor = function()
 		return uiEditor
+	end,
+
+	Refresh = function()
+		UI.refreshWindow("Viewport")
+	end,
+
+	IsVisible = function()
+		local panel = UI.getWindow("Viewport")
+
+		return panel ~= nil and panel.Visible
 	end,
 }

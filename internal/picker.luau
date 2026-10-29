@@ -241,4 +241,8 @@ function picker.row(parent, position, width, options)
 	end
 end
 
+function picker.Refresh()
+	return UI.refreshAllWindows()
+end
+
 return picker

@@ -487,4 +487,13 @@ return {
 	Toggle = function()
 		panel.Visible = not panel.Visible
 	end,
+
+	Refresh = function()
+		UI.refreshWindow("Lucide")
+		RefreshImages()
+	end,
+
+	IsVisible = function()
+		return panel.Visible
+	end,
 }

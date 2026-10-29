@@ -314,6 +314,10 @@ function Dock.IsVisible(): boolean
 	return container.Visible
 end
 
+function Dock.Refresh()
+	return UI.refreshAllWindows()
+end
+
 Dock.HiddenSignal = HiddenSignal
 
 return Dock

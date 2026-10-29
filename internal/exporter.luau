@@ -1125,4 +1125,12 @@ return {
 	Toggle = function()
 		panel.Visible = not panel.Visible
 	end,
+
+	Refresh = function()
+		UI.refreshWindow("Export Game")
+	end,
+
+	IsVisible = function()
+		return panel.Visible
+	end,
 }

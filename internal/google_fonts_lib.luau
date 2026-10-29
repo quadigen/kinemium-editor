@@ -367,4 +367,13 @@ return {
 	Toggle = function()
 		panel.Visible = not panel.Visible
 	end,
+
+	Refresh = function()
+		UI.refreshWindow("Fonts")
+		Rebuild()
+	end,
+
+	IsVisible = function()
+		return panel.Visible
+	end,
 }

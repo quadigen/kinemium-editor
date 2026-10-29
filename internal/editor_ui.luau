@@ -18,10 +18,13 @@ local shared = {
 	themes = {},
 	themeOrder = {},
 	themeListeners = {},
-	themeName = "Dark",
-	trackedRoots = setmetatable({}, { __mode = "k" }),
-	focusInputs = setmetatable({}, { __mode = "k" }),
-	focusInputConnection = nil,
+ 	themeName = "Dark",
+ 	trackedRoots = setmetatable({}, { __mode = "k" }),
+ 	focusInputs = setmetatable({}, { __mode = "k" }),
+ 	focusInputConnection = nil,
+ 	componentOverrides = {},
+ 	componentBindings = {},
+ 	windowBindings = {},
 }
 local THEME_ANIMATION_DURATION = 0.24
 local EMPTY_MAP = {}
@@ -1377,6 +1380,145 @@ local function pointInside(gui, point)
 end
 
 UI.pointInside = pointInside
+
+local nextComponentBindingId = 0
+
+local function copyProps(props)
+	local copy = {}
+
+	for key, value in pairs(props or {}) do
+		copy[key] = value
+	end
+
+	return copy
+end
+
+local function mergeProps(component, props)
+	local merged = shared.componentOverrides[component]
+
+	if not merged then
+		merged = {}
+		shared.componentOverrides[component] = merged
+	end
+
+	for key, value in pairs(props) do
+		merged[key] = value
+	end
+
+	return merged
+end
+
+local function dispatchComponentRefresh(component)
+	local merged = shared.componentOverrides[component] or {}
+	local bindings = shared.componentBindings[component]
+	local updated = 0
+
+	if bindings then
+		for _, apply in pairs(bindings) do
+			local ok = pcall(apply, merged, component)
+
+			if ok then
+				updated += 1
+			end
+		end
+	end
+
+	return updated
+end
+
+function UI.onComponentRefresh(component, apply)
+	assert(type(component) == "string" and component ~= "", "component must be a non-empty string")
+	assert(type(apply) == "function", "apply must be a function")
+
+	nextComponentBindingId += 1
+
+	local token = nextComponentBindingId
+	local bindings = shared.componentBindings[component]
+
+	if not bindings then
+		bindings = {}
+		shared.componentBindings[component] = bindings
+	end
+
+	bindings[token] = apply
+
+	if shared.componentOverrides[component] then
+		pcall(apply, shared.componentOverrides[component], component)
+	end
+
+	return {
+		Disconnect = function()
+			local current = shared.componentBindings[component]
+
+			if current then
+				current[token] = nil
+			end
+		end,
+	}
+end
+
+function UI.setComponentProps(component, props)
+	assert(type(component) == "string" and component ~= "", "component must be a non-empty string")
+	assert(type(props) == "table", "props must be a table")
+
+	mergeProps(component, props)
+
+	return dispatchComponentRefresh(component)
+end
+
+function UI.getComponentProps(component)
+	return copyProps(shared.componentOverrides[component])
+end
+
+function UI.clearComponentProps(component)
+	shared.componentOverrides[component] = nil
+
+	return dispatchComponentRefresh(component)
+end
+
+function UI.refreshComponent(component, props)
+	if type(component) ~= "string" or component == "" then
+		return 0
+	end
+
+	if type(props) == "table" then
+		mergeProps(component, props)
+	end
+
+	return dispatchComponentRefresh(component)
+end
+
+function UI.getComponentNames()
+	local names, seen = {}, {}
+
+	for name in pairs(shared.componentBindings) do
+		if not seen[name] then
+			seen[name] = true
+			table.insert(names, name)
+		end
+	end
+
+	for name in pairs(shared.componentOverrides) do
+		if not seen[name] then
+			seen[name] = true
+			table.insert(names, name)
+		end
+	end
+
+	table.sort(names)
+
+	return names
+end
+
+function UI.refreshComponents()
+	local updated = 0
+
+	for _, component in ipairs(UI.getComponentNames()) do
+		updated += dispatchComponentRefresh(component)
+	end
+
+	return updated
+end
 
 local componentModules = {
 	require("./Components/corner"),
