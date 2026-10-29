@@ -516,6 +516,12 @@ do
 
 		shared.themes[name] = theme
 
+		shared.themes[name] = theme
+
+		if UI.setTheme and shared.themeOverride == name then
+			UI.setTheme(name, true)
+		end
+
 		return theme
 	end
 
@@ -1186,7 +1192,7 @@ do
 		end)
 	end
 
-	function UI.setTheme(name)
+	function UI.setTheme(name, instant)
 		if name == "System" then
 			return false, "system theme is disabled"
 		end
@@ -1209,7 +1215,8 @@ do
 		local radiusMap = buildNumberMap(old.radius, spec.radius)
 		local typeMap = buildNumberMap(old.type, spec.type)
 
-		local animate = THEME_ANIMATION_DURATION > 0
+		local animate = not instant
+			and THEME_ANIMATION_DURATION > 0
 			and not shared.reduceMotion
 			and mapsHaveChanges(maps)
 			and next(shared.themeObjects) ~= nil
@@ -1231,6 +1238,26 @@ do
 
 	function UI.refreshTheme()
 		return UI.setTheme(shared.themeName)
+	end
+
+	shared.themeOverride = nil
+
+	function UI.overrideTheme(name)
+		if type(name) ~= "string" or name == "" then
+			return false, "theme name must be a non-empty string"
+		end
+
+		shared.themeOverride = name
+
+		return UI.setTheme(name, true)
+	end
+
+	function UI.clearThemeOverride()
+		shared.themeOverride = nil
+	end
+
+	function UI.getThemeOverride()
+		return shared.themeOverride
 	end
 
 	function UI.setReduceMotion(value)
@@ -1609,7 +1636,7 @@ task.defer(function()
 	local ok4, theme = pcall(function()
 		return Studio:GetSetting("theme", nil)
 	end)
-	if ok4 and type(theme) == "string" and theme ~= "" then
+	if not shared.themeOverride and ok4 and type(theme) == "string" and theme ~= "" then
 		UI.setTheme(theme)
 	end
 	if Studio.SettingChanged then
@@ -1619,6 +1646,7 @@ task.defer(function()
 			elseif key == "diagnostics" then
 				shared.scriptDiagnostics = value ~= false
 			elseif key == "theme" and type(value) == "string" and value ~= "" then
+				shared.themeOverride = nil
 				UI.setTheme(value)
 			end
 		end)

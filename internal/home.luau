@@ -191,9 +191,8 @@ SignalPipe:Connect(function(signal, value)
 
 	if signal == "ChangeTheme" then
 		if type(value) == "table" then
-			UI.setTheme(value.Name)
-			print("Set theme to " .. value.Name)
-			print(UI.shared().themes)
+			local ok, err = UI.overrideTheme(value.Name)
+			print("overrideTheme:", ok, err)
 		end
 	end
 
