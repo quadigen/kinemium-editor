@@ -1,5 +1,5 @@
 -- This code can be pasted into the Command Bar, but only once
-local pluginMenu = plugin:CreatePluginMenu(math.random(), "Test Menu")
+local pluginMenu = plugin.CreatePluginMenu(math.random(), "Test Menu")
 pluginMenu.Name = "Test Menu"
 
 pluginMenu:AddNewAction("ActionA", "A", "rbxasset://textures/loading/robloxTiltRed.png")
