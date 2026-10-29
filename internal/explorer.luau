@@ -94,6 +94,26 @@ local function selectedObject()
 	return selection and selection[1]
 end
 
+local anchor = nil
+
+local function ctrlHeld()
+	return UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) or UserInputService:IsKeyDown(Enum.KeyCode.RightControl)
+end
+
+local function shiftHeld()
+	return UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) or UserInputService:IsKeyDown(Enum.KeyCode.RightShift)
+end
+
+local function isInSelection(instance)
+	for _, object in ipairs(Selection:Get() or {}) do
+		if object == instance then
+			return true
+		end
+	end
+
+	return false
+end
+
 local function selectObject(data)
 	local obj = data[1]
 	Selection:Set(data)
@@ -104,7 +124,7 @@ local function selectObject(data)
 
 	local project = Project:GetActiveProject()
 	local details = `In {project and project.Name or _RUNTIME.version.display}`
-	local state = "Editing " .. obj.Name
+	local state = #data > 1 and ("Editing " .. #data .. " objects") or ("Editing " .. obj.Name)
 
 	DiscordRPC:SetPresence({
 		Details = details,
@@ -369,6 +389,7 @@ local visibleRows = {}
 
 local rowRegistry = {}
 local drag = nil
+local selectedSet = {}
 local dragLayer = nil
 local clipboard = nil
 local renaming = nil
@@ -433,6 +454,140 @@ local function canReparent(instance, newParent)
 	return true
 end
 
+local rowIndexOf -- assigned later
+
+local function toggleSelection(instance)
+	local result, found = {}, false
+
+	for _, object in ipairs(Selection:Get() or {}) do
+		if object == instance then
+			found = true
+		else
+			table.insert(result, object)
+		end
+	end
+
+	if not found then
+		table.insert(result, 1, instance)
+	end
+
+	selectObject(result)
+end
+
+local function selectRange(from, to)
+	local a, b = rowIndexOf(from), rowIndexOf(to)
+
+	if a == nil or b == nil then
+		anchor = to
+		selectObject({ to })
+		return
+	end
+
+	-- `to` goes first so it stays the primary (keyboard cursor) item.
+	local result = { to }
+
+	for i = math.min(a, b), math.max(a, b) do
+		if visibleRows[i] ~= to then
+			table.insert(result, visibleRows[i])
+		end
+	end
+
+	selectObject(result)
+end
+
+local function handleRowClick(instance, childCount)
+	if ctrlHeld() then
+		anchor = instance
+		toggleSelection(instance)
+		return
+	end
+
+	if shiftHeld() and anchor ~= nil then
+		selectRange(anchor, instance)
+		return
+	end
+
+	anchor = instance
+	selectObject({ instance })
+
+	if childCount > 0 then
+		expanded[instance] = not expanded[instance]
+		lastHash = ""
+	end
+end
+
+local function selectionRoots()
+	local selection = Selection:Get() or {}
+	local set = {}
+
+	for _, object in ipairs(selection) do
+		set[object] = true
+	end
+
+	local roots = {}
+
+	for _, object in ipairs(selection) do
+		if isProtected(object) then
+			continue
+		end
+
+		local covered = false
+		local ancestor = object.Parent
+
+		while ancestor ~= nil do
+			if set[ancestor] then
+				covered = true
+				break
+			end
+
+			ancestor = ancestor.Parent
+		end
+
+		if not covered then
+			table.insert(roots, object)
+		end
+	end
+
+	return roots
+end
+
+local function targetsFor(target)
+	local roots = selectionRoots()
+
+	if #roots > 0 and isInSelection(target) then
+		return roots
+	end
+
+	return { target }
+end
+
+local function canDropAny(sources, target)
+	for _, source in ipairs(sources) do
+		if canReparent(source, target) then
+			return true
+		end
+	end
+
+	return false
+end
+
+local function reparentAll(sources, target)
+	local moved = {}
+
+	for _, source in ipairs(sources) do
+		if canReparent(source, target) then
+			source.Parent = target
+			table.insert(moved, source)
+		end
+	end
+
+	if #moved > 0 then
+		expanded[target] = true
+		selectObject(moved)
+		lastHash = ""
+	end
+end
+
 local function clearDropHighlight()
 	for _, entry in pairs(rowRegistry) do
 		local row = entry.row
@@ -455,44 +610,28 @@ local function disposeDrag()
 end
 
 local function finishDrop(reparent)
-	local source = drag.source
+	local sources = drag.sources or { drag.source }
 	local target = drag.target
 
 	disposeDrag()
 	clearDropHighlight()
 
-	if reparent and source ~= nil and target ~= nil and canReparent(source, target) then
-		source.Parent = target
-
-		expanded[target] = true
-
-		Selection:Set({
-			source,
-		})
-
-		lastHash = ""
+	if reparent and target ~= nil then
+		reparentAll(sources, target)
 	end
 end
 
 local function addRow(instance, depth, y)
 	local children = sortedChildren(instance)
 
-	local isSelected = selectedObject() == instance
+	local isSelected = selectedSet[instance] == true
 
 	rowIndex += 1
 
 	local rowColor = rowIndex % 2 == 0 and tokens.color.rowEven or tokens.color.rowOdd
 
 	local row = UI.button(list, "", UDim2.fromOffset(1, y), UDim2.new(1, -2, 0, UI.metrics.treeRow), function()
-		selectObject({
-			instance,
-		})
-
-		if #children > 0 then
-			expanded[instance] = not expanded[instance]
-
-			lastHash = ""
-		end
+		handleRowClick(instance, #children)
 	end, {
 		color = isSelected and colors.selection or rowColor,
 
@@ -528,9 +667,10 @@ local function addRow(instance, depth, y)
 			commitRename()
 			closeContextMenu()
 
-			selectObject({
-				instance,
-			})
+			if not isInSelection(instance) then
+				anchor = instance
+				selectObject({ instance })
+			end
 
 			openContextMenu(instance, input.Position)
 
@@ -650,6 +790,10 @@ rebuild = function()
 	rowRegistry = {}
 
 	visibleRows = {}
+	selectedSet = {}
+	for _, object in ipairs(Selection:Get() or {}) do
+		selectedSet[object] = true
+	end
 
 	local finalY = walk(game, 0, 1)
 
@@ -704,6 +848,63 @@ local function duplicateInstance(instance)
 			clone,
 		})
 
+		lastHash = ""
+	end
+end
+
+local function deleteInstances(list)
+	for _, instance in ipairs(list) do
+		deleteInstance(instance)
+	end
+
+	anchor = nil
+end
+
+local function duplicateInstances(list)
+	local clones = {}
+
+	for _, instance in ipairs(list) do
+		if not isProtected(instance) then
+			local ok, clone = pcall(function()
+				return instance:Clone()
+			end)
+
+			if ok and clone then
+				clone.Name = instance.Name
+				clone.Parent = instance.Parent
+				table.insert(clones, clone)
+			end
+		end
+	end
+
+	if #clones > 0 then
+		selectObject(clones)
+		lastHash = ""
+	end
+end
+
+local function pasteInto(destination)
+	if destination == nil or clipboard == nil then
+		return
+	end
+
+	local clones = {}
+
+	for _, source in ipairs(clipboard) do
+		if UI.isAlive(source) then
+			local ok, clone = pcall(function()
+				return source:Clone()
+			end)
+
+			if ok and clone then
+				clone.Parent = destination
+				table.insert(clones, clone)
+			end
+		end
+	end
+
+	if #clones > 0 then
+		selectObject(clones)
 		lastHash = ""
 	end
 end
@@ -803,7 +1004,7 @@ cancelRename = function()
 	end
 end
 
-local function rowIndexOf(instance)
+rowIndexOf = function(instance)
 	for index, candidate in ipairs(visibleRows) do
 		if candidate == instance then
 			return index
@@ -813,16 +1014,19 @@ local function rowIndexOf(instance)
 	return nil
 end
 
-local function selectAndReveal(index)
+local function selectAndReveal(index, extend)
 	local instance = visibleRows[index]
 
 	if instance == nil then
 		return
 	end
 
-	selectObject({
-		instance,
-	})
+	if extend and anchor ~= nil then
+		selectRange(anchor, instance)
+	else
+		anchor = instance
+		selectObject({ instance })
+	end
 
 	local entry = rowRegistry[instance]
 
@@ -910,25 +1114,13 @@ openContextMenu = function(instance, screenPoint)
 						end
 					end
 				elseif action == "duplicate" then
-					duplicateInstance(target)
+					duplicateInstances(targetsFor(target))
 				elseif action == "delete" then
-					deleteInstance(target)
+					deleteInstances(targetsFor(target))
 				elseif action == "copy" then
-					clipboard = target
+					clipboard = targetsFor(target)
 				elseif action == "paste" then
-					local source = clipboard
-
-					if source ~= nil and UI.isAlive(source) then
-						local ok, clone = pcall(function()
-							return source:Clone()
-						end)
-
-						if ok and clone then
-							clone.Parent = target
-							selectObject({ clone })
-							lastHash = ""
-						end
-					end
+					pasteInto(target)
 				end
 			end,
 		}
@@ -989,7 +1181,7 @@ local function updateDragTarget()
 
 	local best = nil
 	local bestDistance = math.huge
-	local source = drag.source
+	local sources = drag.sources or { drag.source }
 
 	for instance, entry in pairs(rowRegistry) do
 		local row = entry.row
@@ -1008,7 +1200,7 @@ local function updateDragTarget()
 			continue
 		end
 
-		if not canReparent(source, instance) then
+		if not canDropAny(sources, instance) then -- was canReparent(source, instance)
 			continue
 		end
 
@@ -1016,7 +1208,7 @@ local function updateDragTarget()
 		-- which is the behaviour the Roblox explorer uses.
 		local target = offset > size.Y / 2 and instance or instance.Parent
 
-		if target ~= nil and canReparent(source, target) then
+		if target ~= nil and canDropAny(sources, target) then
 			local distance = math.abs(offset - size.Y / 2)
 
 			if distance < bestDistance then
@@ -1066,7 +1258,7 @@ local function beginDragVisual()
 
 	UI.label(
 		dragLayer,
-		drag.source.Name,
+		#(drag.sources or {}) > 1 and (#drag.sources .. " items") or drag.source.Name,
 		UDim2.fromOffset(8, 2),
 		UDim2.new(1, -16, 0, 16),
 		tokens.type.small,
@@ -1089,23 +1281,15 @@ local function moveDragVisual()
 end
 
 local function animateDrop(reparent)
-	local source = drag.source
+	local sources = drag.sources or { drag.source }
 	local target = drag.target
 
 	local function apply()
 		disposeDrag()
 		clearDropHighlight()
 
-		if reparent and source ~= nil and target ~= nil and canReparent(source, target) then
-			source.Parent = target
-
-			expanded[target] = true
-
-			selectObject({
-				source,
-			})
-
-			lastHash = ""
+		if reparent and target ~= nil then
+			reparentAll(sources, target)
 		end
 	end
 
@@ -1151,9 +1335,12 @@ UserInputService.InputChanged:Connect(function(input: InputObject)
 
 		drag.active = true
 
-		selectObject({
-			drag.source,
-		})
+		if not isInSelection(drag.source) then
+			anchor = drag.source
+			selectObject({ drag.source })
+		end
+
+		drag.sources = selectionRoots()
 
 		beginDragVisual()
 	end
@@ -1252,18 +1439,18 @@ UserInputService.InputBegan:Connect(function(input: InputObject, gameProcessed: 
 			next_ = next_ + 1
 		end
 
-		selectAndReveal(math.clamp(next_, 1, #visibleRows))
+		selectAndReveal(math.clamp(next_, 1, #visibleRows), shiftHeld())
 
 		return
 	end
 
 	if input.KeyCode == Enum.KeyCode.Home then
-		selectAndReveal(1)
+		selectAndReveal(1, shiftHeld())
 		return
 	end
 
 	if input.KeyCode == Enum.KeyCode.End then
-		selectAndReveal(#visibleRows)
+		selectAndReveal(#visibleRows, shiftHeld())
 		return
 	end
 
@@ -1312,63 +1499,43 @@ UserInputService.InputBegan:Connect(function(input: InputObject, gameProcessed: 
 			or UserInputService:IsKeyDown(Enum.KeyCode.RightControl)
 
 		if ctrlDown and selected ~= nil then
-			clipboard = selected
+			clipboard = selectionRoots()
 		end
 
 		return
 	end
 
 	if input.KeyCode == Enum.KeyCode.V then
-		local ctrlDown = UserInputService:IsKeyDown(Enum.KeyCode.LeftControl)
-			or UserInputService:IsKeyDown(Enum.KeyCode.RightControl)
+		if ctrlHeld() then
+			pasteInto(selected or workspace)
+		end
 
-		local destination = selected or workspace
+		return
+	end
 
-		if ctrlDown and clipboard ~= nil and UI.isAlive(clipboard) and destination ~= clipboard then
-			local ok, clone = pcall(function()
-				return clipboard:Clone()
-			end)
+	if input.KeyCode == Enum.KeyCode.A then
+		if ctrlHeld() and #visibleRows > 0 then
+			local all = {}
 
-			if ok and clone then
-				clone.Parent = destination
-
-				selectObject({
-					clone,
-				})
-
-				lastHash = ""
+			for _, instance in ipairs(visibleRows) do
+				table.insert(all, instance)
 			end
+
+			selectObject(all)
 		end
 
 		return
 	end
 
 	if input.KeyCode == Enum.KeyCode.Delete or input.KeyCode == Enum.KeyCode.Backspace then
-		deleteInstance(selectedObject())
+		deleteInstances(selectionRoots())
 
 		return
 	end
 
 	if input.KeyCode == Enum.KeyCode.D then
-		local ctrlDown = UserInputService:IsKeyDown(Enum.KeyCode.LeftControl)
-			or UserInputService:IsKeyDown(Enum.KeyCode.RightControl)
-
-		if ctrlDown then
-			local selected = selectedObject()
-
-			if selected then
-				local clone = selected:Clone()
-
-				if clone then
-					clone.Parent = selected.Parent
-
-					selectObject({
-						clone,
-					})
-
-					lastHash = ""
-				end
-			end
+		if ctrlHeld() then
+			duplicateInstances(selectionRoots())
 		end
 	end
 end)
@@ -1387,9 +1554,12 @@ renderer.Pool.new("2d", function()
 		panel.Position = theme.ExplorerCoordinates.Position
 	end
 
-	local selected = selectedObject()
+	local names = {}
+	for _, object in ipairs(Selection:Get() or {}) do
+		names[#names + 1] = object:GetFullName()
+	end
 
-	local hash = treeHash(game) .. "#" .. (selected and selected:GetFullName() or "")
+	local hash = treeHash(game) .. "#" .. table.concat(names, "|")
 
 	if hash ~= lastHash then
 		lastHash = hash
