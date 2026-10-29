@@ -12,6 +12,7 @@ local theme = StudioThemeService.SelectedTheme
 local TextService = game:GetService("TextService")
 local Selection = game:GetService("Selection")
 local PlaytestService = game:GetService("PlaytestService")
+local UserInputService = game:GetService("UserInputService")
 
 local colors = UI.colors
 local tokens = UI.tokens
@@ -620,7 +621,7 @@ renderer.Pool.new("2da", function()
 	uiEditor:Update()
 end)
 
-return {
+local API = {
 	OpenScript = function(instance, line)
 		editor:OpenScript(instance, line)
 	end,
@@ -731,3 +732,17 @@ return {
 		return panel ~= nil and panel.Visible
 	end,
 }
+
+UserInputService.InputBegan:Connect(function(a0: InputObject, a1: boolean)
+	if a0.KeyCode == Enum.KeyCode.One then
+		API.ActivateTool("select")
+	elseif a0.KeyCode == Enum.KeyCode.Two then
+		API.ActivateTool("position")
+	elseif a0.KeyCode == Enum.KeyCode.Three then
+		API.ActivateTool("size")
+	elseif a0.KeyCode == Enum.KeyCode.Four then
+		API.ActivateTool("rotate")
+	end
+end)
+
+return API
