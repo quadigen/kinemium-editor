@@ -791,7 +791,7 @@ API = {
 		end
 
 		selectedCategory = category
-		toolbarTabs.setSelectedTab(categoryName)
+		toolbarTabs.selectTab(categoryName)
 		rebuildFlyout()
 		setExpanded(true)
 
