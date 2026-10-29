@@ -438,7 +438,7 @@ local function clearDropHighlight()
 		local row = entry.row
 
 		if UI.isAlive(row) then
-			row.BackgroundTransparency = 1
+			row.BackgroundTransparency = entry.baseTransparency
 		end
 
 		entry.dropTarget = false
@@ -558,7 +558,7 @@ local function addRow(instance, depth, y)
 		}
 	end)
 
-	row.BackgroundTransparency = 1
+	row.BackgroundTransparency = isSelected and 0 or 0.12
 
 	rowRegistry[instance] = {
 		row = row,
