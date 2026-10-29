@@ -549,9 +549,12 @@ SignalPipe:Connect(function(signal, value)
 			end
 
 			local name = pluginButtonName(category, value.Text, "Plugin Action")
+			local section = type(value.Toolbar) == "string" and value.Toolbar ~= "" and value.Toolbar or category
 
 			local added = topbar.AddButton(category, {
 				name = name,
+				section = section,
+				width = math.max(52, #name * 6 + 12),
 				icon = pluginIcon(value.Icon),
 				enabled = value.Enabled ~= false,
 				selected = value.Active == true,
@@ -589,9 +592,14 @@ SignalPipe:Connect(function(signal, value)
 
 				local props = {
 					name = nextName,
+					width = math.max(52, #nextName * 6 + 12),
 					enabled = value.Enabled ~= false,
 					selected = value.Active == true,
 				}
+
+				if type(value.Toolbar) == "string" and value.Toolbar ~= "" then
+					props.section = value.Toolbar
+				end
 
 				if type(value.Icon) == "string" and value.Icon ~= "" then
 					props.icon = pluginIcon(value.Icon)

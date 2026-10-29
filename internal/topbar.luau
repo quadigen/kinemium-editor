@@ -390,6 +390,25 @@ rebuildFlyout = function()
 		return
 	end
 
+	local function renderButton(parent, definition, height)
+		UI.TopbarButton(parent, definition, {
+			position = UDim2.new(),
+			size = UDim2.fromOffset(definition.width or 52, height or (FLYOUT_HEIGHT - 12)),
+			colors = colors,
+			radius = buttonRadius(),
+			selected = definition.selected == true,
+			onClick = safeAction(function(item)
+				fireRoute(definition.route)
+
+				if definition.callback then
+					definition.callback(item)
+				end
+			end),
+		})
+	end
+
+	local renderedSections = {}
+
 	for _, definition in ipairs(selectedCategory.buttons) do
 		if definition.type == "separator" then
 			local holder = UI.create("Frame", {
@@ -408,21 +427,64 @@ rebuildFlyout = function()
 			if element then
 				element.Name = definition.name or "CustomElement"
 			end
-		else
-			UI.TopbarButton(page, definition, {
-				position = UDim2.new(),
-				size = UDim2.fromOffset(definition.width or 52, FLYOUT_HEIGHT - 12),
-				colors = colors,
-				radius = buttonRadius(),
-				selected = definition.selected == true,
-				onClick = safeAction(function(item)
-					fireRoute(definition.route)
+		elseif type(definition.section) == "string" and not renderedSections[definition.section] then
+			renderedSections[definition.section] = true
 
-					if definition.callback then
-						definition.callback(item)
-					end
-				end),
-			})
+			local members = {}
+
+			for _, candidate in ipairs(selectedCategory.buttons) do
+				if candidate.section == definition.section and candidate.type ~= "separator" then
+					table.insert(members, candidate)
+				end
+			end
+
+			local buttonWidth = 52
+			local groupWidth = 8
+
+			for _, member in ipairs(members) do
+				groupWidth = groupWidth + (member.width or buttonWidth) + 3
+			end
+
+			groupWidth = math.max(groupWidth, #definition.section * 6 + 10)
+
+			local group = UI.create("Frame", {
+				Name = definition.section .. "Section",
+				Size = UDim2.fromOffset(groupWidth, FLYOUT_HEIGHT - 6),
+				BackgroundTransparency = 1,
+				BorderSizePixel = 0,
+			}, page)
+
+			UI.label(
+				group,
+				definition.section,
+				UDim2.fromOffset(2, 0),
+				UDim2.new(1, -4, 0, 12),
+				tokens.type.small,
+				colors.subtext
+			)
+
+			local row = UI.create("Frame", {
+				Name = "Buttons",
+				Position = UDim2.fromOffset(0, 12),
+				Size = UDim2.new(1, 0, 1, -12),
+				BackgroundTransparency = 1,
+				BorderSizePixel = 0,
+			}, group)
+
+			local rowLayout = Instance.new("UIListLayout")
+			rowLayout.FillDirection = Enum.FillDirection.Horizontal
+			rowLayout.SortOrder = Enum.SortOrder.LayoutOrder
+			rowLayout.VerticalAlignment = Enum.VerticalAlignment.Center
+			rowLayout.Padding = UDim.new(0, 3)
+			rowLayout.Parent = row
+
+			for _, member in ipairs(members) do
+				renderButton(row, member, FLYOUT_HEIGHT - 18)
+			end
+		elseif type(definition.section) == "string" then
+			continue
+		else
+			renderButton(page, definition)
 		end
 	end
 end
