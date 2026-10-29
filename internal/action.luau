@@ -1,6 +1,6 @@
 local ReflectionService = game:GetService("ReflectionService")
 local ServerScriptService = game:GetService("ServerScriptService")
-
+task.wait(5)
 -- Create a new toolbar section and Plugins menu folder titled "Custom"
 local toolbar = plugin:CreateToolbar("Custom")
 
