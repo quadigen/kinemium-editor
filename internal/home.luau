@@ -138,3 +138,5 @@ SignalPipe:Connect(function(signal, value)
 		end
 	end
 end)
+
+Studio:Test()
