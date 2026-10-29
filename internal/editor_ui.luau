@@ -18,13 +18,13 @@ local shared = {
 	themes = {},
 	themeOrder = {},
 	themeListeners = {},
- 	themeName = "Dark",
- 	trackedRoots = setmetatable({}, { __mode = "k" }),
- 	focusInputs = setmetatable({}, { __mode = "k" }),
- 	focusInputConnection = nil,
- 	componentOverrides = {},
- 	componentBindings = {},
- 	windowBindings = {},
+	themeName = "Dark",
+	trackedRoots = setmetatable({}, { __mode = "k" }),
+	focusInputs = setmetatable({}, { __mode = "k" }),
+	focusInputConnection = nil,
+	componentOverrides = {},
+	componentBindings = {},
+	windowBindings = {},
 }
 local THEME_ANIMATION_DURATION = 0.24
 local EMPTY_MAP = {}
@@ -1209,7 +1209,10 @@ do
 		local radiusMap = buildNumberMap(old.radius, spec.radius)
 		local typeMap = buildNumberMap(old.type, spec.type)
 
-		local animate = THEME_ANIMATION_DURATION > 0 and not shared.reduceMotion and mapsHaveChanges(maps) and next(shared.themeObjects) ~= nil
+		local animate = THEME_ANIMATION_DURATION > 0
+			and not shared.reduceMotion
+			and mapsHaveChanges(maps)
+			and next(shared.themeObjects) ~= nil
 
 		if not animate then
 			applyThemeNow(spec, maps, radiusMap, typeMap)
