@@ -723,3 +723,9 @@ SignalPipe:Connect(function(signal, value)
 		end
 	end
 end)
+
+-- Plugin scripts may run before the editor connects to the pipe. Replay the
+-- buttons that already exist so early toolbars still appear.
+pcall(function()
+	pluginService:__SyncPluginToolbars()
+end)
