@@ -1628,4 +1628,6 @@ task.defer(function()
 	end
 end)
 
+shared.UI = UI
+
 return UI
