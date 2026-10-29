@@ -1,3 +1,4 @@
+local ReflectionService = game:GetService("ReflectionService")
 local ServerScriptService = game:GetService("ServerScriptService")
 
 -- Create a new toolbar section and Plugins menu folder titled "Custom"
@@ -31,6 +32,8 @@ testButton.Parent = testWidget
 testWidget.Enabled = false
 
 local function onPluginButtonClicked()
+	print("hello world")
+	print(ReflectionService:GetPropertiesOfClass("DockWidgetPluginGui"))
 	testWidget.Enabled = not testWidget.Enabled
 end
 
