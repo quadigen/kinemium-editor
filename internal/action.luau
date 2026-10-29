@@ -29,12 +29,12 @@ testButton.Position = UDim2.new(0.5, 0, 0.5, 0)
 testButton.Text = "Click Me"
 testButton.Parent = testWidget
 
-testWidget.Enabled = false
+testWidget.Enabled = true
 
 local function onPluginButtonClicked()
 	print("hello world")
 	print(ReflectionService:GetPropertiesOfClass("DockWidgetPluginGui"))
-	testWidget.Enabled = true
+	testWidget.Enabled = not testWidget.Enabled
 end
 
 newScriptButton.Click:Connect(onPluginButtonClicked)
