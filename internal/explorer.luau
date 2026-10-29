@@ -1368,6 +1368,31 @@ UserInputService.InputEnded:Connect(function(input: InputObject)
 	animateDrop(drag.target ~= nil)
 end)
 
+local function focusOn(target: Instance)
+	local camera = workspace.CurrentCamera
+	if not camera then
+		return
+	end
+
+	local center, radius
+	if target:IsA("BasePart") then
+		center = target.CFrame.Position
+		radius = target.Size.Magnitude / 2
+	elseif target:IsA("Model") then
+		local cf, size = target:GetBoundingBox()
+		center = cf.Position
+		radius = size.Magnitude / 2
+	else
+		return
+	end
+
+	local look = camera.CFrame.LookVector
+	local distance = math.max(radius * 2.5, 4)
+	local position = center - look * distance
+
+	camera.CFrame = CFrame.lookAt(position, center)
+end
+
 UserInputService.InputBegan:Connect(function(input: InputObject, gameProcessed: boolean)
 	if gameProcessed then
 		return
@@ -1401,6 +1426,13 @@ UserInputService.InputBegan:Connect(function(input: InputObject, gameProcessed: 
 
 	if not explorerTabActive() then
 		return
+	end
+
+	if input.KeyCode == Enum.KeyCode.F and not gameProcessed then
+		local selection = Selection:Get()[1]
+		if selection then
+			focusOn(selection)
+		end
 	end
 
 	if input.KeyCode == Enum.KeyCode.Escape then
