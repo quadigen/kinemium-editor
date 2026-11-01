@@ -392,7 +392,6 @@ if renderer.Dimension == "3D" then
 
 	local listLayout = Instance.new("UIGridLayout")
 	listLayout.SortOrder = Enum.SortOrder.LayoutOrder
-	listLayout.Padding = UDim.new(0, rowGap)
 	listLayout.Parent = list
 
 	local shown = 0
