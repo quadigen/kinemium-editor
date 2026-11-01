@@ -24,6 +24,7 @@ local colors = UI.colors
 local tokens = UI.tokens
 
 local ImageViewer = require("@internal/image_viewer")
+local KinePreview = require("@internal/kine_preview")
 
 local inset = UI.metrics.panelInset
 
@@ -366,7 +367,8 @@ registerFileType({
 	name = "KINE",
 	extensions = { "kine" },
 	icon = "builtin://global-icons/KinemiumWhite.png",
-	thumbnail = false,
+	thumbnail = true,
+	modelPreview = true,
 	onDrop = importKine,
 	onOpen = importKine,
 	contextItems = {
@@ -1129,7 +1131,12 @@ return function(content, windowControls)
 			)
 		end
 
-		UI.image(row, iconFor(entry), UDim2.fromOffset(indent + 16, 3), UDim2.fromOffset(14, 14))
+		local icon = UI.image(row, iconFor(entry), UDim2.fromOffset(indent + 16, 3), UDim2.fromOffset(14, 14))
+		local fileType = fileTypeOf(entry)
+		if fileType and fileType.modelPreview and thumbnailCount < MAX_THUMBNAILS then
+			thumbnailCount += 1
+			KinePreview.Attach(row, entry.Path, icon)
+		end
 
 		local label = UI.label(
 			row,
@@ -1280,7 +1287,10 @@ return function(content, windowControls)
 
 			UI.corner(slot, tokens.radius.sm)
 
-			visual = UI.image(slot, imageSource(entry.Path), UDim2.fromOffset(2, 2), UDim2.new(1, -4, 1, -4))
+			visual = UI.image(slot, fileType.modelPreview and iconFor(entry) or imageSource(entry.Path), UDim2.fromOffset(2, 2), UDim2.new(1, -4, 1, -4))
+			if fileType.modelPreview then
+				KinePreview.Attach(slot, entry.Path, visual)
+			end
 
 			pcall(function()
 				visual.ScaleType = Enum.ScaleType.Fit
