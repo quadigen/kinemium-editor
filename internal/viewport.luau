@@ -344,19 +344,19 @@ if renderer.Dimension == "3D" then
 	styleBackdrop.Parent = styleBar
 
 	local materialNames = {
-		"SmoothPlastic",
-		"Wood",
-		"Metal",
-		"Concrete",
-		"Brick",
-		"Marble",
-		"Slate",
-		"Sand",
-		"Grass",
-		"Ice",
-		"Glass",
-		"Neon",
-		"Fabric",
+		Enum.Material.SmoothPlastic,
+		Enum.Material.Wood,
+		Enum.Material.Metal,
+		Enum.Material.Concrete,
+		Enum.Material.Brick,
+		Enum.Material.Marble,
+		Enum.Material.Slate,
+		Enum.Material.Sand,
+		Enum.Material.Grass,
+		Enum.Material.Ice,
+		Enum.Material.Glass,
+		Enum.Material.Neon,
+		Enum.Material.Fabric,
 	}
 
 	local rowHeight, rowGap = 24, 2
@@ -403,12 +403,10 @@ if renderer.Dimension == "3D" then
 		camera.FieldOfView = 45
 		preview.CurrentCamera = camera
 
-		print(Enum.Material:FromName(materialName))
-		print(materialName)
 		local part = Instance.new("Part", preview)
 		part.Size = Vector3.new(3, 3, 3)
 		part.Shape = Enum.PartType.Ball
-		part.Material = Enum.Material:FromName(materialName)
+		part.Material = materialName
 	end
 
 	list.CanvasSize = UDim2.fromOffset(0, shown * (rowHeight + rowGap))
