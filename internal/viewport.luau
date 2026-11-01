@@ -384,7 +384,7 @@ if renderer.Dimension == "3D" then
 
 	local listLayout = Instance.new("UIGridLayout")
 	listLayout.SortOrder = Enum.SortOrder.LayoutOrder
-	listLayout.CellSize = UDim2.new(0, 40, 0, 40)
+	listLayout.CellSize = UDim2.new(0, 60, 0, 60)
 	listLayout.Parent = list
 
 	local shown = 0
@@ -402,7 +402,7 @@ if renderer.Dimension == "3D" then
 
 			local camera = Instance.new("Camera", preview)
 			camera.CFrame = CFrame.lookAt(Vector3.new(5, 3, 6), Vector3.zero)
-			camera.FieldOfView = 45
+			camera.FieldOfView = 20
 			preview.CurrentCamera = camera
 
 			local part = Instance.new("Part", preview)
