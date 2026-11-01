@@ -122,7 +122,7 @@ return function(ctx)
 		end
 
 		local function findIcon(button)
-			return button:FindFirstChildWhichIsA("ImageLabel", true)
+			return button:FindFirstChildOfClass("ImageLabel")
 		end
 
 		local function isActive(record)
