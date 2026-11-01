@@ -124,6 +124,41 @@ local function updateGizmos()
 	end
 end
 
+local startSinglePlayer = false
+local playGroup, playControls = UI.iconButtonGroup(header, UDim2.fromScale(0.5, 0.5), {
+	{
+		name = "Play",
+		icon = iconRoot .. "Play.svg",
+		tooltip = "Play",
+		key = Enum.KeyCode.F5,
+		onClick = function()
+			if startSinglePlayer then
+				PlaytestService:StartSinglePlayer()
+			else
+				PlaytestService:Start()
+			end
+		end,
+	},
+	{ separator = true },
+	{
+		name = "Stop",
+		icon = iconRoot .. "Stop.svg",
+		tooltip = "Stop",
+		key = Enum.KeyCode.F8,
+		onClick = function()
+			PlaytestService:Stop()
+		end,
+	},
+	{ separator = true },
+	{
+		name = "Settings",
+		icon = iconRoot .. "Settings.svg",
+		tooltip = "Playtest settings",
+		toggle = true,
+		onClick = function(open) end,
+	},
+}, { anchorPoint = Vector2.new(0.5, 0.5), color = tokens.color.surfaceAlt })
+
 local settingsBtn = playControls:GetButton("Settings")
 
 local frame = Instance.new("ScrollingFrame")
@@ -166,43 +201,6 @@ local _, headless_server_checkbox_playtest_settings = UI.checkbox(
 local _, headless_client = UI.checkbox(frame, "Headless Client", UDim2.fromOffset(8, 8), false, function(value)
 	print(value)
 end)
-
-local startSinglePlayer = false
-local playGroup, playControls = UI.iconButtonGroup(header, UDim2.fromScale(0.5, 0.5), {
-	{
-		name = "Play",
-		icon = iconRoot .. "Play.svg",
-		tooltip = "Play",
-		key = Enum.KeyCode.F5,
-		onClick = function()
-			if startSinglePlayer then
-				PlaytestService:StartSinglePlayer()
-			else
-				PlaytestService:Start()
-			end
-		end,
-	},
-	{ separator = true },
-	{
-		name = "Stop",
-		icon = iconRoot .. "Stop.svg",
-		tooltip = "Stop",
-		key = Enum.KeyCode.F8,
-		onClick = function()
-			PlaytestService:Stop()
-		end,
-	},
-	{ separator = true },
-	{
-		name = "Settings",
-		icon = iconRoot .. "Settings.svg",
-		tooltip = "Playtest settings",
-		toggle = true,
-		onClick = function(open)
-			frame.Visible = open
-		end,
-	},
-}, { anchorPoint = Vector2.new(0.5, 0.5), color = tokens.color.surfaceAlt })
 
 local uiEditor = UIEditor.new({
 	overlay = viewportOverlay,
