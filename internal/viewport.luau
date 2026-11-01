@@ -385,10 +385,12 @@ if renderer.Dimension == "3D" then
 
 	local listLayout = Instance.new("UIGridLayout")
 	listLayout.SortOrder = Enum.SortOrder.LayoutOrder
+	listLayout.CellSize = UDim2.new(0, 40, 0, 40)
 	listLayout.Parent = list
 
 	local shown = 0
 	for _, materialName in ipairs(materialNames) do
+		print(materialName)
 		local button = UI.button(list, "", UDim2.fromOffset(0, 0), UDim2.fromOffset(40, 40), {
 			color = tokens.color.surfaceAlt,
 			radius = tokens.radius.sm,
@@ -407,11 +409,11 @@ if renderer.Dimension == "3D" then
 		part.Size = Vector3.new(3, 3, 3)
 		part.Shape = Enum.PartType.Ball
 		part.Material = materialName
+		print("finished")
 	end
 
 	list.CanvasSize = UDim2.fromOffset(0, shown * (rowHeight + rowGap))
 
-	-- Only one menu open at a time
 	styleControls.Changed:Connect(function(name, open)
 		if name == "Material" then
 			materialMenu.Visible = open
@@ -430,7 +432,6 @@ if renderer.Dimension == "3D" then
 	end)
 end
 
--- Keeps an open menu beside its button, clamped inside the viewport overlay
 local function placeMenu(menu, buttonName)
 	if not menu or not styleControls or not menu.Visible then
 		return
