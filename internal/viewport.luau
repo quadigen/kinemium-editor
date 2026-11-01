@@ -352,8 +352,6 @@ if renderer.Dimension == "3D" then
 		Enum.Material.Grass,
 		Enum.Material.Ice,
 		Enum.Material.Glass,
-		Enum.Material.Neon,
-		Enum.Material.Fabric,
 	}
 
 	local rowHeight, rowGap = 24, 2
@@ -382,34 +380,32 @@ if renderer.Dimension == "3D" then
 
 	local listLayout = Instance.new("UIGridLayout")
 	listLayout.SortOrder = Enum.SortOrder.LayoutOrder
-	listLayout.CellSize = UDim2.new(0, 60, 0, 60)
+	listLayout.CellSize = UDim2.new(0, 50, 0, 50)
 	listLayout.Parent = list
 
 	local shown = 0
 	for _, materialName in ipairs(materialNames) do
-		local success, result = pcall(function(...)
-			print(materialName)
-			local button = UI.button(list, "", UDim2.fromOffset(0, 0), UDim2.fromOffset(40, 40), {
-				color = tokens.color.surfaceAlt,
-				radius = tokens.radius.sm,
-			})
+		local button = UI.button(list, "", UDim2.fromOffset(0, 0), UDim2.fromOffset(50, 50), {
+			color = tokens.color.surfaceAlt,
+			radius = tokens.radius.sm,
+		})
+		button.BackgroundTransparency = 0.5
 
-			local preview = Instance.new("ViewportFrame", button)
-			preview.Size = UDim2.fromScale(1, 1)
-			preview.BackgroundTransparency = 1
+		local preview = Instance.new("ViewportFrame", button)
+		preview.Size = UDim2.fromScale(1, 1)
+		preview.BackgroundTransparency = 1
 
-			local camera = Instance.new("Camera", preview)
-			camera.CFrame = CFrame.lookAt(Vector3.new(5, 3, 6), Vector3.zero)
-			camera.FieldOfView = 20
-			preview.CurrentCamera = camera
+		local part = Instance.new("Part", preview)
+		part.Size = Vector3.new(3, 3, 3)
+		part.Position = Vector3.zero
+		part.Anchored = true
+		part.Shape = Enum.PartType.Ball
+		part.Material = materialName
 
-			local part = Instance.new("Part", preview)
-			part.Size = Vector3.new(3, 3, 3)
-			part.Shape = Enum.PartType.Ball
-			part.Material = materialName
-			print("finished")
-		end)
-		print(success, result)
+		local camera = Instance.new("Camera", preview)
+		camera.FieldOfView = 30
+		camera.CFrame = CFrame.lookAt(Vector3.new(0, 0, 7.5), part.Position)
+		preview.CurrentCamera = camera
 	end
 
 	list.CanvasSize = UDim2.fromOffset(0, shown * (rowHeight + rowGap))
