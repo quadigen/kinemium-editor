@@ -395,7 +395,6 @@ if renderer.Dimension == "3D" then
 	listLayout.Parent = list
 
 	local shown = 0
-	local matlist = Enum.Material:GetEnumItems()
 	for _, materialName in ipairs(materialNames) do
 		local button = UI.button(list, "", UDim2.fromOffset(0, 0), UDim2.fromOffset(1, rowHeight), {
 			color = tokens.color.surfaceAlt,
@@ -414,7 +413,7 @@ if renderer.Dimension == "3D" then
 		local part = Instance.new("Part", preview)
 		part.Size = Vector3.new(3, 3, 3)
 		part.Shape = Enum.PartType.Ball
-		part.Material = matlist[materialName]
+		part.Material = Enum.Material:FromName(materialName)
 	end
 
 	list.CanvasSize = UDim2.fromOffset(0, shown * (rowHeight + rowGap))
