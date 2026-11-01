@@ -4,5 +4,8 @@ material.Color = Color3.fromRGB(184, 115, 51)
 material.Roughness = 0.3
 material.Metalness = 0.9
 
-workspace.MyPart.MaterialVariant = "Copper"
+local part = Instance.new("Part", workspace)
+part.Name = "MyPart"
+
+part.MaterialVariant = "Copper"
 game:GetService("Terrain").MaterialVariant = "Copper"
