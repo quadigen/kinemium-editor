@@ -121,6 +121,12 @@ local function updateGizmos()
 		handles.Style = Enum.HandlesStyle.Movement
 	elseif activeTool == "Size" then
 		handles.Style = Enum.HandlesStyle.Resize
+	elseif activeTool == "Select" then
+		handles.Visible = false
+		arcHandles.Visible = false
+	else
+		handles.Visible = false
+		arcHandles.Visible = false
 	end
 end
 
@@ -307,63 +313,17 @@ end
 colorPicker, colorPickerController =
 	UI.colorPicker(viewportOverlay, UDim2.fromOffset(48, 99), UDim2.fromOffset(226, 286), selectedColor(), applyColor)
 
-local function updateTools()
-	for name, record in pairs(toolButtons) do
-		local active = activeTool == name or (name == "Snap" and snapEnabled)
+local _, toolControls = UI.iconButtonGroup(viewportOverlay, UDim2.fromOffset(8, 8), {
+	{ name = "Select", icon = iconRoot .. "Cursor.svg", tooltip = "Select", key = Enum.KeyCode.One },
+	{ name = "Move", icon = iconRoot .. "Move.svg", tooltip = "Move", key = Enum.KeyCode.Two },
+	{ name = "Size", icon = iconRoot .. "Size.svg", tooltip = "Resize", key = Enum.KeyCode.Three },
+	{ name = "Rotate", icon = iconRoot .. "Rotate.svg", tooltip = "Rotate", key = Enum.KeyCode.Four },
+}, { orientation = "vertical", mode = "radio", selected = "Move", buttonSize = Vector2.new(30, 30) })
 
-		if active then
-			record.BackgroundTransparency = 0
-			UI.setButtonState(record, "accent")
-		else
-			record.BackgroundTransparency = 1
-			UI.setButtonState(record, "default")
-		end
-	end
-end
-
-for index, definition in ipairs(renderer.Dimension == "2D" and tools2D or tools3D) do
-	local current = definition
-
-	local frame, _, record = UI.button(
-		toolbar,
-		"",
-		UDim2.fromOffset(2, 1 + (index - 1) * UI.metrics.toolbarButton),
-		UDim2.fromOffset(30, UI.metrics.toolbarButton),
-		function()
-			if current.name == "Snap" then
-				snapEnabled = not snapEnabled
-			elseif current.name == "Paint" then
-				activeTool = current.name
-				colorPickerController:SetColor(selectedColor(), true)
-				colorPicker.Visible = not colorPicker.Visible
-			else
-				activeTool = current.name
-				colorPicker.Visible = false
-			end
-
-			updateGizmos()
-			updateTools()
-		end,
-		{
-			color = tokens.color.surface,
-			hoverColor = colors.hover,
-			radius = tokens.radius.sm,
-			border = false,
-		}
-	)
-
-	frame.BackgroundTransparency = 1
-
-	UI.image(frame, iconRoot .. current.icon, UDim2.fromOffset(6, 6), UDim2.fromOffset(18, 18))
-	UI.tooltip(frame, current.tooltip, {
-		placement = "cursor",
-		hoverDelay = 0.35,
-	})
-
-	toolButtons[current.name] = record
-end
-
-updateTools()
+toolControls.Changed:Connect(function(name)
+	activeTool = name
+	updateGizmos()
+end)
 
 local breadcrumb = UI.group(viewportOverlay, UDim2.new(0, 8, 1, -30), UDim2.new(1, -16, 0, 26), {
 	color = tokens.color.surface,
@@ -698,7 +658,6 @@ local API = {
 		colorPicker.Visible = false
 
 		updateGizmos()
-		updateTools()
 	end,
 
 	ContainsPoint = function(point)
