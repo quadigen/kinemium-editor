@@ -168,6 +168,19 @@ end
 
 shared.UI = UI
 
+local preview = Instance.new("ViewportFrame", UI.widgetOverlay())
+preview.Size = UDim2.fromOffset(160, 160)
+preview.BackgroundTransparency = 1
+
+local camera = Instance.new("Camera", preview)
+camera.CFrame = CFrame.lookAt(Vector3.new(5, 3, 6), Vector3.zero)
+camera.FieldOfView = 45
+preview.CurrentCamera = camera
+
+local part = Instance.new("Part", preview)
+part.Size = Vector3.new(3, 3, 3)
+part.Color = Color3.fromRGB(70, 160, 255)
+
 SignalPipe:Connect(function(signal, value)
 	print("Event: " .. signal)
 	print("Value: ", value)
