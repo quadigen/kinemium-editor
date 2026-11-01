@@ -37,7 +37,6 @@ return function(ctx)
 			Color3.fromHSV(hue, 1, 1),
 			UI.tokens.radius.xs
 		)
-		square.BackgroundTransparency = 1
 		square.ClipsDescendants = true
 		local saturationLayer = UI.frame(square, UDim2.fromScale(0, 0), UDim2.fromScale(1, 1), Color3.new(1, 1, 1), 0)
 		UI.create("UIGradient", {
@@ -124,6 +123,7 @@ return function(ctx)
 			applyHex()
 		end)
 		local swatches = UI.frame(picker, UDim2.fromOffset(10, 240), UDim2.new(1, -20, 0, 34), colors.panel, 0)
+		swatches.BackgroundTransparency = 1
 		local presetColors = {
 			Color3.fromRGB(255, 255, 255),
 			Color3.fromRGB(0, 0, 0),
