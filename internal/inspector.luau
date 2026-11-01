@@ -1116,7 +1116,8 @@ registerAdapter("Color3", {
 			refresh = function(newValue)
 				swatch.BackgroundColor3 = newValue
 				currentColor = newValue
-				if inspectorColorPopup and inspectorColorPopup.anchor == swatch then
+				if inspectorColorPopup and inspectorColorPopup.anchor == swatch
+					and inspectorColorPopup.controller:GetColor() ~= newValue then
 					inspectorColorPopup.controller:SetColor(newValue, true)
 				end
 
