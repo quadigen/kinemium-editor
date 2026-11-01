@@ -346,7 +346,6 @@ if renderer.Dimension == "3D" then
 	local materialNames = {
 		Enum.Material.SmoothPlastic,
 		Enum.Material.Wood,
-		Enum.Material.Metal,
 		Enum.Material.Concrete,
 		Enum.Material.Brick,
 		Enum.Material.Marble,
