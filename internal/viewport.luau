@@ -343,7 +343,6 @@ if renderer.Dimension == "3D" then
 	local styleBackdrop = Instance.new("UIBackdrop")
 	styleBackdrop.Parent = styleBar
 
-	-- Material menu: scrollable list of materials
 	local materialNames = {
 		"Plastic",
 		"SmoothPlastic",
@@ -391,32 +390,31 @@ if renderer.Dimension == "3D" then
 	list.ZIndex = materialMenu.ZIndex + 1
 	list.Parent = materialMenu
 
-	local listLayout = Instance.new("UIListLayout")
+	local listLayout = Instance.new("UIGridLayout")
 	listLayout.SortOrder = Enum.SortOrder.LayoutOrder
 	listLayout.Padding = UDim.new(0, rowGap)
 	listLayout.Parent = list
 
 	local shown = 0
 	for _, materialName in ipairs(materialNames) do
-		local ok, material = pcall(function()
-			return Enum.Material[materialName]
-		end)
+		local button = UI.button(list, "", UDim2.fromOffset(0, 0), UDim2.fromOffset(1, rowHeight), {
+			color = tokens.color.surfaceAlt,
+			radius = tokens.radius.sm,
+		})
 
-		if ok and material then
-			shown += 1
+		local preview = Instance.new("ViewportFrame", button)
+		preview.Size = UDim2.fromScale(1, 1)
+		preview.BackgroundTransparency = 1
 
-			local row = UI.button(list, materialName, UDim2.fromOffset(0, 0), UDim2.new(1, -8, 0, rowHeight), function()
-				applyMaterial(material)
-			end, {
-				color = tokens.color.surface,
-				hoverColor = colors.hover,
-				radius = tokens.radius.sm,
-				border = false,
-			})
+		local camera = Instance.new("Camera", preview)
+		camera.CFrame = CFrame.lookAt(Vector3.new(5, 3, 6), Vector3.zero)
+		camera.FieldOfView = 45
+		preview.CurrentCamera = camera
 
-			row.LayoutOrder = shown
-			row.BackgroundTransparency = 1
-		end
+		local part = Instance.new("Part", preview)
+		part.Size = Vector3.new(3, 3, 3)
+		part.Shape = Enum.PartType.Ball
+		part.Material = Enum.Material[materialName]
 	end
 
 	list.CanvasSize = UDim2.fromOffset(0, shown * (rowHeight + rowGap))
