@@ -2684,6 +2684,8 @@ function CodeEditor:isScriptInstance(instance)
 			or instance:IsA("PostProcess")
 			or instance:IsA("ModuleScript")
 			or instance:IsA("LocalScript")
+			or instance:IsA("RuntimeShader")
+			or instance:IsA("MaterialVariant")
 		)
 end
 

@@ -652,6 +652,8 @@ local function addRow(instance, depth, y)
 				or instance:IsA("ModuleScript")
 				or instance:IsA("LocalScript")
 				or instance:IsA("PostProcess")
+				or instance:IsA("RuntimeShader")
+				or instance:IsA("MaterialVariant")
 			then
 				viewport.OpenScript(instance)
 			else

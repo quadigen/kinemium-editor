@@ -10,7 +10,9 @@ local CACHE_SECONDS, MAX_CACHED, MAX_CACHED_PARTS = 30, 24, 20000
 local FRAME_BUDGET, MAX_OBJECTS_PER_FRAME = 0.002, 96
 
 local function alive(object)
-	local ok, parent = pcall(function() return object.Parent end)
+	local ok, parent = pcall(function()
+		return object.Parent
+	end)
 	return ok and parent ~= nil
 end
 
@@ -20,17 +22,23 @@ end
 
 local function onScreen(object)
 	local position, size = object.AbsolutePosition, object.AbsoluteSize
-	if size.X <= 0 or size.Y <= 0 then return false end
-	local left, top, right, bottom = position.X, position.Y, position.X+size.X, position.Y+size.Y
+	if size.X <= 0 or size.Y <= 0 then
+		return false
+	end
+	local left, top, right, bottom = position.X, position.Y, position.X + size.X, position.Y + size.Y
 	local ancestor = object
 	while ancestor do
 		if ancestor:IsA("GuiObject") then
-			if not ancestor.Visible then return false end
+			if not ancestor.Visible then
+				return false
+			end
 			if ancestor.ClipsDescendants or ancestor:IsA("ScrollingFrame") then
 				local p, s = ancestor.AbsolutePosition, ancestor.AbsoluteSize
-				left, top = math.max(left,p.X), math.max(top,p.Y)
-				right, bottom = math.min(right,p.X+s.X), math.min(bottom,p.Y+s.Y)
-				if right <= left or bottom <= top then return false end
+				left, top = math.max(left, p.X), math.max(top, p.Y)
+				right, bottom = math.min(right, p.X + s.X), math.min(bottom, p.Y + s.Y)
+				if right <= left or bottom <= top then
+					return false
+				end
 			end
 		end
 		ancestor = ancestor.Parent
@@ -39,7 +47,9 @@ local function onScreen(object)
 end
 
 local function discard(record)
-	pcall(function() record.frame:Destroy() end)
+	pcall(function()
+		record.frame:Destroy()
+	end)
 end
 
 local function trimCache()
@@ -63,9 +73,13 @@ end
 -- Detach previews before the browser destroys its old rows. Reuse the actual
 -- frame, geometry and GPU resources instead of importing and cloning again.
 function Preview.Release(root)
-	if not root then return end
+	if not root then
+		return
+	end
 	for frame, record in pairs(active) do
-		local ok, belongs = pcall(function() return frame:IsDescendantOf(root) end)
+		local ok, belongs = pcall(function()
+			return frame:IsDescendantOf(root)
+		end)
 		if not ok then
 			active[frame] = nil
 		elseif belongs then
@@ -88,9 +102,9 @@ local function place(record, parent, fallback)
 	frame.Position, frame.Size = fallback.Position, fallback.Size
 	local size = fallback.AbsoluteSize
 	local aspect = size.X > 0 and size.Y > 0 and size.X / size.Y or 1
-	local angle = math.atan(math.tan(math.rad(35)*0.5)*math.min(1,aspect))
-	local distance = math.max(record.radius / math.sin(angle)*1.12, 0.25)
-	frame.CurrentCamera.CFrame = CFrame.lookAt(record.center + Vector3.new(1,0.7,1).Unit*distance, record.center)
+	local angle = math.atan(math.tan(math.rad(35) * 0.5) * math.min(1, aspect))
+	local distance = math.max(record.radius / math.sin(angle) * 1.12, 0.25)
+	frame.CurrentCamera.CFrame = CFrame.lookAt(record.center + Vector3.new(1, 0.7, 1).Unit * distance, record.center)
 	frame.Parent = parent
 	fallback.Visible = false
 	active[frame] = record
@@ -110,14 +124,24 @@ local function cached(path, parent, fallback)
 end
 
 local function cleanup(job)
-	if job.frame then pcall(function() job.frame:Destroy() end) end
-	if job.imported then pcall(function() job.imported:Destroy() end) end
+	if job.frame then
+		pcall(function()
+			job.frame:Destroy()
+		end)
+	end
+	if job.imported then
+		pcall(function()
+			job.imported:Destroy()
+		end)
+	end
 end
 
 local function start(job)
 	job.imported = Export:ImportFile(job.path)
-	if not job.imported or not (isPart(job.imported) or job.imported:IsA("Model")) then return false end
-	job.stack, job.count = {job.imported}, 0
+	if not job.imported or not (isPart(job.imported) or job.imported:IsA("Model")) then
+		return false
+	end
+	job.stack, job.count = { job.imported }, 0
 	job.low, job.high = Vector3.new(math.huge, math.huge, math.huge), Vector3.new(-math.huge, -math.huge, -math.huge)
 	return true
 end
@@ -139,48 +163,73 @@ local function prepare(job)
 				job.children = nil
 			end
 			processed += 1
-			if os.clock() >= deadline then break end
+			if os.clock() >= deadline then
+				break
+			end
 			continue
 		end
 		local object = table.remove(job.stack)
 		if isPart(object) then
 			job.count += 1
 			local half = object.Size * 0.5
-			local x,y,z,a,b,c,d,e,f,g,h,i = object.CFrame:GetComponents()
+			local x, y, z, a, b, c, d, e, f, g, h, i = object.CFrame:GetComponents()
 			-- Exact rotated box extents, using one native call instead of eight
 			-- corner transforms and repeated native vector property lookups.
-			local ex = math.abs(a)*half.X + math.abs(b)*half.Y + math.abs(c)*half.Z
-			local ey = math.abs(d)*half.X + math.abs(e)*half.Y + math.abs(f)*half.Z
-			local ez = math.abs(g)*half.X + math.abs(h)*half.Y + math.abs(i)*half.Z
+			local ex = math.abs(a) * half.X + math.abs(b) * half.Y + math.abs(c) * half.Z
+			local ey = math.abs(d) * half.X + math.abs(e) * half.Y + math.abs(f) * half.Z
+			local ez = math.abs(g) * half.X + math.abs(h) * half.Y + math.abs(i) * half.Z
 			local lo, hi = job.low, job.high
-			job.low = Vector3.new(math.min(lo.X,x-ex),math.min(lo.Y,y-ey),math.min(lo.Z,z-ez))
-			job.high = Vector3.new(math.max(hi.X,x+ex),math.max(hi.Y,y+ey),math.max(hi.Z,z+ez))
+			job.low = Vector3.new(math.min(lo.X, x - ex), math.min(lo.Y, y - ey), math.min(lo.Z, z - ez))
+			job.high = Vector3.new(math.max(hi.X, x + ex), math.max(hi.Y, y + ey), math.max(hi.Z, z + ez))
 		end
 		job.children, job.childIndex = object:GetChildren(), 1
 		processed += 1
-		if os.clock() >= deadline then break end
+		if os.clock() >= deadline then
+			break
+		end
 	end
 	return #job.stack == 0 and job.children == nil
 end
 
 local function finish(job)
-	if job.count == 0 then return false end
-	local center = (job.low + job.high)*0.5
-	local radius = math.max((job.high-job.low).Magnitude*0.5, 0.05)
-	if radius ~= radius or radius == math.huge then return false end
+	if job.count == 0 then
+		return false
+	end
+	local center = (job.low + job.high) * 0.5
+	local radius = math.max((job.high - job.low).Magnitude * 0.5, 0.05)
+	if radius ~= radius or radius == math.huge then
+		return false
+	end
 	job.frame = UI.create("ViewportFrame", {
-		Name = "KineThumbnail", BackgroundTransparency = 1, BorderSizePixel = 0,
-		Active = false, InputSink = false, Ambient = Color3.new(0.7,0.7,0.7),
-		LightDirection = Vector3.new(-1,-1,-1), Shadows = false,
-		PostProcessing = false, UpdateRate = 1,
+		Name = "KineThumbnail",
+		BackgroundTransparency = 1,
+		BorderSizePixel = 0,
+		Active = false,
+		InputSink = false,
+		Ambient = Color3.new(0.7, 0.7, 0.7),
+		LightDirection = Vector3.new(-1, -1, -1),
+		Shadows = false,
+		PostProcessing = false,
+		UpdateRate = 1,
 	}, storage)
 	local camera = Instance.new("Camera", job.frame)
 	camera.FieldOfView = 35
 	job.frame.CurrentCamera = camera
 	job.imported.Parent = job.frame
 	-- Move the camera, rather than rewriting every Part's CFrame.
-	place({frame=job.frame, path=job.path, center=center, radius=radius, count=job.count,
-		expires=os.clock()+CACHE_SECONDS, generation=generation}, job.parent, job.fallback)
+	place(
+		{
+			frame = job.frame,
+			path = job.path,
+			center = center,
+			radius = radius,
+			count = job.count,
+			expires = os.clock() + CACHE_SECONDS,
+			generation = generation,
+		},
+		job.parent,
+		job.fallback
+	)
 	return true
 end
 
@@ -203,7 +252,7 @@ local function step()
 						pending = job
 						if not start(job) then
 							cleanup(job)
-							failures[job.path] = os.clock()+CACHE_SECONDS
+							failures[job.path] = os.clock() + CACHE_SECONDS
 							pending = nil
 						end
 					end
@@ -213,14 +262,14 @@ local function step()
 			end
 		elseif prepare(pending) then
 			if not finish(pending) then
-				failures[pending.path] = os.clock()+CACHE_SECONDS
+				failures[pending.path] = os.clock() + CACHE_SECONDS
 				cleanup(pending)
 			end
 			pending = nil
 		end
 	end)
 	if not ok and pending then
-		failures[pending.path] = os.clock()+CACHE_SECONDS
+		failures[pending.path] = os.clock() + CACHE_SECONDS
 		warn(`Could not preview {pending.path}: {message}`)
 		cleanup(pending)
 		pending = nil
@@ -232,8 +281,10 @@ local function step()
 end
 
 function Preview.Attach(parent, path, fallback)
-	queue[#queue + 1] = {parent=parent, path=path, fallback=fallback}
+	queue[#queue + 1] = { parent = parent, path = path, fallback = fallback }
 	-- Signals retain the editor's capabilities; task.defer currently drops them.
-	if not worker then worker = RunService.Heartbeat:Connect(step) end
+	if not worker then
+		worker = RunService.Heartbeat:Connect(step)
+	end
 end
 return Preview
