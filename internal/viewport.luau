@@ -344,17 +344,11 @@ if renderer.Dimension == "3D" then
 	styleBackdrop.Parent = styleBar
 
 	local materialNames = {
-		"Plastic",
 		"SmoothPlastic",
 		"Wood",
-		"WoodPlanks",
 		"Metal",
-		"DiamondPlate",
-		"CorrodedMetal",
 		"Concrete",
 		"Brick",
-		"Cobblestone",
-		"Granite",
 		"Marble",
 		"Slate",
 		"Sand",
@@ -363,7 +357,6 @@ if renderer.Dimension == "3D" then
 		"Glass",
 		"Neon",
 		"Fabric",
-		"Foil",
 	}
 
 	local rowHeight, rowGap = 24, 2
