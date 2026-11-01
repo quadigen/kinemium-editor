@@ -1,7 +1,8 @@
 local UI = require("@internal/editor_ui")
 local Export = game:GetService("ExportService")
+local RunService = game:GetService("RunService")
 local Preview = {}
-local queue, running = {}, false
+local queue, worker = {}, nil
 
 local function alive(object)
 	local ok, parent = pcall(function() return object.Parent end)
@@ -14,7 +15,7 @@ end
 
 local function populate(parent, path, fallback)
 	local imported, frame
-	local ok = pcall(function()
+	local ok, message = pcall(function()
 		imported = Export:ImportFile(path)
 		if not imported or not (isPart(imported) or imported:IsA("Model")) then return end
 		local parts = {}
@@ -64,20 +65,27 @@ local function populate(parent, path, fallback)
 	if not ok or not frame then
 		if imported then pcall(function() imported:Destroy() end) end
 		if frame then pcall(function() frame:Destroy() end) end
+		if not ok then warn(`Could not preview {path}: {message}`) end
 	end
 end
 
 function Preview.Attach(parent, path, fallback)
 	queue[#queue + 1] = {parent, path, fallback}
-	if running then return end
-	running = true
-	task.defer(function()
+	if worker then return end
+	-- Signals retain the editor's capabilities; task.defer currently drops them.
+	-- Import at most one live thumbnail per frame without yielding the callback.
+	worker = RunService.Heartbeat:Connect(function()
 		while #queue > 0 do
 			local job = table.remove(queue, 1)
-			if alive(job[1]) and alive(job[3]) then populate(job[1],job[2],job[3]) end
-			task.wait()
+			if alive(job[1]) and alive(job[3]) then
+				populate(job[1],job[2],job[3])
+				break
+			end
 		end
-		running = false
+		if #queue == 0 then
+			worker:Disconnect()
+			worker = nil
+		end
 	end)
 end
 return Preview
