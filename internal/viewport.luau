@@ -340,7 +340,7 @@ local function updateTools()
 		local active = activeTool == name or (name == "Snap" and snapEnabled)
 
 		if active then
-			record.BackgroundTransparency = 0.1
+			record.BackgroundTransparency = 0
 			UI.setButtonState(record, "accent")
 		else
 			record.BackgroundTransparency = 1
@@ -381,6 +381,7 @@ for index, definition in ipairs(renderer.Dimension == "2D" and tools2D or tools3
 	)
 
 	frame.BackgroundTransparency = 1
+
 	UI.image(frame, iconRoot .. current.icon, UDim2.fromOffset(6, 6), UDim2.fromOffset(18, 18))
 	UI.tooltip(frame, current.tooltip, {
 		placement = "cursor",
