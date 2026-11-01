@@ -339,7 +339,13 @@ local function updateTools()
 	for name, record in pairs(toolButtons) do
 		local active = activeTool == name or (name == "Snap" and snapEnabled)
 
-		UI.setButtonState(record, active and "accent" or "default")
+		if active then
+			record.BackgroundTransparency = 0.1
+			UI.setButtonState(record, "accent")
+		else
+			record.BackgroundTransparency = 1
+			UI.setButtonState(record, "default")
+		end
 	end
 end
 
@@ -382,10 +388,6 @@ for index, definition in ipairs(renderer.Dimension == "2D" and tools2D or tools3
 	})
 
 	toolButtons[current.name] = record
-
-	if index > 1 then
-		--UI.separator(toolbar, UDim2.fromOffset(5, (index - 1) * UI.metrics.toolbarButton), UDim2.fromOffset(24, 1))
-	end
 end
 
 updateTools()
