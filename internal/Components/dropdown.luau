@@ -453,8 +453,8 @@ return function(ctx)
 			if options.decorateItem then
 				options.decorateItem(row, itemValue, rowHeight)
 				local inset = options.itemContentInset or 32
-				rowLabel.Position = UDim2.fromOffset(inset, 3)
-				rowLabel.Size = UDim2.new(1, -(inset + 8), 1, -3)
+				rowLabel.Position = UDim2.fromOffset(inset, 0)
+				rowLabel.Size = UDim2.new(1, -(inset + 8), 1, 0)
 			end
 
 			animator.addRow(row, rowRecord, index)
@@ -858,7 +858,7 @@ return function(ctx)
 
 			chevron.Name = "Chevron"
 
-			label.Size = UDim2.new(1, -(iconSize + 18), 1, 0)
+			label.Size = UDim2.new(1, -(label.Position.X.Offset + iconSize + 12), 1, 0)
 		end
 
 		---------------------------------------------------------------------

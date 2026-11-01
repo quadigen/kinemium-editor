@@ -257,6 +257,7 @@ local toolbar = UI.group(
 		radius = tokens.radius.md,
 	}
 )
+toolbar.BackgroundTransparency = 0.5
 
 toolbar.Name = "TransformToolbar"
 

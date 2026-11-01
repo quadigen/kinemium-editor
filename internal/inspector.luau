@@ -12,6 +12,11 @@ local picker = require("./picker")
 
 local colors = UI.colors
 local tokens = UI.tokens
+local inspectorColorPopup
+
+local function closeInspectorColorPicker()
+	if inspectorColorPopup then inspectorColorPopup.close() end
+end
 
 local instanceProperties = {
 	PrimaryPart = true,
@@ -385,6 +390,52 @@ local function setProperty(object, propertyName, value)
 	end)
 
 	return ok
+end
+
+local function openInspectorColorPicker(anchor, color, callback)
+	closeInspectorColorPicker()
+	UI.closeDropdown(true)
+	local root = UI.create("Frame", {
+		Name = "InspectorColorPopup", Size = UDim2.fromScale(1,1),
+		BackgroundTransparency = 1, BorderSizePixel = 0, ZIndex = 99999,
+	}, UI.contextMenuOverlay())
+	local destroyConnection, keyConnection
+	local popup = {anchor = anchor}
+	function popup.close()
+		if inspectorColorPopup ~= popup then return end
+		inspectorColorPopup = nil
+		if destroyConnection then destroyConnection:Disconnect() end
+		if keyConnection then keyConnection:Disconnect() end
+		UI.forgetButtons(root)
+		root:Destroy()
+	end
+	inspectorColorPopup = popup
+	local outside = UI.create("TextButton", {
+		Name = "Dismiss", Text = "", Size = UDim2.fromScale(1,1),
+		BackgroundTransparency = 1, BorderSizePixel = 0, Active = true,
+		InputSink = true, AutoButtonColor = false, ZIndex = 99999,
+	}, root)
+	outside.MouseButton1Click:Connect(popup.close)
+	local p, s = anchor.AbsolutePosition, anchor.AbsoluteSize
+	local bounds = workspace:GetWindowDimensions()
+	local x = math.clamp(p.X, 4, math.max(4,bounds.X-230))
+	local y = p.Y+s.Y+4
+	if y+286 > bounds.Y-4 then y = p.Y-290 end
+	y = math.clamp(y, 4, math.max(4,bounds.Y-290))
+	local frame, controller = UI.colorPicker(root, UDim2.fromOffset(x,y), UDim2.fromOffset(226,286), color, callback)
+	frame.Active, frame.InputSink, frame.Visible = true, true, true
+	popup.controller = controller
+	local close = UI.create("TextButton", {
+		Name = "Close", Text = "×", Position = UDim2.new(1,-28,0,5),
+		Size = UDim2.fromOffset(22,22), BackgroundTransparency = 1,
+		BorderSizePixel = 0, TextColor3 = tokens.color.text, TextSize = 16,
+		Active = true, InputSink = true, AutoButtonColor = false, ZIndex = 100002,
+	}, frame)
+	close.MouseButton1Click:Connect(popup.close)
+	destroyConnection = anchor.Destroying:Connect(popup.close)
+	keyConnection = game:GetService("UserInputService").InputBegan:Connect(function(input)
+		if input.KeyCode == Enum.KeyCode.Escape then popup.close() end
+	end)
 end
 
 local adapters = {}
@@ -797,6 +848,7 @@ registerAdapter("Instance", {
 })
 
 Selection.SelectionChanged:Connect(function()
+	closeInspectorColorPicker()
 	picker.cancel()
 	lastStructure = ""
 	signatureClock = SIGNATURE_INTERVAL
@@ -1012,6 +1064,20 @@ registerAdapter("Color3", {
 				end,
 			}
 		end
+		local currentColor = value
+		local swatchInput = UI.create("TextButton", {
+			Name = "OpenColorPicker", Text = "", Size = UDim2.fromScale(1,1),
+			BackgroundTransparency = 1, BorderSizePixel = 0, Active = true,
+			InputSink = true, AutoButtonColor = false,
+		}, swatch)
+		swatchInput.MouseButton1Click:Connect(function()
+			openInspectorColorPicker(swatch, currentColor, function(nextColor)
+				if setProperty(object, property.name, nextColor) then
+					currentColor = nextColor
+					swatch.BackgroundColor3 = nextColor
+				end
+			end)
+		end)
 
 		local rField = componentField(row, "R", value.R, 1, 3)
 
@@ -1049,6 +1115,10 @@ registerAdapter("Color3", {
 		return {
 			refresh = function(newValue)
 				swatch.BackgroundColor3 = newValue
+				currentColor = newValue
+				if inspectorColorPopup and inspectorColorPopup.anchor == swatch then
+					inspectorColorPopup.controller:SetColor(newValue, true)
+				end
 
 				refreshFields(newValue)
 			end,
