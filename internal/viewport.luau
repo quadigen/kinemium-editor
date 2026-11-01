@@ -555,6 +555,41 @@ local lastY = -1
 local lastWidth = -1
 local lastHeight = -1
 
+local function getRenderBounds(): (Vector2, Vector2)
+	local position = viewportRoot.AbsolutePosition
+	local size = viewportRoot.AbsoluteSize
+	local top = position.Y
+	local topbarBottom = UI.shared().topbarBottom or 0
+	if topbarBottom >= top then
+		top = topbarBottom + 4
+	end
+	return Vector2.new(position.X, top), Vector2.new(size.X, position.Y + size.Y - top)
+end
+
+-- Camera projection uses viewport pixels; editor input uses window GUI units.
+local function screenToViewportPoint(point: Vector2): Vector2?
+	local camera = workspace.CurrentCamera
+	local position, size = getRenderBounds()
+	if not camera or size.X <= 0 or size.Y <= 0 then
+		return nil
+	end
+	local pixels = camera.ViewportSize
+	return Vector2.new((point.X - position.X) * pixels.X / size.X, (point.Y - position.Y) * pixels.Y / size.Y)
+end
+
+local function viewportToScreenPoint(point: Vector2): Vector2?
+	local camera = workspace.CurrentCamera
+	local position, size = getRenderBounds()
+	if not camera or size.X <= 0 or size.Y <= 0 then
+		return nil
+	end
+	local pixels = camera.ViewportSize
+	if pixels.X <= 0 or pixels.Y <= 0 then
+		return nil
+	end
+	return Vector2.new(position.X + point.X * size.X / pixels.X, position.Y + point.Y * size.Y / pixels.Y)
+end
+
 renderer.Pool.new("2da", function()
 	local dragging = docker.Update(panel, "Viewport")
 
@@ -578,14 +613,9 @@ renderer.Pool.new("2da", function()
 		return
 	end
 
-	local renderTop = absoluteY
-	local topbarBottom = UI.shared().topbarBottom or 0
-
-	if topbarBottom >= renderTop then
-		renderTop = topbarBottom + 4
-	end
-
-	local renderHeight = absoluteY + absoluteHeight - renderTop
+	local renderPosition, renderSize = getRenderBounds()
+	local renderTop = renderPosition.Y
+	local renderHeight = renderSize.Y
 
 	if renderHeight <= 0 then
 		return
@@ -697,14 +727,11 @@ local API = {
 			return false, nil
 		end
 
-		local position = viewportRoot.AbsolutePosition
-		local size = viewportRoot.AbsoluteSize
-
-		local top = math.max(position.Y, UI.shared().topbarBottom or 0)
+		local position, size = getRenderBounds()
 
 		local inside = point.X >= position.X
 			and point.X <= position.X + size.X
-			and point.Y >= top
+			and point.Y >= position.Y
 			and point.Y <= position.Y + size.Y
 
 		if not inside then
@@ -713,6 +740,9 @@ local API = {
 
 		return true, Vector2.new(point.X - position.X, point.Y - position.Y)
 	end,
+
+	ScreenToViewportPoint = screenToViewportPoint,
+	ViewportToScreenPoint = viewportToScreenPoint,
 
 	SetDropHighlight = function(visible)
 		dropHighlight.Visible = visible == true

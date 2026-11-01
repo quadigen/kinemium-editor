@@ -237,11 +237,19 @@ local function positionReadout(worldPosition: Vector3, radius: number): boolean
 	if not onScreen or type(centerX) ~= "number" or type(centerY) ~= "number" then
 		return false
 	end
+	local center = viewport.ViewportToScreenPoint(Vector2.new(centerX, centerY))
+	if not center then
+		return false
+	end
+	centerX, centerY = center.X, center.Y
 
 	local spread = 40
 	local _, edgeX = camera:WorldToViewportPoint(worldPosition + camera.CFrame.RightVector * radius)
 	if type(edgeX) == "number" then
-		spread = math.clamp(math.abs(edgeX - centerX), 12, 400)
+		local edge = viewport.ViewportToScreenPoint(Vector2.new(edgeX, 0))
+		if edge then
+			spread = math.clamp(math.abs(edge.X - centerX), 12, 400)
+		end
 	end
 
 	local screen = workspace:GetWindowDimensions()
@@ -412,7 +420,10 @@ local function getMouseRay(): Ray?
 	if not camera then
 		return nil
 	end
-	local pos = UserInputService:GetMouseLocation()
+	local pos = viewport.ScreenToViewportPoint(UserInputService:GetMouseLocation())
+	if not pos then
+		return nil
+	end
 	return camera:ViewportPointToRay(pos.X, pos.Y)
 end
 
