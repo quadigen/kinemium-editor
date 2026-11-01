@@ -371,6 +371,7 @@ for index, definition in ipairs(renderer.Dimension == "2D" and tools2D or tools3
 		}
 	)
 
+	frame.BackgroundTransparency = 1
 	UI.image(frame, iconRoot .. current.icon, UDim2.fromOffset(6, 6), UDim2.fromOffset(18, 18))
 	UI.tooltip(frame, current.tooltip, {
 		placement = "cursor",

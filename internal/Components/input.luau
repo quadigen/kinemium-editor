@@ -30,6 +30,38 @@ return function(ctx)
 		end)
 	end
 
+	UI.axisColors = {
+		X = Color3.fromRGB(244, 92, 86),
+		Y = Color3.fromRGB(115, 192, 101),
+		Z = Color3.fromRGB(82, 139, 245),
+	}
+
+	function UI.prefixedInput(parent, prefix, position, size, options)
+		options = options or {}
+		local width = options.prefixWidth or (#prefix > 1 and 22 or 15)
+		local cell = UI.create("Frame", {
+			Name = "ComponentCell", Position = position, Size = size,
+			BackgroundColor3 = options.color or UI.tokens.color.input,
+			BorderSizePixel = 0, ClipsDescendants = true, Active = false,
+		}, parent)
+		local box, _, stroke = UI.input(cell, options.placeholder or "",
+			UDim2.fromOffset(width, 0), UDim2.new(1, -width, 1, 0), options)
+		box.BackgroundTransparency = 1
+		-- One outer shape clips both the strip and the editable region.
+		box:FindFirstChildOfClass("UISquircle").Parent = cell
+		stroke.Parent = cell
+		local color = options.prefixColor or UI.axisColors[prefix] or UI.tokens.color.muted
+		local strip = UI.create("TextButton", {
+			Name = "Prefix", Text = prefix, Position = UDim2.fromOffset(0, 0),
+			Size = UDim2.new(0, width, 1, 0), BackgroundColor3 = color,
+			BorderSizePixel = 0, AutoButtonColor = false, Active = true, InputSink = true,
+			TextSize = options.textSize or UI.tokens.type.caption,
+			TextColor3 = Color3.fromRGB(27, 31, 38),
+		}, cell)
+		strip.MouseButton1Click:Connect(function() box:CaptureFocus() end)
+		return box, cell
+	end
+
 	function UI.input(parent, placeholder, position, size, options)
 		options = options or {}
 

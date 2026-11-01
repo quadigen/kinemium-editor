@@ -425,7 +425,7 @@ return function(ctx)
 
 			local selected = highlight and itemValue == currentValue
 
-			local row, _, rowRecord = UI.button(
+			local row, rowLabel, rowRecord = UI.button(
 				list,
 				itemText .. (suffix or ""),
 				UDim2.fromOffset(0, y),
@@ -450,6 +450,12 @@ return function(ctx)
 			)
 
 			row.BackgroundTransparency = options.itemBgTransparency or options.BackgroundTransparency or 0
+			if options.decorateItem then
+				options.decorateItem(row, itemValue, rowHeight)
+				local inset = options.itemContentInset or 32
+				rowLabel.Position = UDim2.fromOffset(inset, 3)
+				rowLabel.Size = UDim2.new(1, -(inset + 8), 1, -3)
+			end
 
 			animator.addRow(row, rowRecord, index)
 

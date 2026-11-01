@@ -445,28 +445,12 @@ local function componentField(row, label, value, index, count, line)
 
 	local y = 2 + line * PROPERTY_HEIGHT
 
-	local labelWidth = 11
-
-	if #label == 2 then
-		labelWidth = 17
-	elseif #label >= 3 then
-		labelWidth = 23
-	end
-
-	UI.label(
-		row,
-		label,
-		UDim2.new(xScale, 5, 0, y + 2),
-		UDim2.fromOffset(labelWidth, 14),
-		tokens.type.caption,
-		tokens.color.muted
-	)
-
-	return valueField(row, formatNumber(value), {
-		position = UDim2.new(xScale, 7 + labelWidth, 0, y),
-
-		size = UDim2.new(slotScale, -(11 + labelWidth), 0, 18),
-	})
+	local field = UI.prefixedInput(row, label, UDim2.new(xScale, 6, 0, y),
+		UDim2.new(slotScale, -8, 0, 18), {
+			text = formatNumber(value), textSize = tokens.type.caption,
+			textColor = tokens.color.subtext, selectAllOnFocus = true,
+		})
+	return field
 end
 
 local function textFieldController(field, formatter)
@@ -629,12 +613,35 @@ registerAdapter("boolean", {
 	end,
 })
 
+local function materialPreview(parent, material, size)
+	local frame = UI.create("ViewportFrame", {
+		Name = "MaterialPreview", Position = UDim2.new(0, 3, 0.5, -size/2),
+		Size = UDim2.fromOffset(size, size), BackgroundTransparency = 1,
+		BorderSizePixel = 0, Active = false, InputSink = false,
+		Ambient = Color3.new(0.55,0.55,0.55), LightDirection = Vector3.new(-1,-1,-1),
+		Shadows = false, PostProcessing = false, UpdateRate = 1,
+	}, parent)
+	local camera = Instance.new("Camera", frame)
+	camera.FieldOfView = 35
+	camera.CFrame = CFrame.lookAt(Vector3.new(3,1.8,3), Vector3.zero)
+	frame.CurrentCamera = camera
+	local sphere = Instance.new("Part", frame)
+	sphere.Name = "MaterialSample"
+	sphere.Shape = Enum.PartType.Ball
+	sphere.Size = Vector3.new(2,2,2)
+	sphere.Color = Color3.new(0.85,0.85,0.85)
+	sphere.Material = material
+	return sphere
+end
+
 registerAdapter("EnumItem", {
 	height = PROPERTY_HEIGHT,
 
 	render = function(row, object, property)
 		local value = property.value
 		local enumType = value.EnumType
+		local isMaterial = enumType == Enum.Material
+		local sample
 
 		if not enumType then
 			return nil
@@ -661,19 +668,22 @@ registerAdapter("EnumItem", {
 			return typeof(item) == "EnumItem" and item.Name or tostring(item)
 		end
 
-		local _, _, controller = UI.dropdown(
+		local button, _, controller = UI.dropdown(
 			row,
 			value,
 			UDim2.new(0.45, 6, 0, 2),
-			UDim2.new(0.55, -12, 0, 18),
+			UDim2.new(0.55, -12, 0, isMaterial and 30 or 18),
 			"builtin://icons/ArrowDown.svg",
 			{
 				items = items,
 				format = formatValue,
 				showSearch = false,
 				maxVisibleItems = 7,
-				itemHeight = 20,
-				menuWidth = 150,
+				itemHeight = isMaterial and 32 or 20,
+				menuWidth = isMaterial and 190 or 150,
+				decorateItem = isMaterial and function(itemRow, material)
+					materialPreview(itemRow, material, 26)
+				end or nil,
 				textSize = tokens.type.caption,
 				color = tokens.color.input,
 				hoverColor = tokens.color.hover,
@@ -682,16 +692,18 @@ registerAdapter("EnumItem", {
 				borderColor = tokens.color.border,
 				menuColor = tokens.color.panelRaised,
 				radius = tokens.radius.xs,
-				paddingX = 7,
+				paddingX = isMaterial and 33 or 7,
 				textY = 1,
 				chevronSize = 10,
 				onChanged = function(newValue)
 					if typeof(newValue) == "EnumItem" then
 						setProperty(object, property.name, newValue)
+						if sample then sample.Material = newValue end
 					end
 				end,
 			}
 		)
+		if isMaterial then sample = materialPreview(button, value, 26) end
 
 		return {
 			refresh = function(newValue)
@@ -701,6 +713,7 @@ registerAdapter("EnumItem", {
 					end
 
 					controller:SetValue(newValue, true)
+					if sample then sample.Material = newValue end
 				end
 			end,
 		}
@@ -1303,6 +1316,7 @@ local function adapterFor(property)
 end
 
 local function propertyEditorHeight(property)
+	if typeof(property.value) == "EnumItem" and property.value.EnumType == Enum.Material then return 34 end
 	local adapter = adapterFor(property)
 	return adapter.height or PROPERTY_HEIGHT
 end
