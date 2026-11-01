@@ -324,6 +324,19 @@ end)
 
 -- The engine's processed flag ignores passive panels and transparent hit
 -- targets. Test overlay geometry too, before selection changes can dismiss UI.
+local function paintsOverlay(gui: GuiObject): boolean
+	if gui.BackgroundTransparency < 1 then
+		return true
+	end
+	if gui:IsA("TextLabel") or gui:IsA("TextButton") or gui:IsA("TextBox") then
+		return gui.TextTransparency < 1 and gui.Text ~= ""
+	end
+	if gui:IsA("ImageLabel") or gui:IsA("ImageButton") then
+		return gui.ImageTransparency < 1 and gui.Image ~= ""
+	end
+	return false
+end
+
 local function overlayContainsPointer(root: Instance, point: Vector2): boolean
 	for _, child in ipairs(root:GetChildren()) do
 		if child:IsA("GuiObject") then
@@ -333,7 +346,9 @@ local function overlayContainsPointer(root: Instance, point: Vector2): boolean
 			local position, size = child.AbsolutePosition, child.AbsoluteSize
 			local inside = point.X >= position.X and point.X < position.X + size.X
 				and point.Y >= position.Y and point.Y < position.Y + size.Y
-			if inside and (child.BackgroundTransparency < 1 or child:IsA("GuiButton") or child:IsA("TextBox")) then
+			-- Empty transparent buttons can be layout/hit-test containers too.
+			-- Their visible children still block; their empty bounds do not.
+			if inside and paintsOverlay(child) then
 				return true
 			end
 			if (inside or not child.ClipsDescendants) and overlayContainsPointer(child, point) then
