@@ -53,7 +53,7 @@ local function populate(parent, path, fallback)
 		local camera = Instance.new("Camera", frame)
 		camera.FieldOfView = 35
 		local size = fallback.AbsoluteSize
-		local aspect = size.Y > 0 and size.X / size.Y or 1
+		local aspect = size.X > 0 and size.Y > 0 and size.X / size.Y or 1
 		local angle = math.atan(math.tan(math.rad(35)*0.5)*math.min(1,aspect))
 		local distance = math.max(radius / math.sin(angle)*1.12, 0.25)
 		camera.CFrame = CFrame.lookAt(Vector3.new(1,0.7,1).Unit*distance, Vector3.zero)
