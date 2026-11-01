@@ -12,7 +12,6 @@ local theme = StudioThemeService.SelectedTheme
 local TextService = game:GetService("TextService")
 local Selection = game:GetService("Selection")
 local PlaytestService = game:GetService("PlaytestService")
-local UserInputService = game:GetService("UserInputService")
 
 local colors = UI.colors
 local tokens = UI.tokens
@@ -87,7 +86,6 @@ UI.stroke(dropHighlight, colors.accent, 2, 0.2)
 
 local activeTool = renderer.Dimension == "2D" and "Select" or "Move"
 local snapEnabled = true
-local toolButtons = {}
 
 local handles = Instance.new("Handles")
 handles.Name = "ViewportHandles"
@@ -226,72 +224,6 @@ local uiEditor = UIEditor.new({
 	shortcuts = true,
 })
 
-local toolbar = UI.group(
-	viewportOverlay,
-	UDim2.fromOffset(renderer.Dimension == "2D" and 22 or 8, 8),
-	UDim2.fromOffset(34, (renderer.Dimension == "2D" and 5 or 4) * UI.metrics.toolbarButton + 2),
-	{
-		color = tokens.color.surface,
-		radius = tokens.radius.md,
-	}
-)
-toolbar.BackgroundTransparency = 0.5
-toolbar.Name = "TransformToolbar"
-
-local backdrop = Instance.new("UIBackdrop")
-backdrop.Parent = toolbar
-
-local tools3D = {
-	{
-		name = "Select",
-		icon = "Cursor.svg",
-		tooltip = "Select",
-	},
-	{
-		name = "Move",
-		icon = "Move.svg",
-		tooltip = "Move",
-	},
-	{
-		name = "Size",
-		icon = "Size.svg",
-		tooltip = "Resize",
-	},
-	{
-		name = "Rotate",
-		icon = "Rotate.svg",
-		tooltip = "Rotate",
-	},
-}
-
-local tools2D = {
-	{
-		name = "Select",
-		icon = "Cursor.svg",
-		tooltip = "Select",
-	},
-	{
-		name = "Move",
-		icon = "Move.svg",
-		tooltip = "Move",
-	},
-	{
-		name = "Rotate",
-		icon = "Rotate.svg",
-		tooltip = "Rotate",
-	},
-	{
-		name = "Size",
-		icon = "Size.svg",
-		tooltip = "Resize",
-	},
-	{
-		name = "Snap",
-		icon = "Snap.svg",
-		tooltip = "Toggle Snap",
-	},
-}
-
 local colorPicker
 local colorPickerController
 
@@ -313,15 +245,54 @@ end
 colorPicker, colorPickerController =
 	UI.colorPicker(viewportOverlay, UDim2.fromOffset(48, 99), UDim2.fromOffset(226, 286), selectedColor(), applyColor)
 
-local _, toolControls = UI.iconButtonGroup(viewportOverlay, UDim2.fromOffset(8, 8), {
+-- Transform toolbar (radio group; "Snap" is a toggle inside it in 2D)
+local toolButtonSize = Vector2.new(30, UI.metrics.toolbarButton)
+
+local toolItems = {
 	{ name = "Select", icon = iconRoot .. "Cursor.svg", tooltip = "Select", key = Enum.KeyCode.One },
 	{ name = "Move", icon = iconRoot .. "Move.svg", tooltip = "Move", key = Enum.KeyCode.Two },
 	{ name = "Size", icon = iconRoot .. "Size.svg", tooltip = "Resize", key = Enum.KeyCode.Three },
 	{ name = "Rotate", icon = iconRoot .. "Rotate.svg", tooltip = "Rotate", key = Enum.KeyCode.Four },
-}, { orientation = "vertical", mode = "radio", selected = "Move", buttonSize = Vector2.new(30, 30) })
+}
 
-toolControls.Changed:Connect(function(name)
+if renderer.Dimension == "2D" then
+	table.insert(toolItems, { separator = true })
+	table.insert(toolItems, {
+		name = "Snap",
+		icon = iconRoot .. "Snap.svg",
+		tooltip = "Toggle Snap",
+		toggle = true,
+		active = snapEnabled,
+	})
+end
+
+local toolbar, toolControls =
+	UI.iconButtonGroup(viewportOverlay, UDim2.fromOffset(renderer.Dimension == "2D" and 22 or 8, 8), toolItems, {
+		name = "TransformToolbar",
+		orientation = "vertical",
+		mode = "radio",
+		selected = activeTool,
+		buttonSize = toolButtonSize,
+		iconSize = 18,
+		padding = 2,
+		gap = 2,
+		color = tokens.color.surface,
+		radius = tokens.radius.md,
+	})
+
+toolbar.BackgroundTransparency = 0.5
+
+local toolbarBackdrop = Instance.new("UIBackdrop")
+toolbarBackdrop.Parent = toolbar
+
+toolControls.Changed:Connect(function(name, value)
+	if name == "Snap" then
+		snapEnabled = value
+		return
+	end
+
 	activeTool = name
+	colorPicker.Visible = false
 	updateGizmos()
 end)
 
@@ -641,6 +612,8 @@ local API = {
 		end
 	end,
 
+	-- Goes through toolControls so the radio indicator, activeTool, gizmos and
+	-- color picker all update via the Changed handler above.
 	ActivateTool = function(tool: "select" | "size" | "rotate" | "position")
 		local tools = {
 			select = "Select",
@@ -654,10 +627,7 @@ local API = {
 			return
 		end
 
-		activeTool = target
-		colorPicker.Visible = false
-
-		updateGizmos()
+		toolControls:SetActive(target)
 	end,
 
 	ContainsPoint = function(point)
@@ -700,17 +670,5 @@ local API = {
 		return panel ~= nil and panel.Visible
 	end,
 }
-
-UserInputService.InputBegan:Connect(function(a0: InputObject, a1: boolean)
-	if a0.KeyCode == Enum.KeyCode.One then
-		API.ActivateTool("select")
-	elseif a0.KeyCode == Enum.KeyCode.Two then
-		API.ActivateTool("position")
-	elseif a0.KeyCode == Enum.KeyCode.Three then
-		API.ActivateTool("size")
-	elseif a0.KeyCode == Enum.KeyCode.Four then
-		API.ActivateTool("rotate")
-	end
-end)
 
 return API

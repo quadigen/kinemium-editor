@@ -125,7 +125,7 @@ return function(ctx)
 		end
 
 		local function isActive(record)
-			if mode == "radio" then
+			if mode == "radio" and not record.toggle then
 				return selected == record.name
 			end
 			return record.active == true
@@ -145,7 +145,7 @@ return function(ctx)
 				bgTransparency = 1
 			elseif record.pressed then
 				bgColor, bgTransparency = pressedColor, 0.4
-			elseif mode ~= "radio" and isActive(record) then
+			elseif (mode ~= "radio" or record.toggle) and isActive(record) then
 				bgColor, bgTransparency = activeColor, record.hovered and 0.0 or 0.1
 			elseif record.hovered then
 				bgColor, bgTransparency = hoverColor, 0.6
@@ -214,7 +214,7 @@ return function(ctx)
 		end
 
 		local function setActive(record, value, silent)
-			if mode == "radio" then
+			if mode == "radio" and not record.toggle then
 				if not value or selected == record.name then
 					return
 				end
@@ -244,7 +244,7 @@ return function(ctx)
 			end
 
 			local value = true
-			if mode == "radio" then
+			if mode == "radio" and not record.toggle then
 				setActive(record, true)
 				value = true
 			elseif record.toggle or mode == "toggle" then
@@ -410,10 +410,10 @@ return function(ctx)
 		end
 
 		function controller:GetActive(name)
-			if mode == "radio" then
+			local record = get(name)
+			if mode == "radio" and not (record and record.toggle) then
 				return selected
 			end
-			local record = get(name)
 			return record and record.active or false
 		end
 
