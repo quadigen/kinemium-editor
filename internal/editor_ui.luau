@@ -1594,6 +1594,7 @@ local componentModules = {
 	require("./Components/tooltip"),
 	require("./Components/collapsible"),
 	require("./Components/tabs"),
+	require("./Components/iconbuttongroup"),
 }
 
 local components = {

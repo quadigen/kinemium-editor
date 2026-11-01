@@ -154,7 +154,8 @@ return {
 				stud_frame.Size = UDim2.new(0, 22, 0, 22)
 				stud_frame.LayoutOrder = -10
 
-				local studInput = UI.input(studContainer, "1 Stud/s", UDim2.fromOffset(0, 0), UDim2.new(1, -24, 1, 0), {})
+				local studInput =
+					UI.input(studContainer, "1 Stud/s", UDim2.fromOffset(0, 0), UDim2.new(1, -24, 1, 0), {})
 
 				-- rotation
 				local rotationContainer =
@@ -199,6 +200,7 @@ return {
 				return panel
 			end,
 		},
+
 		{
 			type = "separator",
 		},

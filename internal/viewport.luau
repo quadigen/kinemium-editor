@@ -124,62 +124,7 @@ local function updateGizmos()
 	end
 end
 
-local playGroup = UI.group(header, UDim2.new(1, 0, 1, 0), UDim2.fromOffset(0, 0), {
-	color = tokens.color.surfaceAlt,
-	radius = tokens.radius.sm,
-})
-playGroup.AnchorPoint = Vector2.new(0.5, 0.5)
-playGroup.Position = UDim2.new(0.5, 0, 0.5, 0)
-playGroup.Size = UDim2.new(1, 0, 1, 0)
-
-local layout = Instance.new("UIListLayout")
-layout.FillDirection = Enum.FillDirection.Horizontal
-layout.HorizontalAlignment = Enum.HorizontalAlignment.Center
-layout.VerticalAlignment = Enum.VerticalAlignment.Center
-layout.Padding = UDim.new(0, 4)
-layout.Parent = playGroup
-
-local startSinglePlayer = false
-
-UI.iconButton(playGroup, iconRoot .. "Play.svg", UDim2.fromOffset(1, 1), UDim2.fromOffset(28, 21), function()
-	if startSinglePlayer then
-		PlaytestService:StartSinglePlayer()
-	else
-		PlaytestService:Start()
-	end
-end, {
-	color = tokens.color.surfaceAlt,
-	radius = tokens.radius.xs,
-	border = false,
-	iconSize = 14,
-})
-
-UI.separator(playGroup, UDim2.fromOffset(29, 3), UDim2.fromOffset(1, 17))
-
-UI.iconButton(playGroup, iconRoot .. "Stop.svg", UDim2.fromOffset(31, 1), UDim2.fromOffset(28, 21), function()
-	PlaytestService:Stop()
-end, {
-	color = tokens.color.surfaceAlt,
-	radius = tokens.radius.xs,
-	border = false,
-	iconSize = 14,
-})
-
-UI.separator(playGroup, UDim2.fromOffset(59, 3), UDim2.fromOffset(1, 17))
-
-local settingsBtn = UI.iconButton(
-	playGroup,
-	iconRoot .. "Settings.svg",
-	UDim2.fromOffset(60, 1),
-	UDim2.fromOffset(28, 21),
-	function() end,
-	{
-		color = tokens.color.surfaceAlt,
-		radius = tokens.radius.xs,
-		border = false,
-		iconSize = 14,
-	}
-)
+local settingsBtn = playControls:GetButton("Settings")
 
 local frame = Instance.new("ScrollingFrame")
 frame.Position =
@@ -222,13 +167,42 @@ local _, headless_client = UI.checkbox(frame, "Headless Client", UDim2.fromOffse
 	print(value)
 end)
 
-if PlaytestService["StartSinglePlayer"] then
-	print("Method StartSinglePlayer exists!")
-
-	local _, is_singleplayer = UI.checkbox(frame, "Is Singleplayer", UDim2.fromOffset(8, 8), false, function(value)
-		startSinglePlayer = true
-	end)
-end
+local startSinglePlayer = false
+local playGroup, playControls = UI.iconButtonGroup(header, UDim2.fromScale(0.5, 0.5), {
+	{
+		name = "Play",
+		icon = iconRoot .. "Play.svg",
+		tooltip = "Play",
+		key = Enum.KeyCode.F5,
+		onClick = function()
+			if startSinglePlayer then
+				PlaytestService:StartSinglePlayer()
+			else
+				PlaytestService:Start()
+			end
+		end,
+	},
+	{ separator = true },
+	{
+		name = "Stop",
+		icon = iconRoot .. "Stop.svg",
+		tooltip = "Stop",
+		key = Enum.KeyCode.F8,
+		onClick = function()
+			PlaytestService:Stop()
+		end,
+	},
+	{ separator = true },
+	{
+		name = "Settings",
+		icon = iconRoot .. "Settings.svg",
+		tooltip = "Playtest settings",
+		toggle = true,
+		onClick = function(open)
+			frame.Visible = open
+		end,
+	},
+}, { anchorPoint = Vector2.new(0.5, 0.5), color = tokens.color.surfaceAlt })
 
 local uiEditor = UIEditor.new({
 	overlay = viewportOverlay,
@@ -265,6 +239,11 @@ backdrop.Parent = toolbar
 
 local tools3D = {
 	{
+		name = "Select",
+		icon = "Cursor.svg",
+		tooltip = "Select",
+	},
+	{
 		name = "Move",
 		icon = "Move.svg",
 		tooltip = "Move",
@@ -278,11 +257,6 @@ local tools3D = {
 		name = "Rotate",
 		icon = "Rotate.svg",
 		tooltip = "Rotate",
-	},
-	{
-		name = "Paint",
-		icon = "ColorEffect.svg",
-		tooltip = "Color",
 	},
 }
 

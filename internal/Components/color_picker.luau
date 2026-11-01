@@ -122,8 +122,10 @@ return function(ctx)
 		hexInput.FocusLost:Connect(function()
 			applyHex()
 		end)
+
 		local swatches = UI.frame(picker, UDim2.fromOffset(10, 240), UDim2.new(1, -20, 0, 34), colors.panel, 0)
 		swatches.BackgroundTransparency = 1
+
 		local presetColors = {
 			Color3.fromRGB(255, 255, 255),
 			Color3.fromRGB(0, 0, 0),
