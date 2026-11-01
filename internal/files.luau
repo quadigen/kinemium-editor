@@ -1412,6 +1412,8 @@ return function(content, windowControls)
 				oldRightCanvasPosition = Vector2.new(0, 0)
 			end
 
+			KinePreview.Release(leftList)
+			KinePreview.Release(rightList)
 			UI.clear(leftList)
 			UI.clear(rightList)
 
@@ -1469,6 +1471,7 @@ return function(content, windowControls)
 		else
 			local oldCanvasPosition = list.CanvasPosition
 
+			KinePreview.Release(list)
 			UI.clear(list)
 
 			rowIndex = 0
@@ -2931,6 +2934,7 @@ return function(content, windowControls)
 
 			if wideMode then
 				if list and UI.isAlive(list) then
+					KinePreview.Release(list)
 					list:Destroy()
 				end
 
@@ -2944,10 +2948,12 @@ return function(content, windowControls)
 				)
 			else
 				if leftList and UI.isAlive(leftList) then
+					KinePreview.Release(leftList)
 					leftList:Destroy()
 				end
 
 				if rightList and UI.isAlive(rightList) then
+					KinePreview.Release(rightList)
 					rightList:Destroy()
 				end
 
@@ -3021,6 +3027,7 @@ return function(content, windowControls)
 		end,
 
 		Refresh = function()
+			KinePreview.Invalidate()
 			loadRoot()
 
 			expanded = {}
