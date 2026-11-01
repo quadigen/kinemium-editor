@@ -35,7 +35,6 @@ return function(ctx)
 		local iconSize = options.iconSize or 14
 		local animate = options.animate ~= false
 		local animateIn = animate and options.animateIn ~= false
-		local ripple = animate and options.ripple ~= false
 
 		local groupColor = options.color or tokens.color.surfaceAlt
 		local activeColor = options.activeColor or palette.accent or Color3.fromRGB(0, 120, 215)
@@ -132,6 +131,10 @@ return function(ctx)
 			return record.active == true
 		end
 
+		local function iconRestTransparency(record)
+			return record.disabled and 0.65 or 0
+		end
+
 		local function applyVisual(record, animated)
 			local button = record.button
 			local dur = (animate and animated) and 0.12 or 0
@@ -150,29 +153,8 @@ return function(ctx)
 
 			tween(button, { BackgroundColor3 = bgColor, BackgroundTransparency = bgTransparency }, dur)
 
-			local icon = record.icon
-			if icon then
-				tween(icon, { ImageTransparency = record.disabled and 0.65 or 0 }, dur)
-			end
-
-			local targetScale = 1
-			if record.disabled then
-				targetScale = 1
-			elseif record.pressed then
-				targetScale = 0.9
-			elseif record.hovered then
-				targetScale = 1.07
-			end
-
-			if dur > 0 then
-				tween(
-					record.scale,
-					{ Scale = targetScale },
-					record.pressed and 0.07 or 0.2,
-					record.pressed and Enum.EasingStyle.Quad or Enum.EasingStyle.Back
-				)
-			else
-				record.scale.Scale = targetScale
+			if record.icon and not record.fading then
+				tween(record.icon, { ImageTransparency = iconRestTransparency(record) }, dur)
 			end
 		end
 
@@ -201,31 +183,34 @@ return function(ctx)
 			end
 		end
 
-		local function playRipple(record)
-			if not ripple then
+		-- Fade a record's icon in (from invisible) after an optional delay
+		local function fadeIn(record, delay)
+			if not record.icon then
 				return
 			end
-			local button = record.button
-			local dot = UI.create("Frame", {
-				Name = "Ripple",
-				AnchorPoint = Vector2.new(0.5, 0.5),
-				Position = UDim2.fromScale(0.5, 0.5),
-				Size = UDim2.fromOffset(4, 4),
-				BackgroundColor3 = Color3.new(1, 1, 1),
-				BackgroundTransparency = 0.7,
-				ZIndex = button.ZIndex,
-				Active = false,
-			}, button)
-			UI.create("UICorner", { CornerRadius = UDim.new(1, 0) }, dot)
-
-			local d = math.max(button.AbsoluteSize.X, button.AbsoluteSize.Y) * 0.9
-			local t = tween(dot, {
-				Size = UDim2.fromOffset(d, d),
-				BackgroundTransparency = 1,
-			}, 0.35)
-			t.Completed:Once(function()
-				dot:Destroy()
+			record.fading = true
+			record.icon.ImageTransparency = 1
+			task.delay(delay or 0, function()
+				if destroyed then
+					return
+				end
+				record.fading = false
+				tween(record.icon, { ImageTransparency = iconRestTransparency(record) }, 0.25)
 			end)
+		end
+
+		local function fadeOut(record, onDone)
+			if not record.icon then
+				if onDone then
+					onDone()
+				end
+				return
+			end
+			record.fading = true
+			local t = tween(record.icon, { ImageTransparency = 1 }, 0.15)
+			if onDone then
+				t.Completed:Once(onDone)
+			end
 		end
 
 		local function setActive(record, value, silent)
@@ -257,8 +242,6 @@ return function(ctx)
 			if record.disabled or not record.visible then
 				return
 			end
-
-			playRipple(record)
 
 			local value = true
 			if mode == "radio" then
@@ -298,6 +281,7 @@ return function(ctx)
 					tooltipText = item.tooltip,
 					hovered = false,
 					pressed = false,
+					fading = false,
 				}
 
 				local button = UI.iconButton(
@@ -325,7 +309,6 @@ return function(ctx)
 
 				record.button = button
 				record.icon = findIcon(button)
-				record.scale = UI.create("UIScale", { Scale = animateIn and 0 or 1 }, button)
 
 				if item.tooltip then
 					local text = item.tooltip
@@ -380,19 +363,13 @@ return function(ctx)
 			task.defer(refreshIndicator, true)
 		end)
 
+		-- Staggered fade-in of the icons
 		local function playIn()
-			local delayStep = 0.04
 			local n = 0
 			for _, record in ipairs(order) do
 				if record.button then
+					fadeIn(record, n * 0.05)
 					n += 1
-					record.scale.Scale = 0
-					task.delay((n - 1) * delayStep, function()
-						if destroyed then
-							return
-						end
-						tween(record.scale, { Scale = 1 }, 0.3, Enum.EasingStyle.Back)
-					end)
 				end
 			end
 		end
@@ -473,12 +450,13 @@ return function(ctx)
 			if visible then
 				record.button.Visible = true
 				if animate then
-					record.scale.Scale = 0
-					tween(record.scale, { Scale = 1 }, 0.25, Enum.EasingStyle.Back)
+					fadeIn(record, 0)
+				else
+					record.fading = false
+					applyVisual(record, false)
 				end
 			elseif animate then
-				local t = tween(record.scale, { Scale = 0 }, 0.15)
-				t.Completed:Once(function()
+				fadeOut(record, function()
 					if not record.visible then
 						record.button.Visible = false
 					end
@@ -500,7 +478,7 @@ return function(ctx)
 			local out = tween(record.icon, { ImageTransparency = 1 }, 0.08)
 			out.Completed:Once(function()
 				record.icon.Image = image
-				tween(record.icon, { ImageTransparency = record.disabled and 0.65 or 0 }, 0.12)
+				tween(record.icon, { ImageTransparency = iconRestTransparency(record) }, 0.12)
 			end)
 		end
 
@@ -560,14 +538,18 @@ return function(ctx)
 			end
 		end
 
+		-- Attention flash: briefly lights the button with the accent color, then settles
 		function controller:Pulse(name)
 			local record = get(name)
 			if not record or not animate then
 				return
 			end
-			local up = tween(record.scale, { Scale = 1.25 }, 0.12)
-			up.Completed:Once(function()
-				tween(record.scale, { Scale = 1 }, 0.3, Enum.EasingStyle.Elastic)
+			record.button.BackgroundColor3 = activeColor
+			record.button.BackgroundTransparency = 0.2
+			task.delay(0.12, function()
+				if not destroyed then
+					applyVisual(record, true)
+				end
 			end)
 		end
 
@@ -585,7 +567,7 @@ return function(ctx)
 			end
 			for _, record in ipairs(order) do
 				if record.button then
-					tween(record.scale, { Scale = 0 }, 0.15)
+					fadeOut(record)
 				end
 			end
 			task.delay(0.16, function()
