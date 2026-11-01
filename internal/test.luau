@@ -3,6 +3,7 @@ material.Name = "Copper"
 material.Color = Color3.fromRGB(184, 115, 51)
 material.Roughness = 0.3
 material.Metalness = 0.9
+material.Parent = workspace
 
 local part = Instance.new("Part", workspace)
 part.Name = "MyPart"
