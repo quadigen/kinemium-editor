@@ -389,26 +389,29 @@ if renderer.Dimension == "3D" then
 
 	local shown = 0
 	for _, materialName in ipairs(materialNames) do
-		print(materialName)
-		local button = UI.button(list, "", UDim2.fromOffset(0, 0), UDim2.fromOffset(40, 40), {
-			color = tokens.color.surfaceAlt,
-			radius = tokens.radius.sm,
-		})
+		local success, result = pcall(function(...)
+			print(materialName)
+			local button = UI.button(list, "", UDim2.fromOffset(0, 0), UDim2.fromOffset(40, 40), {
+				color = tokens.color.surfaceAlt,
+				radius = tokens.radius.sm,
+			})
 
-		local preview = Instance.new("ViewportFrame", button)
-		preview.Size = UDim2.fromScale(1, 1)
-		preview.BackgroundTransparency = 1
+			local preview = Instance.new("ViewportFrame", button)
+			preview.Size = UDim2.fromScale(1, 1)
+			preview.BackgroundTransparency = 1
 
-		local camera = Instance.new("Camera", preview)
-		camera.CFrame = CFrame.lookAt(Vector3.new(5, 3, 6), Vector3.zero)
-		camera.FieldOfView = 45
-		preview.CurrentCamera = camera
+			local camera = Instance.new("Camera", preview)
+			camera.CFrame = CFrame.lookAt(Vector3.new(5, 3, 6), Vector3.zero)
+			camera.FieldOfView = 45
+			preview.CurrentCamera = camera
 
-		local part = Instance.new("Part", preview)
-		part.Size = Vector3.new(3, 3, 3)
-		part.Shape = Enum.PartType.Ball
-		part.Material = materialName
-		print("finished")
+			local part = Instance.new("Part", preview)
+			part.Size = Vector3.new(3, 3, 3)
+			part.Shape = Enum.PartType.Ball
+			part.Material = materialName
+			print("finished")
+		end)
+		print(success, result)
 	end
 
 	list.CanvasSize = UDim2.fromOffset(0, shown * (rowHeight + rowGap))
