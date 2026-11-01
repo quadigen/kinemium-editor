@@ -285,6 +285,23 @@ toolbar.BackgroundTransparency = 0.5
 local toolbarBackdrop = Instance.new("UIBackdrop")
 toolbarBackdrop.Parent = toolbar
 
+-- Style toolbar (Material / Color), 3D only. Sits 10px below the transform toolbar.
+local styleBar, styleControls
+local materialMenu
+
+local function closeMenus()
+	colorPicker.Visible = false
+
+	if materialMenu then
+		materialMenu.Visible = false
+	end
+
+	if styleControls then
+		styleControls:SetActive("Material", false, true)
+		styleControls:SetActive("Color", false, true)
+	end
+end
+
 toolControls.Changed:Connect(function(name, value)
 	if name == "Snap" then
 		snapEnabled = value
@@ -292,9 +309,152 @@ toolControls.Changed:Connect(function(name, value)
 	end
 
 	activeTool = name
-	colorPicker.Visible = false
+	closeMenus()
 	updateGizmos()
 end)
+
+local STYLE_BAR_GAP = 10
+local MENU_GAP = 8
+
+if renderer.Dimension == "3D" then
+	local function applyMaterial(material)
+		local object = selectedPart()
+		if object and (object:IsA("Part") or object:IsA("MeshPart")) then
+			object.Material = material
+		end
+	end
+
+	styleBar, styleControls = UI.iconButtonGroup(viewportOverlay, UDim2.fromOffset(8, 8), {
+		{ name = "Material", icon = iconRoot .. "Material.svg", tooltip = "Material", toggle = true },
+		{ name = "Color", icon = iconRoot .. "ColorEffect.svg", tooltip = "Color", toggle = true },
+	}, {
+		name = "StyleToolbar",
+		orientation = "vertical",
+		buttonSize = toolButtonSize,
+		iconSize = 18,
+		padding = 2,
+		gap = 2,
+		color = tokens.color.surface,
+		radius = tokens.radius.md,
+	})
+
+	styleBar.BackgroundTransparency = 0.5
+
+	local styleBackdrop = Instance.new("UIBackdrop")
+	styleBackdrop.Parent = styleBar
+
+	-- Material menu: scrollable list of materials
+	local materialNames = {
+		"Plastic",
+		"SmoothPlastic",
+		"Wood",
+		"WoodPlanks",
+		"Metal",
+		"DiamondPlate",
+		"CorrodedMetal",
+		"Concrete",
+		"Brick",
+		"Cobblestone",
+		"Granite",
+		"Marble",
+		"Slate",
+		"Sand",
+		"Grass",
+		"Ice",
+		"Glass",
+		"Neon",
+		"Fabric",
+		"Foil",
+	}
+
+	local rowHeight, rowGap = 24, 2
+
+	materialMenu = UI.group(viewportOverlay, UDim2.fromOffset(0, 0), UDim2.fromOffset(180, 230), {
+		color = tokens.color.surface,
+		radius = tokens.radius.md,
+	})
+	materialMenu.Name = "MaterialMenu"
+	materialMenu.BackgroundTransparency = 0.5
+	materialMenu.Visible = false
+	materialMenu.ZIndex = 20
+
+	local materialBackdrop = Instance.new("UIBackdrop")
+	materialBackdrop.Parent = materialMenu
+
+	local list = Instance.new("ScrollingFrame")
+	list.Name = "MaterialList"
+	list.Position = UDim2.fromOffset(6, 6)
+	list.Size = UDim2.new(1, -12, 1, -12)
+	list.BackgroundTransparency = 1
+	list.BorderSizePixel = 0
+	list.ScrollBarThickness = 3
+	list.ZIndex = materialMenu.ZIndex + 1
+	list.Parent = materialMenu
+
+	local listLayout = Instance.new("UIListLayout")
+	listLayout.SortOrder = Enum.SortOrder.LayoutOrder
+	listLayout.Padding = UDim.new(0, rowGap)
+	listLayout.Parent = list
+
+	local shown = 0
+	for _, materialName in ipairs(materialNames) do
+		local ok, material = pcall(function()
+			return Enum.Material[materialName]
+		end)
+
+		if ok and material then
+			shown += 1
+
+			local row = UI.button(list, materialName, UDim2.fromOffset(0, 0), UDim2.new(1, -8, 0, rowHeight), function()
+				applyMaterial(material)
+			end, {
+				color = tokens.color.surface,
+				hoverColor = colors.hover,
+				radius = tokens.radius.sm,
+				border = false,
+			})
+
+			row.LayoutOrder = shown
+			row.BackgroundTransparency = 1
+		end
+	end
+
+	list.CanvasSize = UDim2.fromOffset(0, shown * (rowHeight + rowGap))
+
+	-- Only one menu open at a time
+	styleControls.Changed:Connect(function(name, open)
+		if name == "Material" then
+			materialMenu.Visible = open
+			if open then
+				colorPicker.Visible = false
+				styleControls:SetActive("Color", false, true)
+			end
+		elseif name == "Color" then
+			colorPicker.Visible = open
+			if open then
+				colorPickerController:SetColor(selectedColor(), true)
+				materialMenu.Visible = false
+				styleControls:SetActive("Material", false, true)
+			end
+		end
+	end)
+end
+
+-- Keeps an open menu beside its button, clamped inside the viewport overlay
+local function placeMenu(menu, buttonName)
+	if not menu or not styleControls or not menu.Visible then
+		return
+	end
+
+	local button = styleControls:GetButton(buttonName)
+	local origin = viewportOverlay.AbsolutePosition
+
+	local x = styleBar.AbsolutePosition.X - origin.X + styleBar.AbsoluteSize.X + MENU_GAP
+	local y = button.AbsolutePosition.Y - origin.Y
+	local maxY = viewportOverlay.AbsoluteSize.Y - menu.AbsoluteSize.Y - 8
+
+	menu.Position = UDim2.fromOffset(x, math.max(8, math.min(y, maxY)))
+end
 
 local breadcrumb = UI.group(viewportOverlay, UDim2.new(0, 8, 1, -30), UDim2.new(1, -16, 0, 26), {
 	color = tokens.color.surface,
@@ -454,6 +614,15 @@ renderer.Pool.new("2d", function()
 
 		scriptRoot.Visible = hasDocument
 		toolbar.Visible = not hasDocument
+
+		if styleBar then
+			styleBar.Visible = not hasDocument
+		end
+
+		if hasDocument then
+			closeMenus()
+		end
+
 		breadcrumb.Visible = not hasDocument and renderer.Dimension == "3D"
 
 		editor:updateVisibility()
@@ -549,6 +718,17 @@ renderer.Pool.new("2da", function()
 	local overlayInset = math.max(0, renderTop - absoluteY)
 
 	toolbar.Position = UDim2.fromOffset(renderer.Dimension == "2D" and 22 or 8, 8 + overlayInset)
+
+	if styleBar then
+		-- toolbar's height can animate, so follow its live size
+		styleBar.Position = UDim2.fromOffset(
+			toolbar.Position.X.Offset,
+			toolbar.Position.Y.Offset + toolbar.AbsoluteSize.Y + STYLE_BAR_GAP
+		)
+
+		placeMenu(colorPicker, "Color")
+		placeMenu(materialMenu, "Material")
+	end
 
 	for _, object in ipairs(game.StarterGui:GetChildren()) do
 		if object:IsA("ScreenGui") then
