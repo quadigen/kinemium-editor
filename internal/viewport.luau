@@ -258,8 +258,10 @@ local toolbar = UI.group(
 	}
 )
 toolbar.BackgroundTransparency = 0.5
-
 toolbar.Name = "TransformToolbar"
+
+local backdrop = Instance.new("UIBackdrop")
+backdrop.Parent = toolbar
 
 local tools3D = {
 	{
@@ -382,7 +384,7 @@ for index, definition in ipairs(renderer.Dimension == "2D" and tools2D or tools3
 	toolButtons[current.name] = record
 
 	if index > 1 then
-		UI.separator(toolbar, UDim2.fromOffset(5, (index - 1) * UI.metrics.toolbarButton), UDim2.fromOffset(24, 1))
+		--UI.separator(toolbar, UDim2.fromOffset(5, (index - 1) * UI.metrics.toolbarButton), UDim2.fromOffset(24, 1))
 	end
 end
 
