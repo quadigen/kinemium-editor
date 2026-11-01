@@ -389,7 +389,7 @@ if renderer.Dimension == "3D" then
 
 	local shown = 0
 	for _, materialName in ipairs(materialNames) do
-		local button = UI.button(list, "", UDim2.fromOffset(0, 0), UDim2.fromOffset(1, rowHeight), {
+		local button = UI.button(list, "", UDim2.fromOffset(0, 0), UDim2.fromOffset(40, 40), {
 			color = tokens.color.surfaceAlt,
 			radius = tokens.radius.sm,
 		})
