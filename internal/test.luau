@@ -219,3 +219,9 @@ RunService.Heartbeat:Connect(function(dt)
 end)
 
 print(snow.Compiled, snow.LastError) -- compiles on first draw, so check again after a frame
+
+local part = Instance.new("Part")
+part.Size = Vector3.new(4, 1, 4)
+part.Position = Vector3.new(0, 0.5, 0)
+part.MaterialVariant = "FootprintSnow"
+part.Parent = workspace
