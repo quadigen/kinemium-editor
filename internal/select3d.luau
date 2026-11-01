@@ -7,6 +7,8 @@ local Selection = game:GetService("Selection")
 local UserInputService = game:GetService("UserInputService")
 
 local editor_ui = require("@internal/editor_ui")
+local viewport = require("@internal/viewport")
+local picker = require("@internal/picker")
 local tokens = editor_ui.tokens
 
 local MAX_PICK_SIZE = 100
@@ -319,6 +321,44 @@ UserInputService.InputChanged:Connect(function(input, processed)
 		mouseOverGui = processed == true
 	end
 end)
+
+-- The engine's processed flag ignores passive panels and transparent hit
+-- targets. Test overlay geometry too, before selection changes can dismiss UI.
+local function overlayContainsPointer(root: Instance, point: Vector2): boolean
+	for _, child in ipairs(root:GetChildren()) do
+		if child:IsA("GuiObject") then
+			if not child.Visible or child == (hud and hud.bar) or child == (readout and readout.frame) then
+				continue
+			end
+			local position, size = child.AbsolutePosition, child.AbsoluteSize
+			local inside = point.X >= position.X and point.X < position.X + size.X
+				and point.Y >= position.Y and point.Y < position.Y + size.Y
+			if inside and (child.BackgroundTransparency < 1 or child:IsA("GuiButton") or child:IsA("TextBox")) then
+				return true
+			end
+			if (inside or not child.ClipsDescendants) and overlayContainsPointer(child, point) then
+				return true
+			end
+		end
+	end
+	return false
+end
+
+local function canUseViewport(): boolean
+	if picker.isActive() then
+		return false
+	end
+	local point = UserInputService:GetMouseLocation()
+	if not viewport.ContainsPoint(point) then
+		return false
+	end
+	for _, root in ipairs(game.CoreGui:GetChildren()) do
+		if root:IsA("ScreenGui") and root.Enabled and root.RenderOnTop and overlayContainsPointer(root, point) then
+			return false
+		end
+	end
+	return true
+end
 
 local function isOutOfBounds(num: number)
 	return num >= MAX_PICK_SIZE
@@ -714,6 +754,7 @@ RunService.RenderStepped:Connect(function()
 
 	if
 		mouseOverGui
+		or not canUseViewport()
 		or gizmoCapturesMouse()
 		or UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton2)
 	then
@@ -771,7 +812,7 @@ UserInputService.InputBegan:Connect(function(input, processed)
 	end
 
 	if input.UserInputType == Enum.UserInputType.MouseButton1 then
-		if gizmoCapturesMouse() then
+		if not canUseViewport() or gizmoCapturesMouse() then
 			return
 		end
 
@@ -787,6 +828,9 @@ UserInputService.InputBegan:Connect(function(input, processed)
 	end
 
 	if input.UserInputType ~= Enum.UserInputType.Keyboard then
+		return
+	end
+	if UserInputService:GetFocusedTextBox() ~= nil or picker.isActive() then
 		return
 	end
 
@@ -842,7 +886,8 @@ UserInputService.InputEnded:Connect(function(input, processed)
 		else
 			drag.pending = false
 		end
-	elseif input.KeyCode == Enum.KeyCode.F and not processed then
+	elseif input.KeyCode == Enum.KeyCode.F and not processed and canUseViewport()
+		and UserInputService:GetFocusedTextBox() == nil then
 		local selection = Selection:Get()[1]
 		if selection then
 			focusOn(selection)
