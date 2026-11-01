@@ -348,8 +348,6 @@ if renderer.Dimension == "3D" then
 		Enum.Material.Wood,
 		Enum.Material.Concrete,
 		Enum.Material.Brick,
-		Enum.Material.Marble,
-		Enum.Material.Slate,
 		Enum.Material.Sand,
 		Enum.Material.Grass,
 		Enum.Material.Ice,
