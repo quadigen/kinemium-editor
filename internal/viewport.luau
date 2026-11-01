@@ -410,6 +410,8 @@ if renderer.Dimension == "3D" then
 		camera.FieldOfView = 45
 		preview.CurrentCamera = camera
 
+		print(Enum.Material:FromName(materialName))
+		print(materialName)
 		local part = Instance.new("Part", preview)
 		part.Size = Vector3.new(3, 3, 3)
 		part.Shape = Enum.PartType.Ball
