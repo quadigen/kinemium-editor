@@ -37,6 +37,7 @@ return function(ctx)
 			Color3.fromHSV(hue, 1, 1),
 			UI.tokens.radius.xs
 		)
+		square.BackgroundTransparency = 1
 		square.ClipsDescendants = true
 		local saturationLayer = UI.frame(square, UDim2.fromScale(0, 0), UDim2.fromScale(1, 1), Color3.new(1, 1, 1), 0)
 		UI.create("UIGradient", {
