@@ -4,7 +4,7 @@ end
 
 local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
-local MaterialService = game:GetService("MaterialService")
+local MaterialService = game:GetService("Raytracer")
 
 local CHEVRON = "builtin://global-icons/chevron-down.svg"
 
