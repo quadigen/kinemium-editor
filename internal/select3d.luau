@@ -509,7 +509,6 @@ local gizmo = {
 
 local function gizmoDragging(): boolean
 	for _, name in ipairs(GIZMO_ADORNMENT_NAMES) do
-		print(workspace)
 		local adornment = workspace:FindFirstChild(name)
 		if adornment and adornment.Visible and adornment.Dragging then
 			return true
