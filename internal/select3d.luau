@@ -352,8 +352,10 @@ local function overlayContainsPointer(root: Instance, point: Vector2): boolean
 				continue
 			end
 			local position, size = child.AbsolutePosition, child.AbsoluteSize
-			local inside = point.X >= position.X and point.X < position.X + size.X
-				and point.Y >= position.Y and point.Y < position.Y + size.Y
+			local inside = point.X >= position.X
+				and point.X < position.X + size.X
+				and point.Y >= position.Y
+				and point.Y < position.Y + size.Y
 			-- Empty transparent buttons can be layout/hit-test containers too.
 			-- Their visible children still block; their empty bounds do not.
 			if inside and paintsOverlay(child) then
@@ -507,6 +509,7 @@ local gizmo = {
 
 local function gizmoDragging(): boolean
 	for _, name in ipairs(GIZMO_ADORNMENT_NAMES) do
+		print(workspace)
 		local adornment = workspace:FindFirstChild(name)
 		if adornment and adornment.Visible and adornment.Dragging then
 			return true
@@ -912,8 +915,12 @@ UserInputService.InputEnded:Connect(function(input, processed)
 		else
 			drag.pending = false
 		end
-	elseif input.KeyCode == Enum.KeyCode.F and not processed and canUseViewport()
-		and UserInputService:GetFocusedTextBox() == nil then
+	elseif
+		input.KeyCode == Enum.KeyCode.F
+		and not processed
+		and canUseViewport()
+		and UserInputService:GetFocusedTextBox() == nil
+	then
 		local selection = Selection:Get()[1]
 		if selection then
 			focusOn(selection)
