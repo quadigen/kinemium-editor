@@ -6,6 +6,7 @@ local export_service = game:GetService("ExportService")
 local dialog = game:GetService("DialogService")
 local UI = require("@internal/editor_ui")
 local util = require("@internal/util")
+local HttpService = game:GetService("HttpService")
 
 return {
 	name = "File",
@@ -13,6 +14,12 @@ return {
 		{
 			name = "Project Settings",
 			route = "new_project",
+		},
+		{
+			name = "Report Bug",
+			callback = function()
+				HttpService:OpenURL("https://github.com/quadigen/canary-recode/issues/new")
+			end,
 		},
 		{
 			name = "Import Object",
