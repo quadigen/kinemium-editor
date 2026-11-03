@@ -63,7 +63,7 @@ return function(ctx)
 				end
 			end
 
-			if record["callback"] then
+			if record["callback"] and type(record["callback"]) == "function" then
 				record["callback"]()
 			end
 		end)

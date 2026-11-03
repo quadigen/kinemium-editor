@@ -463,6 +463,8 @@ local function treeHash(parent)
 end
 
 local lastHash = ""
+local nextTreeCheck = 0
+local TREE_CHECK_INTERVAL = 0.1
 local rebuilding = false
 local rebuild
 
@@ -728,12 +730,12 @@ local function addRow(instance, depth, y)
 
 	local rowColor = rowIndex % 2 == 0 and tokens.color.rowEven or tokens.color.rowOdd
 
-	local row = UI.button(list, "", UDim2.fromOffset(1, y), UDim2.new(1, -2, 0, UI.metrics.treeRow), nil, {
-		color = isSelected and colors.selection or rowColor,
+	local row, _, button = UI.button(list, "", UDim2.fromOffset(1, y), UDim2.new(1, -2, 0, UI.metrics.treeRow), nil, {
+		color = rowColor,
 
-		hoverColor = isSelected and colors.selection or colors.hover,
+		hoverColor = colors.hover,
 
-		radius = isSelected and tokens.radius.sm or 0,
+		radius = 0,
 
 		border = false,
 
@@ -805,10 +807,13 @@ local function addRow(instance, depth, y)
 		}
 	end)
 
+	row.Name = "ExplorerRow"
 	row.BackgroundTransparency = isSelected and 0 or 0.12
 
 	rowRegistry[instance] = {
 		row = row,
+		button = button,
+		corner = UI.corner(row, isSelected and tokens.radius.sm or 0),
 		depth = depth,
 		y = y,
 		baseTransparency = row.BackgroundTransparency,
@@ -830,7 +835,7 @@ local function addRow(instance, depth, y)
 
 	UI.image(row, iconPathFor(instance), UDim2.fromOffset(indent + 16, 3), UDim2.fromOffset(14, 14))
 
-	UI.label(
+	rowRegistry[instance].label = UI.label(
 		row,
 		instance.Name,
 		UDim2.fromOffset(indent + 31, 2),
@@ -911,8 +916,35 @@ rebuild = function()
 	rebuilding = false
 end
 
+local function updateRowSelection(instance, selected)
+	local entry = rowRegistry[instance]
+	if not entry or not UI.isAlive(entry.row) then
+		return
+	end
+
+	UI.setButtonState(entry.button, selected and "selected" or nil)
+	entry.corner.CornerRadius = UDim.new(0, selected and tokens.radius.sm or 0)
+	entry.label.TextColor3 = selected and tokens.color.text or colors.text
+	entry.baseTransparency = selected and 0 or 0.12
+	if not entry.dropTarget then
+		entry.row.BackgroundTransparency = entry.baseTransparency
+	end
+end
+
 Selection.SelectionChanged:Connect(function()
-	lastHash = ""
+	local nextSelected = {}
+	for _, instance in ipairs(Selection:Get()) do
+		nextSelected[instance] = true
+		if not selectedSet[instance] then
+			updateRowSelection(instance, true)
+		end
+	end
+	for instance in pairs(selectedSet) do
+		if not nextSelected[instance] then
+			updateRowSelection(instance, false)
+		end
+	end
+	selectedSet = nextSelected
 end)
 
 searchField.TextChanged:Connect(function()
@@ -1693,12 +1725,13 @@ renderer.Pool.new("2d", function()
 		panel.Position = theme.ExplorerCoordinates.Position
 	end
 
-	local names = {}
-	for _, object in ipairs(Selection:Get() or {}) do
-		names[#names + 1] = object:GetFullName()
+	local now = os.clock()
+	if lastHash ~= "" and now < nextTreeCheck then
+		return
 	end
+	nextTreeCheck = now + TREE_CHECK_INTERVAL
 
-	local hash = treeHash(game) .. "#" .. table.concat(names, "|")
+	local hash = treeHash(game)
 
 	if hash ~= lastHash then
 		lastHash = hash
