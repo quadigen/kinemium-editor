@@ -41,6 +41,8 @@ end
 return function(page, windowControls, gui)
 	local BUTTON_SIZE = 28
 	local GAP = 6
+	local CARD_HEIGHT = 90
+	local LIST_PADDING = 10
 	local DOUBLE_CLICK = 0.35
 
 	local projectsPage = windowControls.pages.Projects
@@ -496,18 +498,30 @@ return function(page, windowControls, gui)
 	list.HorizontalAlignment = Enum.HorizontalAlignment.Center
 	list.VerticalAlignment = Enum.VerticalAlignment.Top
 	list.Padding = UDim.new(0, 6)
-	list.PaddingLeft = UDim.new(0, 10)
-	list.PaddingRight = UDim.new(0, 10)
-	list.PaddingTop = UDim.new(0, 10)
-	list.PaddingBottom = UDim.new(0, 10)
 	list.SortOrder = Enum.SortOrder.LayoutOrder
-	list.Wraps = true
-	list.LinePadding = UDim.new(0, 8)
-	list.MaxItemsPerLine = 5
-	list.Parent = projectsList
+
+	local cards = UI.create("ScrollingFrame", {
+		Name = "ProjectCards",
+		Position = UDim2.fromOffset(LIST_PADDING, LIST_PADDING + BUTTON_SIZE + GAP),
+		Size = UDim2.new(1, -LIST_PADDING * 2, 1, -(LIST_PADDING * 2 + BUTTON_SIZE + GAP)),
+		BackgroundTransparency = 1,
+		BorderSizePixel = 0,
+		CanvasSize = UDim2.fromOffset(0, 0),
+		ScrollingDirection = Enum.ScrollingDirection.Y,
+		ScrollBarThickness = 5,
+		ScrollBarImageColor3 = tokens.color.subtext,
+		ClipsDescendants = true,
+	}, projectsList)
+	list.Parent = cards
 
 	local controls =
-		UI.frame(projectsList, UDim2.new(0, 0, 0, 0), UDim2.new(1, -20, 0, BUTTON_SIZE), tokens.color.surfaceAlt, 0)
+		UI.frame(
+			projectsList,
+			UDim2.fromOffset(LIST_PADDING, LIST_PADDING),
+			UDim2.new(1, -LIST_PADDING * 2, 0, BUTTON_SIZE),
+			tokens.color.surfaceAlt,
+			0
+		)
 
 	controls.BackgroundTransparency = 1
 	controls.LayoutOrder = 0
@@ -657,7 +671,7 @@ return function(page, windowControls, gui)
 		local lastClick = 0
 
 		local card, _, record
-		card, _, record = UI.button(projectsList, "", UDim2.new(0, 0, 0, 0), UDim2.new(1, -20, 0, 90), function()
+		card, _, record = UI.button(cards, "", UDim2.fromOffset(0, 0), UDim2.new(1, -8, 0, CARD_HEIGHT), function()
 			local now = os.clock()
 
 			if now - lastClick < DOUBLE_CLICK then
@@ -676,7 +690,7 @@ return function(page, windowControls, gui)
 			hoverColor = tokens.color.surface,
 			pressedColor = tokens.color.surface,
 		})
-		card.Parent = projectsList
+		card.Parent = cards
 		card.LayoutOrder = order
 
 		local iconFrame = UI.frame(card, UDim2.new(0, 8, 0.5, 0), UDim2.fromOffset(74, 74), tokens.color.surfaceAlt, 8)
@@ -768,6 +782,8 @@ return function(page, windowControls, gui)
 			end
 		end
 
+		cards.CanvasSize = UDim2.fromOffset(0, order * CARD_HEIGHT + math.max(order - 1, 0) * GAP)
+
 		if not selectionStillVisible then
 			selectedProject = nil
 		end
@@ -775,7 +791,10 @@ return function(page, windowControls, gui)
 		applySelection()
 	end
 
-	search.TextChanged:Connect(refreshList)
+	search.TextChanged:Connect(function()
+		cards.CanvasPosition = Vector2.new(0, 0)
+		refreshList()
+	end)
 
 	refreshList()
 end
