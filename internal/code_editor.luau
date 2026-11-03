@@ -74,11 +74,12 @@ local SUGGEST_PADDING = 4
 local SUGGEST_ICON_SIZE = 12
 local SUGGEST_LINE_HEIGHT = 22
 
-local DIAGNOSTIC_WIDTH = 320
+local DIAGNOSTIC_WIDTH = 500
+local DIAGNOSTIC_FOOTER_HEIGHT = 30
+local DIAGNOSTIC_FONT = "builtin://fonts/JetBrainsMono-Regular.ttf"
 local DIAGNOSTIC_DELAY = 0.18
 
 local CODE_CHAR_WIDTH = 8
-local SUPPRESS_ON_CURRENT_LINE = false
 
 local TRIM_ON_SAVE = true
 local AUTO_CLOSE_PAIRS = true
@@ -1682,7 +1683,9 @@ local function moduleExports(instance)
 	if module ~= nil then
 		local prefix = "%f[%w_]" .. module .. "%s*"
 		tableStart = string.match(code, prefix .. "=%s*(){")
-		for sep, name, arguments in string.gmatch(code, "%f[%w_]function%s+" .. prefix .. "([.:])%s*([%a_][%w_]*)%s*(%b())") do
+		for sep, name, arguments in
+			string.gmatch(code, "%f[%w_]function%s+" .. prefix .. "([.:])%s*([%a_][%w_]*)%s*(%b())")
+		do
 			add(name, string.sub(arguments, 2, -2), sep == ":")
 		end
 		for name, position in string.gmatch(code, prefix .. "%.%s*([%a_][%w_]*)%s*=%s*()") do
@@ -1746,8 +1749,16 @@ local function requireCandidates(prefix, document)
 	local candidates = {}
 	local scriptInstance = document and document.instance
 	local pending = {}
-	for _, name in ipairs({ "Workspace", "ReplicatedStorage", "ReplicatedFirst", "ServerStorage",
-		"ServerScriptService", "StarterPlayer", "StarterGui", "StarterPack" }) do
+	for _, name in ipairs({
+		"Workspace",
+		"ReplicatedStorage",
+		"ReplicatedFirst",
+		"ServerStorage",
+		"ServerScriptService",
+		"StarterPlayer",
+		"StarterGui",
+		"StarterPack",
+	}) do
 		local root = game:FindFirstChild(name)
 		if root ~= nil then
 			table.insert(pending, root)
@@ -2046,7 +2057,6 @@ local function collectAliases(source)
 
 	return aliases
 end
-
 
 -- Luau follows lexical aliases in its AST. This resolver only maps the
 -- supported instance lookups to source and never runs the target ModuleScript.
@@ -2432,6 +2442,8 @@ function CodeEditor.new(parent)
 	self.currentDiagnostic = nil
 	self.diagnosticActive = false
 	self.diagnosticShown = nil
+	self.diagnosticBounds = nil
+	self.diagnosticAutomatic = false
 	self.diagnosticPinned = false
 	self.pinnedCursor = nil
 	self.lastMouse = Vector2.new(0, 0)
@@ -2587,7 +2599,7 @@ function CodeEditor.new(parent)
 	diagnostic.ZIndex = 100
 
 	self:bindTheme(diagnostic, "BackgroundColor3", "panel")
-	self:addStroke(diagnostic, "error", 1, 0.35)
+	self:addStroke(diagnostic, "border", 1, 0)
 	self:bindTheme(
 		UI.create("UIShadow", {
 			BlurRadius = UDim.new(0, 8),
@@ -2600,25 +2612,34 @@ function CodeEditor.new(parent)
 		"canvas"
 	)
 
-	local diagnosticTitle = UI.label(
+	local diagnosticBody = UI.frame(
 		diagnostic,
-		"Syntax error",
-		UDim2.fromOffset(10, 6),
-		UDim2.new(1, -20, 0, 15),
-		fontSize("caption"),
-		C("error")
+		UDim2.fromOffset(0, 0),
+		UDim2.new(1, 0, 1, -DIAGNOSTIC_FOOTER_HEIGHT),
+		C("error"),
+		0
 	)
+	diagnosticBody.BackgroundTransparency = 0.85
+	diagnosticBody.ZIndex = 101
+	self:bindTheme(diagnosticBody, "BackgroundColor3", "error")
 
-	diagnosticTitle.ZIndex = 101
-	self:bindTheme(diagnosticTitle, "TextColor3", "error")
-
-	local diagnosticText =
-		UI.label(diagnostic, "", UDim2.fromOffset(10, 24), UDim2.new(1, -20, 1, -30), fontSize("small"), C("text"))
-
+	local diagnosticText = UI.label(
+		diagnosticBody, "", UDim2.fromOffset(12, 9), UDim2.new(1, -24, 1, -18),
+		fontSize("small"), C("text")
+	)
+	diagnosticText.FontFace = Font.new(DIAGNOSTIC_FONT)
 	diagnosticText.TextWrapped = true
 	diagnosticText.TextYAlignment = Enum.TextYAlignment.Top
-	diagnosticText.ZIndex = 101
+	diagnosticText.ZIndex = 102
 	self:bindTheme(diagnosticText, "TextColor3", "text")
+
+	local diagnosticTitle = UI.label(
+		diagnostic, "", UDim2.new(0, 12, 1, -DIAGNOSTIC_FOOTER_HEIGHT),
+		UDim2.new(1, -24, 0, DIAGNOSTIC_FOOTER_HEIGHT), fontSize("caption"), C("subtext")
+	)
+	diagnosticTitle.FontFace = Font.new(DIAGNOSTIC_FONT)
+	diagnosticTitle.ZIndex = 102
+	self:bindTheme(diagnosticTitle, "TextColor3", "subtext")
 
 	self.TabStrip = tabStrip
 	self.TextBox = editor
@@ -2809,6 +2830,7 @@ function CodeEditor:update(delta)
 
 	self:syncTheme()
 
+	self:updateAutomaticDiagnostic()
 	if self.diagnosticShown ~= nil then
 		if self.diagnosticPinned and self.TextBox.CursorPosition ~= self.pinnedCursor then
 			self:hideDiagnosticPopup()
@@ -2849,7 +2871,7 @@ function CodeEditor:update(delta)
 	self:updateTargets()
 
 	if popupVisible then
-		if self.popupPlaced then
+		if self.popupPlaced and self.diagnosticBounds == nil then
 			self.popupPosition = Vector2.new(
 				approach(self.popupPosition.X, self.popupTarget.X, delta),
 				approach(self.popupPosition.Y, self.popupTarget.Y, delta)
@@ -3622,7 +3644,9 @@ local function directiveAtCursor(text, cursor)
 			elseif name == "nolint" then
 				if lintRuleCandidates == nil then
 					lintRuleCandidates = {}
-					local rulesOk, rules = pcall(function() return LuauService:GetLintRules() end)
+					local rulesOk, rules = pcall(function()
+						return LuauService:GetLintRules()
+					end)
 					if rulesOk and type(rules) == "table" then
 						for _, rule in ipairs(rules) do
 							table.insert(lintRuleCandidates, { name = rule, kind = "Keyword", detail = "Lint rule" })
@@ -3690,8 +3714,14 @@ function CodeEditor:chainAtCursor(forced)
 	local annotation = string.match(partial, "^[%a_][%w_]*:()")
 	if cast ~= nil then
 		start += cast - 1
-	elseif annotation ~= nil and (string.match(before, "^%s*local%s+$")
-		or string.match(before, "%f[%w_]function%f[^%w_].*[(,][ \t]*$") or isTypePosition(text, start)) then
+	elseif
+		annotation ~= nil
+		and (
+			string.match(before, "^%s*local%s+$")
+			or string.match(before, "%f[%w_]function%f[^%w_].*[(,][ \t]*$")
+			or isTypePosition(text, start)
+		)
+	then
 		start += annotation - 1
 	end
 	local typePosition = isTypePosition(text, start)
@@ -3852,23 +3882,6 @@ function CodeEditor:hideSuggestionList()
 	end
 end
 
-function CodeEditor:suggestionsBlocked()
-	local diagnostic = self.currentDiagnostic
-
-	if diagnostic == nil or diagnostic.Kind == "Lint warning" or self.forceSuggest then
-		return false
-	end
-
-	if SUPPRESS_ON_CURRENT_LINE then
-		return true
-	end
-
-	local box = self.TextBox
-	local line = lineColumn(box.Text, math.max(box.CursorPosition or 1, 1))
-
-	return diagnostic.Line ~= line
-end
-
 function CodeEditor:refreshSuggestions()
 	self:updateSuggestionList()
 
@@ -3880,12 +3893,6 @@ function CodeEditor:updateSuggestionList()
 	local text = box.Text
 	local cursor = box.CursorPosition or 1
 	local directive = directiveAtCursor(text, cursor)
-
-	if directive == nil and self:suggestionsBlocked() then
-		self:hideSuggestionList()
-
-		return
-	end
 
 	local forced = self.forceSuggest
 
@@ -3934,7 +3941,7 @@ function CodeEditor:updateSuggestionList()
 		end
 	end
 
-	if #ranked == 1 and ranked[1].name == chain.prefix and ranked[1].insert == nil then
+	if not forced and #ranked == 1 and ranked[1].name == chain.prefix and ranked[1].insert == nil then
 		self:dismissSuggestions()
 
 		return
@@ -4107,6 +4114,21 @@ function CodeEditor:updateTargets()
 
 	local popupHeight = self.popupSize.Y
 	local hintVisible = self.Hint.Visible
+	local diagnostic = self.diagnosticBounds
+	if diagnostic ~= nil and self.Popup.Visible then
+		local y = diagnostic.bottom + 3
+		local x = math.clamp(diagnostic.x, 8, math.max(8, screen.X - SUGGEST_WIDTH - 8))
+		self.popupTarget = Vector2.new(x, y)
+		local hintY = y + popupHeight + 4
+		if hintVisible and hintY + self.hintHeight > screen.Y - 8 then
+			hintY = diagnostic.y - self.hintHeight - 4
+			if hintY < 8 then
+				self.Hint.Visible = false
+			end
+		end
+		self.hintTarget = Vector2.new(x, hintY)
+		return
+	end
 
 	local stack = hintVisible and (self.hintHeight + 4) or 0
 
@@ -5345,6 +5367,8 @@ end
 
 function CodeEditor:hideDiagnosticPopup()
 	self.diagnosticShown = nil
+	self.diagnosticBounds = nil
+	self.diagnosticAutomatic = false
 	self.diagnosticPinned = false
 
 	if UI.isAlive(self.DiagnosticPopup) then
@@ -5361,10 +5385,11 @@ function CodeEditor:diagnosticAnchor(diagnostic)
 	end
 
 	local caretLine, caretColumn = lineColumn(box.Text, math.max(box.CursorPosition or 1, 1))
+	local lineHeight = math.max(box.TextSize * 1.35, box.TextSize + 4)
 
 	return Vector2.new(
 		caret.X + (diagnostic.Column - caretColumn) * CODE_CHAR_WIDTH,
-		caret.Y + (diagnostic.Line - caretLine) * SUGGEST_LINE_HEIGHT
+		caret.Y + (diagnostic.Line - caretLine) * lineHeight
 	)
 end
 
@@ -5380,7 +5405,8 @@ function CodeEditor:placeDiagnosticPopup()
 	local top = box.AbsolutePosition.Y
 	local bottom = top + box.AbsoluteSize.Y
 
-	if anchor.Y < top - SUGGEST_LINE_HEIGHT or anchor.Y > bottom then
+	if anchor == nil or anchor.Y < top - SUGGEST_LINE_HEIGHT or anchor.Y > bottom then
+		self.diagnosticBounds = nil
 		self.DiagnosticPopup.Visible = false
 
 		return
@@ -5388,38 +5414,84 @@ function CodeEditor:placeDiagnosticPopup()
 
 	local camera = workspace.CurrentCamera
 	local screen = camera and camera.ViewportSize or Vector2.new(1280, 720)
-	local height = self.DiagnosticPopup.Size.Y.Offset
-
-	local x = math.clamp(anchor.X, 8, math.max(8, screen.X - DIAGNOSTIC_WIDTH - 8))
+	local width = self.diagnosticSize.X
+	local reserved = self.Popup.Visible and (self.popupSize.Y + 3) or 0
+	local height = math.min(self.diagnosticSize.Y, math.max(1, screen.Y - 16 - reserved))
+	local x = math.clamp(anchor.X, 8, math.max(8, screen.X - width - 8))
+	local maxY = math.max(8, screen.Y - 8 - height - reserved)
 	local y = anchor.Y + SUGGEST_LINE_HEIGHT + 2
-
-	if y + height > screen.Y - 8 then
-		y = math.max(8, anchor.Y - height - 4)
+	if y > maxY then
+		y = math.clamp(anchor.Y - height - 4, 8, maxY)
 	end
-
-	self.DiagnosticPopup.Position = UDim2.fromOffset(math.floor(x), math.floor(y))
+	x, y = math.floor(x), math.floor(math.max(8, y))
+	self.diagnosticBounds = { x = x, y = y, bottom = y + height }
+	self.DiagnosticPopup.Size = UDim2.fromOffset(width, height)
+	self.DiagnosticPopup.Position = UDim2.fromOffset(x, y)
 	self.DiagnosticPopup.Visible = true
 end
 
-function CodeEditor:showDiagnosticPopup(diagnostic)
+local function diagnosticMessages(diagnostics, selected)
+	local messages, seen = {}, {}
+	local function add(diagnostic)
+		local message = tostring(diagnostic.Message or "Syntax error")
+		if not seen[message] then
+			seen[message] = true
+			table.insert(messages, message)
+		end
+	end
+	add(selected)
+	for _, diagnostic in ipairs(diagnostics or {}) do
+		if diagnostic.Line == selected.Line
+			and diagnostic.Column < math.max(selected.EndColumn or 0, selected.Column + 1)
+			and selected.Column < math.max(diagnostic.EndColumn or 0, diagnostic.Column + 1) then
+			add(diagnostic)
+		end
+	end
+	return table.concat(messages, "\n\n")
+end
+
+function CodeEditor:updateAutomaticDiagnostic()
+	if self.diagnosticPinned or (self.diagnosticShown ~= nil and not self.diagnosticAutomatic) then
+		return
+	end
+	if UI.isAlive(self.Popup) and self.Popup.Visible and UI.shared().scriptDiagnostics then
+		local box = self.TextBox
+		local line = lineColumn(box.Text, math.max(box.CursorPosition or 1, 1))
+		for _, diagnostic in ipairs(self.diagnostics or {}) do
+			if diagnostic.Line == line and diagnostic.Kind ~= "Lint warning" then
+				self:showDiagnosticPopup(diagnostic, true)
+				return
+			end
+		end
+	end
+	if self.diagnosticAutomatic then
+		self:hideDiagnosticPopup()
+	end
+end
+
+function CodeEditor:showDiagnosticPopup(diagnostic, automatic)
 	if not UI.isAlive(self.DiagnosticPopup) then
 		return
 	end
 
+	self.diagnosticAutomatic = automatic == true
 	if self.diagnosticShown == diagnostic and self.DiagnosticPopup.Visible then
 		return
 	end
 
 	local line = math.max(1, math.floor(tonumber(diagnostic.Line) or 1))
-	local message = tostring(diagnostic.Message or "Syntax error")
-
-	self.DiagnosticTitle.Text = (diagnostic.Kind or "Syntax error") .. " · line " .. line
+	local message = diagnosticMessages(self.diagnostics, diagnostic)
+	self.DiagnosticTitle.Text = (diagnostic.Kind or "Syntax error") .. " · Ln " .. line
+		.. ", Col " .. diagnostic.Column
 	self.DiagnosticText.Text = message
 
-	local measured =
-		TextService:GetTextSize(message, fontSize("small"), TAB_FONT, Vector2.new(DIAGNOSTIC_WIDTH - 20, 2000))
-
-	self.DiagnosticPopup.Size = UDim2.fromOffset(DIAGNOSTIC_WIDTH, math.max(54, math.ceil(measured.Y) + 34))
+	local camera = workspace.CurrentCamera
+	local screen = camera and camera.ViewportSize or Vector2.new(1280, 720)
+	local width = math.max(1, math.min(DIAGNOSTIC_WIDTH, screen.X - 16))
+	local measured = TextService:GetTextSize(
+		message, fontSize("small"), DIAGNOSTIC_FONT, Vector2.new(math.max(1, width - 24), 2000)
+	)
+	self.diagnosticSize = Vector2.new(width, math.max(36, math.ceil(measured.Y) + 18) + DIAGNOSTIC_FOOTER_HEIGHT)
 	self.diagnosticShown = diagnostic
 	self:placeDiagnosticPopup()
 end
@@ -5445,8 +5517,13 @@ function CodeEditor:refreshDiagnostics()
 	local serial = self.diagnosticSerial
 
 	task.delay(DIAGNOSTIC_DELAY, function()
-		if self.destroyed or serial ~= self.diagnosticSerial or self.activeDocument ~= document
-			or not UI.shared().scriptDiagnostics or not UI.isAlive(self.TextBox) then
+		if
+			self.destroyed
+			or serial ~= self.diagnosticSerial
+			or self.activeDocument ~= document
+			or not UI.shared().scriptDiagnostics
+			or not UI.isAlive(self.TextBox)
+		then
 			return
 		end
 
@@ -5505,9 +5582,6 @@ function CodeEditor:refreshDiagnostics()
 
 		self:hideDiagnosticPopup()
 
-		if self:suggestionsBlocked() then
-			self:hideSuggestionList()
-		end
 	end)
 end
 
@@ -5681,7 +5755,11 @@ function CodeEditor:wireEditor()
 
 		if hit ~= nil and current ~= nil and UI.shared().scriptDiagnostics then
 			for _, diagnostic in ipairs(self.diagnostics or {}) do
-				if diagnostic.Line == hit.Line and diagnostic.Column == hit.Column and diagnostic.Message == hit.Message then
+				if
+					diagnostic.Line == hit.Line
+					and diagnostic.Column == hit.Column
+					and diagnostic.Message == hit.Message
+				then
 					hit = diagnostic
 					break
 				end
