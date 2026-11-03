@@ -192,18 +192,25 @@ settings_layout.PaddingTop = UDim.new(0, 8)
 settings_layout.Padding = UDim.new(0, 4)
 settings_layout.Parent = frame
 
-local _, headless_server_checkbox_playtest_settings = UI.checkbox(
-	frame,
-	"Headless Server",
-	UDim2.fromOffset(8, 8),
-	false,
-	function(value)
-		print(value)
-	end
-)
+local disable_server_bool = false
+local disable_client_bool = false
+local single_player_bool = false
+local client_count = 0
 
-local _, headless_client = UI.checkbox(frame, "Headless Client", UDim2.fromOffset(8, 8), false, function(value)
-	print(value)
+local _, disable_server = UI.checkbox(frame, "Disable Server", UDim2.fromOffset(8, 8), false, function(value)
+	disable_server_bool = value
+end)
+
+local _, disable_client = UI.checkbox(frame, "Disable Client", UDim2.fromOffset(8, 8), false, function(value)
+	disable_client_bool = value
+end)
+
+local _, single_player = UI.checkbox(frame, "Single Player", UDim2.fromOffset(8, 8), false, function(value)
+	single_player_bool = value
+end)
+
+local _, client_count_input = UI.input(frame, "Client Count", UDim2.fromOffset(8, 8), "1", function(value)
+	client_count = tonumber(value) or 0
 end)
 
 local uiEditor = UIEditor.new({

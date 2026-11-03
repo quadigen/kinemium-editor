@@ -169,8 +169,6 @@ end
 shared.UI = UI
 
 SignalPipe:Connect(function(signal, value)
-	print("Event: " .. signal)
-	print("Value: ", value)
 	if signal == "WidgetOverlayVisible" then
 		if type(value) == "boolean" then
 			UI.widgetOverlay().Enabled = value
