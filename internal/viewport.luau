@@ -458,13 +458,11 @@ end
 
 local editor = CodeEditor.new(scriptRoot)
 
-local -- Orientation gizmo (3D only): Godot-style. Shafts are real 3D parts in a ViewportFrame;
--- the circle buttons are 2D UI positioned by projecting their 3D points.
 local GIZMO_SIZE = 110
 local GIZMO_DISTANCE = 8
 local GIZMO_FOV = 30
-local AXIS_LENGTH = 1.6 -- world-space distance from center to an axis end
-local POS_SIZE = 22 -- button diameters at GIZMO_DISTANCE
+local AXIS_LENGTH = 1.6
+local POS_SIZE = 22
 local NEG_SIZE = 16
 
 local gizmoFrame, gizmoViewport, gizmoCamera
