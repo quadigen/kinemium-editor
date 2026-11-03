@@ -563,6 +563,7 @@ if renderer.Dimension == "3D" then
 		local button = UI.button(gizmoFrame, text, UDim2.fromOffset(0, 0), UDim2.fromOffset(POS_SIZE, POS_SIZE), {
 			color = color,
 			radius = 30,
+			hoveringEnabled = false,
 		})
 		button.AnchorPoint = Vector2.new(0.5, 0.5)
 		button.BackgroundColor3 = color
