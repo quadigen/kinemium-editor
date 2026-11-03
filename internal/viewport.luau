@@ -458,152 +458,140 @@ end
 
 local editor = CodeEditor.new(scriptRoot)
 
-local GIZMO_SIZE = 96
-local GIZMO_DISTANCE = 6.5
-local gizmoFrame, gizmoCamera
+local -- Orientation gizmo (3D only): Godot-style. Shafts are real 3D parts in a ViewportFrame;
+-- the circle buttons are 2D UI positioned by projecting their 3D points.
+local GIZMO_SIZE = 110
+local GIZMO_DISTANCE = 8
+local GIZMO_FOV = 30
+local AXIS_LENGTH = 1.6 -- world-space distance from center to an axis end
+local POS_SIZE = 22 -- button diameters at GIZMO_DISTANCE
+local NEG_SIZE = 16
 
--- Orientation gizmo (3D only): mirrors workspace.CurrentCamera rotation, no text.
-local GIZMO_SIZE = 112
-local GIZMO_DISTANCE = 10
-local gizmoFrame, gizmoCamera
+local gizmoFrame, gizmoViewport, gizmoCamera
+local gizmoAxes = {}
 
 if renderer.Dimension == "3D" then
-	gizmoFrame = Instance.new("ViewportFrame")
+	gizmoFrame = Instance.new("Frame")
 	gizmoFrame.Name = "AxisGizmo"
 	gizmoFrame.AnchorPoint = Vector2.new(1, 1)
 	gizmoFrame.Position = UDim2.new(1, -8, 1, -36) -- sits above the breadcrumb
 	gizmoFrame.Size = UDim2.fromOffset(GIZMO_SIZE, GIZMO_SIZE)
 	gizmoFrame.BackgroundTransparency = 1
-	gizmoFrame.Ambient = Color3.fromRGB(150, 150, 150)
-	gizmoFrame.LightColor = Color3.new(1, 1, 1)
-	gizmoFrame.LightDirection = Vector3.new(-1, -1.5, -0.8)
-	gizmoFrame.Active = false
+	gizmoFrame.BorderSizePixel = 0
 	gizmoFrame.ZIndex = 10
 	gizmoFrame.Parent = viewportOverlay
 
+	gizmoViewport = Instance.new("ViewportFrame")
+	gizmoViewport.Name = "AxisShafts"
+	gizmoViewport.Size = UDim2.fromScale(1, 1)
+	gizmoViewport.BackgroundTransparency = 1
+	gizmoViewport.Ambient = Color3.new(1, 1, 1)
+	gizmoViewport.LightColor = Color3.new(1, 1, 1)
+	gizmoViewport.Active = false
+	gizmoViewport.ZIndex = 11
+	gizmoViewport.Parent = gizmoFrame
+
 	gizmoCamera = Instance.new("Camera")
-	gizmoCamera.FieldOfView = 30
-	gizmoCamera.Parent = gizmoFrame
-	gizmoFrame.CurrentCamera = gizmoCamera
+	gizmoCamera.FieldOfView = GIZMO_FOV
+	gizmoCamera.Parent = gizmoViewport
+	gizmoViewport.CurrentCamera = gizmoCamera
 
-	local SHAFT_LENGTH = 1.6
-	local SHAFT_RADIUS = 0.06
-	local CONE_LENGTH = 0.75
-	local CONE_RADIUS = 0.22
-	local CONE_STEPS = 8 -- stacked discs approximate a smooth cone
-	local COLLAR_RADIUS = 0.1
-	local NEG_LENGTH = 1.0
-	local NEG_RADIUS = 0.035
-	local RING_RADIUS = 2.0
-	local RING_SEGMENTS = 48
-
-	local function makePart(size, shape, color, cframe, transparency)
-		local part = Instance.new("Part")
-		part.Anchored = true
-		part.CanCollide = false
-		part.Size = size
-		part.Shape = shape
-		part.Color = color
-		part.Material = Enum.Material.SmoothPlastic
-		part.CFrame = cframe
-		part.Transparency = transparency or 0
-		part.Parent = gizmoFrame
-		return part
-	end
-
-	local function ball(diameter, color, position, transparency)
-		return makePart(Vector3.one * diameter, Enum.PartType.Ball, color, CFrame.new(position), transparency)
-	end
-
-	-- Cylinders run along their local X axis, so build a basis whose X points down the axis.
-	local function cylinder(basis, distance, length, radius, color, transparency)
-		local cframe = CFrame.fromMatrix(basis.dir * distance, basis.dir, basis.up)
-		return makePart(
-			Vector3.new(length, radius * 2, radius * 2),
-			Enum.PartType.Cylinder,
-			color,
-			cframe,
-			transparency
-		)
-	end
-
-	local function darken(color, amount)
-		return color:Lerp(Color3.new(0, 0, 0), amount)
-	end
-
-	local function fade(color, amount)
-		return color:Lerp(Color3.fromRGB(120, 120, 130), amount)
-	end
-
-	local axes = {
-		{ dir = Vector3.xAxis, up = Vector3.yAxis, color = Color3.fromRGB(235, 70, 70) },
-		{ dir = Vector3.yAxis, up = Vector3.xAxis, color = Color3.fromRGB(80, 200, 90) },
-		{ dir = Vector3.zAxis, up = Vector3.yAxis, color = Color3.fromRGB(70, 120, 255) },
+	local axisDefs = {
+		{ label = "X", dir = Vector3.xAxis, up = Vector3.yAxis, color = Color3.fromRGB(240, 60, 80) },
+		{ label = "Y", dir = Vector3.yAxis, up = Vector3.xAxis, color = Color3.fromRGB(140, 205, 30) },
+		{ label = "Z", dir = Vector3.zAxis, up = Vector3.yAxis, color = Color3.fromRGB(50, 140, 245) },
 	}
 
-	for _, axis in ipairs(axes) do
-		local color = axis.color
+	-- Camera-up used when snapping to look along an axis (Y needs a different up to avoid a degenerate view)
+	local snapUps = {
+		X = Vector3.yAxis,
+		Y = Vector3.new(0, 0, -1),
+		Z = Vector3.yAxis,
+	}
 
-		-- Positive shaft
-		cylinder(axis, SHAFT_LENGTH / 2, SHAFT_LENGTH, SHAFT_RADIUS, color)
-
-		-- Tick bands along the shaft
-		for _, t in ipairs({ 0.4, 0.8, 1.2 }) do
-			cylinder(axis, t, 0.04, SHAFT_RADIUS * 1.35, darken(color, 0.35))
+	local function snapCamera(dir, up)
+		local camera = workspace.CurrentCamera
+		if not camera then
+			return
 		end
 
-		-- Collar where the shaft meets the cone
-		cylinder(axis, SHAFT_LENGTH, 0.08, COLLAR_RADIUS, darken(color, 0.2))
+		local cframe = camera.CFrame
+		local focus = camera.Focus and camera.Focus.Position or (cframe.Position + cframe.LookVector * 10)
+		local distance = math.max((cframe.Position - focus).Magnitude, 1)
 
-		-- Tapered cone arrowhead built from stacked discs
-		local stepLength = CONE_LENGTH / CONE_STEPS
-		for i = 1, CONE_STEPS do
-			local t = (i - 1) / CONE_STEPS
-			local radius = math.max(CONE_RADIUS * (1 - t), 0.015)
-			cylinder(axis, SHAFT_LENGTH + 0.04 + (i - 0.5) * stepLength, stepLength * 1.02, radius, color)
-		end
-
-		-- Negative stub: thinner, dimmer, with a small bead on the end
-		local dimmed = fade(color, 0.55)
-		local negBasis = { dir = -axis.dir, up = axis.up }
-		cylinder(negBasis, NEG_LENGTH / 2, NEG_LENGTH, NEG_RADIUS, dimmed, 0.15)
-		ball(0.16, dimmed, -axis.dir * NEG_LENGTH, 0.15)
+		camera.CFrame = CFrame.lookAt(focus + dir * distance, focus, up)
 	end
 
-	-- Hub: solid core plus a translucent shell
-	ball(0.28, Color3.fromRGB(230, 230, 235), Vector3.zero)
-	ball(0.42, Color3.fromRGB(255, 255, 255), Vector3.zero, 0.75)
-
-	-- Ground-plane (XZ) disc and rim for depth cues
-	makePart(
-		Vector3.new(0.01, RING_RADIUS * 2, RING_RADIUS * 2),
-		Enum.PartType.Cylinder,
-		Color3.fromRGB(200, 205, 215),
-		CFrame.Angles(0, 0, math.rad(90)),
-		0.92
-	)
-
-	local segmentLength = 2 * math.pi * RING_RADIUS / RING_SEGMENTS
-	for i = 0, RING_SEGMENTS - 1 do
-		local angle = (i / RING_SEGMENTS) * math.pi * 2
-		local position = Vector3.new(math.cos(angle) * RING_RADIUS, 0, math.sin(angle) * RING_RADIUS)
-		makePart(
-			Vector3.new(segmentLength, 0.02, 0.03),
-			Enum.PartType.Block,
-			Color3.fromRGB(210, 215, 225),
-			CFrame.lookAt(position, Vector3.zero) * CFrame.Angles(0, math.rad(90), 0),
-			0.55
-		)
+	local function makeCircleButton(text, color, transparency)
+		local button = UI.button(gizmoFrame, text, UDim2.fromOffset(0, 0), UDim2.fromOffset(POS_SIZE, POS_SIZE), {
+			color = color,
+			radius = POS_SIZE / 2,
+		})
+		button.AnchorPoint = Vector2.new(0.5, 0.5)
+		button.BackgroundColor3 = color
+		button.BackgroundTransparency = transparency or 0
+		button.TextColor3 = Color3.fromRGB(25, 25, 30)
+		button.TextSize = 13
+		button.AutoButtonColor = false
+		return button
 	end
 
-	-- Small marker beads where each axis crosses the ring
-	for _, axis in ipairs(axes) do
-		if axis.dir ~= Vector3.yAxis then
-			local marker = fade(axis.color, 0.6)
-			ball(0.1, marker, axis.dir * RING_RADIUS, 0.3)
-			ball(0.1, marker, -axis.dir * RING_RADIUS, 0.3)
-		end
+	for _, def in ipairs(axisDefs) do
+		-- 3D shaft from the center to the positive end (cylinders run along local X)
+		local shaft = Instance.new("Part")
+		shaft.Anchored = true
+		shaft.CanCollide = false
+		shaft.Shape = Enum.PartType.Cylinder
+		shaft.Size = Vector3.new(AXIS_LENGTH, 0.07, 0.07)
+		shaft.Color = def.color
+		shaft.Material = Enum.Material.SmoothPlastic
+		shaft.CFrame = CFrame.fromMatrix(def.dir * (AXIS_LENGTH / 2), def.dir, def.up)
+		shaft.Parent = gizmoViewport
+
+		-- 2D buttons, positioned every frame from the 3D end points
+		local positive = makeCircleButton(def.label, def.color)
+
+		local negativeColor = def.color:Lerp(Color3.fromRGB(30, 32, 38), 0.45)
+		local negative = makeCircleButton("", negativeColor, 0.1)
+		UI.stroke(negative, def.color:Lerp(Color3.new(1, 1, 1), 0.15), 1.5, 0.2)
+
+		positive.MouseButton1Click:Connect(function()
+			snapCamera(def.dir, snapUps[def.label])
+		end)
+
+		negative.MouseButton1Click:Connect(function()
+			snapCamera(-def.dir, snapUps[def.label])
+		end)
+
+		table.insert(gizmoAxes, {
+			dir = def.dir,
+			positive = positive,
+			negative = negative,
+		})
 	end
+end
+
+-- Perspective-project a point in gizmo-camera space to pixels inside the gizmo frame.
+-- Returns the pixel position and the depth in front of the camera.
+local function projectGizmoPoint(cameraCFrame, worldPoint)
+	local local3 = cameraCFrame:PointToObjectSpace(worldPoint)
+	local depth = -local3.Z
+	local focalLength = (GIZMO_SIZE / 2) / math.tan(math.rad(GIZMO_FOV) / 2)
+	local x = GIZMO_SIZE / 2 + (local3.X / depth) * focalLength
+	local y = GIZMO_SIZE / 2 - (local3.Y / depth) * focalLength
+	return Vector2.new(x, y), depth
+end
+
+local function placeGizmoButton(button, baseSize, cameraCFrame, worldPoint)
+	local pixel, depth = projectGizmoPoint(cameraCFrame, worldPoint)
+
+	-- Perspective: nearer ends are larger, farther ends smaller
+	local size = baseSize * (GIZMO_DISTANCE / depth)
+	button.Position = UDim2.fromOffset(pixel.X, pixel.Y)
+	button.Size = UDim2.fromOffset(size, size)
+
+	-- Nearer draws on top (shafts sit at ZIndex 11, so buttons straddle it)
+	button.ZIndex = math.clamp(math.floor(30 - depth * 2), 2, 60)
 end
 
 local function updateAxisGizmo()
@@ -618,7 +606,13 @@ local function updateAxisGizmo()
 
 	-- Copy only the rotation, then back the gizmo camera away from the origin along its look vector
 	local rotation = camera.CFrame.Rotation
-	gizmoCamera.CFrame = CFrame.new(-rotation.LookVector * GIZMO_DISTANCE) * rotation
+	local gizmoCFrame = CFrame.new(-rotation.LookVector * GIZMO_DISTANCE) * rotation
+	gizmoCamera.CFrame = gizmoCFrame
+
+	for _, axis in ipairs(gizmoAxes) do
+		placeGizmoButton(axis.positive, POS_SIZE, gizmoCFrame, axis.dir * AXIS_LENGTH)
+		placeGizmoButton(axis.negative, NEG_SIZE, gizmoCFrame, -axis.dir * AXIS_LENGTH)
+	end
 end
 
 local function rebuildBreadcrumb(path)
