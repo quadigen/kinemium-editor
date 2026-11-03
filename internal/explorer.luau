@@ -38,6 +38,14 @@ panel.Parent = gui
 local content = windowControls.pages.Explorer
 local filesPage = windowControls.pages.Files
 
+local tabBounds = Instance.new("Frame")
+tabBounds.Name = "ExplorerFloatingBounds"
+tabBounds.Size = UDim2.fromScale(1, 1)
+tabBounds.BackgroundTransparency = 1
+tabBounds.Active = false
+tabBounds.InputSink = false
+tabBounds.Parent = gui
+
 local floating = {}
 local pendingTab
 local movingTab
@@ -73,7 +81,8 @@ end
 
 local function floatTab(name, point)
 	local size = panel.AbsoluteSize
-	local bounds = gui.AbsoluteSize
+	local bounds = tabBounds.AbsoluteSize
+	if bounds.X <= 0 or bounds.Y <= 0 then return end
 	local width = math.min(math.max(size.X, 280), math.max(bounds.X, 1))
 	local height = math.min(math.max(size.Y, 260), math.max(bounds.Y, 1))
 	local x = math.clamp(point.X - 24, 0, math.max(0, bounds.X - width))

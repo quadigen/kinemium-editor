@@ -14,7 +14,8 @@ local colors = UI.tokens.color
 
 local PREVIEW_VARIANT_NAME = "__MaterialMakerPreview_" .. HttpService:GenerateGUID(false)
 local LIBRARY_NAME = "MaterialVariants"
-local VIEWPORT_HEIGHT = 200
+local VIEWPORT_HEIGHT = 220
+local WINDOW_WIDTH, WINDOW_HEIGHT = 800, 560
 
 local maps = {
 	{ "Color map", "ColorMap" }, { "Normal map", "NormalMap" },
@@ -68,40 +69,82 @@ local previewVariant = nil
 local spinAngle = 0
 
 local panel, content =
-	UI.window("MaterialMaker", UDim2.fromOffset(460, 120), UDim2.fromOffset(320, 560), "Material Maker", {
+	UI.window("MaterialMaker", UDim2.fromOffset(120, 64), UDim2.fromOffset(WINDOW_WIDTH, WINDOW_HEIGHT), "Material Maker", {
 		closable = true,
 	})
 content.BackgroundTransparency = 1
 panel.Visible = false
 panel.BackgroundTransparency = 0.5
 panel.ClipsDescendants = true
-panel.Parent = UI.widgetOverlay()
+local overlay = UI.widgetOverlay()
+panel.Parent = overlay
 
 UI.backdrop(panel, 15, Color3.new(0, 0, 0))
 
-local scroller = Instance.new("ScrollingFrame")
-scroller.BackgroundTransparency = 1
-scroller.BorderSizePixel = 0
-scroller.Size = UDim2.new(1, -10, 1, 0)
-scroller.CanvasSize = UDim2.new(0, 0, 0, 0)
-scroller.AutomaticCanvasSize = Enum.AutomaticSize.Y
-scroller.ScrollBarThickness = 5
-scroller.ClipsDescendants = true
-scroller.Parent = content
+local boundsFrame = Instance.new("Frame")
+boundsFrame.Name = "MaterialMakerBounds"
+boundsFrame.BackgroundTransparency = 1
+boundsFrame.Active = false
+boundsFrame.InputSink = false
+boundsFrame.Size = UDim2.fromScale(1, 1)
+boundsFrame.Parent = overlay
 
-local layout = Instance.new("UIListLayout")
-layout.FillDirection = Enum.FillDirection.Vertical
-layout.SortOrder = Enum.SortOrder.LayoutOrder
-layout.Padding = UDim.new(0, 2)
-layout.Parent = scroller
+local function fitWindow()
+	local bounds = boundsFrame.AbsoluteSize
+	if bounds.X <= 0 or bounds.Y <= 0 then return end
+	local width = math.min(WINDOW_WIDTH, math.max(1, bounds.X - 16))
+	local height = math.min(WINDOW_HEIGHT, math.max(1, bounds.Y - 16))
+	panel.Size = UDim2.fromOffset(width, height)
+	local position = panel.Position
+	panel.Position = UDim2.fromOffset(
+		math.clamp(position.X.Offset, 0, math.max(0, bounds.X - width)),
+		math.clamp(position.Y.Offset, 0, math.max(0, bounds.Y - height))
+	)
+end
+boundsFrame:GetPropertyChangedSignal("AbsoluteSize"):Connect(fitWindow)
+fitWindow()
 
-local padding = Instance.new("UIPadding")
-padding.PaddingTop = UDim.new(0, 8)
-padding.PaddingBottom = UDim.new(0, 8)
-padding.PaddingLeft = UDim.new(0, 6)
-padding.PaddingRight = UDim.new(0, 10)
-padding.Parent = scroller
+local function makeScroller(parent, position, size)
+	local scrolling = Instance.new("ScrollingFrame")
+	scrolling.BackgroundTransparency = 1
+	scrolling.BorderSizePixel = 0
+	scrolling.Position = position
+	scrolling.Size = size
+	scrolling.CanvasSize = UDim2.fromOffset(0, 0)
+	scrolling.AutomaticCanvasSize = Enum.AutomaticSize.Y
+	scrolling.ScrollBarThickness = 5
+	scrolling.ClipsDescendants = true
+	scrolling.Parent = parent
 
+	local layout = Instance.new("UIListLayout")
+	layout.FillDirection = Enum.FillDirection.Vertical
+	layout.SortOrder = Enum.SortOrder.LayoutOrder
+	layout.Padding = UDim.new(0, 4)
+	layout.Parent = scrolling
+
+	local padding = Instance.new("UIPadding")
+	padding.PaddingTop = UDim.new(0, 8)
+	padding.PaddingBottom = UDim.new(0, 8)
+	padding.PaddingLeft = UDim.new(0, 8)
+	padding.PaddingRight = UDim.new(0, 12)
+	padding.Parent = scrolling
+	return scrolling
+end
+
+local previewBottom = VIEWPORT_HEIGHT + 8
+local previewPane = makeScroller(content, UDim2.fromOffset(0, previewBottom), UDim2.new(0.36, -4, 1, -previewBottom))
+local _, tabs = UI.tabs(content, UDim2.new(0.36, 4, 0, 8), UDim2.new(0.64, -12, 1, -16), {
+	tabs = { "Surface", "Textures", "Height", "Shader" },
+	selectedTab = "Surface",
+	tabPaddingX = 8,
+})
+local sections = {}
+for name, page in pairs(tabs.pages) do
+	sections[name] = makeScroller(page, UDim2.fromOffset(0, 0), UDim2.fromScale(1, 1))
+end
+
+-- Controls are built one section at a time.
+local scroller = previewPane
 local nextOrder = 0
 local function place(object)
 	nextOrder += 1
@@ -199,13 +242,13 @@ local viewport = Instance.new("ViewportFrame")
 viewport.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
 viewport.BackgroundTransparency = 0
 viewport.BorderSizePixel = 0
-viewport.Size = UDim2.new(1, 0, 0, VIEWPORT_HEIGHT)
+viewport.Position = UDim2.fromOffset(8, 8)
+viewport.Size = UDim2.new(0.36, -18, 0, VIEWPORT_HEIGHT)
 viewport.Ambient = Color3.fromRGB(110, 110, 110)
 viewport.LightColor = Color3.fromRGB(255, 255, 255)
 viewport.LightDirection = Vector3.new(-1, -1, -0.6)
-viewport.Parent = scroller
+viewport.Parent = content
 UI.corner(viewport, 6)
-place(viewport)
 
 local ball = Instance.new("Part")
 ball.Shape = Enum.PartType.Ball
@@ -402,6 +445,9 @@ button("Save and Apply to Selection", function()
 	notify("success", "Material applied", variant.Name .. " applied to " .. #parts .. " parts.")
 end)
 
+local shaderStatus = hint("Waiting for preview…", 34)
+
+scroller = sections.Surface
 section("Surface")
 local enabledRow, enabledField = UI.checkbox(scroller, "Enabled", nil, cfg.Enabled, function(value)
 	setValue("Enabled", value)
@@ -412,15 +458,17 @@ colorRow("Base color", "Color")
 colorRow("Emissive color", "EmissiveColor")
 numericRows(surface)
 
+scroller = sections.Textures
 section("Texture Maps")
 hint("Browse for an image or enter a local path or content URI. Leave a map empty to use the shader default.", 38)
 for _, spec in ipairs(maps) do assetRow(spec[1], spec[2]) end
 
+scroller = sections.Height
 section("Height and Displacement")
 numericRows(geometry)
 
+scroller = sections.Shader
 section("Shader")
-local shaderStatus = hint("Waiting for preview…", 34)
 local lastStatus
 local function updateShaderStatus()
 	local message
@@ -491,6 +539,7 @@ button("Reset Shader to Default", function()
 	for _, spec in ipairs(shader) do setValue(spec[2], defaults[spec[2]]) end
 end)
 
+scroller = previewPane
 section("Preview Controls")
 place((UI.checkbox(scroller, "Auto rotate", nil, spin, function(value) spin = value end,
 	{ size = UDim2.new(1, 0, 0, UI.metrics.propertyRow) })))
