@@ -384,16 +384,7 @@ if renderer.Dimension == "3D" then
 	local styleBackdrop = Instance.new("UIBackdrop")
 	styleBackdrop.Parent = styleBar
 
-	local materialNames = {
-		Enum.Material.SmoothPlastic,
-		Enum.Material.Wood,
-		Enum.Material.Concrete,
-		Enum.Material.Brick,
-		Enum.Material.Sand,
-		Enum.Material.Grass,
-		Enum.Material.Ice,
-		Enum.Material.Glass,
-	}
+	local materialNames = Enum.Material:GetEnumItems()
 
 	local rowHeight, rowGap = 24, 2
 

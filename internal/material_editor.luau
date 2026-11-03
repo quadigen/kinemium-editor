@@ -430,19 +430,38 @@ button("Save Variant", function()
 	if variant then notify("success", "Material saved to scene", variant.Name .. " will be included in the next project save.") end
 end)
 
-button("Save and Apply to Selection", function()
-	local parts = {}
-	for _, object in ipairs(Selection:Get()) do
-		if object:IsA("Part") then table.insert(parts, object) end
+local function selectedParts()
+	local parts, seen = {}, {}
+	local pending = Selection:Get()
+	while #pending > 0 do
+		local object = table.remove(pending)
+		if not seen[object] and UI.isAlive(object) then
+			seen[object] = true
+			if object:IsA("Part") then
+				table.insert(parts, object)
+			elseif object:IsA("Model") or object:IsA("Folder") then
+				for _, child in ipairs(object:GetChildren()) do table.insert(pending, child) end
+			end
+		end
 	end
+	return parts
+end
+
+button("Save and Apply to Selection", function()
+	local parts = selectedParts()
 	if #parts == 0 then
-		notify("info", "Select a part", "Select a Part or MeshPart to apply the material.")
+		notify("info", "No parts selected", "Select a Part, MeshPart, or a Model or Folder containing parts.")
+		return
+	end
+	if not cfg.Enabled then
+		notify("info", "Variant is disabled", "Enable it in the Surface tab before applying it.")
 		return
 	end
 	local variant = saveVariant()
 	if not variant then return end
 	for _, part in ipairs(parts) do part.MaterialVariant = variant.Name end
-	notify("success", "Material applied", variant.Name .. " applied to " .. #parts .. " parts.")
+	local count = #parts
+	notify("success", "Material applied", variant.Name .. " assigned to " .. count .. (count == 1 and " part." or " parts."))
 end)
 
 local shaderStatus = hint("Waiting for preview…", 34)
