@@ -75,13 +75,16 @@ return function(page, windowControls, gui)
 	local function openProject(project)
 		local opened
 		if Sync.available then
+			print("sync is available")
 			opened = Project:OpenProject(project.Path)
 		else
+			print("sync is not available")
 			opened = Project:SetActiveProject(project.Path)
 		end
 		if opened then
 			showProject(project)
 		else
+			print(opened, project)
 			notify("error", "Could not open project", project.Path)
 		end
 	end
@@ -598,14 +601,25 @@ return function(page, windowControls, gui)
 			UDim2.fromOffset(BUTTON_SIZE, BUTTON_SIZE),
 			function()
 				local path = Dialog:PickFolder()
-				if not path or path == "" then return end
+				if not path or path == "" then
+					return
+				end
 				local ok, manifest = pcall(function()
 					local source = game.Filesystem:ReadFile(path .. "/default.project.json")
 					return game.HttpService:JSONDecode(source)
 				end)
-				if not ok or type(manifest) ~= "table" or type(manifest.name) ~= "string"
-					or type(manifest.tree) ~= "table" or not Project:RegisterProject(path, manifest.name) then
-					notify("error", "Could not add project", "Choose an unregistered folder containing default.project.json.")
+				if
+					not ok
+					or type(manifest) ~= "table"
+					or type(manifest.name) ~= "string"
+					or type(manifest.tree) ~= "table"
+					or not Project:RegisterProject(path, manifest.name)
+				then
+					notify(
+						"error",
+						"Could not add project",
+						"Choose an unregistered folder containing default.project.json."
+					)
 					return
 				end
 				refreshList()
