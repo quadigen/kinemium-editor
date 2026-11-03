@@ -534,7 +534,9 @@ local function insideCommentOrString(text, cursor)
 	return quote ~= nil
 end
 
-local function bracketPairs(text)
+local function bracketPairs(text, maskLiterals)
+	local chunks = maskLiterals and {} or nil
+	local copyFrom = 1
 	local map = {}
 	local stack = {}
 	local index = 1
@@ -542,6 +544,7 @@ local function bracketPairs(text)
 
 	while index <= length do
 		local character = string.sub(text, index, index)
+		local spanStart = index
 
 		if character == "-" and string.sub(text, index + 1, index + 1) == "-" then
 			local level = string.match(text, "^%-%-%[(=*)%[", index)
@@ -593,9 +596,18 @@ local function bracketPairs(text)
 		else
 			index += 1
 		end
+
+		if chunks ~= nil and (index > spanStart + 1 or character == '"' or character == "'" or character == "`") then
+			table.insert(chunks, string.sub(text, copyFrom, spanStart - 1))
+			table.insert(chunks, (string.gsub(string.sub(text, spanStart, index - 1), "[^\n]", " ")))
+			copyFrom = index
+		end
 	end
 
-	return map
+	if chunks ~= nil then
+		table.insert(chunks, string.sub(text, copyFrom))
+	end
+	return map, chunks and table.concat(chunks) or nil
 end
 
 local QUOTES = { ['"'] = true, ["'"] = true, ["`"] = true }
@@ -1603,7 +1615,175 @@ local function tableCandidates(source, methodsOnly)
 	return list
 end
 
+-- Module completion reads source only. Executing require here would run user code
+-- in the editor and could yield, mutate the scene, or change the module cache.
+local ModuleExports = {}
+local moduleCache = setmetatable({}, { __mode = "k" })
+
+local function moduleParameters(arguments)
+	local params = {}
+	for argument in string.gmatch(arguments, "[^,]+") do
+		local name = string.match(argument, "^%s*([%a_][%w_]*)") or string.match(argument, "^%s*(%.%.%.)")
+		if name ~= nil then
+			table.insert(params, name)
+		end
+	end
+	return params
+end
+
+local function moduleExports(instance)
+	if typeof(instance) ~= "Instance" or not instance:IsA("ModuleScript") then
+		return nil
+	end
+
+	local ok, source = pcall(function()
+		return instance.Source
+	end)
+	if not ok or type(source) ~= "string" or #source > 250000 then
+		return nil
+	end
+
+	local cached = moduleCache[instance]
+	if cached ~= nil and cached.source == source then
+		return cached.exports
+	end
+
+	local _, code = bracketPairs(source, true)
+	local entries = {}
+	local types = {}
+	local typesOk, names = pcall(function()
+		return LuauService:GetExportedTypes(source)
+	end)
+	if typesOk and type(names) == "table" then
+		for _, name in ipairs(names) do
+			table.insert(types, { name = name, kind = "Type", detail = "export type · " .. instance.Name })
+		end
+	end
+	local exports = setmetatable({ entries = entries, types = types }, ModuleExports)
+	moduleCache[instance] = { source = source, exports = exports }
+	local function add(name, arguments, method)
+		if arguments == nil and entries[name] ~= nil then
+			return
+		end
+		local params = arguments ~= nil and moduleParameters(arguments) or nil
+		if method and params ~= nil then
+			table.insert(params, 1, "self")
+		end
+		entries[name] = {
+			name = name,
+			kind = method and "Method" or (params ~= nil and "Function" or "Field"),
+			detail = instance.Name,
+			params = params,
+		}
+	end
+
+	local module = string.match(code, "%f[%w_]return%s+([%a_][%w_]*)%s*;?%s*$")
+	local tableStart = string.match(code, "%f[%w_]return%s+()%b{}%s*;?%s*$")
+	if module ~= nil then
+		local prefix = "%f[%w_]" .. module .. "%s*"
+		tableStart = string.match(code, prefix .. "=%s*(){")
+		for sep, name, arguments in string.gmatch(code, "%f[%w_]function%s+" .. prefix .. "([.:])%s*([%a_][%w_]*)%s*(%b())") do
+			add(name, string.sub(arguments, 2, -2), sep == ":")
+		end
+		for name, position in string.gmatch(code, prefix .. "%.%s*([%a_][%w_]*)%s*=%s*()") do
+			if string.sub(code, position, position) ~= "=" then
+				local arguments = string.match(code, "^function%s*(%b())", position)
+				add(name, arguments and string.sub(arguments, 2, -2), false)
+			end
+		end
+	end
+
+	if tableStart ~= nil then
+		local literal = string.match(code, "^%b{}", tableStart)
+		if literal ~= nil then
+			local pairs = bracketPairs(literal)
+			local position = 2
+			while position < #literal do
+				local name, valueStart = string.match(literal, "^%s*([%a_][%w_]*)%s*=%s*()", position)
+				if name ~= nil then
+					local arguments = string.match(literal, "^function%s*(%b())", valueStart)
+					add(name, arguments and string.sub(arguments, 2, -2), false)
+				end
+				-- Skip nested tables and calls when looking for the next field.
+				while position < #literal do
+					local character = string.sub(literal, position, position)
+					if character == "," or character == ";" then
+						position += 1
+						break
+					end
+					position = (pairs[position] or position) + 1
+				end
+			end
+		end
+	end
+
+	return exports
+end
+
+local function modulePath(instance, document)
+	local scriptInstance = document and document.instance
+	if scriptInstance ~= nil and instance.Parent == scriptInstance.Parent then
+		return "script.Parent:WaitForChild(" .. string.format("%q", instance.Name) .. ")"
+	end
+
+	local names = {}
+	local current = instance
+	while current ~= nil and current ~= game do
+		table.insert(names, current.Name)
+		current = current.Parent
+	end
+	if current ~= game then
+		return nil
+	end
+	local parts = { "game" }
+	for index = #names, 1, -1 do
+		table.insert(parts, ":WaitForChild(" .. string.format("%q", names[index]) .. ")")
+	end
+	return table.concat(parts)
+end
+
+local function requireCandidates(prefix, document)
+	local candidates = {}
+	local scriptInstance = document and document.instance
+	local pending = {}
+	for _, name in ipairs({ "Workspace", "ReplicatedStorage", "ReplicatedFirst", "ServerStorage",
+		"ServerScriptService", "StarterPlayer", "StarterGui", "StarterPack" }) do
+		local root = game:FindFirstChild(name)
+		if root ~= nil then
+			table.insert(pending, root)
+		end
+	end
+
+	while #pending > 0 do
+		local instance = table.remove(pending)
+		if instance ~= scriptInstance and instance:IsA("ModuleScript") and scoreMatch(instance.Name, prefix) ~= nil then
+			local path = modulePath(instance, document)
+			if path ~= nil then
+				table.insert(candidates, {
+					name = instance.Name,
+					kind = "Instance",
+					detail = path,
+					insert = path,
+				})
+			end
+		end
+		for _, child in ipairs(instance:GetChildren()) do
+			table.insert(pending, child)
+		end
+	end
+	return candidates
+end
+
 local function valueCandidates(value, methodsOnly)
+	if getmetatable(value) == ModuleExports then
+		local result = {}
+		for _, entry in pairs(value.entries) do
+			if not methodsOnly or entry.kind == "Method" or entry.kind == "Function" then
+				table.insert(result, entry)
+			end
+		end
+		return result
+	end
 	if value == nil then
 		return nil
 	end
@@ -1777,15 +1957,21 @@ local function evalChain(segments, count, aliases, document, depth)
 
 	local first = segments[1]
 
-	if first.args ~= nil then
-		return nil
-	end
-
 	local value = nil
 	local startIndex = 2
 	local second = segments[2]
 
-	if first.name == "Instance" and count >= 2 and second.name == "new" and second.args ~= nil then
+	if first.args ~= nil then
+		if first.name ~= "require" or (aliases ~= nil and aliases.require ~= nil) then
+			return nil
+		end
+		local argument = string.match(first.args, "^%s*(.-)%s*$")
+		local path, _, trailing = parseChain(argument)
+		if path == nil or trailing then
+			return nil
+		end
+		value = moduleExports(evalChain(path, #path, aliases, document, depth + 1))
+	elseif first.name == "Instance" and count >= 2 and second.name == "new" and second.args ~= nil then
 		local className = firstStringArgument(second.args)
 
 		if className == nil then
@@ -1840,13 +2026,19 @@ end
 -- `local x = <chain>` -> aliases[x] = parsed chain
 local function collectAliases(source)
 	local aliases = {}
+	local brackets, code = bracketPairs(source, true)
 
-	for name, rhs in string.gmatch(source, "local%s+([%a_][%w_]*)%s*=%s*([^\n]+)") do
-		rhs = string.gsub(rhs, "%s*%-%-.*$", "")
-		rhs = string.gsub(rhs, "[%s;]+$", "")
+	for name, position in string.gmatch(code, "%f[%w_]local[ \t]+([%a_][%w_]*)[ \t]*=[ \t]*()") do
+		local rhs = string.match(source, "^[^\n]+", position) or ""
+		local open = string.match(code, "^require%s*()%(", position)
+		if open ~= nil and brackets[open] ~= nil then
+			rhs = "require(" .. string.sub(source, open + 1, brackets[open] - 1) .. ")"
+		else
+			rhs = string.gsub(rhs, "%s*%-%-.*$", "")
+			rhs = string.gsub(rhs, "[%s;]+$", "")
+		end
 
 		local segments, _, endsWithSeparator = parseChain(rhs)
-
 		if segments ~= nil and not endsWithSeparator and #segments > 0 then
 			aliases[name] = segments
 		end
@@ -1855,7 +2047,67 @@ local function collectAliases(source)
 	return aliases
 end
 
--- Returns params (array of strings), returns (string?) for a call expression's callee.
+
+-- Luau follows lexical aliases in its AST. This resolver only maps the
+-- supported instance lookups to source and never runs the target ModuleScript.
+local function typeCheckResolver(document, source)
+	local instances = { ["@editor"] = document.instance }
+	local ids = {}
+	if document.instance ~= nil then
+		ids[document.instance] = "@editor"
+	end
+	local count = 0
+
+	return function(context, operation, name)
+		local receiver = instances[context]
+		local instance
+		if operation == "global" then
+			if name == "script" then
+				instance = receiver
+			elseif name == "game" then
+				instance = game
+			elseif name == "workspace" then
+				instance = workspace
+			end
+		elseif operation == "path" then
+			local alias, path = string.match(name, "^@([%a]+)/(.*)$")
+			instance = alias == "self" and receiver or (alias == "game" and game or nil)
+			for segment in string.gmatch(path or "", "[^/]+") do
+				if instance == nil then
+					break
+				end
+				instance = instance:FindFirstChild(segment)
+			end
+		elseif receiver ~= nil then
+			if operation == "GetService" and receiver == game then
+				instance = game:FindFirstChild(name)
+			elseif operation == "member" and name == "Parent" then
+				instance = receiver.Parent
+			elseif operation == "member" or operation == "FindFirstChild" or operation == "WaitForChild" then
+				instance = receiver:FindFirstChild(name)
+			end
+		end
+		if instance == nil then
+			return nil
+		end
+
+		local id = ids[instance]
+		if id == nil then
+			count += 1
+			id = ("%s #%d"):format(string.sub(instance.Name, 1, 200), count)
+			ids[instance] = id
+			instances[id] = instance
+		end
+		if id == "@editor" then
+			return id, source
+		end
+		if instance:IsA("ModuleScript") then
+			return id, instance.Source
+		end
+		return id
+	end
+end
+
 local function lookupSignature(callee, aliases, document)
 	if callee == nil then
 		return nil
@@ -1878,6 +2130,16 @@ local function lookupSignature(callee, aliases, document)
 
 	if count >= 2 then
 		local receiver = evalChain(segments, count - 1, aliases, document)
+
+		if getmetatable(receiver) == ModuleExports then
+			local entry = receiver.entries[name]
+			if entry ~= nil and entry.params ~= nil then
+				if segments[count - 1].sepAfter == ":" and entry.params[1] == "self" then
+					return { table.unpack(entry.params, 2) }, nil
+				end
+				return entry.params, nil
+			end
+		end
 
 		if receiver ~= nil then
 			local typeName = isVirtual(receiver) and receiver.typeName or typeof(receiver)
@@ -3285,7 +3547,7 @@ function CodeEditor:updateStatus()
 
 	if diagnostic ~= nil then
 		self.diagnosticActive = true
-		info = ("Syntax error · Ln %d   %d lines"):format(diagnostic.Line, self.statusLines)
+		info = ("%s · Ln %d   %d lines"):format(diagnostic.Kind or "Syntax error", diagnostic.Line, self.statusLines)
 	else
 		self.diagnosticActive = false
 		info = ("No problems   %d lines"):format(self.statusLines)
@@ -3319,6 +3581,85 @@ function CodeEditor:documentWords()
 end
 
 -- Describes the expression being typed: its receiver chain, the prefix being completed and the range to replace.
+local DIRECTIVES = {
+	{ name = "strict", kind = "Keyword", detail = "Strict type checking" },
+	{ name = "nonstrict", kind = "Keyword", detail = "Permissive type checking" },
+	{ name = "nocheck", kind = "Keyword", detail = "Disable type checking for this file" },
+	{ name = "nolint", kind = "Keyword", detail = "Suppress lint warnings, optionally by rule" },
+	{ name = "optimize", kind = "Keyword", detail = "Bytecode optimization level 0, 1 or 2" },
+	{ name = "native", kind = "Keyword", detail = "Luau native compilation hint" },
+}
+local OPTIMIZATION_LEVELS = {
+	{ name = "0", kind = "Value", detail = "Minimal optimization" },
+	{ name = "1", kind = "Value", detail = "Basic optimization" },
+	{ name = "2", kind = "Value", detail = "Aggressive optimization" },
+}
+local lintRuleCandidates
+
+local function directiveAtCursor(text, cursor)
+	local first = lineBounds(text, cursor)
+	local prefixText = string.sub(text, first, cursor - 1)
+	local indent, tail = string.match(prefixText, "^([ \t]*)%-%-!(.*)$")
+	if indent == nil then
+		return nil
+	end
+	local marker = first + #indent
+	local ok, tokens = pcall(function()
+		return LuauService:Tokenize(string.sub(text, 1, cursor - 1))
+	end)
+	if not ok then
+		return nil
+	end
+	for _, token in ipairs(tokens) do
+		if token.Type ~= "Comment" then
+			return nil
+		end
+		if token.Start == marker then
+			local name, argument = string.match(tail, "^([%a]+)[ \t]+([%w_]*)$")
+			local candidates, prefix = DIRECTIVES, tail
+			if name == "optimize" then
+				candidates, prefix = OPTIMIZATION_LEVELS, argument
+			elseif name == "nolint" then
+				if lintRuleCandidates == nil then
+					lintRuleCandidates = {}
+					local rulesOk, rules = pcall(function() return LuauService:GetLintRules() end)
+					if rulesOk and type(rules) == "table" then
+						for _, rule in ipairs(rules) do
+							table.insert(lintRuleCandidates, { name = rule, kind = "Keyword", detail = "Lint rule" })
+						end
+					end
+				end
+				candidates, prefix = lintRuleCandidates, argument
+			elseif string.match(tail, "^[%a]*$") == nil then
+				return nil
+			end
+			local finish = cursor
+			while string.match(string.sub(text, finish, finish), "[%w_]") ~= nil do
+				finish += 1
+			end
+			return {
+				directives = candidates,
+				prefix = prefix,
+				range = { start = cursor - #prefix, finish = finish },
+			}
+		end
+	end
+	return nil
+end
+
+local function isTypePosition(text, position)
+	local first = lineBounds(text, position)
+	local before = string.sub(text, first, position - 1)
+	if string.match(before, "^%s*type%s+[%a_]") or string.match(before, "^%s*export%s+type%s+[%a_]") then
+		return true
+	end
+	if string.match(before, "::[^=]*$") then
+		return true
+	end
+	return string.match(before, "^%s*local%s+[%a_][%w_]*%s*:[^=]*$") ~= nil
+		or string.match(before, "%f[%w_]function%f[^%w_].-[:][^=]*$") ~= nil
+end
+
 function CodeEditor:chainAtCursor(forced)
 	local text = self.TextBox.Text
 	local cursor = math.max(self.TextBox.CursorPosition or 1, 1)
@@ -3329,7 +3670,32 @@ function CodeEditor:chainAtCursor(forced)
 		finish += 1
 	end
 
-	local raw = string.sub(text, chainStart(text, cursor), cursor - 1)
+	local callee, argument, open = callContextAt(text, cursor)
+	if callee == "require" and argument == 0 and self:ensureAliases().require == nil then
+		local prefix = string.match(string.sub(text, open + 1, cursor - 1), "^%s*([%w_]*)$")
+		if prefix ~= nil then
+			return {
+				moduleArgument = true,
+				prefix = prefix,
+				range = { start = cursor - #prefix, finish = finish },
+			}
+		end
+	end
+
+	local start = chainStart(text, cursor)
+	local first = lineBounds(text, start)
+	local before = string.sub(text, first, start - 1)
+	local partial = string.sub(text, start, cursor - 1)
+	local cast = string.match(partial, ".*::()")
+	local annotation = string.match(partial, "^[%a_][%w_]*:()")
+	if cast ~= nil then
+		start += cast - 1
+	elseif annotation ~= nil and (string.match(before, "^%s*local%s+$")
+		or string.match(before, "%f[%w_]function%f[^%w_].*[(,][ \t]*$") or isTypePosition(text, start)) then
+		start += annotation - 1
+	end
+	local typePosition = isTypePosition(text, start)
+	local raw = string.sub(text, start, cursor - 1)
 	local segments, _, endsWithSeparator = parseChain(raw)
 
 	if segments == nil then
@@ -3369,6 +3735,7 @@ function CodeEditor:chainAtCursor(forced)
 		return {
 			segments = segments,
 			receiverCount = #segments,
+			typePosition = typePosition,
 			prefix = "",
 			sep = segments[#segments].sepAfter,
 			range = { start = cursor, finish = cursor },
@@ -3386,6 +3753,7 @@ function CodeEditor:chainAtCursor(forced)
 	return {
 		segments = segments,
 		receiverCount = receiverCount,
+		typePosition = typePosition,
 		prefix = last.name,
 		sep = receiverCount > 0 and segments[receiverCount].sepAfter or nil,
 		range = { start = cursor - #last.name, finish = finish },
@@ -3393,6 +3761,12 @@ function CodeEditor:chainAtCursor(forced)
 end
 
 function CodeEditor:collectCandidates(chain)
+	if chain.directives ~= nil then
+		return chain.directives
+	end
+	if chain.moduleArgument then
+		return requireCandidates(chain.prefix, self.activeDocument)
+	end
 	local aliases = self:ensureAliases()
 
 	if chain.receiverCount > 0 then
@@ -3425,6 +3799,9 @@ function CodeEditor:collectCandidates(chain)
 		end
 
 		local value = evalChain(segments, chain.receiverCount, aliases, self.activeDocument)
+		if chain.typePosition and getmetatable(value) == ModuleExports then
+			return value.types
+		end
 		local members = valueCandidates(value, methodsOnly)
 
 		if members ~= nil and #members > 0 then
@@ -3478,7 +3855,7 @@ end
 function CodeEditor:suggestionsBlocked()
 	local diagnostic = self.currentDiagnostic
 
-	if diagnostic == nil or self.forceSuggest then
+	if diagnostic == nil or diagnostic.Kind == "Lint warning" or self.forceSuggest then
 		return false
 	end
 
@@ -3502,8 +3879,9 @@ function CodeEditor:updateSuggestionList()
 	local box = self.TextBox
 	local text = box.Text
 	local cursor = box.CursorPosition or 1
+	local directive = directiveAtCursor(text, cursor)
 
-	if self:suggestionsBlocked() then
+	if directive == nil and self:suggestionsBlocked() then
 		self:hideSuggestionList()
 
 		return
@@ -3521,13 +3899,13 @@ function CodeEditor:updateSuggestionList()
 		return
 	end
 
-	if cursor >= 1 and insideCommentOrString(text, cursor) then
+	if directive == nil and cursor >= 1 and insideCommentOrString(text, cursor) then
 		self:dismissSuggestions()
 
 		return
 	end
 
-	local chain = self:chainAtCursor(forced)
+	local chain = directive or self:chainAtCursor(forced)
 
 	if chain == nil then
 		self:dismissSuggestions()
@@ -3547,6 +3925,7 @@ function CodeEditor:updateSuggestionList()
 				kind = candidate.kind,
 				detail = candidate.detail,
 				snippet = candidate.snippet,
+				insert = candidate.insert,
 				params = candidate.params,
 				deprecated = candidate.deprecated,
 				score = score + (candidate.snippet and 0.5 or 0) + (candidate.deprecated and 0.25 or 0),
@@ -3555,7 +3934,7 @@ function CodeEditor:updateSuggestionList()
 		end
 	end
 
-	if #ranked == 1 and ranked[1].name == chain.prefix then
+	if #ranked == 1 and ranked[1].name == chain.prefix and ranked[1].insert == nil then
 		self:dismissSuggestions()
 
 		return
@@ -3966,7 +4345,7 @@ function CodeEditor:acceptSuggestion(index)
 		self.TextBox:ReplaceRange(range.start, range.finish, clean)
 		self.TextBox.CursorPosition = range.start + (marker and marker - 1 or #clean)
 	else
-		local insert = suggestion.name
+		local insert = suggestion.insert or suggestion.name
 
 		if suggestion.quote then
 			insert = '"' .. insert .. '"'
@@ -5034,7 +5413,7 @@ function CodeEditor:showDiagnosticPopup(diagnostic)
 	local line = math.max(1, math.floor(tonumber(diagnostic.Line) or 1))
 	local message = tostring(diagnostic.Message or "Syntax error")
 
-	self.DiagnosticTitle.Text = "Syntax error · line " .. line
+	self.DiagnosticTitle.Text = (diagnostic.Kind or "Syntax error") .. " · line " .. line
 	self.DiagnosticText.Text = message
 
 	local measured =
@@ -5051,54 +5430,78 @@ function CodeEditor:refreshDiagnostics()
 	end
 
 	local source = self.TextBox.Text
+	local document = self.activeDocument
+	self.diagnosticSerial += 1
 
-	if not UI.shared().scriptDiagnostics or self.activeDocument == nil or source == "" then
+	if not UI.shared().scriptDiagnostics or document == nil or source == "" then
 		self.TextBox:ClearDiagnostics()
 		self.currentDiagnostic = nil
+		self.diagnostics = nil
 		self:hideDiagnosticPopup()
 
 		return
 	end
 
-	self.diagnosticSerial += 1
-
 	local serial = self.diagnosticSerial
 
 	task.delay(DIAGNOSTIC_DELAY, function()
-		if self.destroyed or serial ~= self.diagnosticSerial or not UI.isAlive(self.TextBox) then
+		if self.destroyed or serial ~= self.diagnosticSerial or self.activeDocument ~= document
+			or not UI.shared().scriptDiagnostics or not UI.isAlive(self.TextBox) then
 			return
 		end
 
-		local ok, result = pcall(function()
-			return LuauService:Diagnose(source)
+		local ok, results = pcall(function()
+			return LuauService:TypeCheck(source, typeCheckResolver(document, source))
 		end)
-
-		if not ok or type(result) ~= "table" or serial ~= self.diagnosticSerial then
+		if not ok or type(results) ~= "table" then
+			local syntaxOk, syntax = pcall(function()
+				return LuauService:Diagnose(source)
+			end)
+			if not syntaxOk or type(syntax) ~= "table" then
+				return
+			end
+			results = syntax.Ok and {} or { syntax }
+		end
+		if serial ~= self.diagnosticSerial then
 			return
 		end
 
-		if result.Ok then
-			self.TextBox:ClearDiagnostics()
-			self.currentDiagnostic = nil
-			self:hideDiagnosticPopup()
-
-			return
-		end
-
-		local line = math.max(1, math.floor(tonumber(result.Line) or 1))
-		local message = tostring(result.Message or "Syntax error")
-		local column, endColumn = diagnosticSpan(source, line, message)
-
-		self.currentDiagnostic = { Line = line, Column = column, EndColumn = endColumn, Message = message }
-
-		self.TextBox:SetDiagnostics({
-			{
+		local lines = string.split(source, "\n")
+		local diagnostics = {}
+		for _, result in ipairs(results) do
+			local line = math.clamp(math.floor(tonumber(result.Line) or 1), 1, #lines)
+			local message = tostring(result.Message or "Syntax error")
+			local column, endColumn = result.Column, result.EndColumn
+			if column == nil or endColumn == nil then
+				column, endColumn = diagnosticSpan(source, line, message)
+			else
+				local text = lines[line]
+				if result.EndLine ~= result.Line then
+					endColumn = #text + 1
+				end
+				column = (utf8.len(string.sub(text, 1, column - 1)) or (column - 1)) + 1
+				endColumn = (utf8.len(string.sub(text, 1, endColumn - 1)) or (endColumn - 1)) + 1
+			end
+			table.insert(diagnostics, {
+				Kind = result.Kind,
 				Line = line,
 				Column = column,
 				EndColumn = endColumn,
 				Message = message,
-			},
-		})
+			})
+		end
+		table.sort(diagnostics, function(a, b)
+			return a.Line < b.Line or (a.Line == b.Line and a.Column < b.Column)
+		end)
+		self.diagnostics = diagnostics
+		self.currentDiagnostic = diagnostics[1]
+		for _, diagnostic in ipairs(diagnostics) do
+			if diagnostic.Kind ~= "Lint warning" then
+				self.currentDiagnostic = diagnostic
+				break
+			end
+		end
+		self.TextBox:SetDiagnostics(diagnostics)
 
 		self:hideDiagnosticPopup()
 
@@ -5277,7 +5680,13 @@ function CodeEditor:wireEditor()
 		local current = self.currentDiagnostic
 
 		if hit ~= nil and current ~= nil and UI.shared().scriptDiagnostics then
-			self:showDiagnosticPopup(current)
+			for _, diagnostic in ipairs(self.diagnostics or {}) do
+				if diagnostic.Line == hit.Line and diagnostic.Column == hit.Column and diagnostic.Message == hit.Message then
+					hit = diagnostic
+					break
+				end
+			end
+			self:showDiagnosticPopup(hit)
 		elseif not self.diagnosticPinned then
 			self:hideDiagnosticPopup()
 		end
