@@ -453,7 +453,89 @@ breadcrumb.Name = "ViewportBreadcrumb"
 breadcrumb.Visible = renderer.Dimension == "3D"
 breadcrumb.ClipsDescendants = true
 
+if gizmoFrame then
+	gizmoFrame.Visible = not hasDocument
+end
+
 local editor = CodeEditor.new(scriptRoot)
+
+local GIZMO_SIZE = 96
+local GIZMO_DISTANCE = 6.5
+local gizmoFrame, gizmoCamera
+
+if renderer.Dimension == "3D" then
+	gizmoFrame = Instance.new("ViewportFrame")
+	gizmoFrame.Name = "AxisGizmo"
+	gizmoFrame.AnchorPoint = Vector2.new(1, 1)
+	gizmoFrame.Position = UDim2.new(1, -8, 1, -36)
+	gizmoFrame.Size = UDim2.fromOffset(GIZMO_SIZE, GIZMO_SIZE)
+	gizmoFrame.BackgroundTransparency = 1
+	gizmoFrame.Ambient = Color3.new(1, 1, 1)
+	gizmoFrame.LightColor = Color3.new(1, 1, 1)
+	gizmoFrame.Active = false
+	gizmoFrame.ZIndex = 10
+	gizmoFrame.Parent = viewportOverlay
+
+	gizmoCamera = Instance.new("Camera")
+	gizmoCamera.FieldOfView = 30
+	gizmoCamera.Parent = gizmoFrame
+	gizmoFrame.CurrentCamera = gizmoCamera
+
+	local SHAFT_LENGTH = 2
+	local SHAFT_THICKNESS = 0.12
+	local TIP_SIZE = 0.38
+
+	local function makePart(size, shape, color, cframe)
+		local part = Instance.new("Part")
+		part.Anchored = true
+		part.CanCollide = false
+		part.Size = size
+		part.Shape = shape
+		part.Color = color
+		part.Material = Enum.Material.SmoothPlastic
+		part.CFrame = cframe
+		part.Parent = gizmoFrame
+		return part
+	end
+
+	local axes = {
+		{ dir = Vector3.xAxis, color = Color3.fromRGB(235, 70, 70), rot = CFrame.identity },
+		{ dir = Vector3.yAxis, color = Color3.fromRGB(80, 200, 90), rot = CFrame.Angles(0, 0, math.rad(90)) },
+		{ dir = Vector3.zAxis, color = Color3.fromRGB(70, 120, 255), rot = CFrame.Angles(0, math.rad(90), 0) },
+	}
+
+	for _, axis in ipairs(axes) do
+		makePart(
+			Vector3.new(SHAFT_LENGTH, SHAFT_THICKNESS, SHAFT_THICKNESS),
+			Enum.PartType.Cylinder,
+			axis.color,
+			CFrame.new(axis.dir * (SHAFT_LENGTH / 2)) * axis.rot
+		)
+
+		makePart(
+			Vector3.one * TIP_SIZE,
+			Enum.PartType.Ball,
+			axis.color,
+			CFrame.new(axis.dir * (SHAFT_LENGTH + TIP_SIZE / 2))
+		)
+	end
+
+	makePart(Vector3.one * 0.3, Enum.PartType.Ball, Color3.fromRGB(220, 220, 220), CFrame.new())
+end
+
+local function updateAxisGizmo()
+	if not gizmoFrame then
+		return
+	end
+
+	local camera = workspace.CurrentCamera
+	if not camera then
+		return
+	end
+
+	local rotation = camera.CFrame.Rotation
+	gizmoCamera.CFrame = CFrame.new(-rotation.LookVector * GIZMO_DISTANCE) * rotation
+end
 
 local function rebuildBreadcrumb(path)
 	UI.clear(breadcrumb)
@@ -611,6 +693,9 @@ renderer.Pool.new("2d", function()
 		end
 
 		breadcrumb.Visible = not hasDocument and renderer.Dimension == "3D"
+		if gizmoFrame then
+			gizmoFrame.Visible = not hasDocument
+		end
 
 		editor:updateVisibility()
 	end
@@ -658,6 +743,8 @@ end
 
 renderer.Pool.new("2da", function()
 	local dragging = docker.Update(panel, "Viewport")
+
+	updateAxisGizmo()
 
 	if not dragging then
 		panel.Position = theme.ViewportCoordinates.Position
