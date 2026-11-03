@@ -6,7 +6,7 @@ local UI = require("@internal/editor_ui")
 
 local TextService = game:GetService("TextService")
 local RunService = game:GetService("RunService")
-local Project = game:GetService("Project")
+local Filesystem = game:GetService("Filesystem")
 local LuauService = game:GetService("LuauService")
 
 local function C(key)
@@ -2917,6 +2917,27 @@ function CodeEditor:pollDocuments()
 					document.name = name
 					renamed = true
 				end
+				local sourceOK, source = pcall(function()
+					return instance.Source
+				end)
+				if sourceOK and source ~= document.committed and document.source == document.committed then
+					document.source = source
+					document.committed = source
+					if document == self.activeDocument then
+						self:loadDocument(document)
+					end
+				end
+			end
+		elseif document.path and document.source == document.committed then
+			local ok, source = pcall(function()
+				return Filesystem:ReadFile(document.path)
+			end)
+			if ok and type(source) == "string" and source ~= document.committed then
+				document.source = source
+				document.committed = source
+				if document == self.activeDocument then
+					self:loadDocument(document)
+				end
 			end
 		end
 	end
@@ -2987,11 +3008,15 @@ function CodeEditor:commitDocument(document)
 	if document.path ~= nil then
 		document.commitSerial = (document.commitSerial or 0) + 1
 
-		local ok = pcall(function()
-			Project:WriteFile(document.path, document.source)
+		local ok, written = pcall(function()
+			if Filesystem:ReadFile(document.path) ~= document.committed then
+				self:notify("The source file changed on disk.", 5)
+				return false
+			end
+			return Filesystem:WriteFile(document.path, document.source)
 		end)
 
-		if ok then
+		if ok and written then
 			document.committed = document.source
 		end
 
@@ -3365,7 +3390,7 @@ function CodeEditor:OpenFile(path, name, line)
 	if document == nil then
 		local source = ""
 		local ok, value = pcall(function()
-			return Project:ReadFile(path)
+			return Filesystem:ReadFile(path)
 		end)
 
 		if ok and type(value) == "string" then

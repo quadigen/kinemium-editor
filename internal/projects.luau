@@ -3,6 +3,7 @@ if (IsServer or IsClient) or IsPlaytest then
 end
 local UI = require("@internal/editor_ui")
 local Explorer = require("@internal/explorer")
+local Sync = require("@internal/project_sync")
 
 local Project = game.Project
 local Dialog = game.DialogService
@@ -59,16 +60,10 @@ return function(page, windowControls, gui)
 
 	local refreshList
 
-	local function openProject(project)
-		if not project.Path then
-			return
-		end
-
-		Project:SetActiveProject(project.Path)
+	local function showProject(project)
+		Sync.start(project)
 		Explorer.filesController.Refresh()
-
 		gui.Enabled = false
-
 		UI.root().Enabled = true
 		UI.widgetOverlay().Enabled = true
 		UI.RootOverlay().Enabled = true
@@ -77,17 +72,23 @@ return function(page, windowControls, gui)
 		end
 	end
 
+	local function openProject(project)
+		local opened
+		if Sync.available then
+			opened = Project:OpenProject(project.Path)
+		else
+			opened = Project:SetActiveProject(project.Path)
+		end
+		if opened then
+			showProject(project)
+		else
+			notify("error", "Could not open project", project.Path)
+		end
+	end
+
 	local function validate(props)
 		if props.Name == "" then
 			return "Please enter a project name."
-		end
-
-		if props.Description == "" then
-			return "Please enter a description."
-		end
-
-		if props.Icon == "" then
-			return "Please enter an icon path."
 		end
 
 		if props.FolderPath == "" then
@@ -315,17 +316,7 @@ return function(page, windowControls, gui)
 				return false, "The project could not be created. Check the folder path."
 			end
 
-			Project:SetActiveProject(props.FolderPath)
-
-			gui.Enabled = false
-			UI.root().Enabled = true
-			UI.widgetOverlay().Enabled = true
-			UI.RootOverlay().Enabled = true
-			if shared.ScriptLayer then
-				shared.ScriptLayer.Enabled = true
-			end
-
-			Explorer.filesController.Refresh()
+			showProject(Project:GetActiveProject())
 			refreshList()
 
 			notify(
@@ -599,11 +590,36 @@ return function(page, windowControls, gui)
 		}
 	)
 
+	if Sync.available then
+		UI.iconButton(
+			controls,
+			"builtin://global-icons/folder.svg",
+			UDim2.new(1, -(BUTTON_SIZE * 4 + GAP * 3), 0, 0),
+			UDim2.fromOffset(BUTTON_SIZE, BUTTON_SIZE),
+			function()
+				local path = Dialog:PickFolder()
+				if not path or path == "" then return end
+				local ok, manifest = pcall(function()
+					local source = game.Filesystem:ReadFile(path .. "/default.project.json")
+					return game.HttpService:JSONDecode(source)
+				end)
+				if not ok or type(manifest) ~= "table" or type(manifest.name) ~= "string"
+					or type(manifest.tree) ~= "table" or not Project:RegisterProject(path, manifest.name) then
+					notify("error", "Could not add project", "Choose an unregistered folder containing default.project.json.")
+					return
+				end
+				refreshList()
+				notify("success", "Project added", manifest.name)
+			end,
+			{ bgTransparency = 0 }
+		)
+	end
+
 	local search = UI.input(
 		controls,
 		"Search projects...",
 		UDim2.new(0, 0, 0, 0),
-		UDim2.new(1, -(BUTTON_SIZE * 3 + GAP * 3), 0, BUTTON_SIZE),
+		UDim2.new(1, -((BUTTON_SIZE + GAP) * (Sync.available and 4 or 3)), 0, BUTTON_SIZE),
 		{
 			text = "",
 			maxLength = 64,

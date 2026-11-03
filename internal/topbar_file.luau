@@ -8,7 +8,25 @@ local UI = require("@internal/editor_ui")
 local util = require("@internal/util")
 local HttpService = game:GetService("HttpService")
 
-return {
+local Project = game:GetService("Project")
+local Sync = require("@internal/project_sync")
+local Tools = require("@internal/project_tools")
+local nativeExit, exitEditor = pcall(function() return Project.ExitEditor end)
+nativeExit = nativeExit and type(exitEditor) == "function"
+
+local function saveProject()
+	if not Sync.available then return false end
+	local ok, saved = pcall(Project.SaveProject, Project)
+	if not ok or not saved then
+		UI.toast("project-save", { type = "error", title = "Could not save project",
+			message = "Check that the active project's folder is writable.", duration = 5 })
+		return false
+	end
+	UI.toast("project-save", { type = "success", title = "Project saved", duration = 3 })
+	return true
+end
+
+local menu = {
 	name = "File",
 	buttons = {
 		{
@@ -57,7 +75,11 @@ return {
 		},
 		{
 			name = "Save",
-			route = "save_project",
+			route = not Sync.available and "save_project" or nil,
+			callback = Sync.available and function()
+				Sync.step()
+				saveProject()
+			end or nil,
 		},
 		{
 			name = "Save to File",
@@ -86,6 +108,11 @@ return {
 		{
 			name = "Close Project",
 			callback = function()
+				if Sync.available and Project:GetActiveProject() then
+					Sync.step()
+					if not saveProject() then return end
+					Sync.stop()
+				end
 				local gui = game.CoreGui.Home
 				if gui then
 					gui.Enabled = true
@@ -100,7 +127,23 @@ return {
 		},
 		{
 			name = "Exit",
-			route = "exit",
+			route = not nativeExit and "exit" or nil,
+			callback = nativeExit and function() Project:ExitEditor() end or nil,
 		},
 	},
 }
+
+if Sync.available then
+	local tools = {
+		{ name = "Pause / Resume Source Sync", callback = Tools.toggleSync },
+		{ name = "Sync Conflicts", callback = function() Tools.conflicts(1, true) end },
+	}
+	if Tools.backupsAvailable then
+		table.insert(tools, { name = "Restore Project Backup", callback = Tools.backups })
+	end
+	for index, button in ipairs(tools) do
+		table.insert(menu.buttons, 5 + index, button)
+	end
+end
+
+return menu
