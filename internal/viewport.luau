@@ -209,8 +209,21 @@ local _, single_player = UI.checkbox(frame, "Single Player", UDim2.fromOffset(8,
 	single_player_bool = value
 end)
 
-local _, client_count_input = UI.input(frame, "Client Count", UDim2.fromOffset(8, 8), "1", function(value)
-	client_count = tonumber(value) or 0
+local field, _, stroke = UI.input(container, "Client Count", UDim2.fromOffset(0, 0), UDim2.new(1, 0, 0, 24), {
+	text = "Client Count",
+	maxLength = 30,
+	borderColor = Color3.new(0.2, 0.2, 0.2),
+})
+
+field.FocusLost:Connect(function()
+	local text = field.Text
+	local num = tonumber(text)
+	if num then
+		client_count = math.max(0, math.floor(num))
+		field.Text = tostring(client_count)
+	else
+		field.Text = tostring(client_count)
+	end
 end)
 
 local uiEditor = UIEditor.new({
