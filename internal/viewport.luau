@@ -129,7 +129,10 @@ local function updateGizmos()
 	end
 end
 
+local disable_server_bool = false
+local disable_client_bool = false
 local startSinglePlayer = false
+local client_count = 1
 local playGroup, playControls = UI.iconButtonGroup(header, UDim2.fromScale(0.5, 0.5), {
 	{
 		name = "Play",
@@ -140,7 +143,27 @@ local playGroup, playControls = UI.iconButtonGroup(header, UDim2.fromScale(0.5, 
 			if startSinglePlayer then
 				PlaytestService:StartSinglePlayer()
 			else
-				PlaytestService:Start()
+				if disable_server_bool then
+					PlaytestService:StartClient()
+				end
+				if disable_client_bool then
+					PlaytestService:StartServer()
+				end
+				if not disable_server_bool and not disable_client_bool then
+					PlaytestService:Start()
+				end
+				if disable_server_bool and disable_client_bool then
+					UI.toast("playtest", {
+						type = "warning",
+						title = "Playtest Warning",
+						message = "Both server and client are disabled. Nothing will run.",
+						details = ``,
+						detailsTitle = "",
+						backgroundTransparency = 0.4,
+						blur = true,
+						duration = 5,
+					})
+				end
 			end
 		end,
 	},
@@ -193,11 +216,6 @@ settings_layout.PaddingTop = UDim.new(0, 8)
 settings_layout.Padding = UDim.new(0, 4)
 settings_layout.Parent = frame
 
-local disable_server_bool = false
-local disable_client_bool = false
-local single_player_bool = false
-local client_count = 0
-
 local _, disable_server = UI.checkbox(frame, "Disable Server", UDim2.fromOffset(8, 8), false, function(value)
 	disable_server_bool = value
 end)
@@ -207,11 +225,12 @@ local _, disable_client = UI.checkbox(frame, "Disable Client", UDim2.fromOffset(
 end)
 
 local _, single_player = UI.checkbox(frame, "Single Player", UDim2.fromOffset(8, 8), false, function(value)
-	single_player_bool = value
+	startSinglePlayer = value
 end)
 
 local field, _, stroke = UI.input(frame, "Client Count", UDim2.fromOffset(0, 0), UDim2.new(1, 0, 0, 24), {
-	text = "Client Count",
+	placeholder = "Client Count",
+	text = tostring(client_count),
 	maxLength = 30,
 	borderColor = Color3.new(0.2, 0.2, 0.2),
 })

@@ -9,6 +9,7 @@ local theme = StudioThemeService.SelectedTheme
 local Selection = game:GetService("Selection")
 local docker = require("@internal/docker")
 local picker = require("@internal/picker")
+local objectPreview = require("@internal/inspector_preview")
 
 local colors = UI.colors
 local tokens = UI.tokens
@@ -779,6 +780,10 @@ registerAdapter("Instance", {
 	height = PROPERTY_HEIGHT,
 
 	render = function(row, object, property)
+		objectPreview.track(row, function()
+			return propertyValue(object, property.name)
+		end)
+
 		if readonlyProperties[property.name] then
 			return textFieldController(readonlyField(row, property.value), displayValue)
 		end
@@ -854,6 +859,7 @@ registerAdapter("Instance", {
 
 Selection.SelectionChanged:Connect(function()
 	closeInspectorColorPicker()
+	objectPreview.clear()
 	lastStructure = ""
 	signatureClock = SIGNATURE_INTERVAL
 end)
@@ -1672,6 +1678,7 @@ renderer.Pool.new("2d", function()
 	end
 
 	updateEditors()
+	objectPreview.update(list, panel.Visible and not dragging and not picker.isActive() and not inspectorColorPopup)
 
 	signatureClock += 1
 
