@@ -370,9 +370,6 @@ local function overlayContainsPointer(root: Instance, point: Vector2): boolean
 end
 
 local function canUseViewport(): boolean
-	if picker.isActive() then
-		return false
-	end
 	local point = UserInputService:GetMouseLocation()
 	if not viewport.ContainsPoint(point) then
 		return false
@@ -394,7 +391,7 @@ local function isOutOfBoundsTarget(target: BasePart)
 	return isOutOfBounds(size.X) or isOutOfBounds(size.Y) or isOutOfBounds(size.Z)
 end
 
-local function isPickable(inst: Instance): boolean
+local function isPickable(inst: Instance, forReference: boolean?): boolean
 	if not inst then
 		return false
 	end
@@ -403,6 +400,9 @@ local function isPickable(inst: Instance): boolean
 	end
 	if inst:IsA("Terrain") then
 		return false
+	end
+	if forReference then
+		return true
 	end
 	if inst.Locked then
 		return false
@@ -429,7 +429,7 @@ local function getMouseRay(): Ray?
 	return camera:ViewportPointToRay(pos.X, pos.Y)
 end
 
-local function pickPart(): (BasePart?, RaycastResult?)
+local function pickPart(forReference: boolean?): (BasePart?, RaycastResult?)
 	local ray = getMouseRay()
 	if not ray then
 		return nil, nil
@@ -442,7 +442,7 @@ local function pickPart(): (BasePart?, RaycastResult?)
 		if not result then
 			return nil, nil
 		end
-		if isPickable(result.Instance) then
+		if isPickable(result.Instance, forReference) then
 			return result.Instance :: BasePart, result
 		end
 		table.insert(excluded, result.Instance)
@@ -780,6 +780,12 @@ RunService.RenderStepped:Connect(function()
 		endGizmoTracking()
 	end
 
+	if picker.isActive() then
+		setHover(nil)
+		picker.setViewportTarget(not mouseOverGui and canUseViewport() and pickPart(true) or nil)
+		return
+	end
+
 	if
 		mouseOverGui
 		or not canUseViewport()
@@ -840,6 +846,12 @@ UserInputService.InputBegan:Connect(function(input, processed)
 	end
 
 	if input.UserInputType == Enum.UserInputType.MouseButton1 then
+		if picker.isActive() then
+			if canUseViewport() then
+				picker.queueViewportPick(pickPart(true))
+			end
+			return
+		end
 		if not canUseViewport() or gizmoCapturesMouse() then
 			return
 		end
@@ -917,6 +929,7 @@ UserInputService.InputEnded:Connect(function(input, processed)
 	elseif
 		input.KeyCode == Enum.KeyCode.F
 		and not processed
+		and not picker.isActive()
 		and canUseViewport()
 		and UserInputService:GetFocusedTextBox() == nil
 	then

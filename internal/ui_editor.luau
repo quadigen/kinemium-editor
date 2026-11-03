@@ -1,4 +1,5 @@
 local UI = require("@internal/editor_ui")
+local picker = require("@internal/picker")
 
 local Selection = game:GetService("Selection")
 local StarterGui = game:GetService("StarterGui")
@@ -408,16 +409,12 @@ function Editor.new(options)
 		self:onRightClick(Vector2.new(x, y))
 	end)
 
-	local function startMove()
-		self:beginDrag("move")
-	end
-
-	self.box.MouseButton1Down:Connect(startMove)
-
-	self.box.InputBegan:Connect(function(input)
-		if input.UserInputType == Enum.UserInputType.MouseButton1 then
-			startMove()
+	self.box.MouseButton1Down:Connect(function(x, y)
+		if picker.isActive() then
+			picker.submit(self:findAt(Vector2.new(x, y), true))
+			return
 		end
+		self:beginDrag("move")
 	end)
 
 	self.box.MouseButton2Down:Connect(function(x, y)
@@ -684,6 +681,11 @@ function Editor:inSelection(obj)
 end
 
 function Editor:pickAt(point)
+	if picker.isActive() then
+		picker.submit(self:findAt(point, true))
+		return
+	end
+
 	local best = self:findAt(point)
 
 	if best and isShift() then
@@ -909,7 +911,7 @@ end
 function Editor:beginDrag(mode, handle)
 	local obj = self.target
 
-	if not obj or not self.enabled or self.drag then
+	if picker.isActive() or not obj or not self.enabled or self.drag then
 		return
 	end
 
@@ -1706,7 +1708,7 @@ function Editor:insertObject(class)
 end
 
 function Editor:onKey(input)
-	if not self.enabled then
+	if not self.enabled or picker.isActive() then
 		return
 	end
 
@@ -1786,7 +1788,7 @@ function Editor:onKey(input)
 end
 
 function Editor:onRightClick(point)
-	if not self.contextMenu or not self.enabled or self.drag then
+	if picker.isActive() or not self.contextMenu or not self.enabled or self.drag then
 		return
 	end
 

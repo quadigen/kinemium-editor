@@ -6,6 +6,7 @@ local UI = require("./editor_ui")
 local CodeEditor = require("@internal/code_editor")
 local docker = require("@internal/docker")
 local UIEditor = require("@internal/ui_editor")
+local picker = require("@internal/picker")
 
 local StudioThemeService = game:GetService("StudioThemeService")
 local theme = StudioThemeService.SelectedTheme
@@ -108,7 +109,7 @@ end
 
 local function updateGizmos()
 	local adornee = selectedPart()
-	local is3D = renderer.Dimension == "3D"
+	local is3D = renderer.Dimension == "3D" and not picker.isActive()
 
 	handles.Adornee = adornee
 	arcHandles.Adornee = adornee
@@ -691,7 +692,14 @@ end)
 
 updateGizmos()
 
+local wasPicking = picker.isActive()
 renderer.Pool.new("2d", function()
+	local picking = picker.isActive()
+	if picking ~= wasPicking then
+		wasPicking = picking
+		updateGizmos()
+	end
+
 	theme = StudioThemeService.SelectedTheme
 
 	local outputWindow = UI.getWindow("Output")

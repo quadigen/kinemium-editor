@@ -10,6 +10,7 @@ local RunService = game:GetService("RunService")
 local CHEVRON = "builtin://global-icons/chevron-down.svg"
 
 local UI = require("./editor_ui")
+local picker = require("@internal/picker")
 local colors = UI.tokens.color
 
 local VOXEL = 4
@@ -617,7 +618,7 @@ UserInputService.InputBegan:Connect(function(input, processed)
 		return
 	end
 
-	if processed or not panel.Visible or overUI() then
+	if processed or picker.isActive() or not panel.Visible or overUI() then
 		return
 	end
 
@@ -661,7 +662,7 @@ local function rotateBrush(degrees)
 end
 
 UserInputService.InputBegan:Connect(function(input, processed)
-	if processed or not panel.Visible or UserInputService:GetFocusedTextBox() then
+	if processed or picker.isActive() or not panel.Visible or UserInputService:GetFocusedTextBox() then
 		return
 	end
 
@@ -682,7 +683,7 @@ UserInputService.InputBegan:Connect(function(input, processed)
 end)
 
 RunService.RenderStepped:Connect(function()
-	local visible = panel.Visible
+	local visible = panel.Visible and not picker.isActive()
 
 	if not visible then
 		painting = false

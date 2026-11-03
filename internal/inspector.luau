@@ -8,7 +8,7 @@ local StudioThemeService = game:GetService("StudioThemeService")
 local theme = StudioThemeService.SelectedTheme
 local Selection = game:GetService("Selection")
 local docker = require("@internal/docker")
-local picker = require("./picker")
+local picker = require("@internal/picker")
 
 local colors = UI.colors
 local tokens = UI.tokens
@@ -30,8 +30,8 @@ local instanceProperties = {
 }
 
 local instanceFilters = {
-	PrimaryPart = function(i)
-		return i:IsA("BasePart")
+	PrimaryPart = function(i, object)
+		return i:IsA("BasePart") and i:IsDescendantOf(object)
 	end,
 	Part0 = function(i)
 		return i:IsA("BasePart")
@@ -798,23 +798,28 @@ registerAdapter("Instance", {
 		end
 
 		UI.button(row, "Pick", UDim2.new(1, -52, 0, 2), UDim2.fromOffset(28, 18), function()
-			if picker.isActive() then
+			if picker.isActive(field) then
 				picker.cancel()
 				return
 			end
 
-			picking = true
-			field.Text = "Picking..."
-
+			local filter = instanceFilters[property.name]
 			picker.pick({
-				filter = instanceFilters[property.name],
+				owner = field,
+				filter = filter and function(instance)
+					return filter(instance, object)
+				end,
 				hint = "Select " .. property.name,
 				onPicked = function(instance)
-					setProperty(object, property.name, instance)
+					if not setProperty(object, property.name, instance) then
+						return false
+					end
 					restore()
 				end,
 				onCancel = restore,
 			})
+			picking = true
+			field.Text = "Picking..."
 		end, {
 			color = tokens.color.input,
 			hoverColor = tokens.color.hover,
@@ -849,7 +854,6 @@ registerAdapter("Instance", {
 
 Selection.SelectionChanged:Connect(function()
 	closeInspectorColorPicker()
-	picker.cancel()
 	lastStructure = ""
 	signatureClock = SIGNATURE_INTERVAL
 end)
@@ -1658,12 +1662,6 @@ local function refreshValueControllers(visible)
 		end
 	end
 end
-
-Selection.SelectionChanged:Connect(function()
-	lastStructure = ""
-
-	signatureClock = SIGNATURE_INTERVAL
-end)
 
 renderer.Pool.new("2d", function()
 	local dragging = docker.Update(panel, "Inspector")

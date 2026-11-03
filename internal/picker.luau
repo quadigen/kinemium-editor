@@ -2,6 +2,7 @@ local UI = require("@internal/editor_ui")
 local UserInputService = game:GetService("UserInputService")
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
+local Selection = game:GetService("Selection")
 
 local tokens = UI.tokens
 local picker = {}
@@ -13,23 +14,11 @@ local function getMouse()
 	return player and player:GetMouse() or nil
 end
 
-local function makeHighlight()
-	local ok, h = pcall(Instance.new, "BoxHandleAdornment")
-	if ok and h then
-		return h, "BoxHandleAdornment"
-	end
-	return nil, nil
-end
-
-local function setHighlight(highlight, kind, target)
+local function setHighlight(highlight, target)
 	if not highlight then
 		return
 	end
-	if kind == "BoxHandleAdornment" then
-		highlight.Adornee = target
-	else
-		highlight.Adornee = target
-	end
+	highlight.Adornee = target
 	highlight.Parent = target and workspace or nil
 end
 
@@ -56,8 +45,8 @@ local function stop()
 	end
 end
 
-function picker.isActive()
-	return session ~= nil
+function picker.isActive(owner)
+	return session ~= nil and (owner == nil or session.owner == owner)
 end
 
 function picker.cancel()
@@ -72,30 +61,49 @@ function picker.cancel()
 end
 
 function picker.submit(instance)
-	if session == nil then
+	local s = session
+	if s == nil or s.cancelRequested or instance == nil or (s.filter and not s.filter(instance)) then
 		return false
 	end
-	if instance ~= nil and session.filter and not session.filter(instance) then
+	if s.owner and not UI.isAlive(s.owner) then
+		picker.cancel()
 		return false
 	end
-	local onPicked = session.onPicked
-	stop()
-	onPicked(instance)
+	if s.onPicked(instance) == false then
+		return false
+	end
+	if session == s then
+		stop()
+	end
 	return true
+end
+
+function picker.queueViewportPick(instance)
+	if session then
+		-- Let other listeners see the active session for the rest of this input.
+		session.pendingTarget = instance
+	end
+end
+
+function picker.setViewportTarget(target)
+	if session then
+		session.viewportTarget = target
+	end
 end
 
 function picker.pick(options)
 	picker.cancel()
 
 	local mouse = getMouse()
-	local highlight, kind = makeHighlight()
+	local ok, highlight = pcall(Instance.new, "BoxHandleAdornment")
 
 	local s = {
+		owner = options.owner,
 		filter = options.filter,
 		onPicked = options.onPicked,
 		onCancel = options.onCancel,
 		connections = {},
-		highlight = highlight,
+		highlight = ok and highlight or nil,
 		mouse = mouse,
 		hovered = nil,
 	}
@@ -134,42 +142,62 @@ function picker.pick(options)
 		if session ~= s then
 			return
 		end
+		if s.cancelRequested or (s.owner and not UI.isAlive(s.owner)) then
+			picker.cancel()
+			return
+		end
+		local pendingTarget = s.pendingTarget
+		s.pendingTarget = nil
+		if pendingTarget and picker.submit(pendingTarget) then
+			return
+		end
 		local pos = UserInputService:GetMouseLocation()
 		s.tooltip.Position = UDim2.fromOffset(pos.X + 14, pos.Y + 14)
 
-		local target = mouse and mouse.Target or nil
+		local target = s.viewportTarget
 		if not valid(target) then
 			target = nil
 		end
 
 		if target ~= s.hovered then
 			s.hovered = target
-			setHighlight(s.highlight, kind, target)
+			setHighlight(s.highlight, target)
 			s.tooltipLabel.Text = target and target.Name or (options.hint or "Click an object to select it")
 		end
 	end
 
 	table.insert(s.connections, RunService.RenderStepped:Connect(updateHover))
 
+	local previousSelection = {}
+	for _, instance in ipairs(Selection:Get()) do
+		previousSelection[instance] = true
+	end
+	table.insert(s.connections, Selection.SelectionChanged:Connect(function()
+		if session ~= s then
+			return
+		end
+		local selection = Selection:Get()
+		local oldSelection = previousSelection
+		previousSelection = {}
+		for _, instance in ipairs(selection) do
+			previousSelection[instance] = true
+		end
+		for _, instance in ipairs(selection) do
+			if not oldSelection[instance] and picker.submit(instance) then
+				return
+			end
+		end
+	end))
+
 	table.insert(
 		s.connections,
-		UserInputService.InputBegan:Connect(function(input, processed)
+		UserInputService.InputBegan:Connect(function(input)
 			if session ~= s then
 				return
 			end
 
 			if input.KeyCode == Enum.KeyCode.Escape or input.UserInputType == Enum.UserInputType.MouseButton2 then
-				picker.cancel()
-				return
-			end
-
-			if input.UserInputType == Enum.UserInputType.MouseButton1 then
-				if processed then
-					return
-				end
-				if s.hovered then
-					picker.submit(s.hovered)
-				end
+				s.cancelRequested = true
 			end
 		end)
 	)
@@ -214,12 +242,13 @@ function picker.row(parent, position, width, options)
 		UDim2.new(1, -56, 0, 1),
 		UDim2.fromOffset(32, UI.metrics.inputHeight - 2),
 		function()
-			if picker.isActive() then
+			if picker.isActive(frame) then
 				picker.cancel()
 				return
 			end
 			valueLabel.Text = "Picking..."
 			picker.pick({
+				owner = frame,
 				filter = options.filter,
 				onPicked = setValue,
 				onCancel = function()

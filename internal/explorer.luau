@@ -2,6 +2,7 @@ if (IsServer or IsClient) or IsPlaytest then
 	return nil
 end
 local UI = require("@internal/editor_ui")
+local picker = require("@internal/picker")
 local viewport = require("@internal/viewport")
 local export_service = game:GetService("ExportService")
 local dialog = game:GetService("DialogService")
@@ -630,9 +631,7 @@ local function addRow(instance, depth, y)
 
 	local rowColor = rowIndex % 2 == 0 and tokens.color.rowEven or tokens.color.rowOdd
 
-	local row = UI.button(list, "", UDim2.fromOffset(1, y), UDim2.new(1, -2, 0, UI.metrics.treeRow), function()
-		handleRowClick(instance, #children)
-	end, {
+	local row = UI.button(list, "", UDim2.fromOffset(1, y), UDim2.new(1, -2, 0, UI.metrics.treeRow), nil, {
 		color = isSelected and colors.selection or rowColor,
 
 		hoverColor = isSelected and colors.selection or colors.hover,
@@ -645,6 +644,12 @@ local function addRow(instance, depth, y)
 	})
 
 	row.Activated:Connect(function(input, clickCount)
+		if picker.isActive() then
+			picker.submit(instance)
+			return
+		end
+
+		handleRowClick(instance, #children)
 		-- double click
 		if clickCount == 2 then
 			if
@@ -663,6 +668,9 @@ local function addRow(instance, depth, y)
 	end)
 
 	row.InputBegan:Connect(function(input)
+		if picker.isActive() then
+			return
+		end
 		if input.UserInputType == Enum.UserInputType.MouseButton2 then
 			-- Commit any in-flight rename and dismiss the previous menu before
 			-- opening a new one, so neither outlives the interaction.
@@ -1396,7 +1404,7 @@ local function focusOn(target: Instance)
 end
 
 UserInputService.InputBegan:Connect(function(input: InputObject, gameProcessed: boolean)
-	if gameProcessed then
+	if gameProcessed or picker.isActive() then
 		return
 	end
 
