@@ -1334,6 +1334,18 @@ do
 	UI.setTheme("Dark")
 end
 
+function UI.keepSceneHelper(instance)
+	local ok, project, keep = pcall(function()
+		local service = game:GetService("Project")
+		return service, service.KeepEditorSceneHelper
+	end)
+	if ok and type(keep) == "function" and keep(project, instance) then
+		return
+	end
+	instance.Archivable = false
+	instance.CanReplicate = false
+end
+
 function UI.isAlive(gui)
 	return isAlive(gui)
 end

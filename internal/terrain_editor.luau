@@ -549,6 +549,7 @@ refreshRows()
 
 local previewFolder = Instance.new("Folder")
 previewFolder.Name = "TerrainBrushPreview"
+UI.keepSceneHelper(previewFolder)
 previewFolder.Parent = workspace
 
 mouse.TargetFilter = previewFolder
@@ -694,7 +695,7 @@ RunService.RenderStepped:Connect(function()
 
 	for shape, p in pairs(previews) do
 		local active = show and shape == cfg.shape
-		local want = active and previewFolder or game.ReplicatedStorage
+		local want = active and previewFolder or nil
 
 		if p.part.Parent ~= want then
 			p.part.Parent = want

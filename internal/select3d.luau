@@ -52,6 +52,7 @@ highlight.Name = "SelectionHighlight"
 highlight.FillTransparency = 1
 highlight.OutlineColor = tokens.color.accent
 highlight.Enabled = false
+editor_ui.keepSceneHelper(highlight)
 highlight.Parent = workspace
 
 editor_ui.onThemeChanged(function()
@@ -521,7 +522,7 @@ local function centroidOf(parts: { BasePart }): Vector3
 	local sum = Vector3.zero
 	local count = 0
 	for _, part in ipairs(parts) do
-		if part.Parent then
+		if editor_ui.isAlive(part) and part.Parent then
 			sum += part.Position
 			count += 1
 		end
@@ -549,7 +550,7 @@ end
 
 local function updateGizmoTracking()
 	local first = gizmo.first
-	if not first or not first.Parent then
+	if not editor_ui.isAlive(first) or not first.Parent then
 		return
 	end
 
@@ -612,7 +613,7 @@ local function beginDrag()
 	drag.pending = false
 
 	local parts = collectMovableParts()
-	if #parts == 0 or not drag.grabbed then
+	if #parts == 0 or not editor_ui.isAlive(drag.grabbed) then
 		return
 	end
 
@@ -686,7 +687,7 @@ local function applyDrag()
 	local rotation = CFrame.Angles(0, drag.rotY, 0)
 	local pivotInverse = CFrame.new(drag.pivotStart):Inverse()
 	for _, part in ipairs(drag.parts) do
-		if part.Parent then
+		if editor_ui.isAlive(part) and part.Parent then
 			local relative = pivotInverse * drag.startCFrames[part]
 			part.CFrame = CFrame.new(target) * rotation * relative
 		end
@@ -717,7 +718,7 @@ local function endDrag(commit: boolean)
 
 	if not commit then
 		for part, cf in pairs(drag.startCFrames) do
-			if part.Parent then
+			if editor_ui.isAlive(part) and part.Parent then
 				part.CFrame = cf
 			end
 		end
@@ -751,7 +752,7 @@ end
 
 RunService.RenderStepped:Connect(function()
 	if drag.active then
-		if not UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1) then
+		if not editor_ui.isAlive(drag.grabbed) or not UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1) then
 			endDrag(true)
 			return
 		end

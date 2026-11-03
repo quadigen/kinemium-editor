@@ -91,17 +91,19 @@ local snapEnabled = true
 local handles = Instance.new("Handles")
 handles.Name = "ViewportHandles"
 handles.Snap = 1
+UI.keepSceneHelper(handles)
 handles.Parent = workspace
 
 local arcHandles = Instance.new("ArcHandles")
 arcHandles.Name = "ViewportArcHandles"
 arcHandles.Snap = 30
+UI.keepSceneHelper(arcHandles)
 arcHandles.Parent = workspace
 
 local function selectedPart()
 	local selected = Selection:Get()
 	local object = selected and selected[1]
-	if object and (object:IsA("Part") or object:IsA("MeshPart") or object:IsA("Model")) then
+	if UI.isAlive(object) and (object:IsA("Part") or object:IsA("MeshPart") or object:IsA("Model")) then
 		return object
 	end
 	return nil
@@ -269,7 +271,7 @@ local colorPickerController
 
 local function selectedColor()
 	local object = selectedPart()
-	if object and (object:IsA("Part") or object:IsA("MeshPart")) then
+	if UI.isAlive(object) and (object:IsA("Part") or object:IsA("MeshPart")) then
 		return object.Color
 	end
 	return Color3.new(1, 1, 1)
@@ -277,7 +279,7 @@ end
 
 local function applyColor(color)
 	local object = selectedPart()
-	if object and (object:IsA("Part") or object:IsA("MeshPart")) then
+	if UI.isAlive(object) and (object:IsA("Part") or object:IsA("MeshPart")) then
 		object.Color = color
 	end
 end
@@ -358,7 +360,7 @@ local MENU_GAP = 8
 if renderer.Dimension == "3D" then
 	local function applyMaterial(material)
 		local object = selectedPart()
-		if object and (object:IsA("Part") or object:IsA("MeshPart")) then
+		if UI.isAlive(object) and (object:IsA("Part") or object:IsA("MeshPart")) then
 			object.Material = material
 		end
 	end
@@ -764,14 +766,14 @@ renderer.Pool.new("2d", function()
 	local selected = Selection:Get()
 	local object = selected and selected[1]
 
-	local path = object and object:GetFullName() or "Workspace"
+	local path = UI.isAlive(object) and object:GetFullName() or "Workspace"
 
 	if path ~= lastPath then
 		lastPath = path
 		rebuildBreadcrumb(path)
 	end
 
-	if editor:OpenScriptCount() > 0 or toolbar.Visible then
+	if editor:OpenScriptCount() > 0 or toolbar.Visible or scriptRoot.Visible then
 		local relabelled = false
 		local doomed = nil
 
