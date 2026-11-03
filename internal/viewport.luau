@@ -358,15 +358,8 @@ local STYLE_BAR_GAP = 10
 local MENU_GAP = 8
 
 if renderer.Dimension == "3D" then
-	local function applyMaterial(material)
-		local object = selectedPart()
-		if UI.isAlive(object) and (object:IsA("Part") or object:IsA("MeshPart")) then
-			object.Material = material
-		end
-	end
-
 	styleBar, styleControls = UI.iconButtonGroup(viewportOverlay, UDim2.fromOffset(8, 8), {
-		{ name = "Material", icon = iconRoot .. "Material.svg", tooltip = "Material", toggle = true },
+		{ name = "Material", icon = iconRoot .. "MaterialVariant.svg", tooltip = "Material", toggle = true },
 		{ name = "Color", icon = iconRoot .. "ColorEffect.svg", tooltip = "Color", toggle = true },
 	}, {
 		name = "StyleToolbar",

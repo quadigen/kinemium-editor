@@ -290,11 +290,23 @@ return function(ctx)
 
 			controller.fields[index] = field
 
+			local preview = not multi and options.onPreview
+			if preview then
+				box.TextChanged:Connect(function()
+					if field.setting then return end
+					local ok, value = normalize(config, box.Text)
+					if ok then
+						preview(setting(config, "numeric") and tonumber(value) or value)
+					end
+				end)
+			end
+
 			box.FocusLost:Connect(function()
 				local ok, normalized = normalize(config, box.Text)
 
 				if not ok then
 					box.Text = field.current
+					if preview then preview(outValue(field)) end
 					return
 				end
 
@@ -335,7 +347,9 @@ return function(ctx)
 			end
 
 			field.current = normalized
+			field.setting = true
 			field.box.Text = normalized
+			field.setting = false
 
 			if not silent then
 				notify(index)

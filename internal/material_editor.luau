@@ -161,7 +161,7 @@ end
 local function numberRow(text, value, min, max, decimals, onChanged)
 	local row, ctrl = UI.property(scroller, text, nil, nil, value, function(v)
 		onChanged(v)
-	end, { numeric = true, min = min, max = max, decimals = decimals, transparent = true })
+	end, { numeric = true, min = min, max = max, decimals = decimals, transparent = true, onPreview = onChanged })
 
 	return place(row), ctrl
 end
@@ -197,9 +197,11 @@ local function colorToHex(color)
 end
 
 local function colorRow(label, key)
-	local row, ctrl = UI.property(scroller, label, nil, nil, colorToHex(cfg[key]), function(value)
+	local function updateColor(value)
 		setValue(key, hexToColor(value))
-	end, {
+	end
+	local row, ctrl = UI.property(scroller, label, nil, nil, colorToHex(cfg[key]), updateColor, {
+		onPreview = updateColor,
 		transparent = true,
 		validate = function(text)
 			local color = hexToColor(text)
@@ -241,6 +243,8 @@ end
 local viewport = Instance.new("ViewportFrame")
 viewport.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
 viewport.BackgroundTransparency = 0
+viewport.PostProcessing = false
+viewport.Shadows = false
 viewport.BorderSizePixel = 0
 viewport.Position = UDim2.fromOffset(8, 8)
 viewport.Size = UDim2.new(0.36, -18, 0, VIEWPORT_HEIGHT)
@@ -275,9 +279,10 @@ local function destroyPreviewVariant()
 	end
 end
 
-local function fillVariant(variant)
+local function fillVariant(variant, preview)
 	for _, key in ipairs(propertyKeys) do
-		if variant[key] ~= cfg[key] then variant[key] = cfg[key] end
+		local value = (preview and key == "Enabled") or cfg[key]
+		if variant[key] ~= value then variant[key] = value end
 	end
 end
 
@@ -293,7 +298,7 @@ local function applyPreview()
 		previewVariant.Archivable = false
 		previewVariant.Parent = viewport
 	end
-	fillVariant(previewVariant)
+	fillVariant(previewVariant, true)
 	ball.MaterialVariant = PREVIEW_VARIANT_NAME
 	viewport.LightDirection = Vector3.new(-math.cos(math.rad(lightAngle)), -1, -math.sin(math.rad(lightAngle)))
 end
@@ -492,13 +497,12 @@ local lastStatus
 local function updateShaderStatus()
 	local message
 	local isError = false
-	if not cfg.Enabled then
-		message = "Variant disabled"
-	elseif previewVariant.LastError ~= "" then
+	if previewVariant.LastError ~= "" then
 		message = "Preview reported an error. Open the preview log for details."
 		isError = true
 	else
 		message = previewVariant.Compiled and "Preview shader compiled" or "Waiting for preview compilation…"
+		if previewVariant.Compiled and not cfg.Enabled then message = "Preview compiled · saved variant disabled" end
 	end
 	if message == lastStatus then return end
 	lastStatus = message
@@ -615,7 +619,7 @@ end)
 return {
 	Enable = function()
 		panel.Visible = true
-		dirty = true
+		applyPreview()
 	end,
 
 	Disable = function()
@@ -628,7 +632,7 @@ return {
 		if not panel.Visible then
 			destroyPreviewVariant()
 		else
-			dirty = true
+			applyPreview()
 		end
 	end,
 
