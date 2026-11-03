@@ -38,6 +38,7 @@ return function(ctx)
 		local hoverTransparency = options.hoverTransparency or 0.1
 		local animationSpeed = options.animationSpeed or 24
 		local animate = options.animate ~= false
+		local animatePanel = animate and not options.fadeContentOnly
 		local baseColor = options.itemColor or options.menuColor or colors.panelRaised
 		local hoverColor = options.hoverColor or colors.accent
 		local chevronIcon = options.chevronIcon or "builtin://global-icons/chevron-down.svg"
@@ -175,7 +176,7 @@ return function(ctx)
 				stack[i] = nil
 
 				if menu.shell then
-					if instant or not animate then
+					if instant or not animatePanel then
 						menu.shell:Destroy()
 					else
 						menu.closing = true
@@ -346,7 +347,7 @@ return function(ctx)
 						enabled = enabled,
 						baseY = y,
 						fades = {},
-						appear = (animate and stagger) and 0 or 1,
+						appear = (animatePanel and stagger) and 0 or 1,
 						age = 0,
 						delay = math.min(index * rowStagger, maxStagger),
 						labelX = 24,
@@ -518,7 +519,7 @@ return function(ctx)
 			local a = menu.alpha
 
 			if not menu.closing then
-				if animate then
+				if animatePanel then
 					menu.cur = tooltipSmoothTowards(menu.cur, menu.height, animationSpeed, dt)
 
 					if math.abs(menu.cur - menu.height) < 0.5 then
@@ -532,7 +533,7 @@ return function(ctx)
 			menu.shell.Size = UDim2.fromOffset(menuWidth, math.floor(menu.cur + 0.5))
 
 			if menu.baseX then
-				local inv = 1 - a
+				local inv = animatePanel and (1 - a) or 0
 
 				menu.shell.Position = UDim2.fromOffset(
 					math.floor(menu.baseX + menu.slideX * slideDistance * inv + 0.5),
@@ -540,23 +541,25 @@ return function(ctx)
 				)
 			end
 
-			menu.inner.BackgroundTransparency = 1 - (1 - panelTransparency) * a
+			if animatePanel then
+				menu.inner.BackgroundTransparency = 1 - (1 - panelTransparency) * a
+
+				for _, st in ipairs(menu.strokes) do
+					st.obj.Transparency = 1 - (1 - st.base) * a
+				end
+
+				for _, b in ipairs(menu.backdrops) do
+					if b.blur ~= nil then
+						b.obj.BlurRadius = b.blur * a
+					end
+
+					if b.tint ~= nil then
+						b.obj.TintTransparency = 1 - (1 - b.tint) * a
+					end
+				end
+			end
 
 			applyFades(menu.statics, a)
-
-			for _, st in ipairs(menu.strokes) do
-				st.obj.Transparency = 1 - (1 - st.base) * a
-			end
-
-			for _, b in ipairs(menu.backdrops) do
-				if b.blur ~= nil then
-					b.obj.BlurRadius = b.blur * a
-				end
-
-				if b.tint ~= nil then
-					b.obj.TintTransparency = 1 - (1 - b.tint) * a
-				end
-			end
 
 			for _, row in ipairs(menu.rows) do
 				if row.appear < 1 then
@@ -657,7 +660,7 @@ return function(ctx)
 			)
 
 			inner.Name = "Panel"
-			inner.BackgroundTransparency = animate and 1 or panelTransparency
+			inner.BackgroundTransparency = animatePanel and 1 or panelTransparency
 			inner.ZIndex = z + 1
 
 			local backdrops = {}
@@ -767,8 +770,12 @@ return function(ctx)
 			renderRows(menu, true)
 			place(menu)
 
-			menu.cur = animate and 0 or menu.height
+			menu.cur = animatePanel and 0 or menu.height
 			shell.Size = UDim2.fromOffset(menuWidth, math.floor(menu.cur + 0.5))
+			if options.fadeContentOnly then
+				-- Initialize the fade before the full-size panel can be drawn.
+				updateMenu(menu, 0)
+			end
 
 			if menu.search then
 				menu.search.TextChanged:Connect(function()
@@ -880,7 +887,7 @@ return function(ctx)
 
 			connections = {}
 
-			if (instant or not animate) and heartbeat then
+			if (instant or not animatePanel) and heartbeat then
 				heartbeat:Disconnect()
 				heartbeat = nil
 			end
