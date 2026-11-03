@@ -183,7 +183,7 @@ return function(ctx)
 						if options.animateBlur == false then
 							-- Keep the outgoing panel fade without blurring the incoming menu.
 							for _, backdrop in ipairs(menu.backdrops) do
-								if backdrop.blur ~= nil then
+								if backdrop.blur ~= nil and backdrop.transparency == nil then
 									backdrop.obj.BlurRadius = 0
 								end
 							end
@@ -557,7 +557,9 @@ return function(ctx)
 			end
 
 			for _, b in ipairs(menu.backdrops) do
-				if b.blur ~= nil and options.animateBlur ~= false then
+				if b.transparency ~= nil then
+					b.obj.Transparency = 1 - (1 - b.transparency) * a
+				elseif b.blur ~= nil and options.animateBlur ~= false then
 					b.obj.BlurRadius = b.blur * a
 				end
 
@@ -683,8 +685,22 @@ return function(ctx)
 					return obj.TintTransparency
 				end)
 
+				local transparency
+				if options.animateBlur == false then
+					local ok, value = pcall(function()
+						return obj.Transparency
+					end)
+					if ok and type(value) == "number" then
+						transparency = value
+						if animate then
+							obj.Transparency = 1
+						end
+					end
+				end
+
 				if okBlur or okTint then
 					table.insert(backdrops, {
+						transparency = transparency,
 						obj = obj,
 						blur = okBlur and blur or nil,
 						tint = okTint and tint or nil,
