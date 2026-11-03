@@ -16,7 +16,6 @@ local function addGeometry(viewport, source)
 		return nil, "No 3D preview for this object"
 	end
 
-	-- Bound the amount of work before cloning anything.
 	local pending = { source }
 	local index = 1
 	while index <= #pending do
@@ -51,8 +50,12 @@ local function addGeometry(viewport, source)
 		end
 
 		for _, child in ipairs(object:GetChildren()) do
-			if child:IsA("BasePart") or isContainer(child)
-				or child:IsA("DataModelMesh") or child:IsA("Decal") or child:IsA("SurfaceAppearance")
+			if
+				child:IsA("BasePart")
+				or isContainer(child)
+				or child:IsA("DataModelMesh")
+				or child:IsA("Decal")
+				or child:IsA("SurfaceAppearance")
 			then
 				prepare(child)
 			else
@@ -173,7 +176,8 @@ function Preview.update(list, enabled)
 
 	local mouse = UserInputService:GetMouseLocation()
 	local row = entry.row
-	if not enabled
+	if
+		not enabled
 		or not list:ContainsPoint(mouse.X, mouse.Y)
 		or not row:ContainsPoint(mouse.X, mouse.Y)
 		or not row.Parent:ContainsPoint(mouse.X, mouse.Y)

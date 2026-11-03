@@ -147,7 +147,7 @@ local playGroup, playControls = UI.iconButtonGroup(header, UDim2.fromScale(0.5, 
 					PlaytestService:StartClient()
 				end
 				if disable_client_bool then
-					PlaytestService:StartServer()
+					PlaytestService:StartServer(nil, false)
 				end
 				if not disable_server_bool and not disable_client_bool then
 					PlaytestService:Start()
