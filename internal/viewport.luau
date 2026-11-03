@@ -471,8 +471,8 @@ local gizmoAxes = {}
 if renderer.Dimension == "3D" then
 	gizmoFrame = Instance.new("Frame")
 	gizmoFrame.Name = "AxisGizmo"
-	gizmoFrame.AnchorPoint = Vector2.new(1, 1)
-	gizmoFrame.Position = UDim2.new(1, -8, 1, -36) -- sits above the breadcrumb
+	gizmoFrame.AnchorPoint = Vector2.new(1, 0)
+	gizmoFrame.Position = UDim2.new(1, -8, 0, 8)
 	gizmoFrame.Size = UDim2.fromOffset(GIZMO_SIZE, GIZMO_SIZE)
 	gizmoFrame.BackgroundTransparency = 1
 	gizmoFrame.BorderSizePixel = 0
@@ -500,7 +500,6 @@ if renderer.Dimension == "3D" then
 		{ label = "Z", dir = Vector3.zAxis, up = Vector3.yAxis, color = Color3.fromRGB(50, 140, 245) },
 	}
 
-	-- Camera-up used when snapping to look along an axis (Y needs a different up to avoid a degenerate view)
 	local snapUps = {
 		X = Vector3.yAxis,
 		Y = Vector3.new(0, 0, -1),
@@ -535,7 +534,6 @@ if renderer.Dimension == "3D" then
 	end
 
 	for _, def in ipairs(axisDefs) do
-		-- 3D shaft from the center to the positive end (cylinders run along local X)
 		local shaft = Instance.new("Part")
 		shaft.Anchored = true
 		shaft.CanCollide = false
@@ -546,7 +544,6 @@ if renderer.Dimension == "3D" then
 		shaft.CFrame = CFrame.fromMatrix(def.dir * (AXIS_LENGTH / 2), def.dir, def.up)
 		shaft.Parent = gizmoViewport
 
-		-- 2D buttons, positioned every frame from the 3D end points
 		local positive = makeCircleButton(def.label, def.color)
 
 		local negativeColor = def.color:Lerp(Color3.fromRGB(30, 32, 38), 0.45)
@@ -569,8 +566,6 @@ if renderer.Dimension == "3D" then
 	end
 end
 
--- Perspective-project a point in gizmo-camera space to pixels inside the gizmo frame.
--- Returns the pixel position and the depth in front of the camera.
 local function projectGizmoPoint(cameraCFrame, worldPoint)
 	local local3 = cameraCFrame:PointToObjectSpace(worldPoint)
 	local depth = -local3.Z
@@ -583,12 +578,10 @@ end
 local function placeGizmoButton(button, baseSize, cameraCFrame, worldPoint)
 	local pixel, depth = projectGizmoPoint(cameraCFrame, worldPoint)
 
-	-- Perspective: nearer ends are larger, farther ends smaller
 	local size = baseSize * (GIZMO_DISTANCE / depth)
 	button.Position = UDim2.fromOffset(pixel.X, pixel.Y)
 	button.Size = UDim2.fromOffset(size, size)
 
-	-- Nearer draws on top (shafts sit at ZIndex 11, so buttons straddle it)
 	button.ZIndex = math.clamp(math.floor(30 - depth * 2), 2, 60)
 end
 
@@ -602,7 +595,6 @@ local function updateAxisGizmo()
 		return
 	end
 
-	-- Copy only the rotation, then back the gizmo camera away from the origin along its look vector
 	local rotation = camera.CFrame.Rotation
 	local gizmoCFrame = CFrame.new(-rotation.LookVector * GIZMO_DISTANCE) * rotation
 	gizmoCamera.CFrame = gizmoCFrame

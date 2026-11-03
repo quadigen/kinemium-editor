@@ -63,7 +63,9 @@ return function(ctx)
 				end
 			end
 
-			record.callback()
+			if record["callback"] then
+				record["callback"]()
+			end
 		end)
 	end
 
