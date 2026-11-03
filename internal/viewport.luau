@@ -466,12 +466,13 @@ if renderer.Dimension == "3D" then
 	gizmoFrame = Instance.new("ViewportFrame")
 	gizmoFrame.Name = "AxisGizmo"
 	gizmoFrame.AnchorPoint = Vector2.new(1, 0)
-	gizmoFrame.Position = UDim2.new(1, 0, 0, 0)
+	gizmoFrame.Position = UDim2.new(1, -8, 0, 8)
 	gizmoFrame.Size = UDim2.fromOffset(GIZMO_SIZE, GIZMO_SIZE)
 	gizmoFrame.BackgroundTransparency = 1
 	gizmoFrame.Ambient = Color3.new(1, 1, 1)
 	gizmoFrame.LightColor = Color3.new(1, 1, 1)
 	gizmoFrame.Active = false
+	gizmoFrame.ClipsDescendants = false
 	gizmoFrame.ZIndex = 10
 	gizmoFrame.Parent = viewportOverlay
 
