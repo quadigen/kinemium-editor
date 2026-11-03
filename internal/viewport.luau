@@ -462,17 +462,22 @@ local GIZMO_SIZE = 96
 local GIZMO_DISTANCE = 6.5
 local gizmoFrame, gizmoCamera
 
+-- Orientation gizmo (3D only): mirrors workspace.CurrentCamera rotation, no text.
+local GIZMO_SIZE = 112
+local GIZMO_DISTANCE = 10
+local gizmoFrame, gizmoCamera
+
 if renderer.Dimension == "3D" then
 	gizmoFrame = Instance.new("ViewportFrame")
 	gizmoFrame.Name = "AxisGizmo"
-	gizmoFrame.AnchorPoint = Vector2.new(1, 0)
-	gizmoFrame.Position = UDim2.new(1, -8, 0, 8)
+	gizmoFrame.AnchorPoint = Vector2.new(1, 1)
+	gizmoFrame.Position = UDim2.new(1, -8, 1, -36) -- sits above the breadcrumb
 	gizmoFrame.Size = UDim2.fromOffset(GIZMO_SIZE, GIZMO_SIZE)
 	gizmoFrame.BackgroundTransparency = 1
-	gizmoFrame.Ambient = Color3.new(1, 1, 1)
+	gizmoFrame.Ambient = Color3.fromRGB(150, 150, 150)
 	gizmoFrame.LightColor = Color3.new(1, 1, 1)
+	gizmoFrame.LightDirection = Vector3.new(-1, -1.5, -0.8)
 	gizmoFrame.Active = false
-	gizmoFrame.ClipsDescendants = false
 	gizmoFrame.ZIndex = 10
 	gizmoFrame.Parent = viewportOverlay
 
@@ -481,11 +486,18 @@ if renderer.Dimension == "3D" then
 	gizmoCamera.Parent = gizmoFrame
 	gizmoFrame.CurrentCamera = gizmoCamera
 
-	local SHAFT_LENGTH = 2
-	local SHAFT_THICKNESS = 0.12
-	local TIP_SIZE = 0.38
+	local SHAFT_LENGTH = 1.6
+	local SHAFT_RADIUS = 0.06
+	local CONE_LENGTH = 0.75
+	local CONE_RADIUS = 0.22
+	local CONE_STEPS = 8 -- stacked discs approximate a smooth cone
+	local COLLAR_RADIUS = 0.1
+	local NEG_LENGTH = 1.0
+	local NEG_RADIUS = 0.035
+	local RING_RADIUS = 2.0
+	local RING_SEGMENTS = 48
 
-	local function makePart(size, shape, color, cframe)
+	local function makePart(size, shape, color, cframe, transparency)
 		local part = Instance.new("Part")
 		part.Anchored = true
 		part.CanCollide = false
@@ -494,33 +506,104 @@ if renderer.Dimension == "3D" then
 		part.Color = color
 		part.Material = Enum.Material.SmoothPlastic
 		part.CFrame = cframe
+		part.Transparency = transparency or 0
 		part.Parent = gizmoFrame
 		return part
 	end
 
-	local axes = {
-		{ dir = Vector3.xAxis, color = Color3.fromRGB(235, 70, 70), rot = CFrame.identity },
-		{ dir = Vector3.yAxis, color = Color3.fromRGB(80, 200, 90), rot = CFrame.Angles(0, 0, math.rad(90)) },
-		{ dir = Vector3.zAxis, color = Color3.fromRGB(70, 120, 255), rot = CFrame.Angles(0, math.rad(90), 0) },
-	}
+	local function ball(diameter, color, position, transparency)
+		return makePart(Vector3.one * diameter, Enum.PartType.Ball, color, CFrame.new(position), transparency)
+	end
 
-	for _, axis in ipairs(axes) do
-		makePart(
-			Vector3.new(SHAFT_LENGTH, SHAFT_THICKNESS, SHAFT_THICKNESS),
+	-- Cylinders run along their local X axis, so build a basis whose X points down the axis.
+	local function cylinder(basis, distance, length, radius, color, transparency)
+		local cframe = CFrame.fromMatrix(basis.dir * distance, basis.dir, basis.up)
+		return makePart(
+			Vector3.new(length, radius * 2, radius * 2),
 			Enum.PartType.Cylinder,
-			axis.color,
-			CFrame.new(axis.dir * (SHAFT_LENGTH / 2)) * axis.rot
-		)
-
-		makePart(
-			Vector3.one * TIP_SIZE,
-			Enum.PartType.Ball,
-			axis.color,
-			CFrame.new(axis.dir * (SHAFT_LENGTH + TIP_SIZE / 2))
+			color,
+			cframe,
+			transparency
 		)
 	end
 
-	makePart(Vector3.one * 0.3, Enum.PartType.Ball, Color3.fromRGB(220, 220, 220), CFrame.new())
+	local function darken(color, amount)
+		return color:Lerp(Color3.new(0, 0, 0), amount)
+	end
+
+	local function fade(color, amount)
+		return color:Lerp(Color3.fromRGB(120, 120, 130), amount)
+	end
+
+	local axes = {
+		{ dir = Vector3.xAxis, up = Vector3.yAxis, color = Color3.fromRGB(235, 70, 70) },
+		{ dir = Vector3.yAxis, up = Vector3.xAxis, color = Color3.fromRGB(80, 200, 90) },
+		{ dir = Vector3.zAxis, up = Vector3.yAxis, color = Color3.fromRGB(70, 120, 255) },
+	}
+
+	for _, axis in ipairs(axes) do
+		local color = axis.color
+
+		-- Positive shaft
+		cylinder(axis, SHAFT_LENGTH / 2, SHAFT_LENGTH, SHAFT_RADIUS, color)
+
+		-- Tick bands along the shaft
+		for _, t in ipairs({ 0.4, 0.8, 1.2 }) do
+			cylinder(axis, t, 0.04, SHAFT_RADIUS * 1.35, darken(color, 0.35))
+		end
+
+		-- Collar where the shaft meets the cone
+		cylinder(axis, SHAFT_LENGTH, 0.08, COLLAR_RADIUS, darken(color, 0.2))
+
+		-- Tapered cone arrowhead built from stacked discs
+		local stepLength = CONE_LENGTH / CONE_STEPS
+		for i = 1, CONE_STEPS do
+			local t = (i - 1) / CONE_STEPS
+			local radius = math.max(CONE_RADIUS * (1 - t), 0.015)
+			cylinder(axis, SHAFT_LENGTH + 0.04 + (i - 0.5) * stepLength, stepLength * 1.02, radius, color)
+		end
+
+		-- Negative stub: thinner, dimmer, with a small bead on the end
+		local dimmed = fade(color, 0.55)
+		local negBasis = { dir = -axis.dir, up = axis.up }
+		cylinder(negBasis, NEG_LENGTH / 2, NEG_LENGTH, NEG_RADIUS, dimmed, 0.15)
+		ball(0.16, dimmed, -axis.dir * NEG_LENGTH, 0.15)
+	end
+
+	-- Hub: solid core plus a translucent shell
+	ball(0.28, Color3.fromRGB(230, 230, 235), Vector3.zero)
+	ball(0.42, Color3.fromRGB(255, 255, 255), Vector3.zero, 0.75)
+
+	-- Ground-plane (XZ) disc and rim for depth cues
+	makePart(
+		Vector3.new(0.01, RING_RADIUS * 2, RING_RADIUS * 2),
+		Enum.PartType.Cylinder,
+		Color3.fromRGB(200, 205, 215),
+		CFrame.Angles(0, 0, math.rad(90)),
+		0.92
+	)
+
+	local segmentLength = 2 * math.pi * RING_RADIUS / RING_SEGMENTS
+	for i = 0, RING_SEGMENTS - 1 do
+		local angle = (i / RING_SEGMENTS) * math.pi * 2
+		local position = Vector3.new(math.cos(angle) * RING_RADIUS, 0, math.sin(angle) * RING_RADIUS)
+		makePart(
+			Vector3.new(segmentLength, 0.02, 0.03),
+			Enum.PartType.Block,
+			Color3.fromRGB(210, 215, 225),
+			CFrame.lookAt(position, Vector3.zero) * CFrame.Angles(0, math.rad(90), 0),
+			0.55
+		)
+	end
+
+	-- Small marker beads where each axis crosses the ring
+	for _, axis in ipairs(axes) do
+		if axis.dir ~= Vector3.yAxis then
+			local marker = fade(axis.color, 0.6)
+			ball(0.1, marker, axis.dir * RING_RADIUS, 0.3)
+			ball(0.1, marker, -axis.dir * RING_RADIUS, 0.3)
+		end
+	end
 end
 
 local function updateAxisGizmo()
@@ -533,6 +616,7 @@ local function updateAxisGizmo()
 		return
 	end
 
+	-- Copy only the rotation, then back the gizmo camera away from the origin along its look vector
 	local rotation = camera.CFrame.Rotation
 	gizmoCamera.CFrame = CFrame.new(-rotation.LookVector * GIZMO_DISTANCE) * rotation
 end
