@@ -553,18 +553,7 @@ menuBar, menuBarController = UI.menuBar(headerSurface, UDim2.fromOffset(headerX,
 	textColor = initialColors.text,
 	subtextColor = initialColors.subtext,
 	menuWidth = 200,
-	menuGap = 0,
-	menuOptions = {
-		fadeContentOnly = true,
-		fadeSpeed = 80,
-		hoverNudge = 0,
-		radius = 0,
-		itemRadius = 0,
-		BackgroundTransparency = 0.18,
-		menuColor = initialColors.panel,
-		borderColor = initialColors.accent,
-		hoverColor = initialColors.raised,
-	},
+	menuOptions = { animateBlur = false },
 })
 
 headerX += menuBarController:GetWidth() + 10
