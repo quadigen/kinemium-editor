@@ -24,7 +24,7 @@ local tokens = UI.tokens
 
 local gui = UI.widgetOverlay()
 
-local panel, _, _, windowControls =
+local panel, tabContent, _, windowControls =
 	UI.window("Explorer", theme.ExplorerCoordinates.Position, theme.ExplorerCoordinates.Size, "Explorer", {
 		tabs = {
 			"Explorer",
@@ -38,11 +38,99 @@ panel.Parent = gui
 local content = windowControls.pages.Explorer
 local filesPage = windowControls.pages.Files
 
-local function explorerTabActive()
-	return windowControls.getSelectedTab() == "Explorer"
+local floating = {}
+local pendingTab
+local movingTab
+local keyboardTab
+local dragThreshold = 8
+
+local function tabActive(name)
+	local window = floating[name]
+	return gui.Enabled and (window and window.Visible or panel.Visible and windowControls.getSelectedTab() == name)
 end
 
-local filesController = files(filesPage, windowControls)
+local function explorerTabActive()
+	return tabActive("Explorer") and (keyboardTab or windowControls.getSelectedTab()) == "Explorer"
+end
+
+local filesController = files(filesPage, {
+	getSelectedTab = function() return tabActive("Files") and "Files" or nil end,
+	isKeyboardActive = function()
+		return tabActive("Files") and (keyboardTab or windowControls.getSelectedTab()) == "Files"
+	end,
+})
+
+local function dockTab(name)
+	local window = floating[name]
+	if not window then return end
+	floating[name] = nil
+	keyboardTab = name
+	windowControls.pages[name].Parent = tabContent
+	windowControls.setTabDetached(name, false)
+	panel.Visible = true
+	window:Destroy()
+end
+
+local function floatTab(name, point)
+	local size = panel.AbsoluteSize
+	local bounds = gui.AbsoluteSize
+	local width = math.min(math.max(size.X, 280), math.max(bounds.X, 1))
+	local height = math.min(math.max(size.Y, 260), math.max(bounds.Y, 1))
+	local x = math.clamp(point.X - 24, 0, math.max(0, bounds.X - width))
+	local y = math.clamp(point.Y - 14, 0, math.max(0, bounds.Y - 30))
+	local window, pageHolder, _, controls = UI.window("Detached" .. name,
+		UDim2.fromOffset(x, y), UDim2.fromOffset(width, height), name, {
+			closable = true,
+			onClose = function() dockTab(name) end,
+		})
+	window.Parent = gui
+	floating[name] = window
+	keyboardTab = name
+	windowControls.setTabDetached(name, true)
+	local page = windowControls.pages[name]
+	page.Parent = pageHolder
+	page.Visible = true
+
+	controls.dragHandle.InputBegan:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 then
+			movingTab = { name = name, start = UserInputService:GetMouseLocation() }
+		end
+	end)
+end
+
+for name, tab in pairs(windowControls.tabs) do
+	tab.button.InputBegan:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 then
+			pendingTab = { name = name, start = UserInputService:GetMouseLocation() }
+		end
+	end)
+end
+
+UserInputService.InputBegan:Connect(function(input)
+	if not gui.Enabled or input.UserInputType ~= Enum.UserInputType.MouseButton1 then return end
+	local point = UserInputService:GetMouseLocation()
+	for name, window in pairs(floating) do
+		if window.Visible and UI.pointInside(window, point) then
+			keyboardTab = name
+			return
+		end
+	end
+	if panel.Visible and UI.pointInside(panel, point) then keyboardTab = nil end
+end)
+
+UserInputService.InputEnded:Connect(function(input)
+	if input.UserInputType ~= Enum.UserInputType.MouseButton1 then return end
+	local pending, moving = pendingTab, movingTab
+	pendingTab, movingTab = nil, nil
+	if not gui.Enabled or not panel.Visible then return end
+	local point = UserInputService:GetMouseLocation()
+	local overExplorer = UI.pointInside(panel, point)
+	if pending and (point - pending.start).Magnitude >= dragThreshold and not overExplorer then
+		floatTab(pending.name, point)
+	elseif moving and (point - moving.start).Magnitude >= dragThreshold and overExplorer then
+		dockTab(moving.name)
+	end
+end)
 
 panel.Position =
 	UDim2.new(panel.Position.X.Scale, panel.Position.X.Offset, panel.Position.Y.Scale, panel.Position.Y.Offset)

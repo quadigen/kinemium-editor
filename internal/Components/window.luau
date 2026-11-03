@@ -467,6 +467,7 @@ return function(ctx)
 		controls.pages = tabsController and tabsController.pages or {}
 
 		controls.selectTab = tabsController and tabsController.selectTab or function() end
+		controls.setTabDetached = tabsController and tabsController.setTabDetached
 		controls.getSelectedTab = tabsController and tabsController.getSelectedTab or function()
 			return nil
 		end

@@ -2728,6 +2728,9 @@ return function(content, windowControls)
 			return
 		end
 
+		local keyboardActive = windowControls and windowControls.isKeyboardActive
+		if keyboardActive and not keyboardActive() then return end
+
 		if input.KeyCode == Enum.KeyCode.Escape then
 			if drag ~= nil then
 				finishDrop(false)

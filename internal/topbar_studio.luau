@@ -6,7 +6,6 @@ local UI = require("@internal/editor_ui")
 local plugin_marketplace = require("@internal/marketplace")
 local credits_page = require("@internal/credits")
 local user = require("@internal/user")
-local openTeam = require("@internal/collaboration")()
 
 local size = UDim2.new(0, 600, 0.6, 0)
 local position = UDim2.new(0.5, 0, 0.5, 0)
@@ -52,7 +51,6 @@ user(Settings_windowControls.pages.Settings, false)
 return {
 	name = "Studio",
 	buttons = {
-		{ name = "Team", callback = openTeam },
 		{
 			name = "Settings",
 			callback = function()

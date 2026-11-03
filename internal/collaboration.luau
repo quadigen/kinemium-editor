@@ -1,10 +1,21 @@
 local UI = require("@internal/editor_ui")
 
 local REQUIRED = {
-	"ListSessions", "ListInvites", "StartSession", "RequestJoin", "AcceptInvite",
-	"DeclineInvite", "EndSession", "LeaveSession", "Invite", "ListParticipants",
-	"ListSessionJoinRequests", "ApproveJoinRequest", "DenyJoinRequest",
-	"RotateJoinCode", "RemoveParticipant",
+	"ListSessions",
+	"ListInvites",
+	"StartSession",
+	"RequestJoin",
+	"AcceptInvite",
+	"DeclineInvite",
+	"EndSession",
+	"LeaveSession",
+	"Invite",
+	"ListParticipants",
+	"ListSessionJoinRequests",
+	"ApproveJoinRequest",
+	"DenyJoinRequest",
+	"RotateJoinCode",
+	"RemoveParticipant",
 }
 local WARNING = "Team collaboration requires a newer engine build."
 
@@ -43,15 +54,26 @@ return function()
 
 		if not supported or not service then
 			warn(WARNING)
-			local label = UI.label(page, WARNING, UDim2.fromOffset(12, 8),
-				UDim2.new(1, -24, 0, 52), UI.tokens.type.small, colors.text)
+			local label = UI.label(
+				page,
+				WARNING,
+				UDim2.fromOffset(12, 8),
+				UDim2.new(1, -24, 0, 52),
+				UI.tokens.type.small,
+				colors.text
+			)
 			label.TextWrapped = true
 			return
 		end
 
-		local status = UI.label(page, "Sign in through Studio Settings to use Team.",
-			UDim2.fromOffset(10, 0), UDim2.new(1, -20, 0, 28),
-			UI.tokens.type.small, colors.text)
+		local status = UI.label(
+			page,
+			"Sign in through Studio Settings to use Team.",
+			UDim2.fromOffset(10, 0),
+			UDim2.new(1, -20, 0, 28),
+			UI.tokens.type.small,
+			colors.text
+		)
 		local matrix = game:GetService("MatrixService")
 
 		local function call(name, ...)
@@ -110,16 +132,26 @@ return function()
 			local id = session.sessionId
 			status.Text = session.gameName or session.name or "Team session"
 			row("Back to sessions", refresh)
-			row("Refresh session", function() showSession(session, hosted) end)
+			row("Refresh session", function()
+				showSession(session, hosted)
+			end)
 			local participants = call("ListParticipants", id)
 			if type(participants) == "table" then
 				for _, participant in ipairs(participants.participants or {}) do
 					local label = participant.userId or "Participant"
-					UI.label(list, label, UDim2.fromOffset(0, 0),
-						UDim2.new(1, -12, 0, 24), UI.tokens.type.small, colors.text)
+					UI.label(
+						list,
+						label,
+						UDim2.fromOffset(0, 0),
+						UDim2.new(1, -12, 0, 24),
+						UI.tokens.type.small,
+						colors.text
+					)
 					if hosted and participant.userId and participant.userId ~= session.hostUserId then
 						row("Remove " .. label, function()
-							if call("RemoveParticipant", id, participant.userId) then showSession(session, true) end
+							if call("RemoveParticipant", id, participant.userId) then
+								showSession(session, true)
+							end
 						end)
 					end
 				end
@@ -131,8 +163,8 @@ return function()
 						status.Text = "Join code: " .. result.joinCode
 					end
 				end)
-				local invite = UI.input(list, "Developer Matrix ID", UDim2.fromOffset(0, 0),
-					UDim2.new(1, -12, 0, 28), {})
+				local invite =
+					UI.input(list, "Developer Matrix ID", UDim2.fromOffset(0, 0), UDim2.new(1, -12, 0, 28), {})
 				row("Send invitation", function()
 					if invite.Text ~= "" and call("Invite", id, { userId = invite.Text }) then
 						status.Text = "Invitation sent."
@@ -143,16 +175,22 @@ return function()
 					for _, request in ipairs(pending.joinRequests or {}) do
 						local name = request.userId or "developer"
 						row("Approve " .. name, function()
-							if call("ApproveJoinRequest", id, request.requestId) then showSession(session, true) end
+							if call("ApproveJoinRequest", id, request.requestId) then
+								showSession(session, true)
+							end
 						end)
 						row("Deny " .. name, function()
-							if call("DenyJoinRequest", id, request.requestId) then showSession(session, true) end
+							if call("DenyJoinRequest", id, request.requestId) then
+								showSession(session, true)
+							end
 						end)
 					end
 				end
 			end
 			row(hosted and "End session" or "Leave session", function()
-				if call(hosted and "EndSession" or "LeaveSession", id) then refresh() end
+				if call(hosted and "EndSession" or "LeaveSession", id) then
+					refresh()
+				end
 			end)
 		end
 
@@ -174,27 +212,33 @@ return function()
 				for _, invite in ipairs(result.invites or {}) do
 					local name = invite.gameName or invite.inviterUserId or "game"
 					row("Accept invitation to " .. name, function()
-						if call("AcceptInvite", invite.inviteId) then refresh() end
+						if call("AcceptInvite", invite.inviteId) then
+							refresh()
+						end
 					end)
 					row("Decline invitation to " .. name, function()
-						if call("DeclineInvite", invite.inviteId) then refresh() end
+						if call("DeclineInvite", invite.inviteId) then
+							refresh()
+						end
 					end)
 				end
 			end
 		end
 
-		local gameId = UI.input(page, "Owned game ID", UDim2.fromOffset(10, 32),
-			UDim2.new(1, -146, 0, 26), {})
+		local gameId = UI.input(page, "Owned game ID", UDim2.fromOffset(10, 32), UDim2.new(1, -146, 0, 26), {})
 		button(page, "Host", UDim2.new(1, -126, 0, 32), UDim2.fromOffset(116, 26), function()
-			if gameId.Text == "" then return end
+			if gameId.Text == "" then
+				return
+			end
 			local session = call("StartSession", gameId.Text, {})
 			if type(session) == "table" then
 				showSession(session, true)
-				if session.joinCode then status.Text = "Join code: " .. session.joinCode end
+				if session.joinCode then
+					status.Text = "Join code: " .. session.joinCode
+				end
 			end
 		end)
-		local code = UI.input(page, "Join code", UDim2.fromOffset(10, 62),
-			UDim2.new(1, -146, 0, 26), {})
+		local code = UI.input(page, "Join code", UDim2.fromOffset(10, 62), UDim2.new(1, -146, 0, 26), {})
 		button(page, "Request to join", UDim2.new(1, -126, 0, 62), UDim2.fromOffset(116, 26), function()
 			if code.Text ~= "" and call("RequestJoin", { code = code.Text }) then
 				code.Text = ""

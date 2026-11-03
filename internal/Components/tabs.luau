@@ -117,6 +117,7 @@ return function(ctx)
 		local tabButtons = {}
 		local pages = {}
 		local selectedTab = nil
+		local detached = {}
 
 		local anim = {
 			x = startX,
@@ -195,8 +196,8 @@ return function(ctx)
 
 			local current = selectedTab and tabButtons[selectedTab]
 
+			indicator.Visible = current ~= nil
 			if current then
-				indicator.Visible = true
 
 				if anim.snap then
 					anim.x, anim.w = current.x, current.width
@@ -231,7 +232,7 @@ return function(ctx)
 		bar.Destroying:Connect(controller.destroy)
 
 		function controller.selectTab(tabName)
-			if not pages[tabName] or selectedTab == tabName then
+			if (tabName ~= nil and (not pages[tabName] or detached[tabName])) or selectedTab == tabName then
 				return
 			end
 
@@ -239,7 +240,7 @@ return function(ctx)
 			selectedTab = tabName
 
 			for pageName, page in pairs(pages) do
-				page.Visible = pageName == selectedTab
+				if not detached[pageName] then page.Visible = pageName == selectedTab end
 			end
 
 			if previousTab == nil then
@@ -251,6 +252,33 @@ return function(ctx)
 			if options.onTabChanged then
 				options.onTabChanged(tabName, previousTab, pages[tabName], container or bar.Parent)
 			end
+		end
+
+		function controller.setTabDetached(tabName, value)
+			if not pages[tabName] or (detached[tabName] == true) == value then
+				return
+			end
+			detached[tabName] = value or nil
+			tabButtons[tabName].button.Visible = not value
+			local x = startX
+			local firstDocked
+			for _, tab in ipairs(tabs) do
+				local name = getTabName(tab)
+				local data = tabButtons[name]
+				if not detached[name] then
+					firstDocked = firstDocked or name
+					data.x = x
+					data.button.Position = UDim2.fromOffset(x, tabTop)
+					x += data.width + tabGap
+				end
+			end
+			if value and selectedTab == tabName then
+				controller.selectTab(firstDocked)
+			elseif not value then
+				controller.selectTab(tabName)
+			end
+			anim.snap = true
+			wake()
 		end
 
 		function controller.getSelectedTab()
