@@ -285,7 +285,6 @@ toolbar.BackgroundTransparency = 0.5
 local toolbarBackdrop = Instance.new("UIBackdrop")
 toolbarBackdrop.Parent = toolbar
 
--- Style toolbar (Material / Color), 3D only. Sits 10px below the transform toolbar.
 local styleBar, styleControls
 local materialMenu
 
@@ -466,8 +465,8 @@ local gizmoFrame, gizmoCamera
 if renderer.Dimension == "3D" then
 	gizmoFrame = Instance.new("ViewportFrame")
 	gizmoFrame.Name = "AxisGizmo"
-	gizmoFrame.AnchorPoint = Vector2.new(1, 1)
-	gizmoFrame.Position = UDim2.new(1, -8, 1, -36)
+	gizmoFrame.AnchorPoint = Vector2.new(1, 0)
+	gizmoFrame.Position = UDim2.new(1, 0, 0, 0)
 	gizmoFrame.Size = UDim2.fromOffset(GIZMO_SIZE, GIZMO_SIZE)
 	gizmoFrame.BackgroundTransparency = 1
 	gizmoFrame.Ambient = Color3.new(1, 1, 1)
