@@ -523,7 +523,7 @@ if renderer.Dimension == "3D" then
 	local function makeCircleButton(text, color, transparency)
 		local button = UI.button(gizmoFrame, text, UDim2.fromOffset(0, 0), UDim2.fromOffset(POS_SIZE, POS_SIZE), {
 			color = color,
-			radius = POS_SIZE / 2,
+			radius = 30,
 		})
 		button.AnchorPoint = Vector2.new(0.5, 0.5)
 		button.BackgroundColor3 = color
