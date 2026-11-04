@@ -1,6 +1,6 @@
 local UI = require("@internal/editor_ui")
 local RunService = game:GetService("RunService")
-local TemplateService = game:GetService("TemplateService")
+local HttpService = game:GetService("HttpService")
 local ExportService = game:GetService("ExportService")
 local Project = game:GetService("Project")
 local Filesystem = game:GetService("Filesystem")
@@ -21,8 +21,6 @@ local SCROLLBAR = 6
 local SECTION_INSET = LIST_PAD * 2 + SCROLLBAR
 local ANIM_SPEED = 14
 local CHEVRON = "builtin://global-icons/chevron-down.svg"
-
-local SIMULATE_EXPORT = false
 
 local function smooth(current, target, speed, dt)
 	return current + (target - current) * (1 - math.exp(-speed * dt))
@@ -129,7 +127,7 @@ scrollLayout.PaddingLeft = UDim.new(0, LIST_PAD)
 scrollLayout.Parent = scroll
 
 local function selectedPlatform()
-	if selected and sectionByName[selected] and not sectionByName[selected].page.Global then
+	if selected and sectionByName[selected] and not sectionByName[selected].page.Global and not sectionByName[selected].page.Unavailable then
 		return selected
 	end
 	return nil
@@ -138,7 +136,7 @@ end
 local function enabledPlatforms()
 	local list, total = {}, 0
 	for _, section in ipairs(sections) do
-		if not section.page.Global then
+		if not section.page.Global and not section.page.Unavailable then
 			total += 1
 			if values[section.page.Name].enabled ~= false then
 				table.insert(list, section.page.Name)
@@ -151,7 +149,11 @@ end
 local function resolveOutput(name)
 	local store = values[name]
 	if store.output then
-		return store.output
+		local nameWithExtension = trim(store.output)
+		if name == "Windows" and not string.match(string.lower(nameWithExtension), "%.exe$") then
+			return nameWithExtension .. ".exe"
+		end
+		return nameWithExtension
 	end
 	return values.General.projectName .. (store.format == "AAB" and ".aab" or ".apk")
 end
@@ -187,6 +189,11 @@ local function refreshHeader(section)
 		return
 	end
 
+	if page.Unavailable then
+		section.summary.Text = "Unavailable"
+		return
+	end
+
 	if store.enabled == false then
 		section.summary.Text = "Disabled"
 		return
@@ -201,6 +208,11 @@ local function refreshHeader(section)
 	section.summary.Text = table.concat(parts, " | ")
 end
 
+local function platformOutputFolder(root, name, gameType)
+	local folder = root .. "/" .. string.lower(name)
+	return gameType == "Single Player" and (folder .. "/singleplayer") or folder
+end
+
 local function refreshPreview(section)
 	if not section.preview then
 		return
@@ -208,20 +220,20 @@ local function refreshPreview(section)
 
 	local name = section.page.Name
 	section.preview.Text =
-		string.format("Output: %s/%s/%s", values.General.outputDir, string.lower(name), resolveOutput(name))
+		string.format("Output: %s/%s", platformOutputFolder(values.General.outputDir, name, values.General.gameType), resolveOutput(name))
 end
 
 local function applyEnabled(section)
 	local page = section.page
 	local store = values[page.Name]
-	local on = store.enabled ~= false
+	local on = store.enabled ~= false and not page.Unavailable
 
 	for _, field in ipairs(page.Fields) do
-		if field.key ~= "enabled" then
+		if field.key ~= "enabled" or page.Unavailable then
 			local row = section.rows[field.key]
 
 			if row then
-				local active = on
+				local active = on and not page.Unavailable and not field.unavailable
 
 				if active and field.dependsOn then
 					active = store[field.dependsOn] == true
@@ -279,8 +291,6 @@ local DESKTOP_ARCH = { "x86_64", "arm64" }
 
 local OS_TAG = { Windows = "windows", Linux = "linux", MacOS = "macos" }
 local ARCH_TAG = { x86_64 = "x86_64", arm64 = "arm64" }
-local EXT = { Windows = ".exe", Linux = "", MacOS = "" }
-local NATIVE_PLATFORMS = { Windows = true, Linux = true, MacOS = true }
 
 local ENABLED_FIELD = {
 	key = "enabled",
@@ -318,7 +328,21 @@ local pages = {
 				default = "build",
 				validate = notEmpty("Output folder"),
 			},
-			{ key = "clean", label = "Clean Before Build", type = "checkbox", default = true },
+			{
+				key = "gameType",
+				label = "Game Type",
+				type = "dropdown",
+				options = { "Client + Server", "Single Player" },
+				default = "Client + Server",
+				tooltip = "Single Player exports one game executable and its runtime dependencies.",
+			},
+			{
+				key = "clean",
+				label = "Clean Previous Exports",
+				type = "checkbox",
+				default = true,
+				tooltip = "Remove old generated executables after a successful export.",
+			},
 			{ key = "openFolder", label = "Open Folder After", type = "checkbox", default = true },
 			{
 				key = "platforms",
@@ -349,8 +373,8 @@ local pages = {
 		CloseCallback = function() end,
 		Fields = {
 			ENABLED_FIELD,
-			{ key = "arch", label = "Architecture", type = "dropdown", options = DESKTOP_ARCH, default = "x86_64" },
-			{ key = "mode", label = "Build Mode", type = "dropdown", options = MODES, default = "Release" },
+			{ key = "arch", label = "Architecture", type = "dropdown", options = { "x86_64" }, default = "x86_64" },
+			{ key = "mode", label = "Build Mode", type = "dropdown", options = MODES, default = "Release", unavailable = "Export uses prebuilt release templates." },
 			{
 				key = "output",
 				label = "Output Name",
@@ -358,14 +382,14 @@ local pages = {
 				default = "Game.exe",
 				validate = fileName("Output name"),
 			},
-			{ key = "icon", label = "Icon", type = "text", default = "", placeholder = "path/to/icon.ico" },
+			{ key = "icon", label = "Icon", type = "text", default = "", placeholder = "path/to/icon.ico", tooltip = "Optional .ico path, absolute or relative to your project. Requires the Windows editor." },
 			{ key = "compression", label = "Compression", type = "dropdown", options = COMPRESS, default = "Fast" },
 			{
 				key = "embedAssets",
 				label = "Embed Assets",
 				type = "checkbox",
 				default = true,
-				tooltip = "Pack assets into the executable.",
+				unavailable = "Game assets are embedded in desktop exports.",
 			},
 			{ key = "console", label = "Console Window", type = "checkbox", default = false },
 		},
@@ -379,7 +403,7 @@ local pages = {
 		Fields = {
 			ENABLED_FIELD,
 			{ key = "arch", label = "Architecture", type = "dropdown", options = DESKTOP_ARCH, default = "x86_64" },
-			{ key = "mode", label = "Build Mode", type = "dropdown", options = MODES, default = "Release" },
+			{ key = "mode", label = "Build Mode", type = "dropdown", options = MODES, default = "Release", unavailable = "Export uses prebuilt release templates." },
 			{
 				key = "output",
 				label = "Output Name",
@@ -387,10 +411,10 @@ local pages = {
 				default = "Game.x86_64",
 				validate = fileName("Output name"),
 			},
-			{ key = "icon", label = "Icon", type = "text", default = "", placeholder = "path/to/icon.png" },
+			{ key = "icon", label = "Icon", type = "text", default = "", placeholder = "path/to/icon.png", unavailable = "Linux executable templates do not provide a desktop icon." },
 			{ key = "compression", label = "Compression", type = "dropdown", options = COMPRESS, default = "Fast" },
-			{ key = "embedAssets", label = "Embed Assets", type = "checkbox", default = true },
-			{ key = "strip", label = "Strip Symbols", type = "checkbox", default = true },
+			{ key = "embedAssets", label = "Embed Assets", type = "checkbox", default = true, unavailable = "Game assets are embedded in desktop exports." },
+			{ key = "strip", label = "Strip Symbols", type = "checkbox", default = true, unavailable = "Linux release templates are already stripped." },
 		},
 	},
 
@@ -405,15 +429,15 @@ local pages = {
 				key = "arch",
 				label = "Architecture",
 				type = "dropdown",
-				options = { "arm64" },
+				options = DESKTOP_ARCH,
 				default = "arm64",
 			},
-			{ key = "mode", label = "Build Mode", type = "dropdown", options = MODES, default = "Release" },
+			{ key = "mode", label = "Build Mode", type = "dropdown", options = MODES, default = "Release", unavailable = "Export uses prebuilt release templates." },
 			{
 				key = "output",
 				label = "Output Name",
 				type = "text",
-				default = "Game.app",
+				default = "Game",
 				validate = fileName("Output name"),
 			},
 			{
@@ -422,23 +446,25 @@ local pages = {
 				type = "text",
 				default = "com.example.game",
 				validate = reverseDomain("Bundle identifier"),
+				unavailable = "Requires a macOS app bundle.",
 			},
-			{ key = "icon", label = "Icon", type = "text", default = "", placeholder = "path/to/icon.icns" },
+			{ key = "icon", label = "Icon", type = "text", default = "", placeholder = "path/to/icon.icns", unavailable = "Requires a macOS app bundle." },
 			{ key = "compression", label = "Compression", type = "dropdown", options = COMPRESS, default = "Fast" },
-			{ key = "codesign", label = "Code Sign", type = "checkbox", default = false },
+			{ key = "codesign", label = "Code Sign", type = "checkbox", default = false, unavailable = "Signing requires a macOS packaging toolchain." },
 			{
 				key = "notarize",
 				label = "Notarize",
 				type = "checkbox",
 				default = false,
 				dependsOn = "codesign",
-				tooltip = "Requires code signing.",
+				unavailable = "Notarization requires a signed macOS app bundle.",
 			},
 		},
 	},
 
 	{
 		Name = "Android",
+		Unavailable = true,
 		Icon = "builtin://global-icons/android.png",
 		OpenCallback = function() end,
 		CloseCallback = function() end,
@@ -458,7 +484,7 @@ local pages = {
 				options = { "arm64-v8a", "armeabi-v7a", "x86_64" },
 				default = "arm64-v8a",
 			},
-			{ key = "mode", label = "Build Mode", type = "dropdown", options = MODES, default = "Release" },
+			{ key = "mode", label = "Build Mode", type = "dropdown", options = MODES, default = "Release", unavailable = "Export uses prebuilt release templates." },
 			{
 				key = "package",
 				label = "Package Name",
@@ -484,12 +510,13 @@ local pages = {
 
 	{
 		Name = "Emscripten",
+		Unavailable = true,
 		Icon = "builtin://global-icons/emscripten.png",
 		OpenCallback = function() end,
 		CloseCallback = function() end,
 		Fields = {
 			ENABLED_FIELD,
-			{ key = "mode", label = "Build Mode", type = "dropdown", options = MODES, default = "Release" },
+			{ key = "mode", label = "Build Mode", type = "dropdown", options = MODES, default = "Release", unavailable = "Export uses prebuilt release templates." },
 			{
 				key = "output",
 				label = "Output Name",
@@ -673,8 +700,8 @@ local function buildRow(section, page, field, y)
 		table.insert(section.dropdowns, controller.custom.dd)
 	end
 
-	if field.tooltip then
-		pcall(UI.tooltip, controller.label, field.tooltip, { placement = "above", maxWidth = 240 })
+	if field.unavailable or field.tooltip then
+		pcall(UI.tooltip, controller.label, field.unavailable or field.tooltip, { placement = "above", maxWidth = 240 })
 	end
 end
 
@@ -781,7 +808,7 @@ updateCanvas()
 
 setAllEnabled = function(on)
 	for _, section in ipairs(sections) do
-		if not section.page.Global then
+		if not section.page.Global and not section.page.Unavailable then
 			values[section.page.Name].enabled = on
 			section.rows.enabled:SetValue(on, true)
 			refreshSection(section)
@@ -795,14 +822,14 @@ local function validateSection(name)
 
 	for _, field in ipairs(section.page.Fields) do
 		local value = store[field.key]
-		local relevant = value ~= nil and not (field.dependsOn and store[field.dependsOn] ~= true)
+		local relevant = value ~= nil and not field.unavailable and not (field.dependsOn and store[field.dependsOn] ~= true)
 
 		if relevant and type(value) == "string" then
 			if field.required and trim(value) == "" then
 				return false, name .. ": " .. field.label .. " is required."
 			end
 
-			if field.validate and trim(value) ~= "" then
+			if field.validate then
 				local ok, message = field.validate(value)
 				if not ok then
 					return false, name .. ": " .. message
@@ -825,66 +852,55 @@ local function buildConfig(name)
 	config.output = resolveOutput(name)
 	config.os_name = OS_TAG[name]
 	config.arch_name = ARCH_TAG[values[name].arch] or values[name].arch
-	config.ext = EXT[name]
 	config.general = table.clone(values.General)
 
 	return config
 end
 
-local function exportPlatform(name, config)
-	if not NATIVE_PLATFORMS[name] then
-		print("Skipping native export for", name, "(not a native-binary template)")
-		sleep(0.6)
-		return
+local function projectPath(project, value)
+	local normalized = string.gsub(trim(value), "\\", "/")
+	if string.sub(normalized, 1, 1) == "/" or string.match(normalized, "^%a:/") then
+		return normalized
 	end
+	return project .. "/" .. normalized
+end
 
-	if SIMULATE_EXPORT then
-		print("Exporting for", name)
-		for key, value in pairs(config) do
-			if type(value) ~= "table" then
-				print("  ", key, "=", value)
-			end
-		end
-		sleep(0.6)
-		return
-	end
-
-	if not config.os_name then
-		error("Unknown platform " .. name .. ": no OS tag mapping")
-	end
-
-	local buildFolder = Project:GetActiveProject().Path .. "/build"
-	local platformFolder = buildFolder .. "/" .. string.lower(name)
-	local gameFile = buildFolder .. "/game.kine"
-
-	local ok = Filesystem:PathExists(platformFolder)
-	if not ok then
-		local created = Filesystem:CreateFolder(buildFolder, string.lower(name))
-		if created == "" then
-			error("Could not create platform build folder: " .. platformFolder)
-		end
-	end
-
-	local exeName = "KinemiumServer" .. config.ext
-	local destination = platformFolder .. "/" .. exeName
-
-	local success, err = pcall(function()
-		ExporterService:ExportExecutable(
-			"Both",
-			platformFolder,
-			"127.0.0.1",
-			8080,
-			gameFile,
-			config.os_name,
-			config.arch_name
-		)
+local function openOutputFolder(folder)
+	local normalized = string.gsub(folder, "\\", "/")
+	local encoded = string.gsub(normalized, "[^%w%-%._~/:]", function(character)
+		return string.format("%%%02X", string.byte(character))
 	end)
-
-	if not success then
-		error("ExporterService:ExportExecutable failed for " .. name .. ": " .. tostring(err))
+	local prefix = "file:///"
+	if string.sub(encoded, 1, 2) == "//" then
+		prefix = "file:"
+	elseif string.sub(encoded, 1, 1) == "/" then
+		prefix = "file://"
 	end
+	HttpService:OpenURL(prefix .. encoded)
+end
 
-	print("Exported " .. name .. " to " .. destination)
+local function exportPlatform(name, config, project, buildFolder, gameFile)
+	local platformFolder = platformOutputFolder(buildFolder, name, config.general.gameType)
+	local singleplayer = config.general.gameType == "Single Player"
+	local icon = config.icon and trim(config.icon) or ""
+	ExporterService:ExportExecutable(
+		singleplayer and "Singleplayer" or "Both",
+		platformFolder,
+		singleplayer and "" or "127.0.0.1",
+		singleplayer and 0 or 8080,
+		gameFile,
+		config.os_name,
+		config.arch_name,
+		{
+			outputName = config.output,
+			title = trim(config.general.projectName) .. " v" .. trim(config.general.version),
+			console = config.console,
+			clean = config.general.clean,
+			compression = config.compression,
+			icon = name == "Windows" and icon ~= "" and projectPath(project, icon) or "",
+		}
+	)
+	print("Exported " .. name .. " to " .. platformFolder)
 end
 
 local function setProgress(value, instant)
@@ -951,26 +967,35 @@ local function runExport(names)
 
 	local failures = {}
 
-	local project = Project:GetActiveProject().Path
-
-	local buildFolder = project .. "/build"
-	local gameFile = buildFolder .. "/game.kine"
-
-	if not Filesystem:PathExists(buildFolder) then
-		local created = Filesystem:CreateFolder(project, "build")
-		if created == "" then
-			error("Could not create build folder: " .. buildFolder)
+	local project, buildFolder, gameFile
+	local prepared, prepareError = pcall(function()
+		local active = Project:GetActiveProject()
+		assert(active and active.Path and active.Path ~= "", "Open a project before exporting.")
+		project = active.Path
+		buildFolder = projectPath(project, configs[1].general.outputDir)
+		local snapshotFolder = project .. "/build"
+		if not Filesystem:IsDirectory(snapshotFolder) then
+			assert(Filesystem:CreateFolder(project, "build") ~= "", "Could not create " .. snapshotFolder)
 		end
+		gameFile = snapshotFolder .. "/game.kine"
+		assert(ExportService:ExportToFile(gameFile), "Could not save the game map for export.")
+	end)
+	if not prepared then
+		exporting = false
+		setBusy(false)
+		setProgress(0, true)
+		statusLabel.TextColor3 = tokens.color.error
+		statusLabel.Text = "Export failed."
+		UI.toast("Export failed", { type = "error", message = tostring(prepareError), duration = 0 })
+		return
 	end
-
-	ExportService:ExportToFile(gameFile)
 
 	for i, name in ipairs(names) do
 		statusLabel.TextColor3 = tokens.color.subtext
 		statusLabel.Text = string.format("Exporting %s (%d/%d)...", name, i, #names)
 		setProgress((i - 1) / #names)
 
-		local success, err = pcall(exportPlatform, name, configs[i])
+		local success, err = pcall(exportPlatform, name, configs[i], project, buildFolder, gameFile)
 
 		if not success then
 			table.insert(failures, name .. ": " .. tostring(err))
@@ -993,7 +1018,12 @@ local function runExport(names)
 			duration = 5,
 		})
 
-		if values.General.openFolder then
+		if configs[1].general.openFolder then
+			local output = #names == 1 and platformOutputFolder(buildFolder, names[1], configs[1].general.gameType) or buildFolder
+			local opened, openError = pcall(openOutputFolder, output)
+			if not opened then
+				UI.toast("Could not open output folder", { type = "warning", message = tostring(openError) })
+			end
 		end
 	else
 		statusLabel.TextColor3 = tokens.color.error

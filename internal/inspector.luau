@@ -180,6 +180,9 @@ local signatureClock = 0
 
 local SIGNATURE_INTERVAL = 6
 local rebuilding = false
+local pendingRows = {}
+local nextPendingRow = 1
+local PROPERTY_BUILD_BUDGET = 0.003
 
 local BUBBLE_GAP = 7
 local CATEGORY_HEADER_HEIGHT = 26
@@ -1407,6 +1410,53 @@ local function renderPropertyAdapter(row, object, property)
 	return adapter.render(row, object, property)
 end
 
+local function createPropertyRow(bubble, object, property, index)
+	local propertyHeight = propertyEditorHeight(property)
+
+	local rowColor = index % 2 == 0 and tokens.color.rowEven or tokens.color.rowOdd
+
+	local row = UI.frame(bubble, UDim2.fromOffset(0, 0), UDim2.new(1, 0, 0, propertyHeight), rowColor)
+
+	row.Name = property.name
+	row.LayoutOrder = 2 + index
+
+	UI.label(
+		row,
+		property.name,
+		UDim2.fromOffset(7, 3),
+		UDim2.new(0.45, -8, 0, 17),
+		tokens.type.caption,
+		colors.subtext
+	)
+
+	UI.separator(
+		row,
+		UDim2.new(0.45, 0, 0, 3),
+		UDim2.new(0, 1, 0, math.max(1, propertyHeight - 6)),
+		tokens.color.border
+	)
+
+	local controller = renderPropertyAdapter(row, object, property)
+
+	if controller then
+		renderedControllers[property.name] = controller
+	end
+end
+
+local function createPendingRows()
+	local deadline = os.clock() + PROPERTY_BUILD_BUDGET
+	while nextPendingRow <= #pendingRows do
+		local job = pendingRows[nextPendingRow]
+		createPropertyRow(job[1], job[2], job[3], job[4])
+		nextPendingRow += 1
+		if nextPendingRow <= #pendingRows and os.clock() >= deadline then
+			return
+		end
+	end
+	pendingRows = {}
+	nextPendingRow = 1
+end
+
 local function createCategoryBubble(parent, object, category, group, order)
 	local isCollapsed = collapsed[category] == true
 
@@ -1495,36 +1545,7 @@ local function createCategoryBubble(parent, object, category, group, order)
 	separator.LayoutOrder = 2
 
 	for index, property in ipairs(group) do
-		local propertyHeight = propertyEditorHeight(property)
-
-		local rowColor = index % 2 == 0 and tokens.color.rowEven or tokens.color.rowOdd
-
-		local row = UI.frame(bubble, UDim2.fromOffset(0, 0), UDim2.new(1, 0, 0, propertyHeight), rowColor)
-
-		row.Name = property.name
-		row.LayoutOrder = 2 + index
-
-		UI.label(
-			row,
-			property.name,
-			UDim2.fromOffset(7, 3),
-			UDim2.new(0.45, -8, 0, 17),
-			tokens.type.caption,
-			colors.subtext
-		)
-
-		UI.separator(
-			row,
-			UDim2.new(0.45, 0, 0, 3),
-			UDim2.new(0, 1, 0, math.max(1, propertyHeight - 6)),
-			tokens.color.border
-		)
-
-		local controller = renderPropertyAdapter(row, object, property)
-
-		if controller then
-			renderedControllers[property.name] = controller
-		end
+		pendingRows[#pendingRows + 1] = { bubble, object, property, index }
 	end
 
 	if startHeight ~= targetHeight then
@@ -1576,6 +1597,8 @@ local function rebuild(object, visible)
 	animations = {}
 	activeEditors = {}
 	renderedControllers = {}
+	pendingRows = {}
+	nextPendingRow = 1
 
 	UI.clear(list, { [outerLayout] = true })
 
@@ -1683,6 +1706,9 @@ renderer.Pool.new("2d", function()
 	signatureClock += 1
 
 	if signatureClock < SIGNATURE_INTERVAL then
+		if nextPendingRow <= #pendingRows then
+			createPendingRows()
+		end
 		return
 	end
 
@@ -1696,8 +1722,11 @@ renderer.Pool.new("2d", function()
 		lastStructure = structure
 
 		rebuild(object, visible)
-		return
 	end
 
-	refreshValueControllers(visible)
+	if nextPendingRow <= #pendingRows then
+		createPendingRows()
+	else
+		refreshValueControllers(visible)
+	end
 end)
