@@ -2612,21 +2612,14 @@ function CodeEditor.new(parent)
 		"canvas"
 	)
 
-	local diagnosticBody = UI.frame(
-		diagnostic,
-		UDim2.fromOffset(0, 0),
-		UDim2.new(1, 0, 1, -DIAGNOSTIC_FOOTER_HEIGHT),
-		C("error"),
-		0
-	)
+	local diagnosticBody =
+		UI.frame(diagnostic, UDim2.fromOffset(0, 0), UDim2.new(1, 0, 1, -DIAGNOSTIC_FOOTER_HEIGHT), C("error"), 0)
 	diagnosticBody.BackgroundTransparency = 0.85
 	diagnosticBody.ZIndex = 101
 	self:bindTheme(diagnosticBody, "BackgroundColor3", "error")
 
-	local diagnosticText = UI.label(
-		diagnosticBody, "", UDim2.fromOffset(12, 9), UDim2.new(1, -24, 1, -18),
-		fontSize("small"), C("text")
-	)
+	local diagnosticText =
+		UI.label(diagnosticBody, "", UDim2.fromOffset(12, 9), UDim2.new(1, -24, 1, -18), fontSize("small"), C("text"))
 	diagnosticText.FontFace = Font.new(DIAGNOSTIC_FONT)
 	diagnosticText.TextWrapped = true
 	diagnosticText.TextYAlignment = Enum.TextYAlignment.Top
@@ -2634,8 +2627,12 @@ function CodeEditor.new(parent)
 	self:bindTheme(diagnosticText, "TextColor3", "text")
 
 	local diagnosticTitle = UI.label(
-		diagnostic, "", UDim2.new(0, 12, 1, -DIAGNOSTIC_FOOTER_HEIGHT),
-		UDim2.new(1, -24, 0, DIAGNOSTIC_FOOTER_HEIGHT), fontSize("caption"), C("subtext")
+		diagnostic,
+		"",
+		UDim2.new(0, 12, 1, -DIAGNOSTIC_FOOTER_HEIGHT),
+		UDim2.new(1, -24, 0, DIAGNOSTIC_FOOTER_HEIGHT),
+		fontSize("caption"),
+		C("subtext")
 	)
 	diagnosticTitle.FontFace = Font.new(DIAGNOSTIC_FONT)
 	diagnosticTitle.ZIndex = 102
@@ -2990,6 +2987,7 @@ function CodeEditor:isScriptInstance(instance)
 			or instance:IsA("ModuleScript")
 			or instance:IsA("LocalScript")
 			or instance:IsA("RuntimeShader")
+			or instance:IsA("UIShader")
 			or instance:IsA("MaterialVariant")
 		)
 end
@@ -5466,9 +5464,11 @@ local function diagnosticMessages(diagnostics, selected)
 	end
 	add(selected)
 	for _, diagnostic in ipairs(diagnostics or {}) do
-		if diagnostic.Line == selected.Line
+		if
+			diagnostic.Line == selected.Line
 			and diagnostic.Column < math.max(selected.EndColumn or 0, selected.Column + 1)
-			and selected.Column < math.max(diagnostic.EndColumn or 0, diagnostic.Column + 1) then
+			and selected.Column < math.max(diagnostic.EndColumn or 0, diagnostic.Column + 1)
+		then
 			add(diagnostic)
 		end
 	end
@@ -5506,16 +5506,18 @@ function CodeEditor:showDiagnosticPopup(diagnostic, automatic)
 
 	local line = math.max(1, math.floor(tonumber(diagnostic.Line) or 1))
 	local message = diagnosticMessages(self.diagnostics, diagnostic)
-	self.DiagnosticTitle.Text = (diagnostic.Kind or "Syntax error") .. " · Ln " .. line
-		.. ", Col " .. diagnostic.Column
+	self.DiagnosticTitle.Text = (diagnostic.Kind or "Syntax error")
+		.. " · Ln "
+		.. line
+		.. ", Col "
+		.. diagnostic.Column
 	self.DiagnosticText.Text = message
 
 	local camera = workspace.CurrentCamera
 	local screen = camera and camera.ViewportSize or Vector2.new(1280, 720)
 	local width = math.max(1, math.min(DIAGNOSTIC_WIDTH, screen.X - 16))
-	local measured = TextService:GetTextSize(
-		message, fontSize("small"), DIAGNOSTIC_FONT, Vector2.new(math.max(1, width - 24), 2000)
-	)
+	local measured =
+		TextService:GetTextSize(message, fontSize("small"), DIAGNOSTIC_FONT, Vector2.new(math.max(1, width - 24), 2000))
 	self.diagnosticSize = Vector2.new(width, math.max(36, math.ceil(measured.Y) + 18) + DIAGNOSTIC_FOOTER_HEIGHT)
 	self.diagnosticShown = diagnostic
 	self:placeDiagnosticPopup()
@@ -5606,7 +5608,6 @@ function CodeEditor:refreshDiagnostics()
 		self.TextBox:SetDiagnostics(diagnostics)
 
 		self:hideDiagnosticPopup()
-
 	end)
 end
 

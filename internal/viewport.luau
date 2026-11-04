@@ -103,7 +103,10 @@ arcHandles.Parent = workspace
 local function selectedPart()
 	local selected = Selection:Get()
 	local object = selected and selected[1]
-	if UI.isAlive(object) and (object:IsA("Part") or object:IsA("MeshPart") or object:IsA("Model")) then
+	if
+		UI.isAlive(object)
+		and (object:IsA("Part") or object:IsA("SoftBody") or object:IsA("MeshPart") or object:IsA("Model"))
+	then
 		return object
 	end
 	return nil
@@ -271,7 +274,7 @@ local colorPickerController
 
 local function selectedColor()
 	local object = selectedPart()
-	if UI.isAlive(object) and (object:IsA("Part") or object:IsA("MeshPart")) then
+	if UI.isAlive(object) and (object:IsA("Part") or object:IsA("SoftBody") or object:IsA("MeshPart")) then
 		return object.Color
 	end
 	return Color3.new(1, 1, 1)
@@ -279,7 +282,7 @@ end
 
 local function applyColor(color)
 	local object = selectedPart()
-	if UI.isAlive(object) and (object:IsA("Part") or object:IsA("MeshPart")) then
+	if UI.isAlive(object) and (object:IsA("Part") or object:IsA("SoftBody") or object:IsA("MeshPart")) then
 		object.Color = color
 	end
 end

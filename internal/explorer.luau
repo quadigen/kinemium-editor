@@ -62,7 +62,9 @@ local function explorerTabActive()
 end
 
 local filesController = files(filesPage, {
-	getSelectedTab = function() return tabActive("Files") and "Files" or nil end,
+	getSelectedTab = function()
+		return tabActive("Files") and "Files" or nil
+	end,
 	isKeyboardActive = function()
 		return tabActive("Files") and (keyboardTab or windowControls.getSelectedTab()) == "Files"
 	end,
@@ -70,7 +72,9 @@ local filesController = files(filesPage, {
 
 local function dockTab(name)
 	local window = floating[name]
-	if not window then return end
+	if not window then
+		return
+	end
 	floating[name] = nil
 	keyboardTab = name
 	windowControls.pages[name].Parent = tabContent
@@ -82,15 +86,19 @@ end
 local function floatTab(name, point)
 	local size = panel.AbsoluteSize
 	local bounds = tabBounds.AbsoluteSize
-	if bounds.X <= 0 or bounds.Y <= 0 then return end
+	if bounds.X <= 0 or bounds.Y <= 0 then
+		return
+	end
 	local width = math.min(math.max(size.X, 280), math.max(bounds.X, 1))
 	local height = math.min(math.max(size.Y, 260), math.max(bounds.Y, 1))
 	local x = math.clamp(point.X - 24, 0, math.max(0, bounds.X - width))
 	local y = math.clamp(point.Y - 14, 0, math.max(0, bounds.Y - 30))
-	local window, pageHolder, _, controls = UI.window("Detached" .. name,
-		UDim2.fromOffset(x, y), UDim2.fromOffset(width, height), name, {
+	local window, pageHolder, _, controls =
+		UI.window("Detached" .. name, UDim2.fromOffset(x, y), UDim2.fromOffset(width, height), name, {
 			closable = true,
-			onClose = function() dockTab(name) end,
+			onClose = function()
+				dockTab(name)
+			end,
 		})
 	window.Parent = gui
 	floating[name] = window
@@ -116,7 +124,9 @@ for name, tab in pairs(windowControls.tabs) do
 end
 
 UserInputService.InputBegan:Connect(function(input)
-	if not gui.Enabled or input.UserInputType ~= Enum.UserInputType.MouseButton1 then return end
+	if not gui.Enabled or input.UserInputType ~= Enum.UserInputType.MouseButton1 then
+		return
+	end
 	local point = UserInputService:GetMouseLocation()
 	for name, window in pairs(floating) do
 		if window.Visible and UI.pointInside(window, point) then
@@ -124,14 +134,20 @@ UserInputService.InputBegan:Connect(function(input)
 			return
 		end
 	end
-	if panel.Visible and UI.pointInside(panel, point) then keyboardTab = nil end
+	if panel.Visible and UI.pointInside(panel, point) then
+		keyboardTab = nil
+	end
 end)
 
 UserInputService.InputEnded:Connect(function(input)
-	if input.UserInputType ~= Enum.UserInputType.MouseButton1 then return end
+	if input.UserInputType ~= Enum.UserInputType.MouseButton1 then
+		return
+	end
 	local pending, moving = pendingTab, movingTab
 	pendingTab, movingTab = nil, nil
-	if not gui.Enabled or not panel.Visible then return end
+	if not gui.Enabled or not panel.Visible then
+		return
+	end
 	local point = UserInputService:GetMouseLocation()
 	local overExplorer = UI.pointInside(panel, point)
 	if pending and (point - pending.start).Magnitude >= dragThreshold and not overExplorer then
@@ -757,6 +773,7 @@ local function addRow(instance, depth, y)
 				or instance:IsA("LocalScript")
 				or instance:IsA("PostProcess")
 				or instance:IsA("RuntimeShader")
+				or instance:IsA("UIShader")
 				or instance:IsA("MaterialVariant")
 			then
 				viewport.OpenScript(instance)
