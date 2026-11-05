@@ -474,6 +474,17 @@ local function placeMenu(menu, buttonName)
 	menu.Position = UDim2.fromOffset(x, math.max(8, math.min(y, maxY)))
 end
 
+local fpsText = UI.label(
+	viewportOverlay,
+	"0 FPS",
+	UDim2.fromScale(1, 1),
+	UDim2.fromOffset(80, 20),
+	tokens.type.caption,
+	Color3.new(1, 1, 1)
+)
+fpsText.Position = UDim2.new(1, 0, 1, 0)
+fpsText.AnchorPoint = Vector2.new(1, 1)
+
 local breadcrumb = UI.group(viewportOverlay, UDim2.new(0, 8, 1, -30), UDim2.new(1, -16, 0, 26), {
 	color = tokens.color.surface,
 	radius = tokens.radius.sm,
