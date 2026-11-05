@@ -478,7 +478,7 @@ local fpsText = UI.label(
 	viewportOverlay,
 	"0 FPS",
 	UDim2.fromScale(1, 1),
-	UDim2.fromOffset(80, 20),
+	UDim2.fromOffset(50, 20),
 	tokens.type.caption,
 	Color3.new(1, 1, 1)
 )
