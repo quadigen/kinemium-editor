@@ -100,12 +100,18 @@ arcHandles.Snap = 30
 UI.keepSceneHelper(arcHandles)
 arcHandles.Parent = workspace
 
-local function selectedPart()
+local function selectedTransformTarget(allowAttachment)
 	local selected = Selection:Get()
 	local object = selected and selected[1]
 	if
 		UI.isAlive(object)
-		and (object:IsA("Part") or object:IsA("SoftBody") or object:IsA("MeshPart") or object:IsA("Model"))
+		and (
+			object:IsA("Part")
+			or object:IsA("SoftBody")
+			or object:IsA("MeshPart")
+			or object:IsA("Model")
+			or (allowAttachment and object:IsA("Attachment"))
+		)
 	then
 		return object
 	end
@@ -113,24 +119,21 @@ local function selectedPart()
 end
 
 local function updateGizmos()
-	local adornee = selectedPart()
+	local moving = activeTool == "Move"
+	local resizing = activeTool == "Size"
+	local rotating = activeTool == "Rotate"
+	local adornee = selectedTransformTarget(moving)
 	local is3D = renderer.Dimension == "3D" and not picker.isActive()
 
 	handles.Adornee = adornee
-	arcHandles.Adornee = adornee
-	handles.Visible = is3D and adornee ~= nil and (activeTool == "Move" or activeTool == "Size")
-	arcHandles.Visible = is3D and adornee ~= nil and activeTool == "Rotate"
+	arcHandles.Adornee = if rotating then adornee else nil
+	handles.Visible = is3D and adornee ~= nil and (moving or resizing)
+	arcHandles.Visible = is3D and adornee ~= nil and rotating
 
-	if activeTool == "Move" then
+	if moving then
 		handles.Style = Enum.HandlesStyle.Movement
-	elseif activeTool == "Size" then
+	elseif resizing then
 		handles.Style = Enum.HandlesStyle.Resize
-	elseif activeTool == "Select" then
-		handles.Visible = false
-		arcHandles.Visible = false
-	else
-		handles.Visible = false
-		arcHandles.Visible = false
 	end
 end
 
@@ -273,7 +276,7 @@ local colorPicker
 local colorPickerController
 
 local function selectedColor()
-	local object = selectedPart()
+	local object = selectedTransformTarget()
 	if UI.isAlive(object) and (object:IsA("Part") or object:IsA("SoftBody") or object:IsA("MeshPart")) then
 		return object.Color
 	end
@@ -281,7 +284,7 @@ local function selectedColor()
 end
 
 local function applyColor(color)
-	local object = selectedPart()
+	local object = selectedTransformTarget()
 	if UI.isAlive(object) and (object:IsA("Part") or object:IsA("SoftBody") or object:IsA("MeshPart")) then
 		object.Color = color
 	end
