@@ -7,6 +7,7 @@ local UI = require("@internal/editor_ui")
 local StudioThemeService = game:GetService("StudioThemeService")
 local theme = StudioThemeService.SelectedTheme
 local Selection = game:GetService("Selection")
+local CollectionService = game:GetService("CollectionService")
 local docker = require("@internal/docker")
 local picker = require("@internal/picker")
 local objectPreview = require("@internal/inspector_preview")
@@ -16,7 +17,9 @@ local tokens = UI.tokens
 local inspectorColorPopup
 
 local function closeInspectorColorPicker()
-	if inspectorColorPopup then inspectorColorPopup.close() end
+	if inspectorColorPopup then
+		inspectorColorPopup.close()
+	end
 end
 
 local instanceProperties = {
@@ -61,6 +64,7 @@ local categories = {
 	Transparency = "Appearance",
 	Reflectance = "Appearance",
 	Material = "Appearance",
+	MaterialVariant = "Appearance",
 
 	BackgroundColor3 = "Appearance",
 	BackgroundTransparency = "Appearance",
@@ -84,6 +88,7 @@ local categories = {
 	Anchored = "Behavior",
 	CanCollide = "Behavior",
 	CastShadow = "Behavior",
+	CanTouch = "Behavior",
 	Active = "Behavior",
 	Selectable = "Behavior",
 	ClipsDescendants = "Behavior",
@@ -112,6 +117,8 @@ local categoryOrder = {
 	Behavior = 5,
 	Sound = 6,
 	Uncategorized = 7,
+	Attributes = 8,
+	Tags = 9,
 }
 
 local readonlyProperties = {
@@ -254,8 +261,16 @@ local function selectedObject()
 	return selected and selected[1]
 end
 
+local function attributeName(propertyName)
+	return string.match(propertyName, "^attr:(.+)$")
+end
+
 local function propertyValue(object, property)
+	local attribute = attributeName(property)
 	local ok, value = pcall(function()
+		if attribute then
+			return object:GetAttribute(attribute)
+		end
 		return object[property]
 	end)
 
@@ -338,7 +353,6 @@ local function buildStructure(object, searchQuery)
 
 	local pieces = {
 		object:GetFullName(),
-
 		"search=" .. searchQuery,
 	}
 
@@ -357,6 +371,92 @@ local function buildStructure(object, searchQuery)
 
 			table.insert(pieces, name .. ":" .. datatype)
 		end
+	end
+
+	-- Attributes (sorted so the signature is stable between ticks)
+	local attributeNames = {}
+	local okAttributes, attributes = pcall(function()
+		return object:GetAttributes()
+	end)
+
+	if okAttributes and type(attributes) == "table" then
+		for name in pairs(attributes) do
+			table.insert(attributeNames, name)
+		end
+		table.sort(attributeNames)
+	end
+
+	for _, name in ipairs(attributeNames) do
+		local value = attributes[name]
+
+		if propertyMatchesSearch(name, value, searchQuery) then
+			local datatype = typeof(value)
+			local propertyName = "attr:" .. name
+
+			table.insert(visible, {
+				name = propertyName,
+				label = name,
+				sortName = name,
+				value = value,
+				datatype = datatype,
+				category = "Attributes",
+				attribute = true,
+			})
+
+			table.insert(pieces, propertyName .. ":" .. datatype)
+		end
+	end
+
+	if searchQuery == "" then
+		table.insert(visible, {
+			name = "add:attribute",
+			label = "Add Attribute",
+			sortName = "~",
+			datatype = "__addAttribute",
+			category = "Attributes",
+			isAdd = true,
+		})
+		table.insert(pieces, "add:attribute")
+	end
+
+	-- Tags
+	local tagNames = {}
+	local okTags, tags = pcall(function()
+		return CollectionService:GetTags(object)
+	end)
+
+	if okTags and type(tags) == "table" then
+		for _, tag in ipairs(tags) do
+			table.insert(tagNames, tag)
+		end
+		table.sort(tagNames)
+	end
+
+	for _, tag in ipairs(tagNames) do
+		if propertyMatchesSearch(tag, tag, searchQuery) then
+			table.insert(visible, {
+				name = "tag:" .. tag,
+				label = "Tag",
+				sortName = tag,
+				value = tag,
+				datatype = "__tag",
+				category = "Tags",
+			})
+
+			table.insert(pieces, "tag:" .. tag)
+		end
+	end
+
+	if searchQuery == "" then
+		table.insert(visible, {
+			name = "add:tag",
+			label = "Add Tag",
+			sortName = "~",
+			datatype = "__addTag",
+			category = "Tags",
+			isAdd = true,
+		})
+		table.insert(pieces, "add:tag")
 	end
 
 	return visible, table.concat(pieces, "|")
@@ -389,56 +489,89 @@ local function updateEditors()
 end
 
 local function setProperty(object, propertyName, value)
-	local ok = pcall(function()
-		object[propertyName] = value
-	end)
+	local attribute = attributeName(propertyName)
 
-	return ok
+	return (
+		pcall(function()
+			if attribute then
+				object:SetAttribute(attribute, value)
+			else
+				object[propertyName] = value
+			end
+		end)
+	)
 end
 
 local function openInspectorColorPicker(anchor, color, callback)
 	closeInspectorColorPicker()
 	UI.closeDropdown(true)
 	local root = UI.create("Frame", {
-		Name = "InspectorColorPopup", Size = UDim2.fromScale(1,1),
-		BackgroundTransparency = 1, BorderSizePixel = 0, ZIndex = 99999,
+		Name = "InspectorColorPopup",
+		Size = UDim2.fromScale(1, 1),
+		BackgroundTransparency = 1,
+		BorderSizePixel = 0,
+		ZIndex = 99999,
 	}, UI.contextMenuOverlay())
 	local destroyConnection, keyConnection
-	local popup = {anchor = anchor}
+	local popup = { anchor = anchor }
 	function popup.close()
-		if inspectorColorPopup ~= popup then return end
+		if inspectorColorPopup ~= popup then
+			return
+		end
 		inspectorColorPopup = nil
-		if destroyConnection then destroyConnection:Disconnect() end
-		if keyConnection then keyConnection:Disconnect() end
+		if destroyConnection then
+			destroyConnection:Disconnect()
+		end
+		if keyConnection then
+			keyConnection:Disconnect()
+		end
 		UI.forgetButtons(root)
 		root:Destroy()
 	end
 	inspectorColorPopup = popup
 	local outside = UI.create("TextButton", {
-		Name = "Dismiss", Text = "", Size = UDim2.fromScale(1,1),
-		BackgroundTransparency = 1, BorderSizePixel = 0, Active = true,
-		InputSink = true, AutoButtonColor = false, ZIndex = 99999,
+		Name = "Dismiss",
+		Text = "",
+		Size = UDim2.fromScale(1, 1),
+		BackgroundTransparency = 1,
+		BorderSizePixel = 0,
+		Active = true,
+		InputSink = true,
+		AutoButtonColor = false,
+		ZIndex = 99999,
 	}, root)
 	outside.MouseButton1Click:Connect(popup.close)
 	local p, s = anchor.AbsolutePosition, anchor.AbsoluteSize
 	local bounds = workspace:GetWindowDimensions()
-	local x = math.clamp(p.X, 4, math.max(4,bounds.X-230))
-	local y = p.Y+s.Y+4
-	if y+286 > bounds.Y-4 then y = p.Y-290 end
-	y = math.clamp(y, 4, math.max(4,bounds.Y-290))
-	local frame, controller = UI.colorPicker(root, UDim2.fromOffset(x,y), UDim2.fromOffset(226,286), color, callback)
+	local x = math.clamp(p.X, 4, math.max(4, bounds.X - 230))
+	local y = p.Y + s.Y + 4
+	if y + 286 > bounds.Y - 4 then
+		y = p.Y - 290
+	end
+	y = math.clamp(y, 4, math.max(4, bounds.Y - 290))
+	local frame, controller = UI.colorPicker(root, UDim2.fromOffset(x, y), UDim2.fromOffset(226, 286), color, callback)
 	frame.Active, frame.InputSink, frame.Visible = true, true, true
 	popup.controller = controller
 	local close = UI.create("TextButton", {
-		Name = "Close", Text = "×", Position = UDim2.new(1,-28,0,5),
-		Size = UDim2.fromOffset(22,22), BackgroundTransparency = 1,
-		BorderSizePixel = 0, TextColor3 = tokens.color.text, TextSize = 16,
-		Active = true, InputSink = true, AutoButtonColor = false, ZIndex = 100002,
+		Name = "Close",
+		Text = "×",
+		Position = UDim2.new(1, -28, 0, 5),
+		Size = UDim2.fromOffset(22, 22),
+		BackgroundTransparency = 1,
+		BorderSizePixel = 0,
+		TextColor3 = tokens.color.text,
+		TextSize = 16,
+		Active = true,
+		InputSink = true,
+		AutoButtonColor = false,
+		ZIndex = 100002,
 	}, frame)
 	close.MouseButton1Click:Connect(popup.close)
 	destroyConnection = anchor.Destroying:Connect(popup.close)
 	keyConnection = game:GetService("UserInputService").InputBegan:Connect(function(input)
-		if input.KeyCode == Enum.KeyCode.Escape then popup.close() end
+		if input.KeyCode == Enum.KeyCode.Escape then
+			popup.close()
+		end
 	end)
 end
 
@@ -500,11 +633,12 @@ local function componentField(row, label, value, index, count, line)
 
 	local y = 2 + line * PROPERTY_HEIGHT
 
-	local field = UI.prefixedInput(row, label, UDim2.new(xScale, 6, 0, y),
-		UDim2.new(slotScale, -8, 0, 18), {
-			text = formatNumber(value), textSize = tokens.type.caption,
-			textColor = tokens.color.subtext, selectAllOnFocus = true,
-		})
+	local field = UI.prefixedInput(row, label, UDim2.new(xScale, 6, 0, y), UDim2.new(slotScale, -8, 0, 18), {
+		text = formatNumber(value),
+		textSize = tokens.type.caption,
+		textColor = tokens.color.subtext,
+		selectAllOnFocus = true,
+	})
 	return field
 end
 
@@ -557,7 +691,10 @@ local function watchValueField(field, object, propertyName, parser)
 		local value = parser(field.Text)
 
 		if value ~= nil then
-			setProperty(object, propertyName, clean(value))
+			if type(value) == "string" then
+				value = clean(value)
+			end
+			setProperty(object, propertyName, value)
 		end
 	end)
 end
@@ -583,6 +720,131 @@ local function readonlyAdapter(height)
 		end,
 	}
 end
+
+local function trim(text)
+	return string.match(text or "", "^%s*(.-)%s*$")
+end
+
+local function smallButtonOptions()
+	return {
+		color = tokens.color.input,
+		hoverColor = tokens.color.hover,
+		textSize = tokens.type.caption,
+		textColor = tokens.color.subtext,
+		radius = tokens.radius.xs,
+		border = false,
+	}
+end
+
+registerAdapter("__tag", {
+	height = PROPERTY_HEIGHT,
+
+	render = function(row, object, property)
+		valueField(row, property.value, {
+			size = UDim2.new(0.55, -12 - 24, 0, 18),
+			textEditable = false,
+		})
+
+		UI.button(row, "X", UDim2.new(1, -22, 0, 2), UDim2.fromOffset(18, 18), function()
+			pcall(function()
+				CollectionService:RemoveTag(object, property.value)
+			end)
+		end, smallButtonOptions())
+
+		return nil
+	end,
+})
+
+registerAdapter("__addTag", {
+	height = PROPERTY_HEIGHT,
+
+	render = function(row, object)
+		local field = valueField(row, "", {
+			placeholder = "New tag...",
+			size = UDim2.new(0.55, -12 - 46, 0, 18),
+			textColor = tokens.color.text,
+		})
+
+		local function submit()
+			local name = trim(field.Text)
+			if name == "" then
+				return
+			end
+
+			if pcall(function()
+				CollectionService:AddTag(object, name)
+			end) then
+				field.Text = ""
+			end
+		end
+
+		watchEditor(field, submit)
+
+		UI.button(row, "Add", UDim2.new(1, -46, 0, 2), UDim2.fromOffset(40, 18), submit, smallButtonOptions())
+
+		return nil
+	end,
+})
+
+registerAdapter("__addAttribute", {
+	height = PROPERTY_HEIGHT * 2,
+
+	render = function(row, object)
+		local nameField = valueField(row, "", {
+			placeholder = "Name",
+			textColor = tokens.color.text,
+		})
+
+		local valueFieldInput = valueField(row, "", {
+			placeholder = "Value",
+			position = UDim2.new(0.45, 6, 0, 2 + PROPERTY_HEIGHT),
+			size = UDim2.new(0.55, -12 - 46, 0, 18),
+			textColor = tokens.color.text,
+		})
+
+		local function submit()
+			local name = trim(nameField.Text)
+			local raw = trim(valueFieldInput.Text)
+
+			if name == "" or raw == "" then
+				return
+			end
+
+			local value
+			if raw == "true" then
+				value = true
+			elseif raw == "false" then
+				value = false
+			else
+				value = tonumber(raw)
+				if value == nil then
+					value = valueFieldInput.Text
+				end
+			end
+
+			if pcall(function()
+				object:SetAttribute(name, value)
+			end) then
+				nameField.Text = ""
+				valueFieldInput.Text = ""
+			end
+		end
+
+		watchEditor(nameField, submit)
+		watchEditor(valueFieldInput, submit)
+
+		UI.button(
+			row,
+			"Add",
+			UDim2.new(1, -46, 0, 2 + PROPERTY_HEIGHT),
+			UDim2.fromOffset(40, 18),
+			submit,
+			smallButtonOptions()
+		)
+
+		return nil
+	end,
+})
 
 registerAdapter("nil", readonlyAdapter())
 
@@ -670,21 +932,28 @@ registerAdapter("boolean", {
 
 local function materialPreview(parent, material, size)
 	local frame = UI.create("ViewportFrame", {
-		Name = "MaterialPreview", Position = UDim2.new(0, 3, 0.5, -size/2),
-		Size = UDim2.fromOffset(size, size), BackgroundTransparency = 1,
-		BorderSizePixel = 0, Active = false, InputSink = false,
-		Ambient = Color3.new(0.55,0.55,0.55), LightDirection = Vector3.new(-1,-1,-1),
-		Shadows = false, PostProcessing = false, UpdateRate = 1,
+		Name = "MaterialPreview",
+		Position = UDim2.new(0, 3, 0.5, -size / 2),
+		Size = UDim2.fromOffset(size, size),
+		BackgroundTransparency = 1,
+		BorderSizePixel = 0,
+		Active = false,
+		InputSink = false,
+		Ambient = Color3.new(0.55, 0.55, 0.55),
+		LightDirection = Vector3.new(-1, -1, -1),
+		Shadows = false,
+		PostProcessing = false,
+		UpdateRate = 1,
 	}, parent)
 	local camera = Instance.new("Camera", frame)
 	camera.FieldOfView = 35
-	camera.CFrame = CFrame.lookAt(Vector3.new(3,1.8,3), Vector3.zero)
+	camera.CFrame = CFrame.lookAt(Vector3.new(3, 1.8, 3), Vector3.zero)
 	frame.CurrentCamera = camera
 	local sphere = Instance.new("Part", frame)
 	sphere.Name = "MaterialSample"
 	sphere.Shape = Enum.PartType.Ball
-	sphere.Size = Vector3.new(2,2,2)
-	sphere.Color = Color3.new(0.85,0.85,0.85)
+	sphere.Size = Vector3.new(2, 2, 2)
+	sphere.Color = Color3.new(0.85, 0.85, 0.85)
 	sphere.Material = material
 	return sphere
 end
@@ -753,12 +1022,16 @@ registerAdapter("EnumItem", {
 				onChanged = function(newValue)
 					if typeof(newValue) == "EnumItem" then
 						setProperty(object, property.name, newValue)
-						if sample then sample.Material = newValue end
+						if sample then
+							sample.Material = newValue
+						end
 					end
 				end,
 			}
 		)
-		if isMaterial then sample = materialPreview(button, value, 26) end
+		if isMaterial then
+			sample = materialPreview(button, value, 26)
+		end
 
 		return {
 			refresh = function(newValue)
@@ -768,7 +1041,9 @@ registerAdapter("EnumItem", {
 					end
 
 					controller:SetValue(newValue, true)
-					if sample then sample.Material = newValue end
+					if sample then
+						sample.Material = newValue
+					end
 				end
 			end,
 		}
@@ -1079,9 +1354,14 @@ registerAdapter("Color3", {
 		end
 		local currentColor = value
 		local swatchInput = UI.create("TextButton", {
-			Name = "OpenColorPicker", Text = "", Size = UDim2.fromScale(1,1),
-			BackgroundTransparency = 1, BorderSizePixel = 0, Active = true,
-			InputSink = true, AutoButtonColor = false,
+			Name = "OpenColorPicker",
+			Text = "",
+			Size = UDim2.fromScale(1, 1),
+			BackgroundTransparency = 1,
+			BorderSizePixel = 0,
+			Active = true,
+			InputSink = true,
+			AutoButtonColor = false,
 		}, swatch)
 		swatchInput.MouseButton1Click:Connect(function()
 			openInspectorColorPicker(swatch, currentColor, function(nextColor)
@@ -1129,8 +1409,11 @@ registerAdapter("Color3", {
 			refresh = function(newValue)
 				swatch.BackgroundColor3 = newValue
 				currentColor = newValue
-				if inspectorColorPopup and inspectorColorPopup.anchor == swatch
-					and inspectorColorPopup.controller:GetColor() ~= newValue then
+				if
+					inspectorColorPopup
+					and inspectorColorPopup.anchor == swatch
+					and inspectorColorPopup.controller:GetColor() ~= newValue
+				then
 					inspectorColorPopup.controller:SetColor(newValue, true)
 				end
 
@@ -1400,7 +1683,9 @@ local function adapterFor(property)
 end
 
 local function propertyEditorHeight(property)
-	if typeof(property.value) == "EnumItem" and property.value.EnumType == Enum.Material then return 34 end
+	if typeof(property.value) == "EnumItem" and property.value.EnumType == Enum.Material then
+		return 34
+	end
 	local adapter = adapterFor(property)
 	return adapter.height or PROPERTY_HEIGHT
 end
@@ -1422,12 +1707,20 @@ local function createPropertyRow(bubble, object, property, index)
 
 	UI.label(
 		row,
-		property.name,
+		property.label or property.name,
 		UDim2.fromOffset(7, 3),
-		UDim2.new(0.45, -8, 0, 17),
+		UDim2.new(0.45, -8 - (property.attribute and 20 or 0), 0, 17),
 		tokens.type.caption,
 		colors.subtext
 	)
+
+	if property.attribute then
+		UI.button(row, "X", UDim2.new(0.45, -22, 0, 3), UDim2.fromOffset(16, 16), function()
+			pcall(function()
+				object:SetAttribute(property.label, nil)
+			end)
+		end, smallButtonOptions())
+	end
 
 	UI.separator(
 		row,
@@ -1531,9 +1824,16 @@ local function createCategoryBubble(parent, object, category, group, order)
 		UDim2.fromOffset(11, 11)
 	)
 
+	local shownCount = 0
+	for _, property in ipairs(group) do
+		if not property.isAdd then
+			shownCount += 1
+		end
+	end
+
 	UI.label(
 		header,
-		tostring(#group),
+		tostring(shownCount),
 		UDim2.new(1, -38, 0, 4),
 		UDim2.fromOffset(28, 17),
 		tokens.type.caption,
@@ -1657,7 +1957,7 @@ local function rebuild(object, visible)
 		local group = grouped[category]
 
 		table.sort(group, function(a, b)
-			return a.name < b.name
+			return (a.sortName or a.name) < (b.sortName or b.name)
 		end)
 
 		createCategoryBubble(list, object, category, group, order)
