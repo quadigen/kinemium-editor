@@ -10,9 +10,11 @@ local picker = require("@internal/picker")
 
 local StudioThemeService = game:GetService("StudioThemeService")
 local theme = StudioThemeService.SelectedTheme
+local ProfilerService = game:GetService("ProfilerService")
 local TextService = game:GetService("TextService")
 local Selection = game:GetService("Selection")
 local PlaytestService = game:GetService("PlaytestService")
+local RunService = game:GetService("RunService")
 
 local colors = UI.colors
 local tokens = UI.tokens
@@ -484,7 +486,7 @@ local fpsText = UI.label(
 )
 fpsText.Position = UDim2.new(1, 0, 1, 0)
 fpsText.AnchorPoint = Vector2.new(1, 1)
-fpsText.Size = UDim2.new(0, 0, 0, 0)
+fpsText.Size = UDim2.new(0, 0, 0, 30)
 fpsText.AutomaticSize = Enum.AutomaticSize.XY
 
 local breadcrumb = UI.group(viewportOverlay, UDim2.new(0, 8, 1, -30), UDim2.new(1, -16, 0, 26), {
@@ -496,6 +498,11 @@ breadcrumb.BackgroundTransparency = 1
 breadcrumb.Name = "ViewportBreadcrumb"
 breadcrumb.Visible = renderer.Dimension == "3D"
 breadcrumb.ClipsDescendants = true
+
+RunService.RenderStepped:Connect(function(a0: number)
+	local fps = ProfilerService.FPS
+	fpsText.Text = `{tostring(math.floor(fps))} FPS`
+end)
 
 if gizmoFrame then
 	gizmoFrame.Visible = not hasDocument
