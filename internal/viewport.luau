@@ -499,9 +499,18 @@ breadcrumb.Name = "ViewportBreadcrumb"
 breadcrumb.Visible = renderer.Dimension == "3D"
 breadcrumb.ClipsDescendants = true
 
-RunService.RenderStepped:Connect(function(a0: number)
+local FPS_UPDATE_INTERVAL = 0.25
+local elapsed = FPS_UPDATE_INTERVAL
+
+RunService.RenderStepped:Connect(function(dt: number)
+	elapsed += dt
+	if elapsed < FPS_UPDATE_INTERVAL then
+		return
+	end
+	elapsed = 0
+
 	local fps = ProfilerService.FPS
-	fpsText.Text = `{tostring(math.floor(fps))} FPS`
+	fpsText.Text = `{math.floor(fps + 0.5)} FPS`
 end)
 
 if gizmoFrame then
