@@ -484,6 +484,8 @@ local fpsText = UI.label(
 )
 fpsText.Position = UDim2.new(1, 0, 1, 0)
 fpsText.AnchorPoint = Vector2.new(1, 1)
+fpsText.Size = UDim2.new(0, 0, 0, 0)
+fpsText.AutomaticSize = Enum.AutomaticSize.XY
 
 local breadcrumb = UI.group(viewportOverlay, UDim2.new(0, 8, 1, -30), UDim2.new(1, -16, 0, 26), {
 	color = tokens.color.surface,
