@@ -14,6 +14,33 @@ local DEFAULT_ICON = "builtin://global-icons/project.png"
 local DELETE_METHODS = { "DeleteProject", "RemoveProject" }
 local UPDATE_METHODS = { "UpdateProject", "EditProject", "SetProjectProperties" }
 
+local QUALITY_ITEMS = {
+	{ value = "Low", text = "Low" },
+	{ value = "Medium", text = "Medium" },
+	{ value = "High", text = "High" },
+	{ value = "Performance", text = "Performance" },
+}
+
+local DIMENSION_ITEMS = {
+	{ value = "2D", text = "2D" },
+	{ value = "3D", text = "3D" },
+}
+
+-- Project:CreateProject takes dimension as a number
+local DIMENSION_NUMBERS = { ["2D"] = 2, ["3D"] = 3 }
+
+local DEFAULT_QUALITY = "Medium"
+local DEFAULT_DIMENSION = "3D"
+local DEFAULT_GIT = true
+
+local CHEVRON_ICON = "builtin://icons/ArrowDown.svg"
+
+-- Nothing in the engine receives the quality option yet.
+-- Wire it up here once Project (or something else) accepts it.
+local function applyQuality(project, quality)
+	-- e.g. Project:SetProjectQuality(quality)
+end
+
 local function callProject(methodNames, ...)
 	for _, methodName in ipairs(methodNames) do
 		local found, method = pcall(function()
@@ -110,7 +137,7 @@ return function(page, windowControls, gui)
 			title = config.title,
 			description = config.description,
 
-			size = UDim2.fromOffset(480, 410),
+			size = UDim2.fromOffset(480, config.showGameOptions and 520 or 410),
 
 			modal = true,
 			dim = true,
@@ -135,6 +162,9 @@ return function(page, windowControls, gui)
 					id = "cancel",
 					text = "Cancel",
 					role = "secondary",
+					callback = function()
+						UI.closeDropdown(true)
+					end,
 				},
 
 				{
@@ -143,6 +173,8 @@ return function(page, windowControls, gui)
 					role = "primary",
 
 					callback = function(controller)
+						UI.closeDropdown(true)
+
 						controller:SetBusy(true, "submit", config.busyText)
 
 						local props = controller:GetProjectProperties()
@@ -170,6 +202,7 @@ return function(page, windowControls, gui)
 				local FIELD_GAP = 12
 				local BROWSE_BUTTON_SIZE = 28
 				local BROWSE_GAP = 6
+				local COLUMN_GAP = 12
 
 				local y = 0
 
@@ -264,11 +297,179 @@ return function(page, windowControls, gui)
 
 				y += INPUT_HEIGHT + FIELD_GAP
 
+				-----------------------------------------------------------------
+				-- Game options (Create prompt only)
+				-----------------------------------------------------------------
+				local quality = DEFAULT_QUALITY
+				local dimension = DEFAULT_DIMENSION
+				local git = DEFAULT_GIT
+
+				local qualityDropdown, dimensionDropdown
+				local setGit
+
+				if config.showGameOptions then
+					local function transparentFrame(parent, position, size)
+						local frame = UI.frame(parent, position, size, UI.tokens.color.panel, 0)
+						frame.BackgroundTransparency = 1
+						return frame
+					end
+
+					local function addDropdownColumn(parent, position, size, labelText, items, defaultValue, onChange)
+						local column = transparentFrame(parent, position, size)
+
+						local label = UI.label(
+							column,
+							labelText,
+							UDim2.fromOffset(0, 0),
+							UDim2.new(1, 0, 0, LABEL_HEIGHT),
+							12,
+							UI.tokens.color.subtext
+						)
+
+						label.TextXAlignment = Enum.TextXAlignment.Left
+
+						local _, _, dropdownController = UI.dropdown(
+							column,
+							defaultValue,
+							UDim2.fromOffset(0, LABEL_HEIGHT + 4),
+							UDim2.new(1, 0, 0, INPUT_HEIGHT),
+							CHEVRON_ICON,
+							{
+								items = items,
+								menuWidth = 190,
+								onChanged = onChange,
+							}
+						)
+
+						return dropdownController
+					end
+
+					local dropdownRowHeight = LABEL_HEIGHT + 4 + INPUT_HEIGHT
+
+					local dropdownRow =
+						transparentFrame(content, UDim2.fromOffset(0, y), UDim2.new(1, 0, 0, dropdownRowHeight))
+
+					qualityDropdown = addDropdownColumn(
+						dropdownRow,
+						UDim2.fromOffset(0, 0),
+						UDim2.new(0.5, -(COLUMN_GAP / 2), 1, 0),
+						"Game Quality",
+						QUALITY_ITEMS,
+						DEFAULT_QUALITY,
+						function(value)
+							quality = value
+						end
+					)
+
+					dimensionDropdown = addDropdownColumn(
+						dropdownRow,
+						UDim2.new(0.5, COLUMN_GAP / 2, 0, 0),
+						UDim2.new(0.5, -(COLUMN_GAP / 2), 1, 0),
+						"Dimension",
+						DIMENSION_ITEMS,
+						DEFAULT_DIMENSION,
+						function(value)
+							dimension = value
+						end
+					)
+
+					y += dropdownRowHeight + FIELD_GAP
+
+					-- Git switch (built from a button + knob, no native switch was available)
+					local SWITCH_WIDTH, SWITCH_HEIGHT, KNOB_SIZE, KNOB_PAD = 40, 22, 18, 2
+					local SWITCH_ROW_HEIGHT = 34
+
+					local switchRow =
+						transparentFrame(content, UDim2.fromOffset(0, y), UDim2.new(1, 0, 0, SWITCH_ROW_HEIGHT))
+
+					local switchTitle = UI.label(
+						switchRow,
+						"Git Support",
+						UDim2.fromOffset(0, 0),
+						UDim2.new(1, -(SWITCH_WIDTH + 12), 0, 16),
+						UI.tokens.type.small,
+						UI.tokens.color.text
+					)
+
+					switchTitle.TextXAlignment = Enum.TextXAlignment.Left
+
+					local switchHint = UI.label(
+						switchRow,
+						"Initialize a git repository for this project",
+						UDim2.fromOffset(0, 17),
+						UDim2.new(1, -(SWITCH_WIDTH + 12), 0, 16),
+						11,
+						UI.tokens.color.muted
+					)
+
+					switchHint.TextXAlignment = Enum.TextXAlignment.Left
+
+					local track, _, trackRecord
+					local knob
+
+					local function renderSwitch()
+						local trackColor = git and UI.tokens.color.accent or UI.tokens.color.input
+
+						if trackRecord then
+							trackRecord.color = trackColor
+							trackRecord.defaultColor = trackColor
+							trackRecord.hoverColor = trackColor
+							trackRecord.defaultHoverColor = trackColor
+							trackRecord.pressedColor = trackColor
+						end
+
+						track.BackgroundColor3 = trackColor
+
+						knob.Position = git and UDim2.fromOffset(SWITCH_WIDTH - KNOB_SIZE - KNOB_PAD, KNOB_PAD)
+							or UDim2.fromOffset(KNOB_PAD, KNOB_PAD)
+					end
+
+					setGit = function(value)
+						git = value == true
+						renderSwitch()
+					end
+
+					track, _, trackRecord = UI.button(
+						switchRow,
+						"",
+						UDim2.new(1, -SWITCH_WIDTH, 0, (SWITCH_ROW_HEIGHT - SWITCH_HEIGHT) / 2),
+						UDim2.fromOffset(SWITCH_WIDTH, SWITCH_HEIGHT),
+						function()
+							setGit(not git)
+						end,
+						{
+							color = UI.tokens.color.input,
+							hoverColor = UI.tokens.color.input,
+							pressedColor = UI.tokens.color.input,
+							radius = SWITCH_HEIGHT / 2,
+							border = true,
+							borderColor = UI.tokens.color.border,
+						}
+					)
+
+					knob = UI.frame(
+						track,
+						UDim2.fromOffset(KNOB_PAD, KNOB_PAD),
+						UDim2.fromOffset(KNOB_SIZE, KNOB_SIZE),
+						Color3.new(1, 1, 1),
+						KNOB_SIZE / 2
+					)
+
+					knob.Name = "Knob"
+					knob.Active = false
+
+					renderSwitch()
+
+					y += SWITCH_ROW_HEIGHT + FIELD_GAP
+				end
+
 				controller.fields = {
 					name = nameInput,
 					description = descriptionInput,
 					icon = iconInput,
 					folderPath = folderInput,
+					qualityDropdown = qualityDropdown,
+					dimensionDropdown = dimensionDropdown,
 				}
 
 				controller.folderButton = folderButton
@@ -287,6 +488,9 @@ return function(page, windowControls, gui)
 						Description = descriptionInput.Text,
 						Icon = iconInput.Text,
 						FolderPath = folderInput.Text,
+						Quality = quality,
+						Dimension = dimension,
+						Git = git,
 					}
 				end
 
@@ -297,6 +501,27 @@ return function(page, windowControls, gui)
 					descriptionInput.Text = props.Description or ""
 					iconInput.Text = props.Icon or DEFAULT_ICON
 					folderInput.Text = props.FolderPath or ""
+
+					quality = props.Quality or DEFAULT_QUALITY
+					dimension = props.Dimension or DEFAULT_DIMENSION
+
+					if props.Git == nil then
+						git = DEFAULT_GIT
+					else
+						git = props.Git == true
+					end
+
+					if qualityDropdown then
+						qualityDropdown:SetValue(quality, true)
+					end
+
+					if dimensionDropdown then
+						dimensionDropdown:SetValue(dimension, true)
+					end
+
+					if setGit then
+						setGit(git)
+					end
 				end
 			end,
 		})
@@ -313,22 +538,34 @@ return function(page, windowControls, gui)
 		submitText = "Create",
 		busyText = "Creating...",
 		failTitle = "Could not create project",
+		showGameOptions = true,
 
 		onSubmit = function(props)
-			local success = Project:CreateProject(props.Name, props.FolderPath, props.Description, props.Icon)
+			local success = Project:CreateProject(
+				props.Name,
+				props.FolderPath,
+				props.Description,
+				props.Icon,
+				props.Git,
+				DIMENSION_NUMBERS[props.Dimension] or DIMENSION_NUMBERS[DEFAULT_DIMENSION]
+			)
 
 			if not success then
 				return false, "The project could not be created. Check the folder path."
 			end
 
-			showProject(Project:GetActiveProject())
+			local created = Project:GetActiveProject()
+
+			applyQuality(created, props.Quality)
+
+			showProject(created)
 			refreshList()
 
 			notify(
 				"success",
 				"Successfully created project!",
 				`Successfully created project {props.Name}.`,
-				`Description: {props.Description}\nIcon: {props.Icon}\nPath: {props.FolderPath}`,
+				`Description: {props.Description}\nIcon: {props.Icon}\nPath: {props.FolderPath}\nDimension: {props.Dimension}\nQuality: {props.Quality}\nGit: {props.Git and "Enabled" or "Disabled"}`,
 				"Project details"
 			)
 
@@ -514,14 +751,13 @@ return function(page, windowControls, gui)
 	}, projectsList)
 	list.Parent = cards
 
-	local controls =
-		UI.frame(
-			projectsList,
-			UDim2.fromOffset(LIST_PADDING, LIST_PADDING),
-			UDim2.new(1, -LIST_PADDING * 2, 0, BUTTON_SIZE),
-			tokens.color.surfaceAlt,
-			0
-		)
+	local controls = UI.frame(
+		projectsList,
+		UDim2.fromOffset(LIST_PADDING, LIST_PADDING),
+		UDim2.new(1, -LIST_PADDING * 2, 0, BUTTON_SIZE),
+		tokens.color.surfaceAlt,
+		0
+	)
 
 	controls.BackgroundTransparency = 1
 	controls.LayoutOrder = 0
