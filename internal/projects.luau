@@ -26,8 +26,7 @@ local DIMENSION_ITEMS = {
 	{ value = "3D", text = "3D" },
 }
 
--- Project:CreateProject takes dimension as a number
-local DIMENSION_NUMBERS = { ["2D"] = 2, ["3D"] = 3 }
+local DIMENSION_NUMBERS = { ["2D"] = 2, ["3D"] = 1 }
 
 local DEFAULT_QUALITY = "Medium"
 local DEFAULT_DIMENSION = "3D"
@@ -35,8 +34,6 @@ local DEFAULT_GIT = true
 
 local CHEVRON_ICON = "builtin://icons/ArrowDown.svg"
 
--- Nothing in the engine receives the quality option yet.
--- Wire it up here once Project (or something else) accepts it.
 local function applyQuality(project, quality)
 	-- e.g. Project:SetProjectQuality(quality)
 end
