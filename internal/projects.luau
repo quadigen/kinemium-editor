@@ -647,7 +647,7 @@ return function(page, windowControls, gui)
 
 					local target = deleteTarget
 
-					local ok, err = callProject(DELETE_METHODS, target.Path)
+					local ok, err = Project:DeleteProject(target.Path)
 
 					if not ok then
 						notify("error", "Could not remove project", err or "Unknown error")
