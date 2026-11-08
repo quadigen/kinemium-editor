@@ -645,7 +645,6 @@ return function(parent, createProfileButton)
 			settingsWindow.Visible = false
 		end
 
-		-- Embedded mode has no window to hide, so clear the settings out of the parent.
 		if embedded and settingsPage then
 			UI.clear(settingsPage)
 		end
@@ -1297,7 +1296,7 @@ return function(parent, createProfileButton)
 
 	profileButton, _, image = UI.iconButton(
 		parent,
-		"assets/icons/Play.svg",
+		"builtin://icons/Play.svg",
 		UDim2.new(1, -5, 0, 5),
 		UDim2.fromOffset(25, 25),
 		function()
