@@ -55,6 +55,13 @@ local state = {
 	developerMode = false,
 	syncLogging = false,
 	debugLabels = false,
+
+	-- Viewport settings
+	viewportGrid = true,
+	viewportAxes = true,
+	viewportGizmos = true,
+	viewportSelectionOutline = true,
+	viewportCameraControls = true,
 }
 
 -- Persistence through the Studio service ------------------------------------

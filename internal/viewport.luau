@@ -9,6 +9,7 @@ local UIEditor = require("@internal/ui_editor")
 local picker = require("@internal/picker")
 
 local StudioThemeService = game:GetService("StudioThemeService")
+local Studio = game:GetService("Studio")
 local theme = StudioThemeService.SelectedTheme
 local ProfilerService = game:GetService("ProfilerService")
 local TextService = game:GetService("TextService")
@@ -87,6 +88,11 @@ dropHighlight.ZIndex = 50
 
 UI.stroke(dropHighlight, colors.accent, 2, 0.2)
 
+-- API method to set drop highlight with setting check
+local originalSetDropHighlight = function(visible)
+	dropHighlight.Visible = visible == true
+end
+
 local activeTool = renderer.Dimension == "2D" and "Select" or "Move"
 local snapEnabled = true
 
@@ -101,6 +107,29 @@ arcHandles.Name = "ViewportArcHandles"
 arcHandles.Snap = 30
 UI.keepSceneHelper(arcHandles)
 arcHandles.Parent = workspace
+
+-- Load viewport settings
+local viewportSettings = {
+	viewportGrid = Studio:GetSetting("viewportGrid"),
+	viewportAxes = Studio:GetSetting("viewportAxes"),
+	viewportGizmos = Studio:GetSetting("viewportGizmos"),
+	viewportSelectionOutline = Studio:GetSetting("viewportSelectionOutline"),
+	viewportCameraControls = Studio:GetSetting("viewportCameraControls"),
+}
+
+-- Apply default values for nil settings
+if viewportSettings.viewportGrid == nil then viewportSettings.viewportGrid = true end
+if viewportSettings.viewportAxes == nil then viewportSettings.viewportAxes = true end
+if viewportSettings.viewportGizmos == nil then viewportSettings.viewportGizmos = true end
+if viewportSettings.viewportSelectionOutline == nil then viewportSettings.viewportSelectionOutline = true end
+if viewportSettings.viewportCameraControls == nil then viewportSettings.viewportCameraControls = true end
+
+-- Listen for viewport setting changes
+Studio.SettingChanged:Connect(function(key, value)
+	if viewportSettings[key] ~= nil then
+		viewportSettings[key] = value
+	end
+end)
 
 local function selectedTransformTarget(allowAttachment)
 	local selected = Selection:Get()
@@ -129,8 +158,8 @@ local function updateGizmos()
 
 	handles.Adornee = adornee
 	arcHandles.Adornee = if rotating then adornee else nil
-	handles.Visible = is3D and adornee ~= nil and (moving or resizing)
-	arcHandles.Visible = is3D and adornee ~= nil and rotating
+	handles.Visible = is3D and adornee ~= nil and (moving or resizing) and viewportSettings.viewportGizmos
+	arcHandles.Visible = is3D and adornee ~= nil and rotating and viewportSettings.viewportGizmos
 
 	if moving then
 		handles.Style = Enum.HandlesStyle.Movement
@@ -514,7 +543,7 @@ RunService.RenderStepped:Connect(function(dt: number)
 end)
 
 if gizmoFrame then
-	gizmoFrame.Visible = not hasDocument
+	gizmoFrame.Visible = not hasDocument and viewportSettings.viewportAxes
 end
 
 local editor = CodeEditor.new(scriptRoot)
@@ -568,6 +597,10 @@ if renderer.Dimension == "3D" then
 	}
 
 	local function snapCamera(dir, up)
+		if not viewportSettings.viewportCameraControls then
+			return
+		end
+
 		local camera = workspace.CurrentCamera
 		if not camera then
 			return
@@ -1044,7 +1077,7 @@ local API = {
 	ViewportToScreenPoint = viewportToScreenPoint,
 
 	SetDropHighlight = function(visible)
-		dropHighlight.Visible = visible == true
+		dropHighlight.Visible = visible == true and viewportSettings.viewportSelectionOutline
 	end,
 
 	GetUIEditor = function()
