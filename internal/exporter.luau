@@ -978,7 +978,7 @@ local function runExport(names)
 			assert(Filesystem:CreateFolder(project, "build") ~= "", "Could not create " .. snapshotFolder)
 		end
 		gameFile = snapshotFolder .. "/game.kine"
-		assert(ExportService:ExportToFile(gameFile), "Could not save the game map for export.")
+		assert(ExportService:ExportToFile(gameFile, buildFolder), "Could not save the game map for export.")
 	end)
 	if not prepared then
 		exporting = false

@@ -79,13 +79,72 @@ local function appendName(names, name)
 	return result
 end
 
-local function scanDisk(root, names, records)
+local function readSourcemap(projectPath)
+	local entry = entries(projectPath)["sourcemap.json"]
+	if not entry then return nil end
+	check(entry.Type == "File", "Expected a regular sourcemap.json file")
+	local path = projectPath .. "/" .. entry.Name
+	local tree = HttpService:JSONDecode(check(Filesystem:ReadFile(path), "Could not read " .. path))
+	check(type(tree) == "table" and tree.className == "DataModel", "Invalid Rojo sourcemap")
+	return tree
+end
+
+local function scanSourcemap(projectPath, tree)
+	local sources, directories = {}, {}
+	local function findFile(relative)
+		local pieces = string.split(relative:gsub("\\", "/"), "/")
+		for _, piece in ipairs(pieces) do
+			check(validName(piece), "Invalid sourcemap path " .. relative)
+		end
+		local path = projectPath
+		for index, name in ipairs(pieces) do
+			local contents = directories[path]
+			if not contents then
+				contents = entries(path)
+				directories[path] = contents
+			end
+			local entry = contents[name:lower()]
+			if not entry then return nil end
+			local expected = index == #pieces and "File" or "Directory"
+			check(entry.Type == expected, "Expected a regular source path in " .. relative)
+			path ..= "/" .. entry.Name
+		end
+		return path
+	end
+	local function visit(node, names)
+		if outputSuffix[node.className] then
+			for _, relative in ipairs(node.filePaths or {}) do
+				if type(relative) == "string" and scriptFile(relative) then
+					local path = findFile(relative)
+					if path then
+						local source = Filesystem:ReadFile(path)
+						check(type(source) == "string", "Could not read " .. path)
+						local filename = path:match("[^/]+$")
+						add(sources, names, {
+							path = path, class = node.className, source = source,
+							isInit = scriptFile(filename) == "init", sourcemapped = true,
+						})
+					end
+					break
+				end
+			end
+		end
+		for _, child in ipairs(node.children or {}) do
+			check(type(child.name) == "string" and validName(child.name), "Invalid sourcemap instance name")
+			visit(child, appendName(names, child.name))
+		end
+	end
+	if tree then visit(tree, {}) end
+	return sources
+end
+
+local function scanDisk(root, names, records, mappedPaths)
 	for _, entry in pairs(entries(root)) do
 		local name = entry.Name
 		local path = root .. "/" .. name
 		if entry.Type == "Directory" and validName(name) and name:sub(1, 1) ~= "." then
-			scanDisk(path, appendName(names, name), records)
-		elseif entry.Type == "File" then
+			scanDisk(path, appendName(names, name), records, mappedPaths)
+		elseif entry.Type == "File" and not mappedPaths[path:lower()] then
 			local scriptName, class = scriptFile(name)
 			if scriptName and validName(scriptName) then
 				local isInit = scriptName == "init"
@@ -184,6 +243,14 @@ local function applyDisk(root, disk, model)
 		return
 	end
 
+	if disk and disk.sourcemapped then
+		check(disk.class == model.class and table.concat(disk.names, "/") == table.concat(model.names, "/"),
+			"Update the sourcemap before renaming or reclassifying " .. disk.path)
+		check(Filesystem:WriteFileAtomic(disk.path, model.source), "Could not write " .. disk.path)
+		return
+	end
+	check(root, "Add a directory mapping in default.project.json before exporting a new source file")
+
 	local names = table.clone(model.names)
 	local name = table.remove(names)
 	local useInit = model.isInit or (disk and disk.isInit)
@@ -209,11 +276,31 @@ local function applyDisk(root, disk, model)
 	end
 end
 
-local function scanPair(mapping)
-	mapping.path = directory(mapping.projectPath, mapping.pieces, false)
-	local disk, model = {}, {}
-	scanDisk(mapping.path, {}, disk)
+local function scanPair(mapping, mappedSources)
+	local disk, model, mappedPaths = {}, {}, {}
+	for _, source in pairs(mappedSources) do
+		mappedPaths[source.path:lower()] = true
+		local prefix = mapping.names
+		local underMapping = #source.names > #prefix
+		for index, name in ipairs(prefix) do
+			if source.names[index] ~= name then underMapping = false; break end
+		end
+		if underMapping then
+			local relative = table.move(source.names, #prefix + 1, #source.names, 1, {})
+			add(disk, relative, table.clone(source))
+		end
+	end
+	if mapping.pieces then
+		mapping.path = directory(mapping.projectPath, mapping.pieces, false)
+		scanDisk(mapping.path, {}, disk, mappedPaths)
+	end
 	scanModel(mapping.root, {}, model)
+	if not mapping.path then
+		-- A sourcemap-only project has no rule for emitting unmapped objects.
+		for key in pairs(model) do
+			if not disk[key] and not mapping.previous[key] then model[key] = nil end
+		end
+	end
 	return disk, model
 end
 
@@ -223,8 +310,8 @@ local function remember(mapping, key, record)
 	active.dirty = true
 end
 
-local function reconcile(mapping, conflicts)
-	local disk, model = scanPair(mapping)
+local function reconcile(mapping, conflicts, mappedSources)
+	local disk, model = scanPair(mapping, mappedSources)
 	local keys, ordered = {}, {}
 	for key in pairs(disk) do keys[key] = true end
 	for key in pairs(model) do keys[key] = true end
@@ -239,8 +326,15 @@ local function reconcile(mapping, conflicts)
 	for _, key in ipairs(ordered) do
 		local file, object = disk[key], model[key]
 		local baseline = mapping.previous[key]
-		if same(file, object) then
-			if file and object.isInit and not file.isInit then
+		if mapping.recovering and file then
+			if not same(file, object) then applyModel(mapping.root, file, object) end
+			remember(mapping, key, file)
+		elseif mapping.opening and file and not object then
+			-- The snapshot can be older than the journal after a crash or restore.
+			applyModel(mapping.root, file, nil)
+			remember(mapping, key, file)
+		elseif same(file, object) then
+			if file and object.isInit and not file.isInit and not file.sourcemapped and not mapping.opening then
 				applyDisk(mapping.path, file, object)
 			end
 			remember(mapping, key, file)
@@ -248,11 +342,9 @@ local function reconcile(mapping, conflicts)
 			if file then
 				applyModel(mapping.root, file, object)
 				remember(mapping, key, file)
-			elseif mapping.exportInitial then
+			elseif mapping.path then
 				applyDisk(mapping.path, nil, object)
 				remember(mapping, key, object)
-			else
-				table.insert(removals, { key = key, object = object })
 			end
 		elseif same(file, baseline) then
 			if object then
@@ -293,13 +385,30 @@ local function reconcile(mapping, conflicts)
 	end
 	if not mapping.initialized then active.dirty = true end
 	mapping.initialized = true
+	mapping.opening = false
+	mapping.recovering = false
 end
 
-local function configure(project)
+local function configureSourcemap(project, sourcemap)
+	local mappings = {}
+	for _, node in ipairs(sourcemap.children or {}) do
+		local ok, root = pcall(game.GetService, game, node.name)
+		if ok and root then
+			table.insert(mappings, {
+				root = root, projectPath = project.Path, names = { node.name },
+				id = "/" .. node.name .. "|sourcemap", previous = {}, opening = true,
+			})
+		end
+	end
+	return mappings
+end
+
+local function configure(project, sourcemap)
 	local manifestPath = project.Path .. "/default.project.json"
 	local manifestEntry = entries(project.Path)["default.project.json"]
 	local generated = manifestEntry == nil
 	local manifest
+	if generated and sourcemap then return configureSourcemap(project, sourcemap) end
 	if generated then
 		manifest = {
 			name = project.Name,
@@ -312,6 +421,7 @@ local function configure(project)
 		}
 	else
 		check(manifestEntry.Type == "File", "Expected a regular default.project.json file")
+		manifestPath = project.Path .. "/" .. manifestEntry.Name
 		manifest = HttpService:JSONDecode(check(Filesystem:ReadFile(manifestPath), "Could not read default.project.json"))
 	end
 	check(type(manifest) == "table" and type(manifest.tree) == "table", "Missing Rojo project tree")
@@ -319,7 +429,7 @@ local function configure(project)
 	check(manifest.emitLegacyScripts ~= false, "Source sync requires legacy script classes")
 
 	local mappings = {}
-	local function visit(node, root, logicalPath)
+	local function visit(node, root, names)
 		local relative = node["$path"]
 		if relative then
 			check(type(relative) == "string", "Expected a relative directory in $path")
@@ -333,7 +443,8 @@ local function configure(project)
 					and existing:sub(1, #folded + 1) ~= folded .. "/", "Overlapping source paths")
 			end
 			table.insert(mappings, { root = root, path = path, projectPath = project.Path,
-				pieces = pieces, id = logicalPath .. "|" .. table.concat(pieces, "/"), previous = {}, exportInitial = generated })
+				pieces = pieces, names = names, id = "/" .. table.concat(names, "/") .. "|" .. table.concat(pieces, "/"),
+				previous = {}, opening = true })
 		end
 		for name, child in pairs(node) do
 			if name:sub(1, 1) ~= "$" then
@@ -350,11 +461,12 @@ local function configure(project)
 					target.Parent = root
 				end
 				check(target, "Source mapping target does not exist: " .. name)
-				visit(child, target, logicalPath .. "/" .. name)
+				visit(child, target, appendName(names, name))
 			end
 		end
 	end
-	visit(manifest.tree, game, "")
+	visit(manifest.tree, game, {})
+	if #mappings == 0 and sourcemap then return configureSourcemap(project, sourcemap) end
 	return mappings, generated and manifestPath or nil, manifest
 end
 
@@ -372,17 +484,23 @@ local function saveJournal()
 	active.dirty = false
 end
 
-local function readJournal()
+local function readJournal(mappings)
 	local state = Filesystem:ReadFile(journalPath())
 	if not state then return end
-	local saved = HttpService:JSONDecode(state)
-	check(type(saved) == "table" and type(saved.mappings) == "table", "Invalid source sync state")
+	local decoded, saved = pcall(HttpService.JSONDecode, HttpService, state)
+	if not decoded or type(saved) ~= "table" or type(saved.mappings) ~= "table" then
+		check(active.recovering, "Invalid source sync state")
+		active.dirty = true
+		return
+	end
 	active.paused = saved.paused == true
-	for _, mapping in ipairs(active.mappings) do
+	for _, mapping in ipairs(mappings) do
 		local previous = saved.mappings[mapping.id]
 		if type(previous) == "table" then
-			mapping.previous = previous
-			mapping.initialized = true
+			if not active.recovering then
+				mapping.previous = previous
+				mapping.initialized = true
+			end
 		end
 	end
 end
@@ -394,14 +512,24 @@ end
 function Sync.step()
 	if not active then return true end
 	local ok, message = pcall(function()
+		local sourcemap = readSourcemap(active.project.Path)
 		if not active.mappings then
-			active.mappings, active.manifestPath, active.manifest = configure(active.project)
-			readJournal()
+			local configured, mappings, manifestPath, manifest = pcall(configure, active.project, sourcemap)
+			if not configured then
+				-- Rojo can describe explicit files and filters that directory
+				-- sync cannot infer. Use its resolved file paths when available.
+				check(sourcemap, mappings)
+				mappings = configureSourcemap(active.project, sourcemap)
+			end
+			readJournal(mappings)
+			for _, mapping in ipairs(mappings) do mapping.recovering = active.recovering end
+			active.mappings, active.manifestPath, active.manifest = mappings, manifestPath, manifest
 		end
 		if active.paused then return end
+		local mappedSources = scanSourcemap(active.project.Path, sourcemap)
 		local conflicts = {}
 		for _, mapping in ipairs(active.mappings) do
-			reconcile(mapping, conflicts)
+			reconcile(mapping, conflicts, mappedSources)
 		end
 		active.conflicts = conflicts
 		if active.manifestPath then
@@ -451,7 +579,8 @@ function Sync.resolve(conflict, choice)
 	if not currentIndex then return false, "This conflict is no longer current." end
 	local ok, message = pcall(function()
 		local mapping, key = conflict.mapping, conflict.key
-		local disk, model = scanPair(mapping)
+		local sourcemap = readSourcemap(active.project.Path)
+		local disk, model = scanPair(mapping, scanSourcemap(active.project.Path, sourcemap))
 		local file, object = disk[key], model[key]
 		check(same(file, conflict.file) and same(object, conflict.object), "The sources changed. Review the current conflict before resolving it.")
 		if choice == "disk" then
@@ -470,7 +599,10 @@ end
 
 function Sync.start(project)
 	if not Sync.available then return end
-	active = { project = project, paused = false, conflicts = {} }
+	active = {
+		project = project, paused = false, conflicts = {},
+		recovering = not Filesystem:PathExists(project.Path .. "/autosave.kine"),
+	}
 	elapsed = 0
 	Sync.step()
 end

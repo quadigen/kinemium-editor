@@ -104,6 +104,7 @@ local function floatTab(name, point)
 	floating[name] = window
 	keyboardTab = name
 	windowControls.setTabDetached(name, true)
+
 	local page = windowControls.pages[name]
 	page.Parent = pageHolder
 	page.Visible = true
