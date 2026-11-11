@@ -601,12 +601,13 @@ UserInputService.InputBegan:Connect(function(input)
 	if not mouseOverViewport() or editingText() then
 		return
 	end
-	if input.KeyCode == Enum.KeyCode.Up then
+	if input.KeyCode == Enum.KeyCode.V then
 		setCameraSpeed(cameraSpeedIndex + 1, 1)
-	elseif input.KeyCode == Enum.KeyCode.Down then
+	elseif input.KeyCode == Enum.KeyCode.C then
 		setCameraSpeed(cameraSpeedIndex - 1, -1)
 	end
 end)
+
 local function keyDown(key)
 	return UserInputService:IsKeyDown(key)
 end
