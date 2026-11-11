@@ -6,31 +6,36 @@ local function selectedObject()
 	return object
 end
 
-local function parent(sourceDataModel)
-	if sourceDataModel:IsA("DataModel") then
-		for _, sourceService in sourceDataModel:GetChildren() do
-			local currentService = game:FindFirstChild(sourceService.Name)
+local function mergeChildren(source, destination)
+	if not destination then
+		return
+	end
 
-			if currentService then
-				for _, child in sourceService:GetChildren() do
-					local exists = false
+	for _, child in source:GetChildren() do
+		if not destination:FindFirstChild(child.Name) then
+			child.Parent = destination
+		end
+	end
+end
 
-					for _, existingChild in currentService:GetChildren() do
-						if child.Name == existingChild.Name then
-							exists = true
-							break
-						end
-					end
+local function serviceDestination(source)
+	-- A service can have a custom display name. Its class identifies the singleton.
+	return game:FindService(source.ClassName)
+end
 
-					if not exists then
-						child.Parent = currentService
-					end
-				end
+local function parent(source, target)
+	if source:IsA("DataModel") then
+		for _, child in source:GetChildren() do
+			if child:IsA("Service") then
+				mergeChildren(child, serviceDestination(child))
+			else
+				mergeChildren(child, game:FindFirstChild(child.Name))
 			end
 		end
+	elseif source:IsA("Service") then
+		mergeChildren(source, serviceDestination(source))
 	else
-		local object = selectedObject()
-		sourceDataModel.Parent = object or workspace
+		source.Parent = target or selectedObject() or workspace
 	end
 end
 

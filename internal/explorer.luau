@@ -2,6 +2,7 @@ if (IsServer or IsClient) or IsPlaytest then
 	return nil
 end
 local UI = require("@internal/editor_ui")
+local util = require("@internal/util")
 local picker = require("@internal/picker")
 local viewport = require("@internal/viewport")
 local export_service = game:GetService("ExportService")
@@ -1236,6 +1237,7 @@ openContextMenu = function(instance, screenPoint)
 					if file then
 						local imported = export_service:ImportFile(file)
 						if imported then
+							util.parent(imported, target)
 						end
 					end
 				elseif action == "upload_package" then
