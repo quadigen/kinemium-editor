@@ -1,13 +1,11 @@
 if (IsServer or IsClient) or IsPlaytest then
 	return nil
 end
-
 local UI = require("./editor_ui")
 local CodeEditor = require("@internal/code_editor")
 local docker = require("@internal/docker")
 local UIEditor = require("@internal/ui_editor")
 local picker = require("@internal/picker")
-
 local StudioThemeService = game:GetService("StudioThemeService")
 local Studio = game:GetService("Studio")
 local theme = StudioThemeService.SelectedTheme
@@ -16,39 +14,28 @@ local TextService = game:GetService("TextService")
 local Selection = game:GetService("Selection")
 local PlaytestService = game:GetService("PlaytestService")
 local RunService = game:GetService("RunService")
-
+local UserInputService = game:GetService("UserInputService")
 local colors = UI.colors
 local tokens = UI.tokens
-
 local iconRoot = "builtin://icons/"
-
 local panel, content, header =
 	UI.window("Viewport", theme.ViewportCoordinates.Position, theme.ViewportCoordinates.Size, "Viewport")
-
 panel.BackgroundTransparency = 1
 content.BackgroundTransparency = 1
-
 local chromeHeight = UI.metrics.windowHeader + 1
-
 local root = UI.root()
 local rootOverlay = UI.RootOverlay()
-
 local scriptLayer = UI.create("ScreenGui", {
 	Name = "ScriptEditorLayer",
 	DisplayOrder = 1000,
 	IgnoreGuiInset = true,
 }, game.CoreGui)
-
 shared.ScriptLayer = scriptLayer
-
 scriptLayer.RenderOnTop = true
-
 local scriptRoot = UI.frame(scriptLayer, UDim2.new(), UDim2.new(), tokens.color.canvas)
-
 scriptRoot.Name = "ScriptEditorRoot"
 scriptRoot.BackgroundTransparency = 1
 scriptRoot.Visible = false
-
 local function getViewportPosition()
 	return UDim2.new(
 		theme.ViewportCoordinates.Position.X.Scale,
@@ -57,7 +44,6 @@ local function getViewportPosition()
 		theme.ViewportCoordinates.Position.Y.Offset + chromeHeight
 	)
 end
-
 local function getViewportSize()
 	return UDim2.new(
 		theme.ViewportCoordinates.Size.X.Scale,
@@ -66,49 +52,35 @@ local function getViewportSize()
 		theme.ViewportCoordinates.Size.Y.Offset - chromeHeight
 	)
 end
-
 local viewportRoot = UI.frame(root, getViewportPosition(), getViewportSize(), tokens.color.canvas)
-
 viewportRoot.Name = "ViewportRoot"
 viewportRoot.BackgroundTransparency = 1
-
 local viewportOverlay = UI.frame(rootOverlay, getViewportPosition(), getViewportSize(), tokens.color.canvas)
-
 viewportOverlay.Name = "ViewportOverlay"
 viewportOverlay.BackgroundTransparency = 1
 viewportOverlay.ClipsDescendants = true
-
 local dropHighlight = UI.frame(viewportOverlay, UDim2.fromOffset(0, 0), UDim2.fromScale(1, 1), colors.accent)
-
 dropHighlight.Name = "DropHighlight"
 dropHighlight.BackgroundTransparency = 0.92
 dropHighlight.Active = false
 dropHighlight.Visible = false
 dropHighlight.ZIndex = 50
-
 UI.stroke(dropHighlight, colors.accent, 2, 0.2)
-
--- API method to set drop highlight with setting check
 local originalSetDropHighlight = function(visible)
 	dropHighlight.Visible = visible == true
 end
-
 local activeTool = renderer.Dimension == "2D" and "Select" or "Move"
 local snapEnabled = true
-
 local handles = Instance.new("Handles")
 handles.Name = "ViewportHandles"
 handles.Snap = 1
 UI.keepSceneHelper(handles)
 handles.Parent = workspace
-
 local arcHandles = Instance.new("ArcHandles")
 arcHandles.Name = "ViewportArcHandles"
 arcHandles.Snap = 30
 UI.keepSceneHelper(arcHandles)
 arcHandles.Parent = workspace
-
--- Load viewport settings
 local viewportSettings = {
 	viewportGrid = Studio:GetSetting("viewportGrid"),
 	viewportAxes = Studio:GetSetting("viewportAxes"),
@@ -116,21 +88,26 @@ local viewportSettings = {
 	viewportSelectionOutline = Studio:GetSetting("viewportSelectionOutline"),
 	viewportCameraControls = Studio:GetSetting("viewportCameraControls"),
 }
-
--- Apply default values for nil settings
-if viewportSettings.viewportGrid == nil then viewportSettings.viewportGrid = true end
-if viewportSettings.viewportAxes == nil then viewportSettings.viewportAxes = true end
-if viewportSettings.viewportGizmos == nil then viewportSettings.viewportGizmos = true end
-if viewportSettings.viewportSelectionOutline == nil then viewportSettings.viewportSelectionOutline = true end
-if viewportSettings.viewportCameraControls == nil then viewportSettings.viewportCameraControls = true end
-
--- Listen for viewport setting changes
+if viewportSettings.viewportGrid == nil then
+	viewportSettings.viewportGrid = true
+end
+if viewportSettings.viewportAxes == nil then
+	viewportSettings.viewportAxes = true
+end
+if viewportSettings.viewportGizmos == nil then
+	viewportSettings.viewportGizmos = true
+end
+if viewportSettings.viewportSelectionOutline == nil then
+	viewportSettings.viewportSelectionOutline = true
+end
+if viewportSettings.viewportCameraControls == nil then
+	viewportSettings.viewportCameraControls = true
+end
 Studio.SettingChanged:Connect(function(key, value)
 	if viewportSettings[key] ~= nil then
 		viewportSettings[key] = value
 	end
 end)
-
 local function selectedTransformTarget(allowAttachment)
 	local selected = Selection:Get()
 	local object = selected and selected[1]
@@ -148,26 +125,22 @@ local function selectedTransformTarget(allowAttachment)
 	end
 	return nil
 end
-
 local function updateGizmos()
 	local moving = activeTool == "Move"
 	local resizing = activeTool == "Size"
 	local rotating = activeTool == "Rotate"
 	local adornee = selectedTransformTarget(moving)
 	local is3D = renderer.Dimension == "3D" and not picker.isActive()
-
 	handles.Adornee = adornee
 	arcHandles.Adornee = if rotating then adornee else nil
 	handles.Visible = is3D and adornee ~= nil and (moving or resizing) and viewportSettings.viewportGizmos
 	arcHandles.Visible = is3D and adornee ~= nil and rotating and viewportSettings.viewportGizmos
-
 	if moving then
 		handles.Style = Enum.HandlesStyle.Movement
 	elseif resizing then
 		handles.Style = Enum.HandlesStyle.Resize
 	end
 end
-
 local disable_server_bool = false
 local disable_client_bool = false
 local startSinglePlayer = false
@@ -225,9 +198,7 @@ local playGroup, playControls = UI.iconButtonGroup(header, UDim2.fromScale(0.5, 
 		onClick = function(open) end,
 	},
 }, { anchorPoint = Vector2.new(0.5, 0.5), color = tokens.color.surfaceAlt })
-
 local settingsBtn = playControls:GetButton("Settings")
-
 local frame = Instance.new("ScrollingFrame")
 frame.Position =
 	UDim2.fromOffset(settingsBtn.AbsolutePosition.X, settingsBtn.AbsolutePosition.Y + settingsBtn.AbsoluteSize.Y)
@@ -238,14 +209,11 @@ frame.Size = UDim2.new(0, 140, 0, 200)
 frame.BackgroundColor3 = colors.input
 frame.Visible = false
 frame.Parent = rootOverlay
-
 settingsBtn.MouseButton1Click:Connect(function()
 	frame.Visible = not frame.Visible
 end)
-
 UI.corner(frame, tokens.radius.sm)
 UI.backdrop(frame)
-
 local settings_layout = Instance.new("UIListLayout")
 settings_layout.FillDirection = Enum.FillDirection.Vertical
 settings_layout.HorizontalAlignment = Enum.HorizontalAlignment.Left
@@ -254,26 +222,21 @@ settings_layout.PaddingLeft = UDim.new(0, 10)
 settings_layout.PaddingTop = UDim.new(0, 8)
 settings_layout.Padding = UDim.new(0, 4)
 settings_layout.Parent = frame
-
 local _, disable_server = UI.checkbox(frame, "Disable Server", UDim2.fromOffset(8, 8), false, function(value)
 	disable_server_bool = value
 end)
-
 local _, disable_client = UI.checkbox(frame, "Disable Client", UDim2.fromOffset(8, 8), false, function(value)
 	disable_client_bool = value
 end)
-
 local _, single_player = UI.checkbox(frame, "Single Player", UDim2.fromOffset(8, 8), false, function(value)
 	startSinglePlayer = value
 end)
-
 local field, _, stroke = UI.input(frame, "Client Count", UDim2.fromOffset(0, 0), UDim2.new(1, 0, 0, 24), {
 	placeholder = "Client Count",
 	text = tostring(client_count),
 	maxLength = 30,
 	borderColor = Color3.new(0.2, 0.2, 0.2),
 })
-
 field.FocusLost:Connect(function()
 	local text = field.Text
 	local num = tonumber(text)
@@ -284,7 +247,6 @@ field.FocusLost:Connect(function()
 		field.Text = tostring(client_count)
 	end
 end)
-
 local uiEditor = UIEditor.new({
 	overlay = viewportOverlay,
 	canPick = true,
@@ -302,10 +264,8 @@ local uiEditor = UIEditor.new({
 	guides = true,
 	shortcuts = true,
 })
-
 local colorPicker
 local colorPickerController
-
 local function selectedColor()
 	local object = selectedTransformTarget()
 	if UI.isAlive(object) and (object:IsA("Part") or object:IsA("SoftBody") or object:IsA("MeshPart")) then
@@ -313,27 +273,21 @@ local function selectedColor()
 	end
 	return Color3.new(1, 1, 1)
 end
-
 local function applyColor(color)
 	local object = selectedTransformTarget()
 	if UI.isAlive(object) and (object:IsA("Part") or object:IsA("SoftBody") or object:IsA("MeshPart")) then
 		object.Color = color
 	end
 end
-
 colorPicker, colorPickerController =
 	UI.colorPicker(viewportOverlay, UDim2.fromOffset(48, 99), UDim2.fromOffset(226, 286), selectedColor(), applyColor)
-
--- Transform toolbar (radio group; "Snap" is a toggle inside it in 2D)
 local toolButtonSize = Vector2.new(30, UI.metrics.toolbarButton)
-
 local toolItems = {
 	{ name = "Select", icon = iconRoot .. "Cursor.svg", tooltip = "Select", key = Enum.KeyCode.One },
 	{ name = "Move", icon = iconRoot .. "Move.svg", tooltip = "Move", key = Enum.KeyCode.Two },
 	{ name = "Size", icon = iconRoot .. "Size.svg", tooltip = "Resize", key = Enum.KeyCode.Three },
 	{ name = "Rotate", icon = iconRoot .. "Rotate.svg", tooltip = "Rotate", key = Enum.KeyCode.Four },
 }
-
 if renderer.Dimension == "2D" then
 	table.insert(toolItems, { separator = true })
 	table.insert(toolItems, {
@@ -344,7 +298,6 @@ if renderer.Dimension == "2D" then
 		active = snapEnabled,
 	})
 end
-
 local toolbar, toolControls =
 	UI.iconButtonGroup(viewportOverlay, UDim2.fromOffset(renderer.Dimension == "2D" and 22 or 8, 8), toolItems, {
 		name = "TransformToolbar",
@@ -358,42 +311,32 @@ local toolbar, toolControls =
 		color = tokens.color.surface,
 		radius = tokens.radius.md,
 	})
-
 toolbar.BackgroundTransparency = 0.5
-
 local toolbarBackdrop = Instance.new("UIBackdrop")
 toolbarBackdrop.Parent = toolbar
-
 local styleBar, styleControls
 local materialMenu
-
 local function closeMenus()
 	colorPicker.Visible = false
-
 	if materialMenu then
 		materialMenu.Visible = false
 	end
-
 	if styleControls then
 		styleControls:SetActive("Material", false, true)
 		styleControls:SetActive("Color", false, true)
 	end
 end
-
 toolControls.Changed:Connect(function(name, value)
 	if name == "Snap" then
 		snapEnabled = value
 		return
 	end
-
 	activeTool = name
 	closeMenus()
 	updateGizmos()
 end)
-
 local STYLE_BAR_GAP = 10
 local MENU_GAP = 8
-
 if renderer.Dimension == "3D" then
 	styleBar, styleControls = UI.iconButtonGroup(viewportOverlay, UDim2.fromOffset(8, 8), {
 		{ name = "Material", icon = iconRoot .. "MaterialVariant.svg", tooltip = "Material", toggle = true },
@@ -408,16 +351,11 @@ if renderer.Dimension == "3D" then
 		color = tokens.color.surface,
 		radius = tokens.radius.md,
 	})
-
 	styleBar.BackgroundTransparency = 0.5
-
 	local styleBackdrop = Instance.new("UIBackdrop")
 	styleBackdrop.Parent = styleBar
-
 	local materialNames = Enum.Material:GetEnumItems()
-
 	local rowHeight, rowGap = 24, 2
-
 	materialMenu = UI.group(viewportOverlay, UDim2.fromOffset(0, 0), UDim2.fromOffset(180, 230), {
 		color = tokens.color.surface,
 		radius = tokens.radius.md,
@@ -426,10 +364,8 @@ if renderer.Dimension == "3D" then
 	materialMenu.BackgroundTransparency = 0.5
 	materialMenu.Visible = false
 	materialMenu.ZIndex = 20
-
 	local materialBackdrop = Instance.new("UIBackdrop")
 	materialBackdrop.Parent = materialMenu
-
 	local list = Instance.new("ScrollingFrame")
 	list.Name = "MaterialList"
 	list.Position = UDim2.fromOffset(6, 6)
@@ -439,12 +375,10 @@ if renderer.Dimension == "3D" then
 	list.ScrollBarThickness = 3
 	list.ZIndex = materialMenu.ZIndex + 1
 	list.Parent = materialMenu
-
 	local listLayout = Instance.new("UIGridLayout")
 	listLayout.SortOrder = Enum.SortOrder.LayoutOrder
 	listLayout.CellSize = UDim2.new(0, 50, 0, 50)
 	listLayout.Parent = list
-
 	local shown = 0
 	for _, materialName in ipairs(materialNames) do
 		local button = UI.button(list, "", UDim2.fromOffset(0, 0), UDim2.fromOffset(50, 50), {
@@ -452,26 +386,21 @@ if renderer.Dimension == "3D" then
 			radius = tokens.radius.sm,
 		})
 		button.BackgroundTransparency = 0.5
-
 		local preview = Instance.new("ViewportFrame", button)
 		preview.Size = UDim2.fromScale(1, 1)
 		preview.BackgroundTransparency = 1
-
 		local part = Instance.new("Part", preview)
 		part.Size = Vector3.new(3, 3, 3)
 		part.Position = Vector3.zero
 		part.Anchored = true
 		part.Shape = Enum.PartType.Ball
 		part.Material = materialName
-
 		local camera = Instance.new("Camera", preview)
 		camera.FieldOfView = 30
 		camera.CFrame = CFrame.lookAt(Vector3.new(0, 0, 7.5), part.Position)
 		preview.CurrentCamera = camera
 	end
-
 	list.CanvasSize = UDim2.fromOffset(0, shown * (rowHeight + rowGap))
-
 	styleControls.Changed:Connect(function(name, open)
 		if name == "Material" then
 			materialMenu.Visible = open
@@ -489,22 +418,17 @@ if renderer.Dimension == "3D" then
 		end
 	end)
 end
-
 local function placeMenu(menu, buttonName)
 	if not menu or not styleControls or not menu.Visible then
 		return
 	end
-
 	local button = styleControls:GetButton(buttonName)
 	local origin = viewportOverlay.AbsolutePosition
-
 	local x = styleBar.AbsolutePosition.X - origin.X + styleBar.AbsoluteSize.X + MENU_GAP
 	local y = button.AbsolutePosition.Y - origin.Y
 	local maxY = viewportOverlay.AbsoluteSize.Y - menu.AbsoluteSize.Y - 8
-
 	menu.Position = UDim2.fromOffset(x, math.max(8, math.min(y, maxY)))
 end
-
 local fpsText = UI.label(
 	viewportOverlay,
 	"0 FPS",
@@ -517,47 +441,251 @@ fpsText.Position = UDim2.new(1, 0, 1, 0)
 fpsText.AnchorPoint = Vector2.new(1, 1)
 fpsText.Size = UDim2.new(0, 0, 0, 30)
 fpsText.AutomaticSize = Enum.AutomaticSize.XY
-
 local breadcrumb = UI.group(viewportOverlay, UDim2.new(0, 8, 1, -30), UDim2.new(1, -16, 0, 26), {
 	color = tokens.color.surface,
 	radius = tokens.radius.sm,
 })
-
 breadcrumb.BackgroundTransparency = 1
 breadcrumb.Name = "ViewportBreadcrumb"
 breadcrumb.Visible = renderer.Dimension == "3D"
 breadcrumb.ClipsDescendants = true
+local CAMERA_SPEED_LEVELS = { 0.25, 0.5, 0.75, 1, 1.5, 2, 3, 4, 6, 8 }
+local CAMERA_BASE_SPEED = 16
+local cameraSpeedIndex = 4
+local cameraSpeed = CAMERA_SPEED_LEVELS[cameraSpeedIndex]
+local savedCameraSpeed = Studio:GetSetting("viewportCameraSpeed")
+if type(savedCameraSpeed) == "number" then
+	local nearest, difference = cameraSpeedIndex, math.huge
+	for i, speed in ipairs(CAMERA_SPEED_LEVELS) do
+		local delta = math.abs(speed - savedCameraSpeed)
+		if delta < difference then
+			nearest, difference = i, delta
+		end
+	end
+	cameraSpeedIndex = nearest
+	cameraSpeed = CAMERA_SPEED_LEVELS[nearest]
+end
+local speedAccent = colors.accent
+local speedOverlay = UI.group(viewportOverlay, UDim2.fromScale(0.5, 0.5), UDim2.fromOffset(242, 116), {
+	color = Color3.fromRGB(22, 25, 32),
+	radius = 15,
+})
+speedOverlay.Name = "CameraSpeedNotification"
+speedOverlay.AnchorPoint = Vector2.new(0.5, 0.5)
+speedOverlay.BackgroundTransparency = 0.16
+speedOverlay.BorderSizePixel = 0
+speedOverlay.ZIndex = 120
+speedOverlay.Visible = false
+speedOverlay.Active = false
+speedOverlay.InputSink = false
+local speedStroke = UI.stroke(speedOverlay, Color3.fromRGB(105, 111, 128), 1, 0.47)
+local speedShadow = Instance.new("UIShadow")
+speedShadow.Color3 = Color3.fromRGB(0, 0, 0)
+speedShadow.Transparency = 0.42
+speedShadow.BlurRadius = UDim.new(0, 16)
+speedShadow.Spread = UDim2.fromOffset(0, 5)
+speedShadow.Offset = UDim2.fromOffset(0, 7)
+speedShadow.Parent = speedOverlay
+local speedStrip = UI.frame(speedOverlay, UDim2.fromOffset(0, 19), UDim2.fromOffset(3, 78), speedAccent)
+speedStrip.BorderSizePixel = 0
+speedStrip.ZIndex = 121
+speedStrip.Active = false
+speedStrip.InputSink = false
+local speedTitle = UI.label(
+	speedOverlay,
+	"CAMERA SPEED",
+	UDim2.fromOffset(19, 13),
+	UDim2.fromOffset(158, 18),
+	11,
+	Color3.fromRGB(181, 188, 201)
+)
+speedTitle.TextXAlignment = Enum.TextXAlignment.Left
+speedTitle.ZIndex = 122
+speedTitle.Active = false
+speedTitle.InputSink = false
+local speedValue = UI.label(
+	speedOverlay,
+	"1×",
+	UDim2.fromOffset(16, 34),
+	UDim2.fromOffset(162, 40),
+	32,
+	Color3.fromRGB(250, 252, 255)
+)
+speedValue.TextXAlignment = Enum.TextXAlignment.Left
+speedValue.ZIndex = 122
+speedValue.Active = false
+speedValue.InputSink = false
+local speedIndicator = UI.label(speedOverlay, "+", UDim2.new(1, -56, 0, 38), UDim2.fromOffset(40, 32), 25, speedAccent)
+speedIndicator.TextXAlignment = Enum.TextXAlignment.Center
+speedIndicator.ZIndex = 122
+speedIndicator.Active = false
+speedIndicator.InputSink = false
+local speedHint = UI.label(
+	speedOverlay,
+	"↑ Faster    ↓ Slower",
+	UDim2.fromOffset(18, 81),
+	UDim2.fromOffset(195, 15),
+	10,
+	Color3.fromRGB(155, 164, 181)
+)
+speedHint.TextXAlignment = Enum.TextXAlignment.Left
+speedHint.ZIndex = 122
+speedHint.Active = false
+speedHint.InputSink = false
+local speedTicks = {}
+for i = 1, #CAMERA_SPEED_LEVELS do
+	local tick = UI.frame(
+		speedOverlay,
+		UDim2.fromOffset(17 + (i - 1) * 21, 103),
+		UDim2.fromOffset(16, 3),
+		Color3.fromRGB(97, 107, 124)
+	)
+	tick.Name = "SpeedStep" .. i
+	tick.BackgroundTransparency = 0.48
+	tick.BorderSizePixel = 0
+	tick.ZIndex = 122
+	tick.Active = false
+	tick.InputSink = false
+	UI.corner(tick, 3)
+	speedTicks[i] = tick
+end
+local notificationTime = -100
+local notificationDuration = 1.5
+local speedOpacity = 0
+local function mouseOverViewport()
+	if
+		renderer.Dimension ~= "3D"
+		or scriptRoot.Visible
+		or not rootOverlay.Enabled
+		or not panel.Visible
+		or not viewportSettings.viewportCameraControls
+	then
+		return false
+	end
+	if picker.isActive() then
+		return false
+	end
+	local mouse = UserInputService:GetMouseLocation()
+	local point, size = viewportRoot.AbsolutePosition, viewportRoot.AbsoluteSize
+	return mouse.X >= point.X and mouse.Y >= point.Y and mouse.X <= point.X + size.X and mouse.Y <= point.Y + size.Y
+end
+local function editingText()
+	local ok, focused = pcall(function()
+		return UserInputService:GetFocusedTextBox()
+	end)
+	return ok and focused ~= nil
+end
+local function updateSpeedDisplay(direction)
+	speedValue.Text = string.format("%g×", cameraSpeed)
+	speedIndicator.Text = direction > 0 and "+" or "−"
+	speedIndicator.TextColor3 = direction > 0 and speedAccent or Color3.fromRGB(255, 180, 107)
+	for i, tick in ipairs(speedTicks) do
+		tick.BackgroundColor3 = i <= cameraSpeedIndex and speedAccent or Color3.fromRGB(97, 107, 124)
+		tick.BackgroundTransparency = i <= cameraSpeedIndex and 0 or 0.48
+	end
+	notificationTime = os.clock()
+	speedOverlay.Visible = true
+	speedOverlay.Position = UDim2.new(0.5, 0, 0.5, 10)
+end
+local function setCameraSpeed(index, direction)
+	local nextIndex = math.clamp(index, 1, #CAMERA_SPEED_LEVELS)
+	cameraSpeedIndex = nextIndex
+	cameraSpeed = CAMERA_SPEED_LEVELS[nextIndex]
+	pcall(function()
+		Studio:SetSetting("viewportCameraSpeed", cameraSpeed)
+	end)
+	updateSpeedDisplay(direction or 1)
+	return cameraSpeed
+end
+UserInputService.InputBegan:Connect(function(input)
+	if not mouseOverViewport() or editingText() then
+		return
+	end
+	if input.KeyCode == Enum.KeyCode.Up then
+		setCameraSpeed(cameraSpeedIndex + 1, 1)
+	elseif input.KeyCode == Enum.KeyCode.Down then
+		setCameraSpeed(cameraSpeedIndex - 1, -1)
+	end
+end)
+local function keyDown(key)
+	return UserInputService:IsKeyDown(key)
+end
+RunService.RenderStepped:Connect(function(dt)
+	local now = os.clock()
+	local age = now - notificationTime
+	if speedOverlay.Visible then
+		local targetOpacity = if age < notificationDuration - 0.25
+			then 1
+			else math.clamp((notificationDuration - age) / 0.25, 0, 1)
+		speedOpacity += (targetOpacity - speedOpacity) * (1 - math.exp(-18 * dt))
+		if age >= notificationDuration and speedOpacity < 0.015 then
+			speedOverlay.Visible = false
+			speedOpacity = 0
+		else
+			local alpha = math.clamp(speedOpacity, 0, 1)
+			speedOverlay.BackgroundTransparency = 1 - alpha * 0.84
+			speedStroke.Transparency = 1 - alpha * 0.53
+			speedShadow.Transparency = 1 - alpha * 0.58
+			speedStrip.BackgroundTransparency = 1 - alpha
+			speedTitle.TextTransparency = 1 - alpha
+			speedValue.TextTransparency = 1 - alpha
+			speedIndicator.TextTransparency = 1 - alpha
+			speedHint.TextTransparency = 1 - alpha
+			for _, tick in ipairs(speedTicks) do
+				tick.BackgroundTransparency = 1 - alpha * (tick.BackgroundColor3 == speedAccent and 1 or 0.52)
+			end
+			speedOverlay.Position = UDim2.new(0.5, 0, 0.5, math.floor((1 - alpha) * 10))
+		end
+	end
+	if cameraSpeed == 1 or not mouseOverViewport() or editingText() then
+		return
+	end
+	local camera = workspace.CurrentCamera
+	if not camera then
+		return
+	end
+	local right = (keyDown(Enum.KeyCode.D) and 1 or 0) - (keyDown(Enum.KeyCode.A) and 1 or 0)
+	local forward = (keyDown(Enum.KeyCode.W) and 1 or 0) - (keyDown(Enum.KeyCode.S) and 1 or 0)
+	local rise = keyDown(Enum.KeyCode.E) or keyDown(Enum.KeyCode.Space)
+	local fall = keyDown(Enum.KeyCode.Q) or keyDown(Enum.KeyCode.LeftControl) or keyDown(Enum.KeyCode.RightControl)
+	local vertical = (rise and 1 or 0) - (fall and 1 or 0)
+	if right == 0 and forward == 0 and vertical == 0 then
+		return
+	end
+	local basis = camera.CFrame
+	local direction = basis.RightVector * right + basis.LookVector * forward + Vector3.yAxis * vertical
+	if direction.Magnitude < 0.001 then
+		return
+	end
+	local correction = direction.Unit * (CAMERA_BASE_SPEED * (cameraSpeed - 1) * math.min(dt, 0.1))
+	camera.CFrame = CFrame.new(correction) * basis
+	pcall(function()
+		if camera.Focus then
+			camera.Focus = CFrame.new(correction) * camera.Focus
+		end
+	end)
+end)
 
 local FPS_UPDATE_INTERVAL = 0.25
 local elapsed = FPS_UPDATE_INTERVAL
-
 RunService.RenderStepped:Connect(function(dt: number)
 	elapsed += dt
 	if elapsed < FPS_UPDATE_INTERVAL then
 		return
 	end
 	elapsed = 0
-
 	local fps = ProfilerService.FPS
 	fpsText.Text = `{math.floor(fps + 0.5)} FPS`
 end)
-
-if gizmoFrame then
-	gizmoFrame.Visible = not hasDocument and viewportSettings.viewportAxes
-end
-
 local editor = CodeEditor.new(scriptRoot)
-
 local GIZMO_SIZE = 110
 local GIZMO_DISTANCE = 8
 local GIZMO_FOV = 30
 local AXIS_LENGTH = 1.6
 local POS_SIZE = 22
 local NEG_SIZE = 16
-
 local gizmoFrame, gizmoViewport, gizmoCamera
 local gizmoAxes = {}
-
 if renderer.Dimension == "3D" then
 	gizmoFrame = Instance.new("Frame")
 	gizmoFrame.Name = "AxisGizmo"
@@ -568,7 +696,6 @@ if renderer.Dimension == "3D" then
 	gizmoFrame.BorderSizePixel = 0
 	gizmoFrame.ZIndex = 10
 	gizmoFrame.Parent = viewportOverlay
-
 	gizmoViewport = Instance.new("ViewportFrame")
 	gizmoViewport.Name = "AxisShafts"
 	gizmoViewport.Size = UDim2.fromScale(1, 1)
@@ -578,41 +705,33 @@ if renderer.Dimension == "3D" then
 	gizmoViewport.Active = false
 	gizmoViewport.ZIndex = 11
 	gizmoViewport.Parent = gizmoFrame
-
 	gizmoCamera = Instance.new("Camera")
 	gizmoCamera.FieldOfView = GIZMO_FOV
 	gizmoCamera.Parent = gizmoViewport
 	gizmoViewport.CurrentCamera = gizmoCamera
-
 	local axisDefs = {
 		{ label = "X", dir = Vector3.xAxis, up = Vector3.yAxis, color = Color3.fromRGB(240, 60, 80) },
 		{ label = "Y", dir = Vector3.yAxis, up = Vector3.xAxis, color = Color3.fromRGB(140, 205, 30) },
 		{ label = "Z", dir = Vector3.zAxis, up = Vector3.yAxis, color = Color3.fromRGB(50, 140, 245) },
 	}
-
 	local snapUps = {
 		X = Vector3.yAxis,
 		Y = Vector3.new(0, 0, -1),
 		Z = Vector3.yAxis,
 	}
-
 	local function snapCamera(dir, up)
 		if not viewportSettings.viewportCameraControls then
 			return
 		end
-
 		local camera = workspace.CurrentCamera
 		if not camera then
 			return
 		end
-
 		local cframe = camera.CFrame
 		local focus = camera.Focus and camera.Focus.Position or (cframe.Position + cframe.LookVector * 10)
 		local distance = math.max((cframe.Position - focus).Magnitude, 1)
-
 		camera.CFrame = CFrame.lookAt(focus + dir * distance, focus, up)
 	end
-
 	local function makeCircleButton(text, color, transparency)
 		local button = UI.button(gizmoFrame, text, UDim2.fromOffset(0, 0), UDim2.fromOffset(POS_SIZE, POS_SIZE), {
 			color = color,
@@ -627,7 +746,6 @@ if renderer.Dimension == "3D" then
 		button.AutoButtonColor = false
 		return button
 	end
-
 	for _, def in ipairs(axisDefs) do
 		local shaft = Instance.new("Part")
 		shaft.Anchored = true
@@ -638,21 +756,16 @@ if renderer.Dimension == "3D" then
 		shaft.Material = Enum.Material.SmoothPlastic
 		shaft.CFrame = CFrame.fromMatrix(def.dir * (AXIS_LENGTH / 2), def.dir, def.up)
 		shaft.Parent = gizmoViewport
-
 		local positive = makeCircleButton(def.label, def.color)
-
 		local negativeColor = def.color:Lerp(Color3.fromRGB(30, 32, 38), 0.45)
 		local negative = makeCircleButton("", negativeColor, 0.1)
 		UI.stroke(negative, def.color:Lerp(Color3.new(1, 1, 1), 0.15), 1.5, 0.2)
-
 		positive.MouseButton1Click:Connect(function()
 			snapCamera(def.dir, snapUps[def.label])
 		end)
-
 		negative.MouseButton1Click:Connect(function()
 			snapCamera(-def.dir, snapUps[def.label])
 		end)
-
 		table.insert(gizmoAxes, {
 			dir = def.dir,
 			positive = positive,
@@ -660,7 +773,6 @@ if renderer.Dimension == "3D" then
 		})
 	end
 end
-
 local function projectGizmoPoint(cameraCFrame, worldPoint)
 	local local3 = cameraCFrame:PointToObjectSpace(worldPoint)
 	local depth = -local3.Z
@@ -669,43 +781,33 @@ local function projectGizmoPoint(cameraCFrame, worldPoint)
 	local y = GIZMO_SIZE / 2 - (local3.Y / depth) * focalLength
 	return Vector2.new(x, y), depth
 end
-
 local function placeGizmoButton(button, baseSize, cameraCFrame, worldPoint)
 	local pixel, depth = projectGizmoPoint(cameraCFrame, worldPoint)
-
 	local size = baseSize * (GIZMO_DISTANCE / depth)
 	button.Position = UDim2.fromOffset(pixel.X, pixel.Y)
 	button.Size = UDim2.fromOffset(size, size)
-
 	button.ZIndex = math.clamp(math.floor(30 - depth * 2), 2, 60)
 end
-
 local function updateAxisGizmo()
 	if not gizmoFrame then
 		return
 	end
-
 	local camera = workspace.CurrentCamera
 	if not camera then
 		return
 	end
-
 	local rotation = camera.CFrame.Rotation
 	local gizmoCFrame = CFrame.new(-rotation.LookVector * GIZMO_DISTANCE) * rotation
 	gizmoCamera.CFrame = gizmoCFrame
-
 	for _, axis in ipairs(gizmoAxes) do
 		placeGizmoButton(axis.positive, POS_SIZE, gizmoCFrame, axis.dir * AXIS_LENGTH)
 		placeGizmoButton(axis.negative, NEG_SIZE, gizmoCFrame, -axis.dir * AXIS_LENGTH)
 	end
 end
-
 local function rebuildBreadcrumb(path)
 	UI.clear(breadcrumb)
-
 	local x = 8
 	local items = string.split(path, ".")
-
 	for index, item in ipairs(items) do
 		local textSize = TextService:GetTextSize(
 			item,
@@ -713,9 +815,7 @@ local function rebuildBreadcrumb(path)
 			"builtin://fonts/Montserrat-Regular.ttf",
 			Vector2.new(10000, 10000)
 		)
-
 		local width = math.max(34, math.ceil(textSize.X) + 4)
-
 		local label = UI.label(
 			breadcrumb,
 			item,
@@ -724,7 +824,6 @@ local function rebuildBreadcrumb(path)
 			tokens.type.caption,
 			Color3.new(1, 1, 1)
 		)
-
 		local shadow = Instance.new("UIShadow")
 		shadow.ShowForText = true
 		shadow.BlurRadius = UDim.new(0, 2.5)
@@ -733,13 +832,10 @@ local function rebuildBreadcrumb(path)
 		shadow.Color3 = Color3.fromRGB(0, 0, 0)
 		shadow.Transparency = 0.8
 		shadow.Parent = label
-
 		x += width + 2
-
 		if index < #items then
 			local image =
 				UI.image(breadcrumb, iconRoot .. "ArrowRight.svg", UDim2.fromOffset(x + 1, 7), UDim2.fromOffset(10, 10))
-
 			local img_shadow = Instance.new("UIShadow")
 			img_shadow.ShowForText = false
 			img_shadow.BlurRadius = UDim.new(0, 2.5)
@@ -749,23 +845,17 @@ local function rebuildBreadcrumb(path)
 			img_shadow.Transparency = 0.8
 			img_shadow.Enabled = true
 			img_shadow.Parent = image
-
 			x += 17
 		end
 	end
 end
-
 rebuildBreadcrumb("Workspace.Part")
-
 local lastPath = ""
-
 Selection.SelectionChanged:Connect(function()
 	lastPath = ""
 	updateGizmos()
 end)
-
 updateGizmos()
-
 local wasPicking = picker.isActive()
 renderer.Pool.new("2d", function()
 	local picking = picker.isActive()
@@ -773,22 +863,15 @@ renderer.Pool.new("2d", function()
 		wasPicking = picking
 		updateGizmos()
 	end
-
 	theme = StudioThemeService.SelectedTheme
-
 	local outputWindow = UI.getWindow("Output")
 	local outputHidden = outputWindow and not outputWindow.Visible
-
 	local viewportSize = getViewportSize()
-
 	local viewportPosition = getViewportPosition()
-
 	viewportRoot.Position = viewportPosition
 	viewportRoot.Size = viewportSize
-
 	viewportOverlay.Position = viewportPosition
 	viewportOverlay.Size = viewportSize
-
 	if outputHidden and theme.OutputCoordinates then
 		viewportSize = UDim2.new(
 			viewportSize.X.Scale,
@@ -797,16 +880,12 @@ renderer.Pool.new("2d", function()
 			viewportSize.Y.Offset + theme.OutputCoordinates.Size.Y.Offset
 		)
 	end
-
 	viewportRoot.Position = getViewportPosition()
 	viewportRoot.Size = viewportSize
-
 	viewportOverlay.Position = getViewportPosition()
 	viewportOverlay.Size = viewportSize
-
 	scriptRoot.Position = getViewportPosition()
 	scriptRoot.Size = viewportSize
-
 	panel.Position = theme.ViewportCoordinates.Position
 	panel.Size = UDim2.new(
 		theme.ViewportCoordinates.Size.X.Scale,
@@ -814,24 +893,18 @@ renderer.Pool.new("2d", function()
 		theme.ViewportCoordinates.Size.Y.Scale,
 		theme.ViewportCoordinates.Size.Y.Offset + (outputHidden and theme.OutputCoordinates.Size.Y.Offset or 0)
 	)
-
 	local selected = Selection:Get()
 	local object = selected and selected[1]
-
 	local path = UI.isAlive(object) and object:GetFullName() or "Workspace"
-
 	if path ~= lastPath then
 		lastPath = path
 		rebuildBreadcrumb(path)
 	end
-
 	if editor:OpenScriptCount() > 0 or toolbar.Visible or scriptRoot.Visible then
 		local relabelled = false
 		local doomed = nil
-
 		for _, document in ipairs(editor.documents) do
 			local instance = document.instance
-
 			if instance == nil and document.path == nil or instance ~= nil and not UI.isAlive(instance) then
 				doomed = doomed or {}
 				table.insert(doomed, document)
@@ -840,42 +913,32 @@ renderer.Pool.new("2d", function()
 				relabelled = true
 			end
 		end
-
 		for _, document in ipairs(doomed or {}) do
 			editor:closeDocument(document)
 		end
-
 		if relabelled then
 			editor:rebuildTabs()
 		end
-
 		local hasDocument = editor:hasDocument()
-
 		scriptRoot.Visible = hasDocument
 		toolbar.Visible = not hasDocument
-
 		if styleBar then
 			styleBar.Visible = not hasDocument
 		end
-
 		if hasDocument then
 			closeMenus()
 		end
-
 		breadcrumb.Visible = not hasDocument and renderer.Dimension == "3D"
 		if gizmoFrame then
 			gizmoFrame.Visible = not hasDocument
 		end
-
 		editor:updateVisibility()
 	end
 end)
-
 local lastX = -1
 local lastY = -1
 local lastWidth = -1
 local lastHeight = -1
-
 local function getRenderBounds(): (Vector2, Vector2)
 	local position = viewportRoot.AbsolutePosition
 	local size = viewportRoot.AbsoluteSize
@@ -886,8 +949,6 @@ local function getRenderBounds(): (Vector2, Vector2)
 	end
 	return Vector2.new(position.X, top), Vector2.new(size.X, position.Y + size.Y - top)
 end
-
--- Camera projection uses viewport pixels; editor input uses window GUI units.
 local function screenToViewportPoint(point: Vector2): Vector2?
 	local camera = workspace.CurrentCamera
 	local position, size = getRenderBounds()
@@ -897,7 +958,6 @@ local function screenToViewportPoint(point: Vector2): Vector2?
 	local pixels = camera.ViewportSize
 	return Vector2.new((point.X - position.X) * pixels.X / size.X, (point.Y - position.Y) * pixels.Y / size.Y)
 end
-
 local function viewportToScreenPoint(point: Vector2): Vector2?
 	local camera = workspace.CurrentCamera
 	local position, size = getRenderBounds()
@@ -910,47 +970,36 @@ local function viewportToScreenPoint(point: Vector2): Vector2?
 	end
 	return Vector2.new(position.X + point.X * size.X / pixels.X, position.Y + point.Y * size.Y / pixels.Y)
 end
-
 renderer.Pool.new("2da", function()
 	local dragging = docker.Update(panel, "Viewport")
-
 	updateAxisGizmo()
-
 	if not dragging then
 		panel.Position = theme.ViewportCoordinates.Position
 		panel.Size = theme.ViewportCoordinates.Size
 	end
-
 	frame.Position =
 		UDim2.fromOffset(settingsBtn.AbsolutePosition.X, settingsBtn.AbsolutePosition.Y + settingsBtn.AbsoluteSize.Y)
-
 	local absolutePosition = viewportRoot.AbsolutePosition
 	local absoluteSize = viewportRoot.AbsoluteSize
-
 	local absoluteX = absolutePosition.X
 	local absoluteY = absolutePosition.Y
 	local absoluteWidth = absoluteSize.X
 	local absoluteHeight = absoluteSize.Y
-
 	if absoluteWidth <= 0 or absoluteHeight <= 0 then
 		return
 	end
-
 	local renderPosition, renderSize = getRenderBounds()
 	local renderTop = renderPosition.Y
 	local renderHeight = renderSize.Y
-
 	if renderHeight <= 0 then
 		return
 	end
-
 	if absoluteX ~= lastX or renderTop ~= lastY or absoluteWidth ~= lastWidth or renderHeight ~= lastHeight then
 		lastX = absoluteX
 		lastY = renderTop
 		lastWidth = absoluteWidth
 		lastHeight = renderHeight
 	end
-
 	if renderer.Dimension == "3D" then
 		if rootOverlay.Enabled then
 			renderer:Set3DTexProps(absoluteX, renderTop, absoluteWidth, renderHeight)
@@ -958,76 +1007,57 @@ renderer.Pool.new("2da", function()
 			renderer:Set3DTexProps(0, 0, 0, 0)
 		end
 	end
-
 	local overlayInset = math.max(0, renderTop - absoluteY)
-
 	toolbar.Position = UDim2.fromOffset(renderer.Dimension == "2D" and 22 or 8, 8 + overlayInset)
-
 	if styleBar then
-		-- toolbar's height can animate, so follow its live size
 		styleBar.Position = UDim2.fromOffset(
 			toolbar.Position.X.Offset,
 			toolbar.Position.Y.Offset + toolbar.AbsoluteSize.Y + STYLE_BAR_GAP
 		)
-
 		placeMenu(colorPicker, "Color")
 		placeMenu(materialMenu, "Material")
 	end
-
 	for _, object in ipairs(game.StarterGui:GetChildren()) do
 		if object:IsA("ScreenGui") then
 			object.Size = Vector2.new(absoluteWidth, renderHeight)
-
 			object.RenderOffset = Vector2.new(absoluteX, renderTop)
 		end
 	end
 	uiEditor:SetEnabled(not scriptRoot.Visible)
 	uiEditor:Update()
 end)
-
 local API = {
 	OpenScript = function(instance, line)
 		editor:OpenScript(instance, line)
 	end,
-
 	CloseScript = function(instance)
 		editor:CloseScript(instance)
 	end,
-
 	CloseAllScripts = function()
 		editor:CloseAllScripts()
 	end,
-
 	IsScriptOpen = function(instance)
 		return editor:IsScriptOpen(instance)
 	end,
-
 	OpenScriptCount = function()
 		return editor:OpenScriptCount()
 	end,
-
 	ActiveScript = function()
 		return editor:ActiveScript()
 	end,
-
 	OpenFile = function(path, name)
 		editor:OpenFile(path, name)
 	end,
-
 	CloseFile = function(path)
 		editor:CloseFile(path)
 	end,
-
 	IsFileOpen = function(path)
 		return editor:IsFileOpen(path)
 	end,
-
 	CodeEditor = editor.TextBox,
-
 	GetSource = function()
 		return editor:GetSource()
 	end,
-
 	SetSnap = function(tool: "handles" | "archandles", num)
 		if tool == "handles" then
 			handles.Snap = num
@@ -1035,9 +1065,6 @@ local API = {
 			arcHandles.Snap = num
 		end
 	end,
-
-	-- Goes through toolControls so the radio indicator, activeTool, gizmos and
-	-- color picker all update via the Changed handler above.
 	ActivateTool = function(tool: "select" | "size" | "rotate" | "position")
 		local tools = {
 			select = "Select",
@@ -1045,54 +1072,56 @@ local API = {
 			rotate = "Rotate",
 			position = "Move",
 		}
-
 		local target = tools[tool]
 		if not target then
 			return
 		end
-
 		toolControls:SetActive(target)
 	end,
-
 	ContainsPoint = function(point)
 		if scriptRoot.Visible then
 			return false, nil
 		end
-
 		local position, size = getRenderBounds()
-
 		local inside = point.X >= position.X
 			and point.X <= position.X + size.X
 			and point.Y >= position.Y
 			and point.Y <= position.Y + size.Y
-
 		if not inside then
 			return false, nil
 		end
-
 		return true, Vector2.new(point.X - position.X, point.Y - position.Y)
 	end,
-
+	GetCameraSpeed = function()
+		return cameraSpeed
+	end,
+	SetCameraSpeed = function(speed)
+		if type(speed) ~= "number" or speed ~= speed then
+			return cameraSpeed
+		end
+		local closest, distance = 4, math.huge
+		for i, value in ipairs(CAMERA_SPEED_LEVELS) do
+			local delta = math.abs(value - speed)
+			if delta < distance then
+				closest, distance = i, delta
+			end
+		end
+		return setCameraSpeed(closest, (CAMERA_SPEED_LEVELS[closest] >= cameraSpeed) and 1 or -1)
+	end,
 	ScreenToViewportPoint = screenToViewportPoint,
 	ViewportToScreenPoint = viewportToScreenPoint,
-
 	SetDropHighlight = function(visible)
 		dropHighlight.Visible = visible == true and viewportSettings.viewportSelectionOutline
 	end,
-
 	GetUIEditor = function()
 		return uiEditor
 	end,
-
 	Refresh = function()
 		UI.refreshWindow("Viewport")
 	end,
-
 	IsVisible = function()
 		local panel = UI.getWindow("Viewport")
-
 		return panel ~= nil and panel.Visible
 	end,
 }
-
 return API
