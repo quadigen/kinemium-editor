@@ -598,9 +598,7 @@ local function setCameraSpeed(index, direction)
 	return cameraSpeed
 end
 UserInputService.InputBegan:Connect(function(input)
-	if not mouseOverViewport() or editingText() then
-		return
-	end
+	print("f")
 	if input.KeyCode == Enum.KeyCode.V then
 		print("hello")
 		setCameraSpeed(cameraSpeedIndex + 1, 1)
