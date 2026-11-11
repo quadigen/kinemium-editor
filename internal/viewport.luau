@@ -602,6 +602,7 @@ UserInputService.InputBegan:Connect(function(input)
 		return
 	end
 	if input.KeyCode == Enum.KeyCode.V then
+		print("hello")
 		setCameraSpeed(cameraSpeedIndex + 1, 1)
 	elseif input.KeyCode == Enum.KeyCode.C then
 		setCameraSpeed(cameraSpeedIndex - 1, -1)
