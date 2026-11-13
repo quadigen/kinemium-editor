@@ -4,6 +4,8 @@ end
 
 local PlaytestService = game:GetService("PlaytestService")
 
+local Playtest = require("@internal/playtest")
+
 local buttons = {}
 
 if not IsPlaytest then
@@ -11,7 +13,7 @@ if not IsPlaytest then
 		name = "Play",
 		icon = "Play.svg",
 		callback = function()
-			PlaytestService:Start()
+			Playtest.start()
 		end,
 	})
 end

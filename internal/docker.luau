@@ -3,6 +3,7 @@ if (IsServer or IsClient) or IsPlaytest then
 end
 
 local UI = require("@internal/editor_ui")
+local Preferences = require("@internal/preferences")
 local ThemeService = game:GetService("StudioThemeService")
 local UserInputService = game:GetService("UserInputService")
 
@@ -97,6 +98,7 @@ local function dockTo(anchor: string, fullSpan: boolean)
 
 	local ok, err = pcall(function()
 		ThemeService:DockWindow(windowName, anchor, fullSpan)
+		Preferences.set("dock." .. windowName, anchor .. (fullSpan and ":full" or ""))
 	end)
 
 	if not ok then

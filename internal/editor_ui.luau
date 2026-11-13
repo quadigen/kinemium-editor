@@ -1211,6 +1211,15 @@ do
 			type = copyTable(UI.tokens.type),
 		}
 
+		if shared.monochrome then
+			spec = copyTable(spec)
+			spec.color = copyTable(spec.color)
+			for key, color in pairs(spec.color) do
+				local gray = 0.2126 * color.R + 0.7152 * color.G + 0.0722 * color.B
+				spec.color[key] = Color3.new(gray, gray, gray)
+			end
+		end
+
 		local maps = buildColorMaps(old.color, spec.color)
 		local radiusMap = buildNumberMap(old.radius, spec.radius)
 		local typeMap = buildNumberMap(old.type, spec.type)
@@ -1234,6 +1243,13 @@ do
 		beginThemeTransition(name, spec, old, radiusMap, typeMap)
 
 		return true
+	end
+
+	function UI.setMonochrome(value)
+		if (shared.monochrome == true) ~= value then
+			shared.monochrome = value
+			UI.setTheme(shared.themeName, true)
+		end
 	end
 
 	function UI.refreshTheme()
@@ -1619,54 +1635,50 @@ for _, install in ipairs(componentModules) do
 	install(components)
 end
 
+function UI.confirm(title, message, action)
+	local _, _, controller = UI.prompt({
+		title = title,
+		description = message,
+		modal = true,
+		destroyOnClose = true,
+		buttons = {
+			{ id = "cancel", text = "Cancel" },
+			{ id = "confirm", text = "Confirm", role = "danger", callback = action },
+		},
+	})
+	controller:Open()
+end
+
 function UI.shared()
 	return shared
 end
 
-task.defer(function()
-	local ok, Studio = pcall(function()
-		return game:GetService("Studio")
-	end)
-	if not ok or not Studio then
-		return
-	end
-	local savedReduce = false
-	local ok2, reduceVal = pcall(function()
-		return Studio:GetSetting("reduceMotion", false)
-	end)
-	if ok2 and reduceVal == true then
-		savedReduce = true
-	end
-	if savedReduce then
-		UI.setReduceMotion(true)
-	end
-	local ok3, diag = pcall(function()
-		return Studio:GetSetting("diagnostics", true)
-	end)
-	if ok3 and diag ~= nil then
-		shared.scriptDiagnostics = diag ~= false
-	end
-	local ok4, theme = pcall(function()
-		return Studio:GetSetting("theme", nil)
-	end)
-	if not shared.themeOverride and ok4 and type(theme) == "string" and theme ~= "" then
-		UI.setTheme(theme)
-	end
-	if Studio.SettingChanged then
-		local conn = Studio.SettingChanged:Connect(function(key, value)
-			if key == "reduceMotion" then
-				UI.setReduceMotion(value == true)
-			elseif key == "diagnostics" then
-				shared.scriptDiagnostics = value ~= false
-			elseif key == "theme" and type(value) == "string" and value ~= "" then
+local studioAvailable, Studio = pcall(function()
+	return game:GetService("Studio")
+end)
+if studioAvailable and Studio then
+	local function applyStudioPreference(key)
+		if key == "monochrome" then
+			UI.setMonochrome(Studio:GetSetting(key, false) == true)
+		elseif key == "reduceMotion" then
+			UI.setReduceMotion(Studio:GetSetting(key, false) == true)
+		elseif key == "diagnostics" then
+			shared.scriptDiagnostics = Studio:GetSetting(key, true) ~= false
+		elseif key == "theme" then
+			local value = Studio:GetSetting(key, "Dark")
+			if type(value) == "string" and value ~= "" then
 				shared.themeOverride = nil
 				UI.setTheme(value)
 			end
-		end)
-		if conn then
-			shared._studioSettingConn = conn
 		end
 	end
-end)
+
+	if Studio.SettingChanged then
+		shared._studioSettingConn = Studio.SettingChanged:Connect(applyStudioPreference)
+	end
+	for _, key in ipairs({ "reduceMotion", "diagnostics", "theme", "monochrome" }) do
+		applyStudioPreference(key)
+	end
+end
 
 return UI

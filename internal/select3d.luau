@@ -2,6 +2,7 @@ if (IsServer or IsClient) or IsPlaytest then
 	return nil
 end
 
+local Preferences = require("@internal/preferences")
 local RunService = game:GetService("RunService")
 local Selection = game:GetService("Selection")
 local UserInputService = game:GetService("UserInputService")
@@ -868,7 +869,7 @@ UserInputService.InputBegan:Connect(function(input, processed)
 		return
 	end
 
-	if input.UserInputType ~= Enum.UserInputType.Keyboard then
+	if not Preferences.get("enableKeyboardShortcuts") or input.UserInputType ~= Enum.UserInputType.Keyboard then
 		return
 	end
 	if UserInputService:GetFocusedTextBox() ~= nil or picker.isActive() then
@@ -928,7 +929,7 @@ UserInputService.InputEnded:Connect(function(input, processed)
 			drag.pending = false
 		end
 	elseif
-		input.KeyCode == Enum.KeyCode.F
+		Preferences.get("enableKeyboardShortcuts") and input.KeyCode == Enum.KeyCode.F
 		and not processed
 		and not picker.isActive()
 		and canUseViewport()

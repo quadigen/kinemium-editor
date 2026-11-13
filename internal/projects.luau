@@ -11,6 +11,7 @@ local tokens = UI.tokens
 
 local DEFAULT_ICON = "builtin://global-icons/project.png"
 
+local Preferences = require("@internal/preferences")
 local DELETE_METHODS = { "DeleteProject", "RemoveProject" }
 local UPDATE_METHODS = { "UpdateProject", "EditProject", "SetProjectProperties" }
 
@@ -87,6 +88,8 @@ return function(page, windowControls, gui)
 	local refreshList
 
 	local function showProject(project)
+		Preferences.set("lastProject", project.Path)
+		Preferences.set("sessionProject", project.Path)
 		Sync.start(project)
 		Explorer.filesController.Refresh()
 		gui.Enabled = false
@@ -788,6 +791,12 @@ return function(page, windowControls, gui)
 				return
 			end
 
+			if not Preferences.get("confirmDelete") then
+				local target = selectedProject
+				local ok, err = Project:DeleteProject(target.Path)
+				if ok then refreshList() else notify("error", "Could not remove project", err) end
+				return
+			end
 			deleteTarget = selectedProject
 
 			deleteController.message.Text =
@@ -957,7 +966,7 @@ return function(page, windowControls, gui)
 		description.BackgroundTransparency = 1
 		description.Position = UDim2.new(0, 94, 0, 44)
 		description.Size = UDim2.new(1, -110, 0, 28)
-		description.Text = project.Description or "Kinemium project"
+		description.Text = Preferences.get("debugLabels") and project.Path or project.Description or "Kinemium project"
 		description.TextColor3 = tokens.color.subtext
 		description.TextSize = 13
 		description.TextWrapped = true
@@ -1000,7 +1009,7 @@ return function(page, windowControls, gui)
 		local order = 0
 		local selectionStillVisible = false
 
-		for _, project in pairs(Project:GetProjects()) do
+		for _, project in pairs(Preferences.get("showRecentProjects") and Project:GetProjects() or {}) do
 			local haystack = string.lower((project.Name or "") .. " " .. (project.Description or ""))
 
 			if query == "" or string.find(haystack, query, 1, true) then
@@ -1029,5 +1038,28 @@ return function(page, windowControls, gui)
 		refreshList()
 	end)
 
+	Preferences.Changed:Connect(function(key)
+		if key == "showRecentProjects" or key == "debugLabels" then refreshList() end
+	end)
+
 	refreshList()
+	task.defer(function()
+		local active = Project:GetActiveProject()
+		if active then
+			showProject(active)
+			return
+		end
+		if Preferences.get("reopenLastProject") or Preferences.get("restoreSession") or not Preferences.get("showStartPage") then
+			local last = Preferences.get("sessionProject")
+			if Preferences.get("reopenLastProject") or not Preferences.get("showStartPage") then
+				last = Preferences.get("lastProject")
+			end
+			for _, project in pairs(Project:GetProjects()) do
+				if project.Path == last then
+					openProject(project)
+					return
+				end
+			end
+		end
+	end)
 end

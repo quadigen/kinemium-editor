@@ -2,6 +2,7 @@ if (IsServer or IsClient) or IsPlaytest then
 	return nil
 end
 
+local Preferences = require("@internal/preferences")
 local UI = require("@internal/editor_ui")
 local plugin_marketplace = require("@internal/marketplace")
 local credits_page = require("@internal/credits")
@@ -48,7 +49,7 @@ plugin_marketplace(Marketplace_windowControls.pages.Marketplace, Marketplace_win
 credits_page(Credits_windowControls.pages.Credits, Credits_windowControls, gui)
 user(Settings_windowControls.pages.Settings, false)
 
-return {
+local category = {
 	name = "Studio",
 	buttons = {
 		{
@@ -77,3 +78,19 @@ return {
 		},
 	},
 }
+
+task.defer(function()
+	local topbar = require("@internal/topbar")
+	Preferences.observe("developerMode", function(enabled)
+		if enabled then
+			topbar.AddButton("Studio", {
+				name = "Developer Console",
+				callback = function() UI.toggleWindow("Console") end,
+			})
+		else
+			topbar.RemoveButton("Studio", "Developer Console")
+		end
+	end)
+end)
+
+return category

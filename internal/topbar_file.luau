@@ -8,6 +8,8 @@ local UI = require("@internal/editor_ui")
 local util = require("@internal/util")
 local HttpService = game:GetService("HttpService")
 
+local Preferences = require("@internal/preferences")
+local Exit = require("@internal/editor_exit")
 local Project = game:GetService("Project")
 local Sync = require("@internal/project_sync")
 local Tools = require("@internal/project_tools")
@@ -113,6 +115,7 @@ local menu = {
 					if not saveProject() then return end
 					Sync.stop()
 				end
+				Preferences.set("sessionProject", "")
 				local gui = game.CoreGui.Home
 				if gui then
 					gui.Enabled = true
@@ -128,7 +131,7 @@ local menu = {
 		{
 			name = "Exit",
 			route = not nativeExit and "exit" or nil,
-			callback = nativeExit and function() Project:ExitEditor() end or nil,
+			callback = nativeExit and Exit.request or nil,
 		},
 	},
 }

@@ -4,6 +4,7 @@ end
 
 local UI = require("@internal/editor_ui")
 
+local Preferences = require("@internal/preferences")
 local TextService = game:GetService("TextService")
 local RunService = game:GetService("RunService")
 local Filesystem = game:GetService("Filesystem")
@@ -81,8 +82,6 @@ local DIAGNOSTIC_DELAY = 0.18
 
 local CODE_CHAR_WIDTH = 8
 
-local TRIM_ON_SAVE = true
-local AUTO_CLOSE_PAIRS = true
 
 local AUTO_END_BLOCKS = true
 
@@ -2387,6 +2386,7 @@ end
 
 function CodeEditor:rebuildThemedContent()
 	self:rebuildTabs()
+
 	self:buildFindButtons()
 
 	if UI.isAlive(self.Popup) and self.Popup.Visible then
@@ -2767,6 +2767,41 @@ function CodeEditor.new(parent)
 	self.popupSize = Vector2.new(SUGGEST_WIDTH, SUGGEST_ROW_HEIGHT)
 	self.hintHeight = SUGGEST_ROW_HEIGHT + SUGGEST_PADDING
 
+	local editorProperties = {
+		lineNumbers = "ShowLineNumbers",
+		relativeLineNumbers = "RelativeLineNumbers",
+		wordWrap = "WordWrap",
+		minimap = "ShowMinimap",
+		highlightCurrentLine = "HighlightCurrentLine",
+		bracketMatching = "BracketMatching",
+		autoIndent = "AutoIndent",
+		tabSpaces = "TabSpaces",
+		tabSize = "TabSize",
+	}
+	local function applyPreference(key)
+		local property = editorProperties[key]
+		if property then
+			local value = Preferences.get(key)
+			if key == "tabSize" then value = tonumber(value) or 4 end
+			editor[property] = value
+		elseif key == "diagnostics" then
+			UI.shared().scriptDiagnostics = Preferences.get(key)
+			self:refreshDiagnostics()
+		elseif key == "hoverDocumentation" then
+			self:hideDiagnosticPopup()
+		elseif key == "autocomplete" or key == "parameterHints" then
+			self:refreshSuggestions()
+		elseif key == "showStatusBar" then
+			self:updateVisibility()
+		elseif key == "vimMode" then
+			self.vimInsert = false
+			editor.TextEditable = not Preferences.get("vimMode")
+		end
+	end
+	for key in pairs(editorProperties) do applyPreference(key) end
+	applyPreference("vimMode")
+	self:connect(Preferences.Changed, applyPreference)
+
 	self:buildFindButtons()
 	self:wireEditor()
 	self:registerRenderStep()
@@ -2868,7 +2903,7 @@ function CodeEditor:update(delta)
 	self:updateTargets()
 
 	if popupVisible then
-		if self.popupPlaced and self.diagnosticBounds == nil then
+		if self.popupPlaced and self.diagnosticBounds == nil and not UI.shared().reduceMotion then
 			self.popupPosition = Vector2.new(
 				approach(self.popupPosition.X, self.popupTarget.X, delta),
 				approach(self.popupPosition.Y, self.popupTarget.Y, delta)
@@ -2882,7 +2917,7 @@ function CodeEditor:update(delta)
 	end
 
 	if hintVisible then
-		if self.hintPlaced then
+		if self.hintPlaced and not UI.shared().reduceMotion then
 			self.hintPosition = Vector2.new(
 				approach(self.hintPosition.X, self.hintTarget.X, delta),
 				approach(self.hintPosition.Y, self.hintTarget.Y, delta)
@@ -3087,7 +3122,7 @@ function CodeEditor:saveActive()
 		return
 	end
 
-	if TRIM_ON_SAVE then
+	if Preferences.get("formatOnSave") then
 		self:tidyForSave()
 	end
 
@@ -3458,9 +3493,10 @@ function CodeEditor:updateVisibility()
 
 	self.TextBox.Visible = has
 	self.TabStrip.Visible = #self.documents > 0
-	self.StatusBar.Visible = has
+	self.StatusBar.Visible = has and Preferences.get("showStatusBar")
+	self.TextBox.Size = UDim2.new(1, 0, 1, -(TAB_STRIP_HEIGHT + (self.StatusBar.Visible and STATUS_HEIGHT or 0)))
 
-	if not has then
+	if not has and (self.Popup.Visible or self.Hint.Visible) then
 		self:dismissSuggestions()
 	end
 end
@@ -3912,6 +3948,11 @@ function CodeEditor:refreshSuggestions()
 end
 
 function CodeEditor:updateSuggestionList()
+	if not Preferences.get("autocomplete") then
+		self.forceSuggest = false
+		self:hideSuggestionList()
+		return
+	end
 	local box = self.TextBox
 	local text = box.Text
 	local cursor = box.CursorPosition or 1
@@ -4132,8 +4173,7 @@ end
 
 function CodeEditor:updateTargets()
 	local anchor = self.TextBox.CaretScreenPosition or Vector2.new(0, 0)
-	local camera = workspace.CurrentCamera
-	local screen = camera and camera.ViewportSize or Vector2.new(1280, 720)
+	local screen = workspace:GetWindowDimensions()
 
 	local popupHeight = self.popupSize.Y
 	local hintVisible = self.Hint.Visible
@@ -4171,6 +4211,10 @@ function CodeEditor:updateTargets()
 end
 
 function CodeEditor:renderArgumentHint()
+	if not Preferences.get("parameterHints") then
+		self:dismissArgumentHint()
+		return
+	end
 	local callee, index = callContextAt(self.TextBox.Text, self.TextBox.CursorPosition)
 
 	if callee == nil then
@@ -4791,8 +4835,7 @@ function CodeEditor:openFind(withReplace)
 end
 
 function CodeEditor:placeFindWidget()
-	local camera = workspace.CurrentCamera
-	local screen = camera and camera.ViewportSize or Vector2.new(1280, 720)
+	local screen = workspace:GetWindowDimensions()
 	local y = math.max(8, TAB_STRIP_HEIGHT + 12)
 
 	if self.findVisible and UI.isAlive(self.Find) then
@@ -5143,7 +5186,10 @@ function CodeEditor:autoEnd(text, cursor)
 end
 
 function CodeEditor:autoEdit()
-	if self.applyingSuggestion or not (AUTO_CLOSE_PAIRS or AUTO_END_BLOCKS) then
+	local closeBrackets = Preferences.get("autoClosingBrackets")
+	local closeQuotes = Preferences.get("autoClosingQuotes")
+	local autoEnd = Preferences.get("autoIndent") and AUTO_END_BLOCKS
+	if self.applyingSuggestion or not (closeBrackets or closeQuotes or autoEnd) then
 		return
 	end
 
@@ -5173,8 +5219,8 @@ function CodeEditor:autoEdit()
 		local before = string.sub(text, cursor - 2, cursor - 2)
 		local after = string.sub(text, cursor, cursor)
 
-		if AUTO_CLOSE_PAIRS and self.pendingCloser == cursor - 1 and after == typed then
-			if CLOSE_BRACKETS[typed] ~= nil or QUOTES[typed] then
+		if self.pendingCloser == cursor - 1 and after == typed then
+			if (closeBrackets and CLOSE_BRACKETS[typed] ~= nil) or (closeQuotes and QUOTES[typed]) then
 				self.pendingCloser = nil
 				box:ReplaceRange(cursor, cursor + 1, "")
 				self.lastText = box.Text
@@ -5186,14 +5232,14 @@ function CodeEditor:autoEdit()
 		self.pendingCloser = nil
 
 		if typed == "\n" then
-			if AUTO_END_BLOCKS then
+			if autoEnd then
 				self:autoEnd(text, cursor)
 			end
 
 			return
 		end
 
-		if not AUTO_CLOSE_PAIRS or not (OPEN_BRACKETS[typed] ~= nil or QUOTES[typed]) then
+		if not ((closeBrackets and OPEN_BRACKETS[typed] ~= nil) or (closeQuotes and QUOTES[typed])) then
 			return
 		end
 
@@ -5216,7 +5262,7 @@ function CodeEditor:autoEdit()
 	elseif #text == #old - 1 then
 		self.pendingCloser = nil
 
-		if not AUTO_CLOSE_PAIRS then
+		if not (closeBrackets or closeQuotes) then
 			return
 		end
 
@@ -5230,7 +5276,7 @@ function CodeEditor:autoEdit()
 		local removed = string.sub(old, cursor, cursor)
 		local after = string.sub(text, cursor, cursor)
 
-		if after ~= "" and (OPEN_BRACKETS[removed] == after or (QUOTES[removed] and removed == after)) then
+		if after ~= "" and ((closeBrackets and OPEN_BRACKETS[removed] == after) or (closeQuotes and QUOTES[removed] and removed == after)) then
 			box:ReplaceRange(cursor, cursor + 1, "")
 			self.lastText = box.Text
 		end
@@ -5400,6 +5446,7 @@ function CodeEditor:hideDiagnosticPopup()
 end
 
 function CodeEditor:diagnosticAnchor(diagnostic)
+	if diagnostic.Hover then return self.lastMouse end
 	local box = self.TextBox
 	local caret = box.CaretScreenPosition
 
@@ -5435,8 +5482,7 @@ function CodeEditor:placeDiagnosticPopup()
 		return
 	end
 
-	local camera = workspace.CurrentCamera
-	local screen = camera and camera.ViewportSize or Vector2.new(1280, 720)
+	local screen = workspace:GetWindowDimensions()
 	local width = self.diagnosticSize.X
 	local reserved = self.Popup.Visible and (self.popupSize.Y + 3) or 0
 	local height = math.min(self.diagnosticSize.Y, math.max(1, screen.Y - 16 - reserved))
@@ -5506,15 +5552,14 @@ function CodeEditor:showDiagnosticPopup(diagnostic, automatic)
 
 	local line = math.max(1, math.floor(tonumber(diagnostic.Line) or 1))
 	local message = diagnosticMessages(self.diagnostics, diagnostic)
-	self.DiagnosticTitle.Text = (diagnostic.Kind or "Syntax error")
+	self.DiagnosticTitle.Text = diagnostic.Hover and diagnostic.Kind or (diagnostic.Kind or "Syntax error")
 		.. " · Ln "
 		.. line
 		.. ", Col "
 		.. diagnostic.Column
 	self.DiagnosticText.Text = message
 
-	local camera = workspace.CurrentCamera
-	local screen = camera and camera.ViewportSize or Vector2.new(1280, 720)
+	local screen = workspace:GetWindowDimensions()
 	local width = math.max(1, math.min(DIAGNOSTIC_WIDTH, screen.X - 16))
 	local measured =
 		TextService:GetTextSize(message, fontSize("small"), DIAGNOSTIC_FONT, Vector2.new(math.max(1, width - 24), 2000))
@@ -5666,6 +5711,53 @@ function CodeEditor:handleShortcut(keyCode)
 	return true
 end
 
+function CodeEditor:handleVim(key)
+	if not Preferences.get("vimMode") or modifierHeld() or altHeld() then return false end
+	local K = Enum.KeyCode
+	if key == K.Escape then
+		self.vimInsert = false
+		self.TextBox.TextEditable = false
+		self:dismissSuggestions()
+		self:notify("-- NORMAL --")
+		return true
+	end
+	if self.vimInsert then return false end
+	local box = self.TextBox
+	local cursor = math.max(1, box.CursorPosition)
+	local first, last = lineBounds(box.Text, cursor)
+	local function moveLine(direction)
+		local line, column = lineColumn(box.Text, cursor)
+		self:GoToLine(math.clamp(line + direction, 1, box.LineCount), column)
+	end
+	if key == K.I then
+		self.vimInsert = true
+		box.TextEditable = true
+		self:notify("-- INSERT --")
+	elseif key == K.H then
+		if cursor > first then box.CursorPosition = utf8.offset(box.Text, -1, cursor) or first end
+	elseif key == K.L then
+		if cursor < last then box.CursorPosition = utf8.offset(box.Text, 2, cursor) or last end
+	elseif key == K.J then
+		moveLine(1)
+	elseif key == K.K then
+		moveLine(-1)
+	elseif key == K.Zero then
+		box.CursorPosition = first
+	elseif key == K.Four and shiftHeld() then
+		box.CursorPosition = last
+	elseif key == K.X and cursor < last then
+		box.TextEditable = true
+		box:ReplaceRange(cursor, utf8.offset(box.Text, 2, cursor) or last, "")
+		box.TextEditable = false
+	elseif key == K.O then
+		box.TextEditable = true
+		self:insertLine(shiftHeld())
+		self.vimInsert = true
+		self:notify("-- INSERT --")
+	end
+	return true
+end
+
 function CodeEditor:wireEditor()
 	self:connect(self.TextBox.TextChanged, function()
 		if self.suppressTextSync then
@@ -5779,7 +5871,7 @@ function CodeEditor:wireEditor()
 		local hit = self.TextBox:DiagnosticAtPoint(x - absolute.X, y - absolute.Y)
 		local current = self.currentDiagnostic
 
-		if hit ~= nil and current ~= nil and UI.shared().scriptDiagnostics then
+		if Preferences.get("hoverDocumentation") and hit ~= nil and current ~= nil and UI.shared().scriptDiagnostics then
 			for _, diagnostic in ipairs(self.diagnostics or {}) do
 				if
 					diagnostic.Line == hit.Line
@@ -5793,6 +5885,26 @@ function CodeEditor:wireEditor()
 			self:showDiagnosticPopup(hit)
 		elseif not self.diagnosticPinned then
 			self:hideDiagnosticPopup()
+			if Preferences.get("hoverDocumentation") then
+				local point = Vector2.new(x - absolute.X, y - absolute.Y)
+				local ok, position = pcall(function() return self.TextBox:PositionAtPoint(point.X, point.Y) end)
+				if ok and position then
+					local first, finish = identifierAt(self.TextBox.Text, position)
+					if first then
+						local text = self.TextBox.Text
+						local word = string.sub(text, first, finish - 1)
+						local receiver = string.match(string.sub(text, 1, first - 1), "([%w_%.:]+[%.:])$") or ""
+						local params, returns = lookupSignature(receiver .. word, self:ensureAliases(), self.activeDocument)
+						if params then
+							self:showDiagnosticPopup({
+								Kind = "API documentation", Line = 1, Column = 1,
+								Message = word .. "(" .. table.concat(params, ", ") .. ")" .. (returns and " → " .. returns or ""),
+								Hover = true,
+							})
+						end
+					end
+				end
+			end
 		end
 	end)
 
@@ -5809,13 +5921,20 @@ function CodeEditor:wireEditor()
 			return
 		end
 
-		if modifierHeld() and self:handleShortcut(keyCode) then
+		if self:handleVim(keyCode) then
+			self.TextBox.KeyHandled = true
+			return
+		end
+
+		local shortcuts = Preferences.get("enableKeyboardShortcuts")
+		local enter = keyCode == Enum.KeyCode.Return or keyCode == Enum.KeyCode.KeypadEnter
+		if shortcuts and modifierHeld() and self:handleShortcut(keyCode) then
 			self.TextBox.KeyHandled = true
 
 			return
 		end
 
-		if keyCode == Enum.KeyCode.F3 then
+		if shortcuts and keyCode == Enum.KeyCode.F3 then
 			if self.findVisible then
 				self:runFind(shiftHeld() and -1 or 1)
 			else
@@ -5827,14 +5946,14 @@ function CodeEditor:wireEditor()
 			return
 		end
 
-		if keyCode == Enum.KeyCode.F8 then
+		if shortcuts and keyCode == Enum.KeyCode.F8 then
 			self:goToDiagnostic()
 			self.TextBox.KeyHandled = true
 
 			return
 		end
 
-		if altHeld() and (keyCode == Enum.KeyCode.Up or keyCode == Enum.KeyCode.Down) then
+		if shortcuts and altHeld() and (keyCode == Enum.KeyCode.Up or keyCode == Enum.KeyCode.Down) then
 			self:dismissSuggestions()
 			self:moveLines(keyCode == Enum.KeyCode.Up and -1 or 1)
 			self.TextBox.KeyHandled = true
@@ -5865,9 +5984,16 @@ function CodeEditor:wireEditor()
 			return
 		end
 
-		if #self.suggestions == 0 then
+		if enter and Preferences.get("enterNewline") then
+			self:dismissSuggestions()
 			return
 		end
+		if enter and #self.suggestions == 0 and not shiftHeld() then
+			self.TextBox.KeyHandled = true
+			self:saveActive()
+			return
+		end
+		if #self.suggestions == 0 then return end
 
 		if keyCode == Enum.KeyCode.Up then
 			self:moveSuggestion(-1)

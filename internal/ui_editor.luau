@@ -1,3 +1,4 @@
+local Preferences = require("@internal/preferences")
 local UI = require("@internal/editor_ui")
 local picker = require("@internal/picker")
 
@@ -1708,6 +1709,7 @@ function Editor:insertObject(class)
 end
 
 function Editor:onKey(input)
+	if not Preferences.get("enableKeyboardShortcuts") then return end
 	if not self.enabled or picker.isActive() then
 		return
 	end
@@ -2173,13 +2175,13 @@ function Editor:tickBox(dt)
 	box.BackgroundTransparency = 1 - 0.1 * self.dragAlpha
 
 	self.boxStroke.Color = locked and colors.warning or colors.accent
-	self.boxStroke.Transparency = 1 - v.alpha
+	self.boxStroke.Transparency = self.showSelectionOutline == false and 1 or 1 - v.alpha
 
 	local small = v.w < 30 or v.h < 30
 
 	for name, handle in pairs(self.handles) do
 		local state = self.handleState[name]
-		local want = (canSize and (not small or self.handleDefs[name].corner)) and 1 or 0
+		local want = (self.showGizmos ~= false and canSize and (not small or self.handleDefs[name].corner)) and 1 or 0
 
 		state.show = damp(state.show, want, 20, dt)
 		state.hover = damp(state.hover, state.hovered and 1 or 0, 24, dt)
@@ -2197,7 +2199,7 @@ function Editor:tickBox(dt)
 
 	local rs = self.rotateState
 
-	rs.show = damp(rs.show, canRotate and 1 or 0, 20, dt)
+	rs.show = damp(rs.show, self.showGizmos ~= false and canRotate and 1 or 0, 20, dt)
 	rs.hover = damp(rs.hover, rs.hovered and 1 or 0, 24, dt)
 
 	local ra = rs.show * v.alpha
@@ -2249,7 +2251,7 @@ end
 function Editor:tickExtras()
 	local used = 0
 
-	if self.enabled then
+	if self.enabled and self.showSelectionOutline ~= false then
 		for _, obj in ipairs(self.selection) do
 			if obj ~= self.target and UI.isAlive(obj) then
 				used += 1
@@ -2291,7 +2293,7 @@ end
 function Editor:tickHover(dt)
 	local obj = self.hoverObj
 
-	if obj and (not UI.isAlive(obj) or obj == self.target or self.drag or not self.enabled or self:isMenuOpen()) then
+	if self.showSelectionOutline == false or (obj and (not UI.isAlive(obj) or obj == self.target or self.drag or not self.enabled or self:isMenuOpen())) then
 		obj = nil
 	end
 

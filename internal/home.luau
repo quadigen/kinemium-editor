@@ -2,12 +2,17 @@ if (IsServer or IsClient) or IsPlaytest then
 	return nil
 end
 
+local Preferences = require("@internal/preferences")
 local UI = require("@internal/editor_ui")
 local project_manager = require("@internal/projects")
 local plugin_marketplace = require("@internal/marketplace")
 local credits_page = require("@internal/credits")
 local user = require("@internal/user")
 local Studio = game:GetService("Studio")
+local RunService = game:GetService("RunService")
+local Window = game:GetService("Window")
+local Profiler = game:GetService("ProfilerService")
+local ThemeService = game:GetService("StudioThemeService")
 local pluginService = game:GetService("Plugin")
 local UserInputService = game:GetService("UserInputService")
 local topbar = require("@internal/topbar")
@@ -22,6 +27,44 @@ local image_viewer = require("@internal/image_viewer")
 local auth = require("@internal/auth")
 local picker = require("@internal/picker")
 local docker = require("@internal/docker")
+
+local function restoreLayout(enabled)
+	ThemeService:ResetDocking()
+	if not enabled then return end
+	for _, name in ipairs({ "Viewport", "Explorer", "Inspector", "Output" }) do
+		local saved = Preferences.get("dock." .. name)
+		local anchor, fullSpan = string.match(saved, "^(%a+)(.*)$")
+		if anchor then ThemeService:DockWindow(name, anchor, fullSpan == ":full") end
+	end
+end
+
+local windowReady
+windowReady = RunService.Heartbeat:Connect(function()
+	if not Window.GetResolution then
+		windowReady:Disconnect()
+		return
+	end
+	local startupSize = Window:GetResolution()
+	if not startupSize then return end
+	windowReady:Disconnect()
+	Preferences.observe("pageZoom", function(value)
+		local percent = tonumber(string.match(value, "^(%d+)%%$")) or 100
+		Window:SetUIScale(percent / 100)
+	end)
+	Preferences.observe("resolution", function(value)
+		local width, height = string.match(value, "^(%d+) × (%d+)$")
+		if not Window:SetResolution(tonumber(width) or startupSize.X, tonumber(height) or startupSize.Y) then
+			UI.toast("window-resolution", { type = "error", title = "Could not resize the Studio window" })
+		end
+	end)
+end)
+
+RunService.Heartbeat:Once(function()
+	if Profiler.SetEnabled then
+		Preferences.observe("profilerEnabled", function(value) Profiler:SetEnabled(value) end)
+	end
+	Preferences.observe("restoreLayout", restoreLayout)
+end)
 
 local gui = Instance.new("ScreenGui")
 gui.Name = "Home"
@@ -169,6 +212,11 @@ end
 shared.UI = UI
 
 SignalPipe:Connect(function(signal, value)
+	if signal == "ConfirmExit" then
+		require("@internal/editor_exit").confirm()
+		return
+	end
+
 	if signal == "WidgetOverlayVisible" then
 		if type(value) == "boolean" then
 			UI.widgetOverlay().Enabled = value

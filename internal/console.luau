@@ -1,3 +1,4 @@
+local Preferences = require("@internal/preferences")
 local UI = require("@internal/editor_ui")
 
 local ScriptContext = game:GetService("ScriptContext")
@@ -206,9 +207,16 @@ local function createConsole()
 		{ textSize = tokens.type.small, maxLength = 1000, focusColor = colors.accent }
 	)
 
+	local dateFormats = {
+		["19 Oct 2026"] = "%d %b %Y",
+		["Oct 19, 2026"] = "%b %d, %Y",
+		["2026-10-19"] = "%Y-%m-%d",
+		["19/10/2026"] = "%d/%m/%Y",
+	}
 	local function formatTime(timestamp)
-		local seconds = math.floor(tonumber(timestamp) or 0) % 86400
-		return string.format("%02d:%02d:%02d", seconds // 3600, (seconds % 3600) // 60, seconds % 60)
+		local date = dateFormats[Preferences.get("dateFormat")] or "%d %b %Y"
+		local time = Preferences.get("hour24") and "%H:%M:%S" or "%I:%M:%S %p"
+		return os.date(date .. " " .. time, math.floor(tonumber(timestamp) or 0))
 	end
 
 	local function preview(value, quoteStrings)
@@ -349,7 +357,9 @@ local function createConsole()
 		node.type = "entry"
 		node.kind = kind
 		node.color = KIND_COLORS[kind]
+		node.timestamp = item.timestamp
 		node.time = formatTime(item.timestamp)
+		node.playtest = type(raw) == "string" and string.sub(raw, 1, 10) == "[Playtest "
 		node.repeats = 1
 		node.truncated = truncated
 		local matchText = preview(raw, false)
@@ -361,6 +371,8 @@ local function createConsole()
 	end
 
 	local function passes(node)
+		if node.playtest and not Preferences.get("playtestOutput") then return false end
+		if node.kind == "Info" and not Preferences.get("verboseLogging") and activeFilter == "All" then return false end
 		if activeFilter ~= "All" and node.kind ~= activeFilter then
 			return false
 		end
@@ -762,6 +774,15 @@ local function createConsole()
 		end
 	end)
 
+	local connection = Preferences.Changed:Connect(function(key)
+		if key == "hour24" or key == "dateFormat" then
+			for _, node in ipairs(entries) do node.time = formatTime(node.timestamp) end
+		elseif key ~= "playtestOutput" and key ~= "verboseLogging" then
+			return
+		end
+		rebuild(false)
+	end)
+	panel.Destroying:Connect(function() connection:Disconnect() end)
 	poll()
 	return {
 		window = panel,

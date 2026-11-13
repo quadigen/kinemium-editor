@@ -1,3 +1,4 @@
+local Preferences = require("@internal/preferences")
 if (IsServer or IsClient) or IsPlaytest then
 	return nil
 end
@@ -31,6 +32,7 @@ local panel, tabContent, _, windowControls =
 		selectedTab = "Explorer",
 	})
 panel.Parent = gui
+Preferences.observe("showExplorer", function(value) panel.Visible = value end)
 local content = windowControls.pages.Explorer
 local filesPage = windowControls.pages.Files
 local tabBounds = Instance.new("Frame")
@@ -1002,10 +1004,22 @@ local function duplicateInstance(instance)
 	end
 end
 local function deleteInstances(list)
+	local targets = {}
 	for _, instance in ipairs(list) do
-		deleteInstance(instance)
+		if not isProtected(instance) then table.insert(targets, instance) end
 	end
-	anchor = nil
+	if #targets == 0 then return end
+	local function remove()
+		for _, instance in ipairs(targets) do
+			if UI.isAlive(instance) then deleteInstance(instance) end
+		end
+		anchor = nil
+	end
+	if Preferences.get("confirmDelete") then
+		UI.confirm("Delete objects?", `Delete {#targets} selected object(s)?`, remove)
+	else
+		remove()
+	end
 end
 local function duplicateInstances(list)
 	local clones = {}
@@ -1454,6 +1468,7 @@ UserInputService.InputBegan:Connect(function(input: InputObject, gameProcessed: 
 	if not explorerTabActive() then
 		return
 	end
+	if not Preferences.get("enableKeyboardShortcuts") then return end
 	if input.KeyCode == Enum.KeyCode.F and not gameProcessed then
 		local selection = Selection:Get()[1]
 		if selection then

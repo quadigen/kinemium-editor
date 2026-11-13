@@ -1,3 +1,4 @@
+local Preferences = require("@internal/preferences")
 local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
 
@@ -383,7 +384,7 @@ return function(ctx)
 		end)
 
 		connect(UserInputService.InputBegan, function(input)
-			if input.UserInputType ~= Enum.UserInputType.Keyboard then
+			if not Preferences.get("enableKeyboardShortcuts") or input.UserInputType ~= Enum.UserInputType.Keyboard then
 				return
 			end
 			if UserInputService:GetFocusedTextBox() then

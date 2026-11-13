@@ -2,7 +2,6 @@ local Auth = require("@internal/auth")
 local UI = require("@internal/editor_ui")
 local MatrixService = game:GetService("MatrixService")
 local http = game:GetService("HttpService")
-local Studio = game:GetService("Studio")
 
 local colors = UI.tokens.color
 local tokens = UI.tokens
@@ -26,82 +25,7 @@ local ICONS = {
 	power = svgIcon("<path d='M12 2v10'/><path d='M18.4 6.6a9 9 0 1 1-12.77.04'/>"),
 }
 
-local state = {
-	theme = UI.getTheme(),
-	monochrome = false,
-	twitterEmoji = true,
-	pageZoom = "100%",
-	hour24 = false,
-	dateFormat = "19 Oct 2026",
-	enterNewline = false,
-	tabSpaces = true,
-	tabSize = "4",
-	rememberSession = MatrixService.RememberSession ~= false,
-
-	notifyDirect = true,
-	notifyMentions = true,
-	notifyInvites = true,
-	notifySounds = false,
-	notificationSound = "Chime",
-
-	verifyDevices = true,
-	offlineDevices = false,
-
-	emojiAutocomplete = true,
-	largeEmoji = true,
-	stickerSuggestions = true,
-	emojiSet = "Twitter",
-
-	developerMode = false,
-	syncLogging = false,
-	debugLabels = false,
-
-	-- Viewport settings
-	viewportGrid = true,
-	viewportAxes = true,
-	viewportGizmos = true,
-	viewportSelectionOutline = true,
-	viewportCameraControls = true,
-}
-
--- Persistence through the Studio service ------------------------------------
-
-local function hydrateKey(key)
-	local saved = Studio:GetSetting(key)
-
-	if saved ~= nil then
-		state[key] = saved
-	end
-end
-
-local function saveSetting(key, value)
-	state[key] = value
-	Studio:SetSetting(key, value) -- writes studio-settings.json and fires SettingChanged
-end
-
--- Load saved values for everything state already knows about.
-for key in pairs(state) do
-	hydrateKey(key)
-end
-
--- Apply saved settings that have side effects outside this UI.
-if type(state.theme) == "string" and state.theme ~= UI.getTheme() then
-	UI.setTheme(state.theme)
-end
-
-local savedDiagnostics = Studio:GetSetting("diagnostics")
-if savedDiagnostics ~= nil then
-	UI.shared().scriptDiagnostics = savedDiagnostics
-end
-
--- Keep state in sync when something else changes a setting (e.g. Studio.Theme = "Light").
-Studio.SettingChanged:Connect(function(key, value)
-	state[key] = value
-
-	if key == "theme" and value ~= UI.getTheme() then
-		UI.setTheme(value)
-	end
-end)
+local Preferences = require("@internal/preferences")
 
 local function SetImage(session, image)
 	local ok, profile = MatrixService:GetProfile(session)
@@ -141,7 +65,7 @@ local function dropdownItems(values)
 	return result
 end
 
-local function buildCategories(session, onLogout)
+local function buildCategories()
 	return {
 		{
 			name = "General",
@@ -157,10 +81,6 @@ local function buildCategories(session, onLogout)
 							title = "Theme",
 							description = "Theme used throughout the interface.",
 							items = { "Dark", "Light", "Blue", "Night", "Catppuccin Mocha", "Void", "Red" },
-
-							onChanged = function(value)
-								UI.setTheme(value)
-							end,
 						},
 						{
 							kind = "switch",
@@ -181,6 +101,14 @@ local function buildCategories(session, onLogout)
 							description = "Adjust the scale of Studio's interface.",
 							items = { "75%", "90%", "100%", "110%", "125%", "150%", "200%" },
 							width = 110,
+						},
+						{
+							kind = "dropdown",
+							key = "resolution",
+							title = "Window Resolution",
+							description = "Set the size of the Studio window. Automatic uses the startup size.",
+							items = { "Automatic", "800 × 600", "1024 × 768", "1280 × 720", "1600 × 900", "1920 × 1080", "2560 × 1440", "3840 × 2160" },
+							width = 152,
 						},
 					},
 				},
@@ -216,7 +144,7 @@ local function buildCategories(session, onLogout)
 							kind = "switch",
 							key = "showStartPage",
 							title = "Show Start Page",
-							description = "Display the start page when Studio launches.",
+							description = "Open the start page on launch when no workspace is being restored.",
 						},
 					},
 				},
@@ -252,7 +180,7 @@ local function buildCategories(session, onLogout)
 							kind = "switch",
 							key = "enterNewline",
 							title = "Enter for Newline",
-							description = "Insert a newline when pressing Enter.",
+							description = "Press Enter for a newline. When off, Enter accepts a suggestion or saves the script.",
 						},
 						{
 							kind = "switch",
@@ -334,6 +262,7 @@ local function buildCategories(session, onLogout)
 							kind = "switch",
 							key = "hoverDocumentation",
 							title = "Hover Documentation",
+							description = "Show API documentation and diagnostic messages when hovering in the editor.",
 						},
 						{
 							kind = "switch",
@@ -345,6 +274,7 @@ local function buildCategories(session, onLogout)
 							kind = "switch",
 							key = "formatOnSave",
 							title = "Format on Save",
+							description = "Trim trailing whitespace and ensure a final newline when saving a script.",
 						},
 					},
 				},
@@ -436,6 +366,7 @@ local function buildCategories(session, onLogout)
 							kind = "switch",
 							key = "showRecentProjects",
 							title = "Recent Projects",
+							description = "Show the project cards on the start page."
 						},
 						{
 							kind = "switch",
@@ -492,6 +423,7 @@ local function buildCategories(session, onLogout)
 							kind = "switch",
 							key = "playtestPauseOnError",
 							title = "Pause on Error",
+							description = "Pause a playtest on errors. Press F6 to resume a windowed playtest.",
 						},
 						{
 							kind = "switch",
@@ -583,7 +515,7 @@ local function buildCategories(session, onLogout)
 						{
 							kind = "value",
 							title = "Version",
-							value = "Development build",
+							value = _RUNTIME.version.display,
 							valueWidth = 180,
 						},
 						{
@@ -629,39 +561,7 @@ return function(parent, createProfileButton)
 		end
 	end
 
-	local function handleLogout(session)
-		shared.CurrentSession = nil
-		settingsOpen = false
-
-		if image then
-			image.Image = "builtin://icons/Play.svg"
-		end
-
-		if tooltip then
-			tooltip:SetText("Not logged in")
-		end
-
-		if settingsWindow then
-			settingsWindow.Visible = false
-		end
-
-		if embedded and settingsPage then
-			UI.clear(settingsPage)
-		end
-
-		task.spawn(function()
-			if session then
-				MatrixService:Logout(session)
-			end
-		end)
-	end
-
-	local function performLogout(session)
-		closeDropdowns()
-		handleLogout(session)
-	end
-
-	local function buildSettings(page, session)
+	local function buildSettings(page)
 		closeDropdowns()
 		UI.clear(page)
 
@@ -700,24 +600,7 @@ return function(parent, createProfileButton)
 			end
 		end
 
-		local categories = buildCategories(session, function()
-			performLogout(session)
-		end)
-
-		-- Pull saved values for every row from the Studio service.
-		for _, category in ipairs(categories) do
-			for _, section in ipairs(category.sections) do
-				for _, row in ipairs(section.rows) do
-					if row.key then
-						hydrateKey(row.key)
-
-						if state[row.key] == nil and row.kind == "dropdown" then
-							state[row.key] = row.items[1]
-						end
-					end
-				end
-			end
-		end
+		local categories = buildCategories()
 
 		-- Sidebar groups (like Obsidian's "Options" / "Core plugins" headings)
 		local OPTION_CATEGORIES = { General = true, Editor = true, Studio = true, Projects = true }
@@ -901,7 +784,9 @@ return function(parent, createProfileButton)
 			end
 		end
 
+		local controlValues = {}
 		local function createControl(rowFrame, row)
+			if row.key then controlValues[row.key] = Preferences.get(row.key) end
 			local width = controlWidth(row)
 			local height = controlHeight(row)
 
@@ -917,24 +802,9 @@ return function(parent, createProfileButton)
 			})
 
 			if row.kind == "switch" then
-				UI.switch(holder, ORIGIN, state[row.key] == true, function(value)
-					saveSetting(row.key, value)
-
-					if row.key == "diagnostics" then
-						UI.shared().scriptDiagnostics = value
-					end
-
-					if row.onChanged then
-						row.onChanged(value)
-					end
-
-					if row.rerender then
-						task.defer(function()
-							if isSettingsVisible() then
-								renderCategory(selectedCategory, true)
-							end
-						end)
-					end
+				UI.switch(holder, ORIGIN, Preferences.get(row.key) == true, function(value)
+					controlValues[row.key] = value
+					Preferences.set(row.key, value)
 				end, {
 					width = 34,
 					height = 18,
@@ -946,7 +816,7 @@ return function(parent, createProfileButton)
 			end
 
 			if row.kind == "dropdown" then
-				local enabled = row.disabledKey == nil or not state[row.disabledKey]
+				local enabled = row.disabledKey == nil or not Preferences.get(row.disabledKey)
 
 				local dropdown
 				local label
@@ -954,7 +824,7 @@ return function(parent, createProfileButton)
 
 				dropdown, label, controller = UI.dropdown(
 					holder,
-					state[row.key],
+					Preferences.get(row.key),
 					ORIGIN,
 					UDim2.fromOffset(width, UI.metrics.inputHeight),
 					"builtin://global-icons/chevron-down.svg",
@@ -983,11 +853,8 @@ return function(parent, createProfileButton)
 							return UDim2.fromOffset(math.floor(position.X), math.floor(position.Y + size.Y + 2))
 						end,
 						onChanged = function(value)
-							saveSetting(row.key, value)
-
-							if row.onChanged then
-								row.onChanged(value)
-							end
+							controlValues[row.key] = value
+							Preferences.set(row.key, value)
 						end,
 					}
 				)
@@ -1227,6 +1094,24 @@ return function(parent, createProfileButton)
 			layoutNavigation(true)
 		end)
 
+		local settingsConnection = Preferences.Changed:Connect(function()
+			task.defer(function()
+				if UI.isAlive(scroller) and isSettingsVisible() then
+					for _, section in ipairs(selectedCategory.sections) do
+						for _, row in ipairs(section.rows) do
+							if row.key and controlValues[row.key] ~= Preferences.get(row.key) then
+								renderCategory(selectedCategory, true)
+								return
+							end
+						end
+					end
+				end
+			end)
+		end)
+		scroller.Destroying:Connect(function()
+			settingsConnection:Disconnect()
+		end)
+
 		layoutNavigation(false)
 		renderCategory(selectedCategory)
 	end
@@ -1236,7 +1121,7 @@ return function(parent, createProfileButton)
 		settingsPage = parent
 		settingsOpen = true
 
-		buildSettings(settingsPage, shared.CurrentSession)
+		buildSettings(settingsPage)
 
 		return
 	end
@@ -1281,14 +1166,12 @@ return function(parent, createProfileButton)
 
 		ensureWindow()
 
-		state.theme = UI.getTheme()
-
 		if settingsOpen then
 			settingsWindow.Visible = true
 			return
 		end
 
-		buildSettings(settingsPage, session)
+		buildSettings(settingsPage)
 
 		settingsOpen = true
 		settingsWindow.Visible = true

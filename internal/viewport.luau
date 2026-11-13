@@ -3,13 +3,14 @@ if (IsServer or IsClient) or IsPlaytest then
 end
 
 local UI = require("./editor_ui")
+local Preferences = require("@internal/preferences")
+local Playtest = require("@internal/playtest")
 local CodeEditor = require("@internal/code_editor")
 local docker = require("@internal/docker")
 local UIEditor = require("@internal/ui_editor")
 local picker = require("@internal/picker")
 
 local StudioThemeService = game:GetService("StudioThemeService")
-local Studio = game:GetService("Studio")
 local theme = StudioThemeService.SelectedTheme
 local ProfilerService = game:GetService("ProfilerService")
 local TextService = game:GetService("TextService")
@@ -88,11 +89,6 @@ dropHighlight.ZIndex = 50
 
 UI.stroke(dropHighlight, colors.accent, 2, 0.2)
 
--- API method to set drop highlight with setting check
-local originalSetDropHighlight = function(visible)
-	dropHighlight.Visible = visible == true
-end
-
 local activeTool = renderer.Dimension == "2D" and "Select" or "Move"
 local snapEnabled = true
 
@@ -108,38 +104,12 @@ arcHandles.Snap = 30
 UI.keepSceneHelper(arcHandles)
 arcHandles.Parent = workspace
 
--- Load viewport settings
-local viewportSettings = {
-	viewportGrid = Studio:GetSetting("viewportGrid"),
-	viewportAxes = Studio:GetSetting("viewportAxes"),
-	viewportGizmos = Studio:GetSetting("viewportGizmos"),
-	viewportSelectionOutline = Studio:GetSetting("viewportSelectionOutline"),
-	viewportCameraControls = Studio:GetSetting("viewportCameraControls"),
-}
-
--- Apply default values for nil settings
-if viewportSettings.viewportGrid == nil then
-	viewportSettings.viewportGrid = true
-end
-if viewportSettings.viewportAxes == nil then
-	viewportSettings.viewportAxes = true
-end
-if viewportSettings.viewportGizmos == nil then
-	viewportSettings.viewportGizmos = true
-end
-if viewportSettings.viewportSelectionOutline == nil then
-	viewportSettings.viewportSelectionOutline = true
-end
-if viewportSettings.viewportCameraControls == nil then
-	viewportSettings.viewportCameraControls = true
-end
-
--- Listen for viewport setting changes
-Studio.SettingChanged:Connect(function(key, value)
-	if viewportSettings[key] ~= nil then
+local viewportSettings = {}
+for _, key in ipairs({ "viewportGrid", "viewportAxes", "viewportGizmos", "viewportSelectionOutline", "viewportCameraControls" }) do
+	Preferences.observe(key, function(value)
 		viewportSettings[key] = value
-	end
-end)
+	end)
+end
 
 local function selectedTransformTarget(allowAttachment)
 	local selected = Selection:Get()
@@ -159,12 +129,21 @@ local function selectedTransformTarget(allowAttachment)
 	return nil
 end
 
+local selectionOutline = Instance.new("Highlight")
+selectionOutline.Name = "EditorSelectionOutline"
+selectionOutline.FillTransparency = 1
+selectionOutline.OutlineColor = tokens.color.accent
+UI.keepSceneHelper(selectionOutline)
+selectionOutline.Parent = workspace
+
 local function updateGizmos()
 	local moving = activeTool == "Move"
 	local resizing = activeTool == "Size"
 	local rotating = activeTool == "Rotate"
 	local adornee = selectedTransformTarget(moving)
 	local is3D = renderer.Dimension == "3D" and not picker.isActive()
+	selectionOutline.Adornee = adornee
+	selectionOutline.Enabled = is3D and adornee ~= nil and viewportSettings.viewportSelectionOutline
 
 	handles.Adornee = adornee
 	arcHandles.Adornee = if rotating then adornee else nil
@@ -180,7 +159,7 @@ end
 
 local disable_server_bool = false
 local disable_client_bool = false
-local startSinglePlayer = false
+local startSinglePlayer = Preferences.get("playtestSingleplayer")
 local client_count = 1
 local playGroup, playControls = UI.iconButtonGroup(header, UDim2.fromScale(0.5, 0.5), {
 	{
@@ -189,31 +168,11 @@ local playGroup, playControls = UI.iconButtonGroup(header, UDim2.fromScale(0.5, 
 		tooltip = "Play",
 		key = Enum.KeyCode.F5,
 		onClick = function()
-			if startSinglePlayer then
-				PlaytestService:StartSinglePlayer()
-			else
-				if disable_server_bool then
-					PlaytestService:StartClient()
-				end
-				if disable_client_bool then
-					PlaytestService:StartServer(nil, false)
-				end
-				if not disable_server_bool and not disable_client_bool then
-					PlaytestService:Start()
-				end
-				if disable_server_bool and disable_client_bool then
-					UI.toast("playtest", {
-						type = "warning",
-						title = "Playtest Warning",
-						message = "Both server and client are disabled. Nothing will run.",
-						details = ``,
-						detailsTitle = "",
-						backgroundTransparency = 0.4,
-						blur = true,
-						duration = 5,
-					})
-				end
+			if disable_server_bool and disable_client_bool and not startSinglePlayer then
+				UI.toast("playtest", { type = "warning", title = "Enable a server or client to playtest" })
+				return
 			end
+			Playtest.start(disable_server_bool and "Client" or disable_client_bool and "Server" or nil, startSinglePlayer)
 		end,
 	},
 	{ separator = true },
@@ -273,8 +232,12 @@ local _, disable_client = UI.checkbox(frame, "Disable Client", UDim2.fromOffset(
 	disable_client_bool = value
 end)
 
-local _, single_player = UI.checkbox(frame, "Single Player", UDim2.fromOffset(8, 8), false, function(value)
+local _, singlePlayer = UI.checkbox(frame, "Single Player", UDim2.fromOffset(8, 8), startSinglePlayer, function(value)
+	Preferences.set("playtestSingleplayer", value)
+end)
+Preferences.observe("playtestSingleplayer", function(value)
 	startSinglePlayer = value
+	singlePlayer:SetValue(value, true)
 end)
 
 local field, _, stroke = UI.input(frame, "Client Count", UDim2.fromOffset(0, 0), UDim2.new(1, 0, 0, 24), {
@@ -527,6 +490,7 @@ fpsText.Position = UDim2.new(1, 0, 1, 0)
 fpsText.AnchorPoint = Vector2.new(1, 1)
 fpsText.Size = UDim2.new(0, 0, 0, 30)
 fpsText.AutomaticSize = Enum.AutomaticSize.XY
+Preferences.observe("showPerformanceStats", function(value) fpsText.Visible = value end)
 
 local breadcrumb = UI.group(viewportOverlay, UDim2.new(0, 8, 1, -30), UDim2.new(1, -16, 0, 26), {
 	color = tokens.color.surface,
@@ -548,13 +512,10 @@ RunService.RenderStepped:Connect(function(dt: number)
 	end
 	elapsed = 0
 
-	local fps = ProfilerService.FPS
-	fpsText.Text = `{math.floor(fps + 0.5)} FPS`
+	if fpsText.Visible then
+		fpsText.Text = string.format("%.0f FPS  %.1f ms", ProfilerService.FPS, ProfilerService.FrameTime)
+	end
 end)
-
-if gizmoFrame then
-	gizmoFrame.Visible = not hasDocument and viewportSettings.viewportAxes
-end
 
 local editor = CodeEditor.new(scriptRoot)
 
@@ -776,6 +737,13 @@ end)
 
 updateGizmos()
 
+Preferences.Changed:Connect(function(key)
+	if key == "viewportGizmos" or key == "viewportSelectionOutline" then updateGizmos() end
+	if key == "viewportSelectionOutline" and not viewportSettings.viewportSelectionOutline then
+		dropHighlight.Visible = false
+	end
+end)
+
 local wasPicking = picker.isActive()
 renderer.Pool.new("2d", function()
 	local picking = picker.isActive()
@@ -829,13 +797,16 @@ renderer.Pool.new("2d", function()
 	local object = selected and selected[1]
 
 	local path = UI.isAlive(object) and object:GetFullName() or "Workspace"
+	if UI.isAlive(object) and Preferences.get("debugLabels") then
+		path ..= " [" .. object.ClassName .. "]"
+	end
 
 	if path ~= lastPath then
 		lastPath = path
 		rebuildBreadcrumb(path)
 	end
 
-	if editor:OpenScriptCount() > 0 or toolbar.Visible or scriptRoot.Visible then
+	do
 		local relabelled = false
 		local doomed = nil
 
@@ -862,10 +833,10 @@ renderer.Pool.new("2d", function()
 		local hasDocument = editor:hasDocument()
 
 		scriptRoot.Visible = hasDocument
-		toolbar.Visible = not hasDocument
+		toolbar.Visible = not hasDocument and Preferences.get("showToolbar")
 
 		if styleBar then
-			styleBar.Visible = not hasDocument
+			styleBar.Visible = toolbar.Visible
 		end
 
 		if hasDocument then
@@ -874,7 +845,7 @@ renderer.Pool.new("2d", function()
 
 		breadcrumb.Visible = not hasDocument and renderer.Dimension == "3D"
 		if gizmoFrame then
-			gizmoFrame.Visible = not hasDocument
+			gizmoFrame.Visible = not hasDocument and viewportSettings.viewportAxes
 		end
 
 		editor:updateVisibility()
@@ -921,10 +892,79 @@ local function viewportToScreenPoint(point: Vector2): Vector2?
 	return Vector2.new(position.X + point.X * size.X / pixels.X, position.Y + point.Y * size.Y / pixels.Y)
 end
 
+local grid = UI.create("Frame", {
+	Name = "ViewportGrid",
+	Size = UDim2.fromScale(1, 1),
+	BackgroundTransparency = 1,
+	ClipsDescendants = true,
+}, viewportOverlay)
+local gridLines = {}
+for index = 1, 42 do
+	gridLines[index] = UI.create("Frame", {
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		BackgroundColor3 = tokens.color.subtext,
+		BackgroundTransparency = 0.8,
+		BorderSizePixel = 0,
+	}, grid)
+end
+
+local lastGridCFrame, lastGridFocus, lastGridSize, lastGridOrigin, lastGridDimension
+local function updateGrid()
+	grid.Visible = viewportSettings.viewportGrid and not scriptRoot.Visible and rootOverlay.Enabled
+	if not grid.Visible then return end
+	local camera = workspace.CurrentCamera
+	local origin, size = grid.AbsolutePosition, grid.AbsoluteSize
+	local dimension = renderer.Dimension
+	local cframe, focus = camera and camera.CFrame, camera and camera.Focus
+	if cframe == lastGridCFrame and focus == lastGridFocus and size == lastGridSize
+		and origin == lastGridOrigin and dimension == lastGridDimension then
+		return
+	end
+	lastGridCFrame, lastGridFocus = cframe, focus
+	lastGridSize, lastGridOrigin, lastGridDimension = size, origin, dimension
+	local width, height = size.X, size.Y
+	local is3D = dimension == "3D"
+	local function project(point)
+		local _, x, y = camera:WorldToViewportPoint(point)
+		if x == nil or y == nil then return nil end
+		local screen = viewportToScreenPoint(Vector2.new(x, y))
+		return screen and (screen - origin)
+	end
+	for index, line in ipairs(gridLines) do
+		local vertical = index <= 21
+		local offset = (index - 1) % 21 - 10
+		local a, b
+		if is3D and camera then
+			local center = focus.Position
+			local x, z = math.round(center.X / 4) * 4, math.round(center.Z / 4) * 4
+			local step = offset * 4
+			a = project(Vector3.new(x + (vertical and step or -40), 0, z + (vertical and -40 or step)))
+			b = project(Vector3.new(x + (vertical and step or 40), 0, z + (vertical and 40 or step)))
+		elseif not is3D then
+			local fraction = (offset + 10) / 20
+			a = vertical and Vector2.new(width * fraction, 0) or Vector2.new(0, height * fraction)
+			b = vertical and Vector2.new(width * fraction, height) or Vector2.new(width, height * fraction)
+		end
+		line.Visible = a ~= nil and b ~= nil
+		if a and b then
+			local direction = b - a
+			local midpoint = (a + b) / 2
+			line.Position = UDim2.fromOffset(midpoint.X, midpoint.Y)
+			line.Size = UDim2.fromOffset(direction.Magnitude, 1)
+			line.Rotation = math.deg(math.atan2(direction.Y, direction.X))
+		end
+	end
+end
+
 renderer.Pool.new("2da", function()
 	local dragging = docker.Update(panel, "Viewport")
 
 	updateAxisGizmo()
+	local camera = workspace.CurrentCamera
+	if camera and camera.InputEnabled ~= nil and camera.InputEnabled ~= viewportSettings.viewportCameraControls then
+		camera.InputEnabled = viewportSettings.viewportCameraControls
+	end
+	updateGrid()
 
 	if not dragging then
 		panel.Position = theme.ViewportCoordinates.Position
@@ -992,6 +1032,8 @@ renderer.Pool.new("2da", function()
 		end
 	end
 	uiEditor:SetEnabled(not scriptRoot.Visible)
+	uiEditor.showSelectionOutline = viewportSettings.viewportSelectionOutline
+	uiEditor.showGizmos = viewportSettings.viewportGizmos
 	uiEditor:Update()
 end)
 

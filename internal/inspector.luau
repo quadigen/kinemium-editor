@@ -1,3 +1,4 @@
+local Preferences = require("@internal/preferences")
 if (IsServer or IsClient) or IsPlaytest then
 	return nil
 end
@@ -131,6 +132,7 @@ local readonlyProperties = {
 
 local panel, content =
 	UI.window("Inspector", theme.InspectorCoordinates.Position, theme.InspectorCoordinates.Size, "Inspector")
+Preferences.observe("showProperties", function(value) panel.Visible = value end)
 
 local inset = UI.metrics.panelInset
 

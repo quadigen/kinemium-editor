@@ -2,6 +2,7 @@ if (IsServer or IsClient) or IsPlaytest then
 	return nil
 end
 
+local Preferences = require("@internal/preferences")
 local UI = require("@internal/editor_ui")
 local gameCategory = require("@internal/topbar_game")
 local projectsCategory = require("@internal/topbar_projects")
@@ -171,7 +172,7 @@ local function applyUpperPaneLayout(name, extraHeight)
 end
 
 local function layoutExtraHeight()
-	if not expanded then
+	if not expanded or not Preferences.get("showToolbar") then
 		return 0
 	end
 
@@ -243,7 +244,7 @@ local function updateTopbarGeometry()
 
 	flyout.Size = UDim2.new(1, 0, 0, FLYOUT_HEIGHT)
 
-	flyout.Visible = expanded
+	flyout.Visible = expanded and Preferences.get("showToolbar")
 end
 
 local function applyTabColors()

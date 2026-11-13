@@ -5,6 +5,7 @@ end
 local UI = require("@internal/editor_ui")
 local viewport = require("@internal/viewport")
 
+local Preferences = require("@internal/preferences")
 local Project = game:GetService("Project")
 local dialog = game:GetService("DialogService")
 local export_service = game:GetService("ExportService")
@@ -44,6 +45,13 @@ local function imageSource(path)
 end
 
 local extensionLookup = {}
+
+local function displayName(entry)
+	if entry.Type ~= "Directory" and not Preferences.get("showFileExtensions") then
+		return string.match(entry.Name, "^(.+)%.[^.]+$") or entry.Name
+	end
+	return entry.Name
+end
 
 local function extensionOf(name)
 	return string.lower(name):match("%.([%w]+)$")
@@ -1140,7 +1148,7 @@ return function(content, windowControls)
 
 		local label = UI.label(
 			row,
-			entry.Name,
+			displayName(entry),
 			UDim2.fromOffset(indent + 31, 2),
 			UDim2.new(1, -(indent + 34), 0, 17),
 			tokens.type.small,
@@ -1303,7 +1311,7 @@ return function(content, windowControls)
 
 		local label = UI.label(
 			tile,
-			entry.Name,
+			displayName(entry),
 			UDim2.fromOffset(2, labelY),
 			UDim2.new(1, -4, 0, TILE_H - labelY - 4),
 			tokens.type.small,
@@ -1526,11 +1534,18 @@ return function(content, windowControls)
 		end
 	end
 
-	local function deleteEntry(path)
+	local function deleteEntry(path, confirmed)
 		if path == nil or path == rootPath then
 			return
 		end
 
+		if not confirmed and Preferences.get("confirmDelete") then
+			local projectRoot = rootPath
+			UI.confirm("Delete file or folder?", nameOf(path), function()
+				if rootPath == projectRoot then deleteEntry(path, true) end
+			end)
+			return
+		end
 		closeDocumentsUnder(path, isDirectoryPath(path))
 
 		local ok, deleted = pcall(function()
@@ -2731,6 +2746,7 @@ return function(content, windowControls)
 		local keyboardActive = windowControls and windowControls.isKeyboardActive
 		if keyboardActive and not keyboardActive() then return end
 
+		if not Preferences.get("enableKeyboardShortcuts") then return end
 		if input.KeyCode == Enum.KeyCode.Escape then
 			if drag ~= nil then
 				finishDrop(false)
@@ -3020,6 +3036,10 @@ return function(content, windowControls)
 
 			rebuild()
 		end
+	end)
+
+	Preferences.Changed:Connect(function(key)
+		if key == "showFileExtensions" then lastHash = "" end
 	end)
 
 	return {
