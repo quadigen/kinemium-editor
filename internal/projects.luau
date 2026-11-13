@@ -531,6 +531,12 @@ return function(page, windowControls, gui)
 		return controller
 	end
 
+	local activeProject = Project:GetActiveProject()
+	if activeProject then
+		print("Active project found, opening it:", activeProject.Name, activeProject.Path)
+		showProject(activeProject)
+	end
+
 	local createController = buildProjectPrompt({
 		name = "CreateProject",
 		title = "Create Project",
