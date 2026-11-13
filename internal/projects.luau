@@ -532,6 +532,7 @@ return function(page, windowControls, gui)
 	end
 
 	local activeProject = Project:GetActiveProject()
+	print(activeProject, "active project")
 	if activeProject then
 		print("Active project found, opening it:", activeProject.Name, activeProject.Path)
 		showProject(activeProject)
