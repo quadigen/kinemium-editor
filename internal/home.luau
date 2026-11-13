@@ -797,7 +797,7 @@ if ProjectPath ~= "" then
 		print("Project not found at path:", ProjectPath)
 		return
 	end
-	print("Active project found, opening it:", project.Name, project.Path)
+	print("Active project found, opening it: ", project.Name, project.Path)
 
 	project_active.showProject(project)
 end

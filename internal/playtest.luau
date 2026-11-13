@@ -5,8 +5,12 @@ local Playtest = {}
 
 function Playtest.start(mode, singleplayer)
 	mode = mode or Preferences.get("playtestMode")
-	if singleplayer == nil then singleplayer = Preferences.get("playtestSingleplayer") end
-	if Preferences.get("playtestClearOutput") then game:GetService("LogService"):Clear() end
+	if singleplayer == nil then
+		singleplayer = Preferences.get("playtestSingleplayer")
+	end
+	if Preferences.get("playtestClearOutput") then
+		game:GetService("LogService"):Clear()
+	end
 	local headlessClient = Preferences.get("playtestHeadlessClient")
 	local headlessServer = Preferences.get("playtestHeadlessServer")
 	local pauseOnError = Preferences.get("playtestPauseOnError")

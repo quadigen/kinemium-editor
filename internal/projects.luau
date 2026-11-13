@@ -105,7 +105,7 @@ return function(page, windowControls, gui)
 		local opened
 		if Sync.available then
 			print("sync is available")
-			opened = Project:OpenProject(project.Path)
+			opened = Project:OpenProjectWindow(project.Path)
 		else
 			print("sync is not available")
 			opened = Project:SetActiveProject(project.Path)
