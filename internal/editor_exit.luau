@@ -6,7 +6,9 @@ local Exit = {}
 local prompt
 
 function Exit.confirm()
-	if prompt then return end
+	if prompt then
+		return
+	end
 	local function saveAndExit()
 		Sync.step()
 		if not Project:SaveProject() then
@@ -16,14 +18,23 @@ function Exit.confirm()
 		Project:ExitEditor()
 	end
 	local _, _, controller = UI.prompt({
-		title = "Exit Studio?",
+		title = "Exit Engine?",
 		description = "The active project has unsaved changes.",
 		modal = true,
 		destroyOnClose = true,
-		onClose = function() prompt = nil end,
+		onClose = function()
+			prompt = nil
+		end,
 		buttons = {
 			{ id = "cancel", text = "Cancel" },
-			{ id = "discard", text = "Exit without saving", role = "danger", callback = function() Project:ExitEditor(true) end },
+			{
+				id = "discard",
+				text = "Exit without saving",
+				role = "danger",
+				callback = function()
+					Project:ExitEditor(true)
+				end,
+			},
 			{ id = "save", text = "Save and exit", role = "primary", callback = saveAndExit },
 		},
 	})

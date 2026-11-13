@@ -117,7 +117,7 @@ return function(ctx)
             destroyed = false,
         }
 
-        local needsBackdrop = modal or dim or options.closeOnBackdrop == true or options.blur ~= nil
+        local needsBackdrop = true or dim or options.closeOnBackdrop == true or options.blur ~= nil
         local backdrop
         if needsBackdrop then
             backdrop = UI.create(options.closeOnBackdrop == true and "TextButton" or "Frame", {

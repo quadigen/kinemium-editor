@@ -794,7 +794,11 @@ return function(page, windowControls, gui)
 			if not Preferences.get("confirmDelete") then
 				local target = selectedProject
 				local ok, err = Project:DeleteProject(target.Path)
-				if ok then refreshList() else notify("error", "Could not remove project", err) end
+				if ok then
+					refreshList()
+				else
+					notify("error", "Could not remove project", err)
+				end
 				return
 			end
 			deleteTarget = selectedProject
@@ -1039,7 +1043,9 @@ return function(page, windowControls, gui)
 	end)
 
 	Preferences.Changed:Connect(function(key)
-		if key == "showRecentProjects" or key == "debugLabels" then refreshList() end
+		if key == "showRecentProjects" or key == "debugLabels" then
+			refreshList()
+		end
 	end)
 
 	refreshList()
@@ -1049,7 +1055,11 @@ return function(page, windowControls, gui)
 			showProject(active)
 			return
 		end
-		if Preferences.get("reopenLastProject") or Preferences.get("restoreSession") or not Preferences.get("showStartPage") then
+		if
+			Preferences.get("reopenLastProject")
+			or Preferences.get("restoreSession")
+			or not Preferences.get("showStartPage")
+		then
 			local last = Preferences.get("sessionProject")
 			if Preferences.get("reopenLastProject") or not Preferences.get("showStartPage") then
 				last = Preferences.get("lastProject")

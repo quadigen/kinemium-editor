@@ -753,7 +753,10 @@ end
 
 RunService.RenderStepped:Connect(function()
 	if drag.active then
-		if not editor_ui.isAlive(drag.grabbed) or not UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1) then
+		if
+			not editor_ui.isAlive(drag.grabbed)
+			or not UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1)
+		then
 			endDrag(true)
 			return
 		end
@@ -929,7 +932,8 @@ UserInputService.InputEnded:Connect(function(input, processed)
 			drag.pending = false
 		end
 	elseif
-		Preferences.get("enableKeyboardShortcuts") and input.KeyCode == Enum.KeyCode.F
+		Preferences.get("enableKeyboardShortcuts")
+		and input.KeyCode == Enum.KeyCode.F
 		and not processed
 		and not picker.isActive()
 		and canUseViewport()

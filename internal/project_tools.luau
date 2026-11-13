@@ -4,7 +4,9 @@ local Project = game:GetService("Project")
 local TextService = game:GetService("TextService")
 
 local Tools = {}
-local available, backups = pcall(function() return Project.GetProjectBackups end)
+local available, backups = pcall(function()
+	return Project.GetProjectBackups
+end)
 Tools.backupsAvailable = available and type(backups) == "function"
 
 local function notify(kind, title, message)
@@ -14,14 +16,20 @@ end
 function Tools.toggleSync()
 	if Sync.setPaused(not Sync.isPaused()) then
 		local paused = Sync.isPaused()
-		notify("success", paused and "Source sync paused" or "Source sync resumed",
-			paused and "The editor and filesystem can be edited independently." or "The editor is syncing with the filesystem.")
+		notify(
+			"success",
+			paused and "Source sync paused" or "Source sync resumed",
+			paused and "The editor and filesystem can be edited independently."
+				or "The editor is syncing with the filesystem."
+		)
 	end
 end
 
 local function sourcePane(parent, title, record, x)
 	local text = record and record.source or "(deleted)"
-	if text == "" then text = "(empty file)" end
+	if text == "" then
+		text = "(empty file)"
+	end
 	local heading = UI.label(parent, title, UDim2.new(x, 4, 0, 0), UDim2.new(0.5, -8, 0, 24), 13, UI.tokens.color.text)
 	heading.TextXAlignment = Enum.TextXAlignment.Left
 	local scroll = UI.create("ScrollingFrame", {
@@ -48,7 +56,9 @@ local function sourcePane(parent, title, record, x)
 end
 
 function Tools.conflicts(index, refresh)
-	if refresh then Sync.step() end
+	if refresh then
+		Sync.step()
+	end
 	local conflicts = Sync.getConflicts()
 	if #conflicts == 0 then
 		notify("info", "Source sync", "There are no current conflicts.")
@@ -62,7 +72,9 @@ function Tools.conflicts(index, refresh)
 			notify("error", "Could not resolve conflict", tostring(message))
 		end
 		task.defer(function()
-			if #Sync.getConflicts() > 0 then Tools.conflicts(index) end
+			if #Sync.getConflicts() > 0 then
+				Tools.conflicts(index)
+			end
 		end)
 	end
 	UI.prompt({
@@ -73,8 +85,22 @@ function Tools.conflicts(index, refresh)
 		destroyOnClose = true,
 		buttons = {
 			{ id = "close", text = "Close", role = "secondary" },
-			{ id = "disk", text = "Keep Filesystem", role = "secondary", callback = function() resolve("disk") end },
-			{ id = "editor", text = "Keep Editor", role = "primary", callback = function() resolve("editor") end },
+			{
+				id = "disk",
+				text = "Keep Filesystem",
+				role = "secondary",
+				callback = function()
+					resolve("disk")
+				end,
+			},
+			{
+				id = "editor",
+				text = "Keep Editor",
+				role = "primary",
+				callback = function()
+					resolve("editor")
+				end,
+			},
 		},
 		build = function(content, controller)
 			sourcePane(content, "Editor", conflict.object, 0)
@@ -113,17 +139,31 @@ function Tools.backups()
 		buttons = {
 			{ id = "cancel", text = "Cancel", role = "secondary" },
 			{
-				id = "restore", text = "Restore", role = "primary",
+				id = "restore",
+				text = "Restore",
+				role = "primary",
 				callback = function()
-					if not selected then return false end
-					local wasPaused = Sync.isPaused()
-					if not Sync.setPaused(true) then return false end
-					if not Project:RestoreProjectBackup(selected.Id) then
-						Sync.setPaused(wasPaused)
-						notify("error", "Could not restore backup", "Check that the snapshot is readable and the project folder is writable.")
+					if not selected then
 						return false
 					end
-					notify("success", "Backup restored", "Source sync is paused. Resume it when you're ready to reconcile source changes.")
+					local wasPaused = Sync.isPaused()
+					if not Sync.setPaused(true) then
+						return false
+					end
+					if not Project:RestoreProjectBackup(selected.Id) then
+						Sync.setPaused(wasPaused)
+						notify(
+							"error",
+							"Could not restore backup",
+							"Check that the snapshot is readable and the project folder is writable."
+						)
+						return false
+					end
+					notify(
+						"success",
+						"Backup restored",
+						"Source sync is paused. Resume it when you're ready to reconcile source changes."
+					)
 				end,
 			},
 		},
@@ -131,14 +171,19 @@ function Tools.backups()
 			local records = {}
 			for index, backup in ipairs(backups) do
 				local date = backup.Timestamp and os.date("%Y-%m-%d %H:%M:%S", backup.Timestamp) or backup.Id
-				local _, _, record = UI.button(content, date, UDim2.fromOffset(0, (index - 1) * 38),
-					UDim2.new(1, 0, 0, 32), function()
+				local _, _, record = UI.button(
+					content,
+					date,
+					UDim2.fromOffset(0, (index - 1) * 38),
+					UDim2.new(1, 0, 0, 32),
+					function()
 						selected = backup
 						for entry, state in pairs(records) do
 							UI.setButtonState(state, entry == selected and "selected" or nil)
 						end
 						controller:SetButtonEnabled("restore", true)
-					end)
+					end
+				)
 				records[backup] = record
 			end
 			controller:SetButtonEnabled("restore", false)

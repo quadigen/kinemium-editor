@@ -107,7 +107,16 @@ local function buildCategories()
 							key = "resolution",
 							title = "Window Resolution",
 							description = "Set the size of the Studio window. Automatic uses the startup size.",
-							items = { "Automatic", "800 × 600", "1024 × 768", "1280 × 720", "1600 × 900", "1920 × 1080", "2560 × 1440", "3840 × 2160" },
+							items = {
+								"Automatic",
+								"800 × 600",
+								"1024 × 768",
+								"1280 × 720",
+								"1600 × 900",
+								"1920 × 1080",
+								"2560 × 1440",
+								"3840 × 2160",
+							},
 							width = 152,
 						},
 					},
@@ -366,7 +375,7 @@ local function buildCategories()
 							kind = "switch",
 							key = "showRecentProjects",
 							title = "Recent Projects",
-							description = "Show the project cards on the start page."
+							description = "Show the project cards on the start page.",
 						},
 						{
 							kind = "switch",
@@ -786,7 +795,9 @@ return function(parent, createProfileButton)
 
 		local controlValues = {}
 		local function createControl(rowFrame, row)
-			if row.key then controlValues[row.key] = Preferences.get(row.key) end
+			if row.key then
+				controlValues[row.key] = Preferences.get(row.key)
+			end
 			local width = controlWidth(row)
 			local height = controlHeight(row)
 
