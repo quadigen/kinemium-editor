@@ -791,9 +791,4 @@ pcall(function()
 	pluginService:__SyncPluginToolbars()
 end)
 
-local activeProject = Project:GetActiveProject()
-print("Active project:", activeProject and activeProject.Name or "none")
-if activeProject then
-	print("Active project found, opening it:", activeProject.Name, activeProject.Path)
-	project_active.showProject(activeProject)
-end
+print(ProjectPath)
