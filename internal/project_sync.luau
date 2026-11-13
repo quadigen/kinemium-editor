@@ -514,19 +514,16 @@ local function configure(project, sourcemap)
 					"Overlapping source paths"
 				)
 			end
-			table.insert(
-				mappings,
-				{
-					root = root,
-					path = path,
-					projectPath = project.Path,
-					pieces = pieces,
-					names = names,
-					id = "/" .. table.concat(names, "/") .. "|" .. table.concat(pieces, "/"),
-					previous = {},
-					opening = true,
-				}
-			)
+			table.insert(mappings, {
+				root = root,
+				path = path,
+				projectPath = project.Path,
+				pieces = pieces,
+				names = names,
+				id = "/" .. table.concat(names, "/") .. "|" .. table.concat(pieces, "/"),
+				previous = {},
+				opening = true,
+			})
 		end
 		for name, child in pairs(node) do
 			if name:sub(1, 1) ~= "$" then

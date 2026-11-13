@@ -791,4 +791,13 @@ pcall(function()
 	pluginService:__SyncPluginToolbars()
 end)
 
-print(ProjectPath)
+if ProjectPath ~= "" then
+	local project = Project:GetProject(ProjectPath)
+	if not project then
+		print("Project not found at path:", ProjectPath)
+		return
+	end
+	print("Active project found, opening it:", project.Name, project.Path)
+
+	project_active.showProject(project)
+end
