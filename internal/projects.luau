@@ -103,6 +103,8 @@ return function(page, windowControls, gui)
 
 	local function openProject(project)
 		local opened = Project:OpenProjectWindow(project.Path)
+		notify(nil, "Opening project", project.Path)
+
 		if not opened then
 			print(opened, project)
 			notify("error", "Could not open project", project.Path)
