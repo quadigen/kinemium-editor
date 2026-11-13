@@ -27,14 +27,19 @@ local image_viewer = require("@internal/image_viewer")
 local auth = require("@internal/auth")
 local picker = require("@internal/picker")
 local docker = require("@internal/docker")
+local Project = game:GetService("Project")
 
 local function restoreLayout(enabled)
 	ThemeService:ResetDocking()
-	if not enabled then return end
+	if not enabled then
+		return
+	end
 	for _, name in ipairs({ "Viewport", "Explorer", "Inspector", "Output" }) do
 		local saved = Preferences.get("dock." .. name)
 		local anchor, fullSpan = string.match(saved, "^(%a+)(.*)$")
-		if anchor then ThemeService:DockWindow(name, anchor, fullSpan == ":full") end
+		if anchor then
+			ThemeService:DockWindow(name, anchor, fullSpan == ":full")
+		end
 	end
 end
 
@@ -45,7 +50,9 @@ windowReady = RunService.Heartbeat:Connect(function()
 		return
 	end
 	local startupSize = Window:GetResolution()
-	if not startupSize then return end
+	if not startupSize then
+		return
+	end
 	windowReady:Disconnect()
 	Preferences.observe("pageZoom", function(value)
 		local percent = tonumber(string.match(value, "^(%d+)%%$")) or 100
@@ -61,7 +68,9 @@ end)
 
 RunService.Heartbeat:Once(function()
 	if Profiler.SetEnabled then
-		Preferences.observe("profilerEnabled", function(value) Profiler:SetEnabled(value) end)
+		Preferences.observe("profilerEnabled", function(value)
+			Profiler:SetEnabled(value)
+		end)
 	end
 	Preferences.observe("restoreLayout", restoreLayout)
 end)
@@ -95,7 +104,7 @@ UI.widgetOverlay().Enabled = false
 UI.root().Enabled = false
 UI.RootOverlay().Enabled = false
 
-project_manager(windowControls.pages.Projects, windowControls, gui)
+local project_active = project_manager(windowControls.pages.Projects, windowControls, gui)
 plugin_marketplace(windowControls.pages.Marketplace, windowControls, gui)
 credits_page(windowControls.pages.Credits, windowControls, gui)
 user(windowControls.pages.Settings, false)
@@ -778,8 +787,13 @@ SignalPipe:Connect(function(signal, value)
 	end
 end)
 
--- Plugin scripts may run before the editor connects to the pipe. Replay the
--- buttons that already exist so early toolbars still appear.
 pcall(function()
 	pluginService:__SyncPluginToolbars()
 end)
+
+local activeProject = Project:GetActiveProject()
+print("Active project:", activeProject and activeProject.Name or "none")
+if activeProject then
+	print("Active project found, opening it:", activeProject.Name, activeProject.Path)
+	project_active.showProject(activeProject)
+end
