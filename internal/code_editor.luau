@@ -4,6 +4,7 @@ end
 
 local UI = require("@internal/editor_ui")
 
+local Languages = require("@internal/code_languages")
 local Preferences = require("@internal/preferences")
 local TextService = game:GetService("TextService")
 local RunService = game:GetService("RunService")
@@ -507,7 +508,7 @@ local function positionOfLine(text, line)
 	return position, current
 end
 
-local function insideCommentOrString(text, cursor)
+local function insideCommentOrString(text, cursor, lineComment)
 	local lineStart = lineBounds(text, cursor)
 	local before = string.sub(text, lineStart, cursor - 1)
 	local quote = nil
@@ -524,7 +525,7 @@ local function insideCommentOrString(text, cursor)
 			end
 		elseif character == '"' or character == "'" or character == "`" then
 			quote = character
-		elseif character == "-" and string.sub(before, index + 1, index + 1) == "-" then
+		elseif string.sub(before, index, index + 1) == (lineComment or "--") then
 			return true
 		end
 
@@ -2490,7 +2491,7 @@ function CodeEditor.new(parent)
 	self:bindTheme(editor, "BackgroundColor3", "input")
 	self:bindTheme(editor, "TextColor3", "text")
 
-	UI.create("SyntaxHighlighter", { Parent = editor })
+	self.Highlighter = UI.create("SyntaxHighlighter", { Parent = editor })
 	UI.create("UIBackdrop", { Parent = editor })
 
 	local statusBar =
@@ -2952,6 +2953,9 @@ function CodeEditor:pollDocuments()
 				local sourceOK, source = pcall(function()
 					return instance.Source
 				end)
+				if not document.language.luau and document == self.activeDocument then
+					self:updateShaderStatus(document)
+				end
 				if sourceOK and source ~= document.committed and document.source == document.committed then
 					document.source = source
 					document.committed = source
@@ -2976,6 +2980,19 @@ function CodeEditor:pollDocuments()
 
 	if renamed then
 		self:rebuildTabs()
+	end
+end
+
+function CodeEditor:updateShaderStatus(document)
+	local message = ""
+	if document and document.instance and not document.language.luau and document.source == document.committed then
+		message = document.instance.LastError or ""
+	end
+	if self.shaderError == message then return end
+	self.shaderError = message
+	self.statusText = nil
+	if message == "" then
+		if self.diagnosticShown and self.diagnosticShown.Shader then self:hideDiagnosticPopup() end
 	end
 end
 
@@ -3015,16 +3032,11 @@ function CodeEditor:setSelection(first, finish)
 end
 
 function CodeEditor:isScriptInstance(instance)
-	return instance ~= nil
-		and (
-			instance:IsA("Script")
-			or instance:IsA("PostProcess")
-			or instance:IsA("ModuleScript")
-			or instance:IsA("LocalScript")
-			or instance:IsA("RuntimeShader")
-			or instance:IsA("UIShader")
-			or instance:IsA("MaterialVariant")
-		)
+	return instance ~= nil and Languages.forInstance(instance) ~= nil
+end
+
+function CodeEditor:isLuauDocument()
+	return self.activeDocument ~= nil and self.activeDocument.language.luau == true
 end
 
 function CodeEditor:tabWidthFor(name)
@@ -3232,6 +3244,12 @@ end
 function CodeEditor:loadDocument(document)
 	self.activeDocument = document
 
+	if self.highlightedLanguage ~= document.language then
+		Languages.apply(self.Highlighter, document.language)
+		self.highlightedLanguage = document.language
+	end
+	self.statusText = nil
+	self.pendingCloser = nil
 	self.suppressTextSync = true
 	self.TextBox.Text = document.source
 	self.suppressTextSync = false
@@ -3244,6 +3262,7 @@ function CodeEditor:loadDocument(document)
 
 	self:dismissSuggestions()
 	self:refreshDiagnostics()
+	self:updateShaderStatus(document)
 
 	if self.findVisible then
 		self:scanFindMatches()
@@ -3393,6 +3412,7 @@ function CodeEditor:OpenScript(instance, line)
 
 		document = {
 			instance = instance,
+			language = Languages.forInstance(instance),
 			name = instance.Name,
 			source = source,
 			committed = source,
@@ -3432,6 +3452,7 @@ function CodeEditor:OpenFile(path, name, line)
 
 		document = {
 			path = path,
+			language = Languages.forFile(path),
 			name = name,
 			source = source,
 			committed = source,
@@ -3528,6 +3549,12 @@ function CodeEditor:GoToLine(line, column)
 end
 
 function CodeEditor:goToDiagnostic()
+	if self.shaderError and self.shaderError ~= "" then
+		self:showDiagnosticPopup({ Kind = "Shader compiler", Line = 1, Column = 1, Message = self.shaderError, Shader = true })
+		self.diagnosticPinned = true
+		self.pinnedCursor = self.TextBox.CursorPosition
+		return
+	end
 	local diagnostic = self.currentDiagnostic
 
 	if diagnostic == nil then
@@ -3585,7 +3612,7 @@ function CodeEditor:updateGoToHint()
 end
 
 function CodeEditor:updateStatus()
-	if not self.TextBox.Visible then
+	if not self.TextBox.Visible or not self.activeDocument then
 		return
 	end
 
@@ -3626,12 +3653,16 @@ function CodeEditor:updateStatus()
 	local diagnostic = self.currentDiagnostic
 	local info
 
-	if diagnostic ~= nil then
+	if self.shaderError and self.shaderError ~= "" then
+		self.diagnosticActive = true
+		info = self.activeDocument.language.name .. " · Compiler error"
+	elseif diagnostic ~= nil then
 		self.diagnosticActive = true
 		info = ("%s · Ln %d   %d lines"):format(diagnostic.Kind or "Syntax error", diagnostic.Line, self.statusLines)
 	else
 		self.diagnosticActive = false
-		info = ("No problems   %d lines"):format(self.statusLines)
+		info = self:isLuauDocument() and ("No problems   %d lines"):format(self.statusLines)
+			or ("%s   %d lines"):format(self.activeDocument.language.name, self.statusLines)
 	end
 
 	self.StatusInfo.Text = info
@@ -3948,7 +3979,7 @@ function CodeEditor:refreshSuggestions()
 end
 
 function CodeEditor:updateSuggestionList()
-	if not Preferences.get("autocomplete") then
+	if not self:isLuauDocument() or not Preferences.get("autocomplete") then
 		self.forceSuggest = false
 		self:hideSuggestionList()
 		return
@@ -4211,7 +4242,7 @@ function CodeEditor:updateTargets()
 end
 
 function CodeEditor:renderArgumentHint()
-	if not Preferences.get("parameterHints") then
+	if not self:isLuauDocument() or not Preferences.get("parameterHints") then
 		self:dismissArgumentHint()
 		return
 	end
@@ -4977,11 +5008,13 @@ function CodeEditor:moveLines(direction)
 end
 
 function CodeEditor:toggleComment()
-	if not self:hasDocument() then
+	local marker = self.activeDocument and self.activeDocument.language.lineComment
+	if not marker then
 		return
 	end
 
 	local text, blockStart, blockEnd, first, finish, hasSelection = self:selectedBlock()
+	local pattern = escapePattern(marker)
 	local block = string.sub(text, blockStart, blockEnd - 1)
 	local lines = string.split(block, "\n")
 
@@ -4992,7 +5025,7 @@ function CodeEditor:toggleComment()
 		if string.match(line, "%S") then
 			anyCode = true
 
-			if not string.match(line, "^%s*%-%-") then
+			if not string.match(line, "^%s*" .. pattern) then
 				allCommented = false
 
 				break
@@ -5007,11 +5040,11 @@ function CodeEditor:toggleComment()
 		if not string.match(line, "%S") then
 			out[index] = line
 		elseif uncomment then
-			out[index] = (string.gsub(line, "^(%s*)%-%- ?", "%1", 1))
+			out[index] = (string.gsub(line, "^(%s*)" .. pattern .. " ?", "%1", 1))
 		else
 			local indent = string.match(line, "^%s*")
 
-			out[index] = indent .. "-- " .. string.sub(line, #indent + 1)
+			out[index] = indent .. marker .. " " .. string.sub(line, #indent + 1)
 		end
 	end
 
@@ -5188,7 +5221,7 @@ end
 function CodeEditor:autoEdit()
 	local closeBrackets = Preferences.get("autoClosingBrackets")
 	local closeQuotes = Preferences.get("autoClosingQuotes")
-	local autoEnd = Preferences.get("autoIndent") and AUTO_END_BLOCKS
+	local autoEnd = self:isLuauDocument() and Preferences.get("autoIndent") and AUTO_END_BLOCKS
 	if self.applyingSuggestion or not (closeBrackets or closeQuotes or autoEnd) then
 		return
 	end
@@ -5243,7 +5276,8 @@ function CodeEditor:autoEdit()
 			return
 		end
 
-		if insideCommentOrString(old, cursor - 1) then
+		local comment = self.activeDocument and self.activeDocument.language.lineComment
+		if insideCommentOrString(old, cursor - 1, comment or "") then
 			return
 		end
 
@@ -5552,7 +5586,7 @@ function CodeEditor:showDiagnosticPopup(diagnostic, automatic)
 
 	local line = math.max(1, math.floor(tonumber(diagnostic.Line) or 1))
 	local message = diagnosticMessages(self.diagnostics, diagnostic)
-	self.DiagnosticTitle.Text = diagnostic.Hover and diagnostic.Kind or (diagnostic.Kind or "Syntax error")
+	self.DiagnosticTitle.Text = (diagnostic.Hover or diagnostic.Shader) and diagnostic.Kind or (diagnostic.Kind or "Syntax error")
 		.. " · Ln "
 		.. line
 		.. ", Col "
@@ -5577,7 +5611,7 @@ function CodeEditor:refreshDiagnostics()
 	local document = self.activeDocument
 	self.diagnosticSerial += 1
 
-	if not UI.shared().scriptDiagnostics or document == nil or source == "" then
+	if not UI.shared().scriptDiagnostics or not self:isLuauDocument() or source == "" then
 		self.TextBox:ClearDiagnostics()
 		self.currentDiagnostic = nil
 		self.diagnostics = nil
@@ -5770,6 +5804,7 @@ function CodeEditor:wireEditor()
 
 		if self.activeDocument ~= nil then
 			self.activeDocument.source = self.TextBox.Text
+			self:updateShaderStatus(self.activeDocument)
 
 			self:scheduleCommit(self.activeDocument)
 		end
@@ -5885,7 +5920,7 @@ function CodeEditor:wireEditor()
 			self:showDiagnosticPopup(hit)
 		elseif not self.diagnosticPinned then
 			self:hideDiagnosticPopup()
-			if Preferences.get("hoverDocumentation") then
+			if self:isLuauDocument() and Preferences.get("hoverDocumentation") then
 				local point = Vector2.new(x - absolute.X, y - absolute.Y)
 				local ok, position = pcall(function() return self.TextBox:PositionAtPoint(point.X, point.Y) end)
 				if ok and position then
