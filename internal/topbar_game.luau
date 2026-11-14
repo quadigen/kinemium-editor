@@ -1,6 +1,7 @@
 if (IsServer or IsClient) or IsPlaytest then
 	return nil
 end
+local Playtest = require("@internal/playtest")
 local PlaytestService = game:GetService("PlaytestService")
 
 return {
@@ -10,7 +11,7 @@ return {
 			name = "Play",
 			icon = "Play.svg",
 			callback = function()
-				PlaytestService:Start()
+				Playtest.start()
 			end,
 		},
 		{

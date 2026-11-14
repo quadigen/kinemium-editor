@@ -23,6 +23,9 @@ local function createConsole()
 	local MAX_VISIBLE_ROWS = 16000
 	local ROW_HEIGHT = math.max(UI.metrics.treeRow, 20)
 	local TEXT_ROW_HEIGHT = 76
+	local TIMESTAMP_X = 41
+	local TIMESTAMP_WIDTH = 164
+	local MESSAGE_X = TIMESTAMP_X + TIMESTAMP_WIDTH + 4
 	local TOOLBAR_HEIGHT = 30
 	local COMMANDBAR_HEIGHT = 30
 	local POLL_INTERVAL = 0.15
@@ -56,6 +59,7 @@ local function createConsole()
 	local visibleRows = {}
 	local rowPool = {}
 	local lastSeenCount = 0
+	local historyGeneration = LogService.HistoryGeneration
 	local commandHistory = {}
 	local historyIndex = 0
 	local rebuild
@@ -207,16 +211,30 @@ local function createConsole()
 		{ textSize = tokens.type.small, maxLength = 1000, focusColor = colors.accent }
 	)
 
-	local dateFormats = {
-		["19 Oct 2026"] = "%d %b %Y",
-		["Oct 19, 2026"] = "%b %d, %Y",
-		["2026-10-19"] = "%Y-%m-%d",
-		["19/10/2026"] = "%d/%m/%Y",
-	}
+	local months = { "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec" }
+
 	local function formatTime(timestamp)
-		local date = dateFormats[Preferences.get("dateFormat")] or "%d %b %Y"
-		local time = Preferences.get("hour24") and "%H:%M:%S" or "%I:%M:%S %p"
-		return os.date(date .. " " .. time, math.floor(tonumber(timestamp) or 0))
+		local seconds = math.floor(tonumber(timestamp) or 0)
+		local iso = DateTime.fromUnixTimestamp(seconds).fromIsoDate
+		local year, month, day = string.match(iso, "^(%d+)-(%d%d)-(%d%d)$")
+		local date = iso
+		if year then
+			local format = Preferences.get("dateFormat")
+			if format == "Oct 19, 2026" then
+				date = string.format("%s %s, %s", months[tonumber(month)], day, year)
+			elseif format == "19/10/2026" then
+				date = string.format("%s/%s/%s", day, month, year)
+			elseif format ~= "2026-10-19" then
+				date = string.format("%s %s %s", day, months[tonumber(month)], year)
+			end
+		end
+		local hour = seconds // 3600 % 24
+		local minute = seconds // 60 % 60
+		local second = seconds % 60
+		if Preferences.get("hour24") then
+			return string.format("%s %02d:%02d:%02d", date, hour, minute, second)
+		end
+		return string.format("%s %02d:%02d:%02d %s", date, (hour + 11) % 12 + 1, minute, second, hour < 12 and "AM" or "PM")
 	end
 
 	local function preview(value, quoteStrings)
@@ -372,7 +390,9 @@ local function createConsole()
 
 	local function passes(node)
 		if node.playtest and not Preferences.get("playtestOutput") then return false end
-		if node.kind == "Info" and not Preferences.get("verboseLogging") and activeFilter == "All" then return false end
+		if not node.playtest and node.kind == "Info" and not Preferences.get("verboseLogging") and activeFilter == "All" then
+			return false
+		end
 		if activeFilter ~= "All" and node.kind ~= activeFilter then
 			return false
 		end
@@ -484,16 +504,16 @@ local function createConsole()
 		local timestamp = UI.label(
 			row,
 			"",
-			UDim2.fromOffset(41, 1),
-			UDim2.fromOffset(59, ROW_HEIGHT - 2),
+			UDim2.fromOffset(TIMESTAMP_X, 1),
+			UDim2.fromOffset(TIMESTAMP_WIDTH, ROW_HEIGHT - 2),
 			tokens.type.small,
 			colors.subtext
 		)
 		local message = UI.label(
 			row,
 			"",
-			UDim2.fromOffset(104, 1),
-			UDim2.new(1, -110, 0, ROW_HEIGHT - 2),
+			UDim2.fromOffset(MESSAGE_X, 1),
+			UDim2.new(1, -MESSAGE_X - 8, 0, ROW_HEIGHT - 2),
 			tokens.type.small,
 			colors.text
 		)
@@ -554,7 +574,7 @@ local function createConsole()
 			slot.timestamp.Text = node.time
 		end
 
-		local x = isEntry and 104 or 26 + indent
+		local x = isEntry and MESSAGE_X or 26 + indent
 		slot.message.Position = UDim2.fromOffset(x, 2)
 		slot.message.Size = UDim2.new(1, -x - 8, 0, record.height - 4)
 		slot.message.TextColor3 = isEntry and node.color or (node.type == "more" and colors.accent or colors.text)
@@ -660,6 +680,7 @@ local function createConsole()
 				and previous.value == node.value
 			then
 				previous.repeats += 1
+				previous.timestamp = node.timestamp
 				previous.time = node.time
 			else
 				entries[#entries + 1] = node
@@ -677,22 +698,23 @@ local function createConsole()
 
 	local function poll()
 		local count = LogService.MessageCount
-		if count == lastSeenCount then
+		local generation = LogService.HistoryGeneration
+		local reset = generation ~= historyGeneration or count < lastSeenCount
+		if not reset and count == lastSeenCount then
 			return
 		end
-		local reset = count < lastSeenCount
-		if reset then
-			table.clear(entries)
-			lastSeenCount = 0
-		end
-		local previous = lastSeenCount
+		local previous = reset and 0 or lastSeenCount
 		local ok, history = pcall(function()
 			return LogService:GetLogHistory()
 		end)
 		if not ok or not history then
 			return
 		end
+		if reset then
+			table.clear(entries)
+		end
 		local delta = count - previous
+		historyGeneration = generation
 		lastSeenCount = count
 		local n = math.min(delta, #history, MAX_MESSAGES_PER_POLL)
 		if n <= 0 then
