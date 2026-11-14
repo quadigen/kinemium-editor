@@ -1,5 +1,5 @@
 local UserInputService = game:GetService("UserInputService")
-local wobblyEffect = require("./wobbly")
+local wobblyEffect = require("@internal/Components/wobbly")
 
 return function(ctx)
 	local UI = ctx.UI
