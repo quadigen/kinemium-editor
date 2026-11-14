@@ -1,5 +1,4 @@
 local UserInputService = game:GetService("UserInputService")
-local wobblyEffect = require("@internal/Components/wobbly")
 
 return function(ctx)
 	local UI = ctx.UI
@@ -207,8 +206,6 @@ return function(ctx)
 					border = false,
 				}
 			)
-
-			local wobbler = wobblyEffect(panel, dragHandle)
 
 			dragHandle.Name = "DragHandle"
 
