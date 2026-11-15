@@ -218,11 +218,13 @@ local panel, content = UI.window(
 	"Interface Designer",
 	{ closable = true }
 )
-panel.Parent = overlay
+panel.Parent = UI.widgetOverlay()
 panel.Visible = false
+panel.BackgroundTransparency = 0.5
 panel.ClipsDescendants = true
-panel.BackgroundTransparency = 0.14
 content.BackgroundTransparency = 1
+
+UI.backdrop(panel, 15, Color3.new(0, 0, 0))
 
 local windowBounds = make("Frame", {
 	Name = "GUIDesignerWindowBounds",
