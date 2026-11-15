@@ -543,26 +543,10 @@ local VIEW_OVERSCAN = 6
 local SEARCH_DEBOUNCE = 0.20
 local SCAN_FRAME_BUDGET = 0.004
 
-local classes = {
-	Script = true,
-	LocalScript = true,
-	ModuleScript = true,
-	UIShader = true,
-	RuntimeShader = true,
-	PostProcess = true,
-	MaterialVariant = true,
-}
-
+-- Find code directly in the DataModel. No ScriptEditorService or other
+-- script-discovery service is required: each supported script exposes Source.
 local scriptClasses = { Script = true, LocalScript = true, ModuleScript = true }
-local sourceTypes = {
-	Script = { "Source" },
-	LocalScript = { "Source" },
-	ModuleScript = { "Source" },
-	UIShader = { "Source" },
-	RuntimeShader = { "Source" },
-	PostProcess = { "Source" },
-	MaterialVariant = { "Source", "VertexSource", "FragmentSource" },
-}
+local classes = { Script = true, LocalScript = true, ModuleScript = true }
 
 local serviceOrder = {
 	Workspace = 1,
@@ -677,7 +661,7 @@ local filterFrame = UI.create("Frame", {
 	BackgroundTransparency = 0.22,
 	BorderSizePixel = 0,
 	Position = UDim2.fromOffset(inset, 64),
-	Size = UDim2.new(1, -inset * 2, 0, 256),
+	Size = UDim2.new(1, -inset * 2, 0, 230),
 	Visible = false,
 	ClipsDescendants = true,
 }, content)
@@ -687,7 +671,7 @@ local filterScroll = UI.create("ScrollingFrame", {
 	BackgroundTransparency = 1,
 	BorderSizePixel = 0,
 	Size = UDim2.fromScale(1, 1),
-	CanvasSize = UDim2.fromOffset(0, 336),
+	CanvasSize = UDim2.fromOffset(0, 233),
 	ScrollBarThickness = 4,
 	ScrollingEnabled = true,
 	ClipsDescendants = true,
@@ -723,16 +707,12 @@ local function classFilter(name, key, y)
 	end, { size = UDim2.new(1, -16, 0, 25) })
 end
 
-filterCaption("SEARCH SOURCE TYPES", 113)
+filterCaption("SCRIPT TYPES", 113)
 classFilter("Script", "Script", 133)
 classFilter("LocalScript", "LocalScript", 157)
 classFilter("ModuleScript", "ModuleScript", 181)
-classFilter("UIShader", "UIShader", 205)
-classFilter("RuntimeShader", "RuntimeShader", 229)
-classFilter("PostProcess", "PostProcess", 253)
-classFilter("MaterialVariant", "MaterialVariant", 277)
 
-local scopeBox = UI.checkbox(filterScroll, "Selection only", UDim2.fromOffset(8, 301), selectedOnly, function(value)
+local scopeBox = UI.checkbox(filterScroll, "Selection only", UDim2.fromOffset(8, 205), selectedOnly, function(value)
 	selectedOnly = value
 	requestSearch()
 end, { size = UDim2.new(1, -16, 0, 25) })
@@ -775,7 +755,7 @@ UI.corner(list, tokens.radius.md)
 
 updateLayout = function()
 	filterFrame.Visible = filterOpen
-	local filterBottom = filterOpen and 324 or 60
+	local filterBottom = filterOpen and 294 or 60
 	statusLabel.Position = UDim2.fromOffset(inset + 3, filterBottom + 3)
 	list.Position = UDim2.fromOffset(inset, filterBottom + 27)
 	list.Size = UDim2.new(1, -inset * 2, 1, -(filterBottom + 33))
@@ -789,22 +769,11 @@ local function safePath(object)
 	return ok and path or tostring(object.Name)
 end
 
-local scriptEditorService
-pcall(function()
-	scriptEditorService = game:GetService("ScriptEditorService")
-end)
-
-local function getSource(object, property)
-	if property == "Source" and scriptClasses[object.ClassName] and scriptEditorService then
-		local ok, value = pcall(function()
-			return scriptEditorService:GetEditorSource(object)
-		end)
-		if ok and type(value) == "string" then
-			return value
-		end
-	end
+local function getSource(object)
+	-- Source is read from the actual Script, LocalScript, or ModuleScript.
+	-- pcall protects the search against unreadable or removed instances.
 	local ok, value = pcall(function()
-		return object[property]
+		return object.Source
 	end)
 	if ok and type(value) == "string" then
 		return value
@@ -1026,22 +995,9 @@ local function openNode(node)
 		return
 	end
 	selectNode(node, false)
-	local hit = node.hit
 	local object = node.object
 	task.spawn(function()
-		if scriptClasses[object.ClassName] and scriptEditorService then
-			local ok, opened = pcall(function()
-				return scriptEditorService:OpenScriptDocumentAsync(object, {
-					HighlightRange = {
-						Start = { Line = hit.line, Character = hit.column },
-						End = { Line = hit.line, Character = hit.column + math.max(1, hit.length) },
-					},
-				})
-			end)
-			if ok and opened ~= false then
-				return
-			end
-		end
+		-- Uses the editor's existing opener rather than ScriptEditorService.
 		local ok, err = pcall(function()
 			viewport.OpenScript(object)
 		end)
@@ -1230,10 +1186,6 @@ local function scanSource(object, property, source, finder, token, matchesLeft)
 	return hits
 end
 
-local function isVisibleRoot(instance)
-	return instance and instance ~= game
-end
-
 local function startSearch()
 	revision += 1
 	local token = revision
@@ -1263,84 +1215,104 @@ local function startSearch()
 	local selected = selectedOnly
 	local includedClasses = table.clone(classes)
 	jobActive = true
-	setStatus("Searching project...")
+	setStatus("Searching all scripts in game...")
 
 	task.spawn(function()
 		local started = os.clock()
-		local queue = {}
+		-- Traverse the whole game hierarchy, including nested folders/models
+		-- and scripts inside services. A stack avoids a single expensive
+		-- game:GetDescendants() allocation and permits yielding while scanning.
+		local stack = {}
 		if selected then
 			for _, object in ipairs(Selection:Get() or {}) do
-				queue[#queue + 1] = object
+				stack[#stack + 1] = object
 			end
 		else
-			for _, object in ipairs(game:GetChildren()) do
-				queue[#queue + 1] = object
-			end
+			stack[1] = game
 		end
+
 		local seen = {}
-		local inspected, sources, unreadable, limited = 0, 0, 0, 0
+		local inspected, scriptsFound, sources, unreadable, limited = 0, 0, 0, 0, 0
 		local lastYield = os.clock()
 
-		while #queue > 0 and matchCount < MAX_MATCHES do
+		while #stack > 0 and matchCount < MAX_MATCHES do
 			if token ~= revision then
 				return
 			end
-			local object = table.remove(queue)
-			if object and isVisibleRoot(object) and not seen[object] then
+			local object = table.remove(stack)
+			if object and not seen[object] then
 				seen[object] = true
-				inspected += 1
-				local className = object.ClassName
-				if includedClasses[className] then
-					local path = safePath(object)
-					if allowedPath(path, included, excluded) then
-						for _, property in ipairs(sourceTypes[className]) do
-							if token ~= revision then
-								return
-							end
-							local source = getSource(object, property)
-							if source == nil then
-								unreadable += 1
-							else
-								sources += 1
-								if source ~= "" then
-									local hits, warning =
-										scanSource(object, property, source, finder, token, MAX_MATCHES - matchCount)
-									if not hits then
-										return
-									end
-									if warning then
-										limited += 1
-									end
-									if #hits > 0 then
-										documents[#documents + 1] = {
-											object = object,
-											property = property,
-											hits = hits,
-											path = path,
-										}
-										matchCount += #hits
+				if object ~= game then
+					inspected += 1
+					local className = object.ClassName
+					if scriptClasses[className] then
+						scriptsFound += 1
+						if includedClasses[className] then
+							local path = safePath(object)
+							if allowedPath(path, included, excluded) then
+								local source = getSource(object)
+								if source == nil then
+									unreadable += 1
+								else
+									sources += 1
+									if source ~= "" then
+										local hits, warning = scanSource(
+											object,
+											"Source",
+											source,
+											finder,
+											token,
+											MAX_MATCHES - matchCount
+										)
+										if not hits then
+											return
+										end
+										if warning then
+											limited += 1
+										end
+										if #hits > 0 then
+											documents[#documents + 1] = {
+												object = object,
+												property = "Source",
+												hits = hits,
+												path = path,
+											}
+											matchCount += #hits
+										end
 									end
 								end
 							end
 						end
 					end
 				end
-				-- Keep walking children even when this object is excluded by path: a
-				-- matching child may have a different full path or class.
-				for _, child in ipairs(object:GetChildren()) do
-					if not seen[child] then
-						queue[#queue + 1] = child
+
+				-- Do not restrict the traversal to particular services:
+				-- visit every descendant of game (or the selected roots).
+				-- Even excluded parents must be traversed to reach scripts.
+				local ok, children = pcall(function()
+					return object:GetChildren()
+				end)
+				if ok then
+					for i = #children, 1, -1 do
+						stack[#stack + 1] = children[i]
 					end
 				end
 			end
+
 			if inspected % 96 == 0 or os.clock() - lastYield > SCAN_FRAME_BUDGET then
 				setStatus(
-					string.format("Searching... %d objects · %d sources · %d matches", inspected, sources, matchCount)
+					string.format(
+						"Searching... %d objects · %d scripts · %d matches",
+						inspected,
+						scriptsFound,
+						matchCount
+					)
 				)
 				task.wait()
 				lastYield = os.clock()
 			end
 		end
+
 		if token ~= revision then
 			return
 		end
@@ -1355,15 +1327,17 @@ local function startSearch()
 		local limit = matchCount >= MAX_MATCHES and " · result limit reached" or ""
 		local warnings = (unreadable > 0 and (" · " .. unreadable .. " unreadable") or "")
 			.. (limited > 0 and (" · " .. limited .. " regex-limited") or "")
-		local message = string.format(
-			"%d matches · %d sources · %.2fs%s%s",
-			matchCount,
-			#documents,
-			os.clock() - started,
-			limit,
-			warnings
+		setStatus(
+			string.format(
+				"%d matches · %d scripts found · %d sources searched · %.2fs%s%s",
+				matchCount,
+				scriptsFound,
+				sources,
+				os.clock() - started,
+				limit,
+				warnings
+			)
 		)
-		setStatus(message)
 		jobActive = false
 	end)
 end
@@ -1473,6 +1447,7 @@ local function disable()
 	revision += 1
 end
 
+-- Same module-controller contract as the rest of the built-in editor tools.
 return {
 	Enable = enable,
 	Disable = disable,
