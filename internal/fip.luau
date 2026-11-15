@@ -1514,7 +1514,6 @@ local function disable()
 	revision += 1
 end
 
--- Same module-controller contract as the rest of the built-in editor tools.
 return {
 	Enable = enable,
 	Disable = disable,

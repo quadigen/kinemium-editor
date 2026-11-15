@@ -11,6 +11,7 @@ return {
 			name = "Find In Project",
 			icon = "Stop.svg",
 			callback = function()
+				print("Find In Project")
 				fip.Toggle()
 			end,
 		},
