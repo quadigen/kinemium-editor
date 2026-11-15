@@ -1356,7 +1356,7 @@ end
 input.TextChanged:Connect(requestSearch)
 includeInput.TextChanged:Connect(requestSearch)
 excludeInput.TextChanged:Connect(requestSearch)
-input.TextSubmitted:Connect(startSearch)
+input.FocusLost:Connect(startSearch)
 
 local function ctrlDown()
 	return UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) or UserInputService:IsKeyDown(Enum.KeyCode.RightControl)
