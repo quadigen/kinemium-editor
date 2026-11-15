@@ -2,7 +2,7 @@ return function(ctx)
 	local UI = ctx.UI
 
 	function UI.frame(parent, position, size, color, radius)
-		local frame = UI.create("CanvasGroup", {
+		local frame = UI.create("Frame", {
 
 			Position = position or UDim2.fromOffset(0, 0),
 
