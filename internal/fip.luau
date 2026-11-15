@@ -569,13 +569,11 @@ local panel, content = UI.window(
 	{ closable = true }
 )
 
-content.BackgroundTransparency = 1
+panel.Parent = UI.widgetOverlay()
 panel.Visible = false
 panel.BackgroundTransparency = 0.5
 panel.ClipsDescendants = true
-panel.Parent = gui
-
-UI.backdrop(panel, 15, Color3.new(0, 0, 0))
+content.BackgroundTransparency = 1
 
 local inset = UI.metrics.panelInset
 local inputHeight = UI.metrics.inputHeight
