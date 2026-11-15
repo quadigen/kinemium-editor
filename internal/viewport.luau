@@ -105,7 +105,13 @@ UI.keepSceneHelper(arcHandles)
 arcHandles.Parent = workspace
 
 local viewportSettings = {}
-for _, key in ipairs({ "viewportGrid", "viewportAxes", "viewportGizmos", "viewportSelectionOutline", "viewportCameraControls" }) do
+for _, key in ipairs({
+	"viewportGrid",
+	"viewportAxes",
+	"viewportGizmos",
+	"viewportSelectionOutline",
+	"viewportCameraControls",
+}) do
 	Preferences.observe(key, function(value)
 		viewportSettings[key] = value
 	end)
@@ -172,7 +178,10 @@ local playGroup, playControls = UI.iconButtonGroup(header, UDim2.fromScale(0.5, 
 				UI.toast("playtest", { type = "warning", title = "Enable a server or client to playtest" })
 				return
 			end
-			Playtest.start(disable_server_bool and "Client" or disable_client_bool and "Server" or nil, startSinglePlayer)
+			Playtest.start(
+				disable_server_bool and "Client" or disable_client_bool and "Server" or nil,
+				startSinglePlayer
+			)
 		end,
 	},
 	{ separator = true },
@@ -490,7 +499,9 @@ fpsText.Position = UDim2.new(1, 0, 1, 0)
 fpsText.AnchorPoint = Vector2.new(1, 1)
 fpsText.Size = UDim2.new(0, 0, 0, 30)
 fpsText.AutomaticSize = Enum.AutomaticSize.XY
-Preferences.observe("showPerformanceStats", function(value) fpsText.Visible = value end)
+Preferences.observe("showPerformanceStats", function(value)
+	fpsText.Visible = value
+end)
 
 local breadcrumb = UI.group(viewportOverlay, UDim2.new(0, 8, 1, -30), UDim2.new(1, -16, 0, 26), {
 	color = tokens.color.surface,
@@ -738,7 +749,9 @@ end)
 updateGizmos()
 
 Preferences.Changed:Connect(function(key)
-	if key == "viewportGizmos" or key == "viewportSelectionOutline" then updateGizmos() end
+	if key == "viewportGizmos" or key == "viewportSelectionOutline" then
+		updateGizmos()
+	end
 	if key == "viewportSelectionOutline" and not viewportSettings.viewportSelectionOutline then
 		dropHighlight.Visible = false
 	end
@@ -911,13 +924,20 @@ end
 local lastGridCFrame, lastGridFocus, lastGridSize, lastGridOrigin, lastGridDimension
 local function updateGrid()
 	grid.Visible = viewportSettings.viewportGrid and not scriptRoot.Visible and rootOverlay.Enabled
-	if not grid.Visible then return end
+	if not grid.Visible then
+		return
+	end
 	local camera = workspace.CurrentCamera
 	local origin, size = grid.AbsolutePosition, grid.AbsoluteSize
 	local dimension = renderer.Dimension
 	local cframe, focus = camera and camera.CFrame, camera and camera.Focus
-	if cframe == lastGridCFrame and focus == lastGridFocus and size == lastGridSize
-		and origin == lastGridOrigin and dimension == lastGridDimension then
+	if
+		cframe == lastGridCFrame
+		and focus == lastGridFocus
+		and size == lastGridSize
+		and origin == lastGridOrigin
+		and dimension == lastGridDimension
+	then
 		return
 	end
 	lastGridCFrame, lastGridFocus = cframe, focus
@@ -926,7 +946,9 @@ local function updateGrid()
 	local is3D = dimension == "3D"
 	local function project(point)
 		local _, x, y = camera:WorldToViewportPoint(point)
-		if x == nil or y == nil then return nil end
+		if x == nil or y == nil then
+			return nil
+		end
 		local screen = viewportToScreenPoint(Vector2.new(x, y))
 		return screen and (screen - origin)
 	end
@@ -1014,7 +1036,6 @@ renderer.Pool.new("2da", function()
 	toolbar.Position = UDim2.fromOffset(renderer.Dimension == "2D" and 22 or 8, 8 + overlayInset)
 
 	if styleBar then
-		-- toolbar's height can animate, so follow its live size
 		styleBar.Position = UDim2.fromOffset(
 			toolbar.Position.X.Offset,
 			toolbar.Position.Y.Offset + toolbar.AbsoluteSize.Y + STYLE_BAR_GAP
@@ -1088,8 +1109,6 @@ local API = {
 		end
 	end,
 
-	-- Goes through toolControls so the radio indicator, activeTool, gizmos and
-	-- color picker all update via the Changed handler above.
 	ActivateTool = function(tool: "select" | "size" | "rotate" | "position")
 		local tools = {
 			select = "Select",

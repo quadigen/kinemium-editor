@@ -83,7 +83,6 @@ local DIAGNOSTIC_DELAY = 0.18
 
 local CODE_CHAR_WIDTH = 8
 
-
 local AUTO_END_BLOCKS = true
 
 local COMMIT_DELAY = 0.35
@@ -2490,6 +2489,11 @@ function CodeEditor.new(parent)
 
 	self:bindTheme(editor, "BackgroundColor3", "input")
 	self:bindTheme(editor, "TextColor3", "text")
+	self:bindTheme(editor, "SelectionColor3", "accent")
+	self:bindTheme(editor, "BracketMatchColor3", "accent")
+	self:bindTheme(editor, "CurrentLineColor3", "accent")
+	self:bindTheme(editor, "MinimapColor3", "panel")
+	self:bindTheme(editor, "GutterColor3", "panel")
 
 	self.Highlighter = UI.create("SyntaxHighlighter", { Parent = editor })
 	UI.create("UIBackdrop", { Parent = editor })
@@ -2783,7 +2787,9 @@ function CodeEditor.new(parent)
 		local property = editorProperties[key]
 		if property then
 			local value = Preferences.get(key)
-			if key == "tabSize" then value = tonumber(value) or 4 end
+			if key == "tabSize" then
+				value = tonumber(value) or 4
+			end
 			editor[property] = value
 		elseif key == "diagnostics" then
 			UI.shared().scriptDiagnostics = Preferences.get(key)
@@ -2799,7 +2805,9 @@ function CodeEditor.new(parent)
 			editor.TextEditable = not Preferences.get("vimMode")
 		end
 	end
-	for key in pairs(editorProperties) do applyPreference(key) end
+	for key in pairs(editorProperties) do
+		applyPreference(key)
+	end
 	applyPreference("vimMode")
 	self:connect(Preferences.Changed, applyPreference)
 
@@ -2988,11 +2996,15 @@ function CodeEditor:updateShaderStatus(document)
 	if document and document.instance and not document.language.luau and document.source == document.committed then
 		message = document.instance.LastError or ""
 	end
-	if self.shaderError == message then return end
+	if self.shaderError == message then
+		return
+	end
 	self.shaderError = message
 	self.statusText = nil
 	if message == "" then
-		if self.diagnosticShown and self.diagnosticShown.Shader then self:hideDiagnosticPopup() end
+		if self.diagnosticShown and self.diagnosticShown.Shader then
+			self:hideDiagnosticPopup()
+		end
 	end
 end
 
@@ -3550,7 +3562,13 @@ end
 
 function CodeEditor:goToDiagnostic()
 	if self.shaderError and self.shaderError ~= "" then
-		self:showDiagnosticPopup({ Kind = "Shader compiler", Line = 1, Column = 1, Message = self.shaderError, Shader = true })
+		self:showDiagnosticPopup({
+			Kind = "Shader compiler",
+			Line = 1,
+			Column = 1,
+			Message = self.shaderError,
+			Shader = true,
+		})
 		self.diagnosticPinned = true
 		self.pinnedCursor = self.TextBox.CursorPosition
 		return
@@ -5310,7 +5328,13 @@ function CodeEditor:autoEdit()
 		local removed = string.sub(old, cursor, cursor)
 		local after = string.sub(text, cursor, cursor)
 
-		if after ~= "" and ((closeBrackets and OPEN_BRACKETS[removed] == after) or (closeQuotes and QUOTES[removed] and removed == after)) then
+		if
+			after ~= ""
+			and (
+				(closeBrackets and OPEN_BRACKETS[removed] == after)
+				or (closeQuotes and QUOTES[removed] and removed == after)
+			)
+		then
 			box:ReplaceRange(cursor, cursor + 1, "")
 			self.lastText = box.Text
 		end
@@ -5480,7 +5504,9 @@ function CodeEditor:hideDiagnosticPopup()
 end
 
 function CodeEditor:diagnosticAnchor(diagnostic)
-	if diagnostic.Hover then return self.lastMouse end
+	if diagnostic.Hover then
+		return self.lastMouse
+	end
 	local box = self.TextBox
 	local caret = box.CaretScreenPosition
 
@@ -5586,11 +5612,8 @@ function CodeEditor:showDiagnosticPopup(diagnostic, automatic)
 
 	local line = math.max(1, math.floor(tonumber(diagnostic.Line) or 1))
 	local message = diagnosticMessages(self.diagnostics, diagnostic)
-	self.DiagnosticTitle.Text = (diagnostic.Hover or diagnostic.Shader) and diagnostic.Kind or (diagnostic.Kind or "Syntax error")
-		.. " · Ln "
-		.. line
-		.. ", Col "
-		.. diagnostic.Column
+	self.DiagnosticTitle.Text = (diagnostic.Hover or diagnostic.Shader) and diagnostic.Kind
+		or (diagnostic.Kind or "Syntax error") .. " · Ln " .. line .. ", Col " .. diagnostic.Column
 	self.DiagnosticText.Text = message
 
 	local screen = workspace:GetWindowDimensions()
@@ -5746,7 +5769,9 @@ function CodeEditor:handleShortcut(keyCode)
 end
 
 function CodeEditor:handleVim(key)
-	if not Preferences.get("vimMode") or modifierHeld() or altHeld() then return false end
+	if not Preferences.get("vimMode") or modifierHeld() or altHeld() then
+		return false
+	end
 	local K = Enum.KeyCode
 	if key == K.Escape then
 		self.vimInsert = false
@@ -5755,7 +5780,9 @@ function CodeEditor:handleVim(key)
 		self:notify("-- NORMAL --")
 		return true
 	end
-	if self.vimInsert then return false end
+	if self.vimInsert then
+		return false
+	end
 	local box = self.TextBox
 	local cursor = math.max(1, box.CursorPosition)
 	local first, last = lineBounds(box.Text, cursor)
@@ -5768,9 +5795,13 @@ function CodeEditor:handleVim(key)
 		box.TextEditable = true
 		self:notify("-- INSERT --")
 	elseif key == K.H then
-		if cursor > first then box.CursorPosition = utf8.offset(box.Text, -1, cursor) or first end
+		if cursor > first then
+			box.CursorPosition = utf8.offset(box.Text, -1, cursor) or first
+		end
 	elseif key == K.L then
-		if cursor < last then box.CursorPosition = utf8.offset(box.Text, 2, cursor) or last end
+		if cursor < last then
+			box.CursorPosition = utf8.offset(box.Text, 2, cursor) or last
+		end
 	elseif key == K.J then
 		moveLine(1)
 	elseif key == K.K then
@@ -5906,7 +5937,12 @@ function CodeEditor:wireEditor()
 		local hit = self.TextBox:DiagnosticAtPoint(x - absolute.X, y - absolute.Y)
 		local current = self.currentDiagnostic
 
-		if Preferences.get("hoverDocumentation") and hit ~= nil and current ~= nil and UI.shared().scriptDiagnostics then
+		if
+			Preferences.get("hoverDocumentation")
+			and hit ~= nil
+			and current ~= nil
+			and UI.shared().scriptDiagnostics
+		then
 			for _, diagnostic in ipairs(self.diagnostics or {}) do
 				if
 					diagnostic.Line == hit.Line
@@ -5922,18 +5958,27 @@ function CodeEditor:wireEditor()
 			self:hideDiagnosticPopup()
 			if self:isLuauDocument() and Preferences.get("hoverDocumentation") then
 				local point = Vector2.new(x - absolute.X, y - absolute.Y)
-				local ok, position = pcall(function() return self.TextBox:PositionAtPoint(point.X, point.Y) end)
+				local ok, position = pcall(function()
+					return self.TextBox:PositionAtPoint(point.X, point.Y)
+				end)
 				if ok and position then
 					local first, finish = identifierAt(self.TextBox.Text, position)
 					if first then
 						local text = self.TextBox.Text
 						local word = string.sub(text, first, finish - 1)
 						local receiver = string.match(string.sub(text, 1, first - 1), "([%w_%.:]+[%.:])$") or ""
-						local params, returns = lookupSignature(receiver .. word, self:ensureAliases(), self.activeDocument)
+						local params, returns =
+							lookupSignature(receiver .. word, self:ensureAliases(), self.activeDocument)
 						if params then
 							self:showDiagnosticPopup({
-								Kind = "API documentation", Line = 1, Column = 1,
-								Message = word .. "(" .. table.concat(params, ", ") .. ")" .. (returns and " → " .. returns or ""),
+								Kind = "API documentation",
+								Line = 1,
+								Column = 1,
+								Message = word
+									.. "("
+									.. table.concat(params, ", ")
+									.. ")"
+									.. (returns and " → " .. returns or ""),
 								Hover = true,
 							})
 						end
@@ -6028,7 +6073,9 @@ function CodeEditor:wireEditor()
 			self:saveActive()
 			return
 		end
-		if #self.suggestions == 0 then return end
+		if #self.suggestions == 0 then
+			return
+		end
 
 		if keyCode == Enum.KeyCode.Up then
 			self:moveSuggestion(-1)
