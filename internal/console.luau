@@ -215,7 +215,8 @@ local function createConsole()
 
 	local function formatTime(timestamp)
 		local seconds = math.floor(tonumber(timestamp) or 0)
-		local iso = os.date("!%Y-%m-%d", seconds)
+		local parts = os.date("!*t", seconds)
+		local iso = string.format("%04d-%02d-%02d", parts.year, parts.month, parts.day)
 		local year, month, day = string.match(iso, "^(%d+)-(%d%d)-(%d%d)$")
 		local date = iso
 		if year then
