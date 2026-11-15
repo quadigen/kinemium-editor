@@ -563,22 +563,19 @@ local serviceOrder = {
 
 local panel, content = UI.window(
 	"FindInPlace",
-	UDim2.new(
-		theme.ExplorerCoordinates.Position.X.Scale,
-		theme.ExplorerCoordinates.Position.X.Offset + 40,
-		theme.ExplorerCoordinates.Position.Y.Scale,
-		theme.ExplorerCoordinates.Position.Y.Offset + 36
-	),
-	theme.ExplorerCoordinates.Size,
+	UDim2.fromOffset(120, 120),
+	UDim2.fromOffset(380, 540),
 	"Find in Place",
 	{ closable = true }
 )
 
-panel.Parent = UI.widgetOverlay()
+content.BackgroundTransparency = 1
 panel.Visible = false
 panel.BackgroundTransparency = 0.5
 panel.ClipsDescendants = true
-content.BackgroundTransparency = 1
+panel.Parent = gui
+
+UI.backdrop(panel, 15, Color3.new(0, 0, 0))
 
 local inset = UI.metrics.panelInset
 local inputHeight = UI.metrics.inputHeight
