@@ -215,7 +215,7 @@ local function createConsole()
 
 	local function formatTime(timestamp)
 		local seconds = math.floor(tonumber(timestamp) or 0)
-		local iso = DateTime.fromUnixTimestamp(seconds).fromIsoDate
+		local iso = os.date("!%Y-%m-%d", seconds)
 		local year, month, day = string.match(iso, "^(%d+)-(%d%d)-(%d%d)$")
 		local date = iso
 		if year then
@@ -234,7 +234,14 @@ local function createConsole()
 		if Preferences.get("hour24") then
 			return string.format("%s %02d:%02d:%02d", date, hour, minute, second)
 		end
-		return string.format("%s %02d:%02d:%02d %s", date, (hour + 11) % 12 + 1, minute, second, hour < 12 and "AM" or "PM")
+		return string.format(
+			"%s %02d:%02d:%02d %s",
+			date,
+			(hour + 11) % 12 + 1,
+			minute,
+			second,
+			hour < 12 and "AM" or "PM"
+		)
 	end
 
 	local function preview(value, quoteStrings)
@@ -389,8 +396,15 @@ local function createConsole()
 	end
 
 	local function passes(node)
-		if node.playtest and not Preferences.get("playtestOutput") then return false end
-		if not node.playtest and node.kind == "Info" and not Preferences.get("verboseLogging") and activeFilter == "All" then
+		if node.playtest and not Preferences.get("playtestOutput") then
+			return false
+		end
+		if
+			not node.playtest
+			and node.kind == "Info"
+			and not Preferences.get("verboseLogging")
+			and activeFilter == "All"
+		then
 			return false
 		end
 		if activeFilter ~= "All" and node.kind ~= activeFilter then
@@ -798,13 +812,17 @@ local function createConsole()
 
 	local connection = Preferences.Changed:Connect(function(key)
 		if key == "hour24" or key == "dateFormat" then
-			for _, node in ipairs(entries) do node.time = formatTime(node.timestamp) end
+			for _, node in ipairs(entries) do
+				node.time = formatTime(node.timestamp)
+			end
 		elseif key ~= "playtestOutput" and key ~= "verboseLogging" then
 			return
 		end
 		rebuild(false)
 	end)
-	panel.Destroying:Connect(function() connection:Disconnect() end)
+	panel.Destroying:Connect(function()
+		connection:Disconnect()
+	end)
 	poll()
 	return {
 		window = panel,
