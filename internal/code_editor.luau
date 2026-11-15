@@ -2484,6 +2484,7 @@ function CodeEditor.new(parent)
 		Active = true,
 		AutoIndent = true,
 		ShowMinimap = true,
+		ShowWhitespace = true,
 		BackgroundTransparency = 0.3,
 	}, parent)
 
