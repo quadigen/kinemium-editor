@@ -3,9 +3,12 @@ if IsServer or IsClient or IsPlaytest then
 end
 
 local UI = require("@internal/editor_ui")
+local tokens = UI.tokens
+local colors = tokens.color
+local metrics = UI.metrics
+local StudioThemeService = game:GetService("StudioThemeService")
 local ProfilerService = game:GetService("ProfilerService")
 local RunService = game:GetService("RunService")
-local UserInputService = game:GetService("UserInputService")
 
 local WINDOW_W, WINDOW_H = 1120, 670
 local GRAPH_POINTS = 96
@@ -14,21 +17,57 @@ local PAINT_INTERVAL = 0.15
 local MAX_ZONES = 180
 local DETAIL_LIVE_INTERVAL = 0.45
 local MAX_LANES = 32
-local ROW_H = 25
+local ROW_H = math.max(24, metrics.treeRow or 22)
 
 local C = {
-	background = Color3.fromRGB(31, 32, 35),
-	panel = Color3.fromRGB(42, 43, 46),
-	strip = Color3.fromRGB(49, 50, 53),
-	row = Color3.fromRGB(44, 45, 49),
-	rowAlt = Color3.fromRGB(39, 40, 43),
-	hover = Color3.fromRGB(64, 67, 73),
-	outline = Color3.fromRGB(70, 72, 77),
-	text = Color3.fromRGB(229, 230, 233),
-	dim = Color3.fromRGB(161, 164, 171),
-	accent = Color3.fromRGB(92, 165, 227),
-	selection = Color3.fromRGB(222, 226, 234),
+	background = colors.surface,
+	panel = colors.panel,
+	strip = colors.input,
+	row = colors.rowOdd,
+	rowAlt = colors.rowEven,
+	hover = colors.hover,
+	pressed = colors.pressed,
+	outline = colors.subtext,
+	text = colors.text,
+	dim = colors.subtext,
+	accent = colors.selection or colors.text,
+	selection = colors.text,
 }
+
+local themed = setmetatable({}, { __mode = "k" })
+local function trackTheme(object, property, color)
+	for role, value in pairs(C) do
+		if value == color and role ~= "pressed" then
+			local props = themed[object] or {}
+			props[property] = role
+			themed[object] = props
+			break
+		end
+	end
+end
+
+local function themeRepaint()
+	local palette = UI.tokens.color
+	C.background = palette.surface
+	C.panel = palette.panel
+	C.strip = palette.input
+	C.row = palette.rowOdd
+	C.rowAlt = palette.rowEven
+	C.hover = palette.hover
+	C.pressed = palette.pressed
+	C.outline = palette.subtext
+	C.text = palette.text
+	C.dim = palette.subtext
+	C.accent = palette.selection or palette.text
+	C.selection = palette.text
+	for object, properties in pairs(themed) do
+		if object.Parent then
+			for property, role in pairs(properties) do
+				object[property] = C[role]
+			end
+		end
+	end
+end
 
 -- The names match the reference image. Categories are heuristics based on zone names,
 -- not native, exclusive profiler counters.
@@ -116,68 +155,96 @@ local function zoneColor(zone)
 	return categories[categoryByKey[categorize(zone.name)]].color
 end
 
+-- Prefer editor_ui primitives for all window chrome and controls.
+-- Custom timeline bars use UI.create because they are chart primitives.
 local function make(className, parent, props)
-	local object = Instance.new(className)
-	for key, value in pairs(props or {}) do
-		object[key] = value
-	end
-	object.Parent = parent
-	return object
+	return UI.create(className, props or {}, parent)
 end
 
 local function frame(parent, position, size, color, name)
-	return make("Frame", parent, {
+	local f = UI.create("Frame", {
 		Name = name or "Frame",
 		Position = position,
 		Size = size,
 		BackgroundColor3 = color or C.panel,
 		BorderSizePixel = 0,
 		ClipsDescendants = true,
-	})
+	}, parent)
+	trackTheme(f, "BackgroundColor3", color or C.panel)
+	return f
+end
+
+local function uiTextSize(requested)
+	if requested <= 10 then
+		return tokens.type.caption
+	end
+	if requested <= 11 then
+		return tokens.type.small
+	end
+	if requested <= 13 then
+		return tokens.type.body
+	end
+	return tokens.type.title
 end
 
 local function label(parent, value, position, size, fontSize, color, align)
-	return make("TextLabel", parent, {
-		Text = tostring(value or ""),
-		Position = position,
-		Size = size,
-		BackgroundTransparency = 1,
-		BorderSizePixel = 0,
-		TextSize = fontSize or 12,
-		TextColor3 = color or C.text,
-		TextXAlignment = align or Enum.TextXAlignment.Left,
-		TextYAlignment = Enum.TextYAlignment.Center,
-	})
+	local l = UI.label(parent, tostring(value or ""), position, size, uiTextSize(fontSize or 12), color or C.text)
+	l.TextXAlignment = align or Enum.TextXAlignment.Left
+	l.TextYAlignment = Enum.TextYAlignment.Center
+	trackTheme(l, "TextColor3", color or C.text)
+	return l
 end
 
-local function button(parent, value, position, size, action)
-	local b = make("TextButton", parent, {
-		Text = value,
-		Position = position,
-		Size = size,
-		BorderSizePixel = 0,
-		BackgroundColor3 = C.strip,
-		TextSize = 12,
-		TextColor3 = C.text,
-	})
-	if action then
-		b.MouseButton1Click:Connect(action)
+local buttonLabels = setmetatable({}, { __mode = "k" })
+local buttonRecords = setmetatable({}, { __mode = "k" })
+local function button(parent, value, position, size, action, extra)
+	local opts = {
+		color = C.strip,
+		hoverColor = C.hover,
+		pressedColor = C.pressed,
+		textColor = C.text,
+		textSize = tokens.type.small,
+		radius = tokens.radius.sm,
+		border = false,
+	}
+	if extra then
+		for key, val in pairs(extra) do
+			opts[key] = val
+		end
 	end
+	local b, caption, state = UI.button(parent, value, position, size, action, opts)
+	-- Button chrome follows editor_ui hover / pressed / selected conventions.
+	buttonLabels[b] = caption
+	buttonRecords[b] = state
 	return b
 end
 
+local function setButtonText(b, value)
+	local caption = buttonLabels[b]
+	if caption then
+		caption.Text = value
+	else
+		b.Text = value
+	end
+end
+
 local function scroller(parent, position, size, color)
-	return make("ScrollingFrame", parent, {
+	local scroll = UI.create("ScrollingFrame", {
 		Position = position,
 		Size = size,
 		BackgroundColor3 = color or C.background,
+		BackgroundTransparency = 0.16,
 		BorderSizePixel = 0,
 		ScrollBarThickness = 5,
 		ScrollBarImageColor3 = C.dim,
+		ScrollBarImageTransparency = 0.35,
 		CanvasSize = UDim2.fromOffset(0, 0),
 		ClipsDescendants = true,
 		Active = true,
-	})
+	}, parent)
+	trackTheme(scroll, "BackgroundColor3", color or C.background)
+	trackTheme(scroll, "ScrollBarImageColor3", C.dim)
+	return scroll
 end
 
 local function safeCall(methodName, ...)
@@ -214,6 +281,9 @@ local function summarize(frameData)
 		total += duration
 	end
 
+	-- Zones can be nested or concurrent. Normalize the inclusive zone durations
+	-- to the measured frame time; otherwise a stacked chart would exceed 100%.
+	-- This chart is a visual breakdown, NOT exclusive per-subsystem CPU accounting.
 	if total > ms and total > 0 then
 		local scale = ms / total
 		for key, value in pairs(bucket) do
@@ -242,11 +312,13 @@ local panel, content = UI.window(
 )
 panel.Parent = gui
 panel.Visible = false
-content.BackgroundColor3 = C.background
-content.BackgroundTransparency = 0
+-- Inherit the content styling from UI.window, like Explorer / Material Maker.
+content.BackgroundTransparency = 1
+panel.BackgroundTransparency = 0.5
 content.ClipsDescendants = true
 
 local toolbar = frame(content, UDim2.fromOffset(0, 0), UDim2.new(1, 0, 0, 42), C.panel)
+toolbar.BackgroundTransparency = 0.35
 local liveLabel = label(toolbar, "LIVE", UDim2.fromOffset(12, 4), UDim2.fromOffset(52, 33), 12, C.accent)
 local readout = label(toolbar, "FPS --    Frame -- ms", UDim2.fromOffset(67, 4), UDim2.new(1, -420, 0, 33), 13)
 local pauseButton
@@ -256,15 +328,19 @@ local frameCounter =
 	label(toolbar, "-- / --", UDim2.new(1, -292, 0, 5), UDim2.fromOffset(82, 30), 11, C.dim, Enum.TextXAlignment.Right)
 
 local graphPanel = frame(content, UDim2.fromOffset(0, 43), UDim2.new(1, 0, 0, 218), C.background)
+graphPanel.BackgroundTransparency = 1
 local legend = frame(graphPanel, UDim2.fromOffset(0, 0), UDim2.new(0, 206, 1, 0), C.panel)
+UI.corner(legend, tokens.radius.sm)
 label(legend, "CPU Usage", UDim2.fromOffset(12, 6), UDim2.fromOffset(165, 22), 15)
 local legendHint =
 	label(legend, "Normalized named zones", UDim2.fromOffset(12, 28), UDim2.fromOffset(184, 16), 10, C.dim)
 
 local chartArea = frame(graphPanel, UDim2.fromOffset(207, 0), UDim2.new(1, -207, 1, 0), C.strip)
+UI.corner(chartArea, tokens.radius.sm)
 local graphHeader =
 	label(chartArea, "Frame history  -  96 samples", UDim2.fromOffset(10, 2), UDim2.new(1, -20, 0, 21), 11, C.dim)
 local chart = frame(chartArea, UDim2.fromOffset(8, 26), UDim2.new(1, -16, 1, -52), C.panel)
+UI.corner(chart, tokens.radius.sm)
 local graphFooter = label(
 	chartArea,
 	"16.67ms (60 FPS)     33.33ms (30 FPS)",
@@ -356,13 +432,14 @@ end
 
 local divider = frame(content, UDim2.fromOffset(0, 261), UDim2.new(1, 0, 0, 1), C.outline)
 local detailHead = frame(content, UDim2.fromOffset(0, 262), UDim2.new(1, 0, 0, 37), C.panel)
+detailHead.BackgroundTransparency = 0.35
 local tabs = {}
 for i, tabName in ipairs({ "Timeline", "Threads", "Scripts" }) do
 	tabs[tabName] = button(
 		detailHead,
 		tabName,
 		UDim2.fromOffset(10 + (i - 1) * 100, 5),
-		UDim2.fromOffset(94, 26),
+		UDim2.fromOffset(94, metrics.buttonHeight),
 		function()
 			activeTab = tabName
 			dirtyDetail = true
@@ -372,12 +449,12 @@ end
 local zoom = 1
 local zoomCaption =
 	label(detailHead, "1x", UDim2.new(1, -196, 0, 5), UDim2.fromOffset(36, 26), 12, C.dim, Enum.TextXAlignment.Center)
-button(detailHead, "-", UDim2.new(1, -232, 0, 5), UDim2.fromOffset(30, 26), function()
+button(detailHead, "-", UDim2.new(1, -232, 0, 5), UDim2.fromOffset(30, metrics.buttonHeight), function()
 	zoom = math.max(1, zoom / 2)
 	zoomCaption.Text = tostring(zoom) .. "x"
 	dirtyDetail = true
 end)
-button(detailHead, "+", UDim2.new(1, -156, 0, 5), UDim2.fromOffset(30, 26), function()
+button(detailHead, "+", UDim2.new(1, -156, 0, 5), UDim2.fromOffset(30, metrics.buttonHeight), function()
 	zoom = math.min(8, zoom * 2)
 	zoomCaption.Text = tostring(zoom) .. "x"
 	dirtyDetail = true
@@ -386,9 +463,11 @@ local detailCaption =
 	label(detailHead, "", UDim2.new(1, -118, 0, 5), UDim2.fromOffset(112, 26), 10, C.dim, Enum.TextXAlignment.Right)
 
 local detailBody = frame(content, UDim2.fromOffset(0, 300), UDim2.new(1, 0, 1, -324), C.background)
+detailBody.BackgroundTransparency = 1
 local laneNames = scroller(detailBody, UDim2.fromOffset(0, 0), UDim2.new(0, 206, 1, 0), C.panel)
 local laneCanvas = scroller(detailBody, UDim2.fromOffset(207, 0), UDim2.new(1, -207, 1, 0), C.background)
 local statusBar = frame(content, UDim2.new(0, 0, 1, -23), UDim2.new(1, 0, 0, 23), C.panel)
+statusBar.BackgroundTransparency = 0.3
 local statusLabel = label(statusBar, "Profiler ready", UDim2.fromOffset(10, 0), UDim2.new(1, -20, 1, 0), 10, C.dim)
 
 local laneObjects = {}
@@ -477,7 +556,7 @@ setPaused = function(value)
 		statusLabel.Text = "Pause/Resume unavailable; check ProfilerService method exposure"
 		return
 	end
-	pauseButton.Text = paused and "Resume" or "Pause"
+	setButtonText(pauseButton, paused and "Resume" or "Pause")
 	liveLabel.Text = paused and "PAUSED" or "LIVE"
 	liveLabel.TextColor3 = paused and categories[2].color or C.accent
 	if paused then
@@ -504,13 +583,13 @@ selectOffset = function(offset)
 	dirtyGraph, dirtyDetail = true, true
 end
 
-pauseButton = button(toolbar, "Pause", UDim2.new(1, -82, 0, 7), UDim2.fromOffset(74, 27), function()
+pauseButton = button(toolbar, "Pause", UDim2.new(1, -82, 0, 7), UDim2.fromOffset(74, metrics.buttonHeight), function()
 	setPaused(not paused)
 end)
-backButton = button(toolbar, "<", UDim2.new(1, -202, 0, 7), UDim2.fromOffset(33, 27), function()
+backButton = button(toolbar, "<", UDim2.new(1, -202, 0, 7), UDim2.fromOffset(33, metrics.buttonHeight), function()
 	selectOffset(selectedOffset + 1)
 end)
-nextButton = button(toolbar, ">", UDim2.new(1, -166, 0, 7), UDim2.fromOffset(33, 27), function()
+nextButton = button(toolbar, ">", UDim2.new(1, -166, 0, 7), UDim2.fromOffset(33, metrics.buttonHeight), function()
 	selectOffset(selectedOffset - 1)
 end)
 
@@ -821,8 +900,14 @@ end
 drawDetail = function()
 	dirtyDetail = false
 	for name, control in pairs(tabs) do
-		control.BackgroundColor3 = activeTab == name and C.hover or C.strip
-		control.TextColor3 = activeTab == name and C.selection or C.dim
+		local state = buttonRecords[control]
+		if state then
+			UI.setButtonState(state, activeTab == name and "selected" or nil)
+		end
+		local caption = buttonLabels[control]
+		if caption then
+			caption.TextColor3 = activeTab == name and C.text or C.dim
+		end
 	end
 	if activeTab == "Timeline" then
 		drawTimeline()
@@ -857,7 +942,7 @@ local function update()
 	if not wasVisible then
 		wasVisible = true
 		paused = ProfilerService.Paused == true
-		pauseButton.Text = paused and "Resume" or "Pause"
+		setButtonText(pauseButton, paused and "Resume" or "Pause")
 		liveLabel.Text = paused and "PAUSED" or "LIVE"
 		-- FrameCount enables native history collection without enabling the
 		-- engine's separate, fullscreen F2 overlay.
@@ -911,6 +996,15 @@ local function update()
 end
 
 RunService.RenderStepped:Connect(update)
+-- Custom chart elements are painted from the same theme whenever the
+-- editor switches themes. Keep this optional for builds without that signal.
+pcall(function()
+	StudioThemeService:GetPropertyChangedSignal("SelectedTheme"):Connect(function()
+		UI.refreshWindow("Profiler")
+		themeRepaint()
+		dirtyGraph, dirtyDetail = true, true
+	end)
+end)
 chart:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
 	dirtyGraph = true
 end)
@@ -932,6 +1026,7 @@ return {
 	end,
 	Refresh = function()
 		UI.refreshWindow("Profiler")
+		themeRepaint()
 		dirtyGraph, dirtyDetail = true, true
 	end,
 	IsVisible = function()
