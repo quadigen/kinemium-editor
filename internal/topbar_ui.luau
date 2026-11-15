@@ -174,13 +174,5 @@ return {
 				google_fonts_lib.Toggle()
 			end,
 		},
-
-		{
-			name = "Designer",
-			icon = "Designer.svg",
-			callback = function()
-				designer_lib.Toggle()
-			end,
-		},
 	},
 }

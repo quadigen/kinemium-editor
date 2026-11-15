@@ -563,8 +563,13 @@ local serviceOrder = {
 
 local panel, content = UI.window(
 	"FindInPlace",
-	UDim2.fromOffset(120, 120),
-	UDim2.fromOffset(380, 540),
+	UDim2.new(
+		theme.ExplorerCoordinates.Position.X.Scale,
+		theme.ExplorerCoordinates.Position.X.Offset + 40,
+		theme.ExplorerCoordinates.Position.Y.Scale,
+		theme.ExplorerCoordinates.Position.Y.Offset + 36
+	),
+	theme.ExplorerCoordinates.Size,
 	"Find in Place",
 	{ closable = true }
 )
@@ -574,8 +579,6 @@ panel.Visible = false
 panel.BackgroundTransparency = 0.5
 panel.ClipsDescendants = true
 content.BackgroundTransparency = 1
-
-UI.backdrop(panel, 15, Color3.new(0, 0, 0))
 
 local inset = UI.metrics.panelInset
 local inputHeight = UI.metrics.inputHeight
@@ -975,6 +978,91 @@ local function selectNode(node, reveal)
 	updateViewport(true)
 end
 
+local function physicalLine(text, lineNumber)
+	local start = 1
+	for _ = 2, lineNumber do
+		local newline = text:find("\n", start, true)
+		if not newline then
+			return ""
+		end
+		start = newline + 1
+	end
+	local newline = text:find("\n", start, true)
+	local finish = newline and newline - 1 or #text
+	if finish >= start and text:byte(finish) == 13 then
+		finish -= 1
+	end
+	return text:sub(start, finish)
+end
+
+local function characterCount(text)
+	if text == "" then
+		return 0
+	end
+	local count = utf8.len(text)
+	return count or #text
+end
+
+local function openScriptAt(object, line, column, selectionLength)
+	if not object or not object.Parent then
+		return false, "The script was removed"
+	end
+
+	local ok, err = pcall(function()
+		viewport.OpenScript(object)
+
+		if viewport.ActiveScript and viewport.ActiveScript() ~= object then
+			error("The script editor did not activate the requested script")
+		end
+
+		local editor = viewport.CodeEditor
+		if not editor then
+			viewport.OpenScript(object, line)
+			return
+		end
+
+		editor:GoToLine(line, column or 1, selectionLength or 0, true)
+	end)
+	return ok, err
+end
+
+local function openMatch(node)
+	local object, hit = node.object, node.hit
+	if not object or not object.Parent then
+		return false, "The script was removed"
+	end
+
+	local ok, err = pcall(function()
+		viewport.OpenScript(object)
+		if viewport.ActiveScript and viewport.ActiveScript() ~= object then
+			error("The script editor did not activate the requested script")
+		end
+
+		local editor = viewport.CodeEditor
+		if not editor then
+			viewport.OpenScript(object, hit.line)
+			return
+		end
+
+		-- Search positions are byte offsets; TextBox:GoToLine takes 1-based
+		-- UTF-8 character columns and a character-based selection length.
+		-- Read the opened editor buffer so unsaved text does not get replaced.
+		local lineText = physicalLine(editor.Text or "", hit.line)
+		local byteColumn = math.clamp(hit.column, 1, #lineText + 1)
+		local byteLength = math.min(hit.length, math.max(0, #lineText - byteColumn + 1))
+
+		-- If the code changed since searching, do not highlight unrelated text.
+		if hit.sample and lineText:sub(byteColumn, byteColumn + #hit.sample - 1) ~= hit.sample then
+			byteLength = 0
+		end
+
+		local column = characterCount(lineText:sub(1, byteColumn - 1)) + 1
+		local length = characterCount(lineText:sub(byteColumn, byteColumn + byteLength - 1))
+		editor:GoToLine(hit.line, column, length, true)
+	end)
+	return ok, err
+end
+
 local function openNode(node)
 	if not node then
 		return
@@ -984,25 +1072,16 @@ local function openNode(node)
 		rebuildVisible()
 		return
 	end
-	if not node.object or not node.object.Parent then
-		return
-	end
 	selectNode(node, false)
-	local object = node.object
-	task.spawn(function()
-		-- Uses the editor's existing opener rather than ScriptEditorService.
-		local ok, err = pcall(function()
-			viewport.OpenScript(object)
-		end)
-		if not ok then
-			UI.toast("find-in-place", {
-				type = "error",
-				title = "Unable to open source",
-				message = tostring(err),
-				duration = 5,
-			})
-		end
-	end)
+	local ok, err = openMatch(node)
+	if not ok then
+		UI.toast("find-in-place", {
+			type = "error",
+			title = "Unable to open search result",
+			message = tostring(err),
+			duration = 5,
+		})
+	end
 end
 
 local function createRowSlot()
@@ -1162,6 +1241,7 @@ local function scanSource(object, property, source, finder, token, matchesLeft)
 					line = lineNo,
 					column = first,
 					length = last - first + 1,
+					sample = lineText:sub(first, math.min(last, first + 63)),
 					snippet = excerpt(lineText, first),
 				}
 				from = math.max(first + 1, last + 1)
@@ -1349,7 +1429,7 @@ end
 input.TextChanged:Connect(requestSearch)
 includeInput.TextChanged:Connect(requestSearch)
 excludeInput.TextChanged:Connect(requestSearch)
-input.FocusLost:Connect(startSearch)
+input.TextSubmitted:Connect(startSearch)
 
 local function ctrlDown()
 	return UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) or UserInputService:IsKeyDown(Enum.KeyCode.RightControl)
@@ -1466,5 +1546,22 @@ return {
 		input.Text = tostring(query or "")
 		enable()
 		startSearch()
+	end,
+	GoToLine = function(script, line, column, selectionLength)
+		local ok, err = openScriptAt(
+			script,
+			math.max(1, math.floor(tonumber(line) or 1)),
+			math.max(1, math.floor(tonumber(column) or 1)),
+			math.max(0, math.floor(tonumber(selectionLength) or 0))
+		)
+		if not ok then
+			UI.toast("find-in-place", {
+				type = "error",
+				title = "Unable to navigate",
+				message = tostring(err),
+				duration = 5,
+			})
+		end
+		return ok
 	end,
 }
