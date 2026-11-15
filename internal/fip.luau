@@ -543,8 +543,6 @@ local VIEW_OVERSCAN = 6
 local SEARCH_DEBOUNCE = 0.20
 local SCAN_FRAME_BUDGET = 0.004
 
--- Find code directly in the DataModel. No ScriptEditorService or other
--- script-discovery service is required: each supported script exposes Source.
 local scriptClasses = { Script = true, LocalScript = true, ModuleScript = true }
 local classes = { Script = true, LocalScript = true, ModuleScript = true }
 
@@ -767,8 +765,6 @@ local function safePath(object)
 end
 
 local function getSource(object)
-	-- Source is read from the actual Script, LocalScript, or ModuleScript.
-	-- pcall protects the search against unreadable or removed instances.
 	local ok, value = pcall(function()
 		return object.Source
 	end)

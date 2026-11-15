@@ -6,6 +6,7 @@ local Selection = game:GetService("Selection")
 
 local icon_lib = require("@internal/icon_lib")
 local google_fonts_lib = require("@internal/google_fonts_lib")
+local designer_lib = require("@internal/designer")
 
 local function selectedObject()
 	local selected = Selection:Get()
@@ -171,6 +172,14 @@ return {
 			icon = "Font.svg",
 			callback = function()
 				google_fonts_lib.Toggle()
+			end,
+		},
+
+		{
+			name = "Designer",
+			icon = "Designer.svg",
+			callback = function()
+				designer_lib.Toggle()
 			end,
 		},
 	},
