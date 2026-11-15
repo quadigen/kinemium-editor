@@ -69,8 +69,6 @@ local function themeRepaint()
 	end
 end
 
--- The names match the reference image. Categories are heuristics based on zone names,
--- not native, exclusive profiler counters.
 local categories = {
 	{ key = "UI", label = "UI", color = Color3.fromRGB(147, 100, 185) },
 	{ key = "GI", label = "Global Illumination", color = Color3.fromRGB(188, 73, 57) },
@@ -281,9 +279,6 @@ local function summarize(frameData)
 		total += duration
 	end
 
-	-- Zones can be nested or concurrent. Normalize the inclusive zone durations
-	-- to the measured frame time; otherwise a stacked chart would exceed 100%.
-	-- This chart is a visual breakdown, NOT exclusive per-subsystem CPU accounting.
 	if total > ms and total > 0 then
 		local scale = ms / total
 		for key, value in pairs(bucket) do
@@ -312,7 +307,8 @@ local panel, content = UI.window(
 )
 panel.Parent = gui
 panel.Visible = false
--- Inherit the content styling from UI.window, like Explorer / Material Maker.
+UI.backdrop(panel, 15, Color3.new(0, 0, 0))
+
 content.BackgroundTransparency = 1
 panel.BackgroundTransparency = 0.5
 content.ClipsDescendants = true

@@ -9,10 +9,12 @@ local UI = require("@internal/editor_ui")
 local viewport = require("@internal/viewport")
 local tokens = UI.tokens
 
-local MAX_SCRIPTS = 500
-local MAX_EDGES = 1800
+local MAX_SCRIPTS = 750
+local MAX_EDGES = 2700
 local MAX_SOURCE_BYTES = 2 * 1024 * 1024
-local MAX_TOKENS_PER_SOURCE = 130000
+local MAX_TOKENS_PER_SOURCE = 45000
+local MAX_RESOLVE_CALLS_PER_SOURCE = 2500
+local MAX_SOURCE_CPU_SECONDS = 0.70
 local PHYSICS_MAX_NODES = 260
 local PHYSICS_STEPS = 240
 local SCAN_TIME_BUDGET = 0.004
@@ -21,17 +23,18 @@ local ROW_HEIGHT = 25
 local GOLDEN_ANGLE = 2.399963229728653
 local MIN_ZOOM, MAX_ZOOM = 0.18, 3.6
 
+local colors = tokens.color
 local PALETTE = {
-	background = Color3.fromRGB(17, 19, 25),
-	panel = Color3.fromRGB(23, 26, 33),
-	border = Color3.fromRGB(43, 48, 58),
-	muted = Color3.fromRGB(146, 153, 169),
-	text = Color3.fromRGB(225, 229, 239),
-	edge = Color3.fromRGB(105, 119, 140),
-	Script = Color3.fromRGB(113, 158, 249),
-	LocalScript = Color3.fromRGB(95, 197, 180),
-	ModuleScript = Color3.fromRGB(171, 145, 242),
-	selected = Color3.fromRGB(245, 206, 126),
+	background = colors.background or colors.surface,
+	panel = colors.surface,
+	border = colors.border or colors.rowEven,
+	muted = colors.subtext,
+	text = colors.text,
+	edge = colors.subtext,
+	Script = colors.accent or colors.text,
+	LocalScript = colors.success or colors.hover,
+	ModuleScript = colors.info or colors.warning or colors.subtext,
+	selected = colors.accent or colors.text,
 }
 
 local panel, content = UI.window(
@@ -143,7 +146,9 @@ local scriptList = UI.create("ScrollingFrame", {
 	CanvasSize = UDim2.fromOffset(0, 0),
 	BorderSizePixel = 0,
 	BackgroundTransparency = 1,
-	ScrollBarThickness = 3,
+	ScrollBarThickness = 4,
+	ScrollBarImageColor3 = colors.subtext,
+	VirtualizedScrolling = true,
 	ScrollingEnabled = true,
 	ClipsDescendants = true,
 }, sidebar)
@@ -171,12 +176,19 @@ local unresolvedCount = 0
 local unreadableCount = 0
 local lastDraw = 0
 local drawDirty = true
+local skippedBudgetCount = 0
+local skippedTokenCount = 0
+local completedSources = 0
+local scanInProgress = false
 local dragging = nil
 local lastClickNode = nil
 local lastClickTime = 0
-local createdRows = {}
 local scanStarted = false
 local graphReady = false
+local filteredRows = {}
+local rowSlots = {}
+local updateDetails
+local updateRowViewport
 
 local function setStatus(message)
 	currentMessage = message
@@ -188,7 +200,7 @@ local function control(caption, x, width, onClick)
 		toolbar,
 		caption,
 		UDim2.fromOffset(x, 7),
-		UDim2.fromOffset(width, 27),
+		UDim2.fromOffset(width, UI.metrics.inputHeight),
 		onClick,
 		{ radius = tokens.radius.sm }
 	)
@@ -210,16 +222,21 @@ control("Fit graph", 98, 84, function()
 		fitGraph()
 	end
 end)
-control("Toggle physics", 190, 111, function()
+local physicsControl
+_, _, physicsControl = control("Physics", 190, 90, function()
 	physicsEnabled = not physicsEnabled
 	if physicsEnabled then
 		simulationLeft = PHYSICS_STEPS
 	end
+	UI.setButtonState(physicsControl, physicsEnabled and "selected" or nil)
 	setStatus(physicsEnabled and "Physics enabled" or "Physics paused")
 	drawDirty = true
 end)
-control("Toggle isolated", 309, 122, function()
+UI.setButtonState(physicsControl, "selected")
+local isolatedControl
+_, _, isolatedControl = control("Isolated", 288, 95, function()
 	showIsolated = not showIsolated
+	UI.setButtonState(isolatedControl, showIsolated and "selected" or nil)
 	if refreshVisible then
 		refreshVisible()
 	end
@@ -227,10 +244,11 @@ control("Toggle isolated", 309, 122, function()
 		fitGraph()
 	end
 end)
+UI.setButtonState(isolatedControl, "selected")
 
 local legend = UI.label(
 	toolbar,
-	"● Script     ● LocalScript     ● ModuleScript",
+	"Script  ·  LocalScript  ·  ModuleScript",
 	UDim2.new(1, -350, 0, 12),
 	UDim2.fromOffset(340, 18),
 	tokens.type.caption,
@@ -290,6 +308,7 @@ end
 local function resetVisuals()
 	graphReady = false
 	simulationLeft = 0
+	dragging = nil
 	for _, node in ipairs(graphNodes) do
 		if node.visual then
 			node.visual:Destroy()
@@ -307,10 +326,14 @@ local function resetVisuals()
 	graphEdges = {}
 	nodeByObject = {}
 	chosen = nil
-	for _, row in ipairs(createdRows) do
-		row:Destroy()
+	filteredRows = {}
+	for _, slot in ipairs(rowSlots) do
+		slot.node = nil
+		slot.row.Visible = false
 	end
-	createdRows = {}
+	scriptList.CanvasSize = UDim2.fromOffset(0, 0)
+	countLabel.Text = "No scripts indexed"
+	updateDetails()
 	sceneOffset = Vector2.new(0, 0)
 	zoom = 1
 	drawDirty = true
@@ -327,19 +350,17 @@ local function makeNodeVisual(node)
 	}, nodeLayer)
 	UI.corner(dot, 100)
 	node.visual = dot
-	local caption = UI.create("TextLabel", {
-		Name = "BubbleLabel",
-		BackgroundTransparency = 1,
-		BorderSizePixel = 0,
-		Text = node.name,
-		TextColor3 = PALETTE.text,
-		TextXAlignment = Enum.TextXAlignment.Left,
-		TextYAlignment = Enum.TextYAlignment.Center,
-		TextTruncate = Enum.TextTruncate.AtEnd,
-		Font = Enum.Font.Code,
-		TextSize = 12,
-		ZIndex = 6,
-	}, nodeLayer)
+	local caption = UI.label(
+		nodeLayer,
+		node.name,
+		UDim2.fromOffset(0, 0),
+		UDim2.fromOffset(100, 20),
+		tokens.type.small,
+		PALETTE.text
+	)
+	caption.Name = "BubbleLabel"
+	caption.TextTruncate = Enum.TextTruncate.AtEnd
+	caption.ZIndex = 6
 	node.caption = caption
 end
 
@@ -354,7 +375,7 @@ local function makeEdgeVisual(edge)
 	}, edgeLayer)
 end
 
-local function updateDetails()
+updateDetails = function()
 	if not chosen then
 		selectedName.Text = "Nothing selected"
 		selectedPath.Text = "Select a bubble to inspect it"
@@ -375,6 +396,7 @@ local function selectNode(node)
 		end)
 	end
 	updateDetails()
+	updateRowViewport(true)
 	drawDirty = true
 end
 
@@ -391,15 +413,76 @@ local function openNode(node)
 	end
 end
 
-local function clearRows()
-	for _, row in ipairs(createdRows) do
-		row:Destroy()
+-- Virtualized sidebar rows share the same editor_UI.button pattern as FIP.
+-- Updating the search no longer destroys and recreates hundreds of buttons.
+local lastRowStart, lastRowWidth, lastRowHeight = -1, -1, -1
+
+local function createRowSlot()
+	local slot = { node = nil }
+	local row, _, controller = UI.button(
+		scriptList,
+		"",
+		UDim2.fromOffset(0, 0),
+		UDim2.new(1, -5, 0, ROW_HEIGHT),
+		nil,
+		{ color = colors.rowOdd, hoverColor = colors.hover, radius = 0, border = false }
+	)
+	row.Name = "DependencyExplorerListRow"
+	local caption =
+		UI.label(row, "", UDim2.fromOffset(8, 2), UDim2.new(1, -14, 0, ROW_HEIGHT - 4), tokens.type.small, colors.text)
+	caption.TextTruncate = Enum.TextTruncate.AtEnd
+	row.Activated:Connect(function(_, clickCount)
+		local node = slot.node
+		if not node then
+			return
+		end
+		selectNode(node)
+		if focusNode then
+			focusNode(node)
+		end
+		if clickCount == 2 then
+			openNode(node)
+		end
+	end)
+	slot.row = row
+	slot.caption = caption
+	slot.controller = controller
+	row.Visible = false
+	return slot
+end
+
+updateRowViewport = function(force)
+	local height, width = scriptList.AbsoluteSize.Y, scriptList.AbsoluteSize.X
+	local first = math.max(1, math.floor(scriptList.CanvasPosition.Y / ROW_HEIGHT) + 1 - 5)
+	if not force and first == lastRowStart and width == lastRowWidth and height == lastRowHeight then
+		return
 	end
-	createdRows = {}
+	lastRowStart, lastRowWidth, lastRowHeight = first, width, height
+	local last = math.min(#filteredRows, first + math.ceil(height / ROW_HEIGHT) + 12)
+	local used = 0
+	for index = first, last do
+		used += 1
+		local slot = rowSlots[used]
+		if not slot then
+			slot = createRowSlot()
+			rowSlots[used] = slot
+		end
+		local node = filteredRows[index]
+		slot.node = node
+		slot.row.Visible = true
+		slot.row.Position = UDim2.fromOffset(0, (index - 1) * ROW_HEIGHT)
+		slot.row.BackgroundColor3 = index % 2 == 0 and colors.rowEven or colors.rowOdd
+		slot.caption.Text = "●  " .. node.name
+		slot.caption.TextColor3 = PALETTE[node.kind]
+		UI.setButtonState(slot.controller, node == chosen and "selected" or nil)
+	end
+	for i = used + 1, #rowSlots do
+		rowSlots[i].node = nil
+		rowSlots[i].row.Visible = false
+	end
 end
 
 local function updateRows()
-	clearRows()
 	local query = string.lower(queryInput.Text or "")
 	local sorted = table.clone(graphNodes)
 	table.sort(sorted, function(a, b)
@@ -408,45 +491,24 @@ local function updateRows()
 		end
 		return a.path < b.path
 	end)
-	local shown, matches = 0, 0
+	filteredRows = {}
 	for _, node in ipairs(sorted) do
-		if
-			isVisibleNode(node)
-			and (query == "" or string.find(string.lower(node.name .. " " .. node.path), query, 1, true))
-		then
-			matches += 1
-			if shown < 150 then
-				shown += 1
-				local item = UI.create("TextButton", {
-					Name = "ScriptListItem",
-					Position = UDim2.fromOffset(0, (shown - 1) * ROW_HEIGHT),
-					Size = UDim2.new(1, -5, 0, ROW_HEIGHT),
-					BackgroundTransparency = 1,
-					BorderSizePixel = 0,
-					Text = "  ●  " .. node.name,
-					Font = Enum.Font.Code,
-					TextSize = 12,
-					TextTruncate = Enum.TextTruncate.AtEnd,
-					TextXAlignment = Enum.TextXAlignment.Left,
-					TextColor3 = PALETTE[node.kind],
-					AutoButtonColor = false,
-				}, scriptList)
-				item.Activated:Connect(function(_, clickCount)
-					selectNode(node)
-					if focusNode then
-						focusNode(node)
-					end
-					if clickCount == 2 then
-						openNode(node)
-					end
-				end)
-				createdRows[#createdRows + 1] = item
-			end
+		if isVisibleNode(node) and (query == "" or string.find(node.searchKey, query, 1, true)) then
+			filteredRows[#filteredRows + 1] = node
 		end
 	end
-	listHeader.Text = "SCRIPTS  (" .. matches .. (matches > shown and "; first 150" or "") .. ")"
-	scriptList.CanvasSize = UDim2.new(0, 0, 0, shown * ROW_HEIGHT)
+	listHeader.Text = "SCRIPTS  (" .. #filteredRows .. ")"
+	scriptList.CanvasSize = UDim2.new(0, 0, 0, #filteredRows * ROW_HEIGHT)
+	lastRowStart = -1
+	updateRowViewport(true)
 end
+
+scriptList:GetPropertyChangedSignal("CanvasPosition"):Connect(function()
+	updateRowViewport(false)
+end)
+scriptList:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
+	updateRowViewport(true)
+end)
 
 -- Tokenizer: ignores comments and string contents, retaining quoted strings
 -- as tokens so a safe subset of static require() expressions can be resolved.
@@ -456,7 +518,7 @@ end
 local function isDigit(c)
 	return c ~= nil and c >= 48 and c <= 57
 end
-local function countNewlines(source, first, last)
+local function countNewlines(source, first, last, checkpoint)
 	local count = 0
 	local p = first
 	while p <= last do
@@ -466,6 +528,9 @@ local function countNewlines(source, first, last)
 		end
 		count += 1
 		p = at + 1
+		if count % 256 == 0 and checkpoint and not checkpoint() then
+			return nil
+		end
 	end
 	return count
 end
@@ -486,14 +551,51 @@ local function longBracket(source, p, length)
 	return i + 1, closeStart, closeFinish or length, delimiter
 end
 
-local function tokenize(source)
+-- Budgeted tokenizer: handles huge, generated, or malformed scripts without
+-- blocking the rest of the graph. Returns tokens, error (nil / "cancelled" /
+-- "budget" / "tokens"). No Lua code is executed by the scanner.
+local function tokenize(source, token, reportProgress)
 	local result = {}
 	local length, p, line = #source, 1, 1
-	local lastYieldPosition = 1
-	while p <= length and #result < MAX_TOKENS_PER_SOURCE do
-		if p - lastYieldPosition > 32768 then
+	local lastPosition = 1
+	local lastClock = os.clock()
+	local lastYield = lastClock
+	local cpuSeconds = 0
+
+	local function checkpoint()
+		if token ~= revision then
+			return false, "cancelled"
+		end
+		local now = os.clock()
+		cpuSeconds += math.max(0, now - lastClock)
+		lastClock = now
+		if cpuSeconds > MAX_SOURCE_CPU_SECONDS then
+			return false, "budget"
+		end
+		if now - lastYield >= SCAN_TIME_BUDGET then
+			if reportProgress then
+				reportProgress(p, length)
+			end
 			task.wait()
-			lastYieldPosition = p
+			lastClock = os.clock()
+			lastYield = lastClock
+			if token ~= revision then
+				return false, "cancelled"
+			end
+		end
+		return true
+	end
+
+	while p <= length do
+		if #result >= MAX_TOKENS_PER_SOURCE then
+			return result, "tokens"
+		end
+		if p - lastPosition >= 2048 then
+			local ok, reason = checkpoint()
+			if not ok then
+				return nil, reason
+			end
+			lastPosition = p
 		end
 		local c, nextC = source:byte(p), source:byte(p + 1)
 		if c == 10 then
@@ -502,30 +604,41 @@ local function tokenize(source)
 		elseif c == 45 and nextC == 45 then
 			local bodyStart, _, closeFinish = longBracket(source, p + 2, length)
 			if bodyStart then
-				line += countNewlines(source, p, closeFinish)
+				local n = countNewlines(source, p, closeFinish, checkpoint)
+				if n == nil then
+					return nil, token == revision and "budget" or "cancelled"
+				end
+				line += n
 				p = closeFinish + 1
 			else
 				local ending = source:find("\n", p + 2, true)
 				p = ending or (length + 1)
 			end
 		elseif c == 34 or c == 39 then
-			local startLine = line
+			local startLine, begin, quote = line, p + 1, c
 			p += 1
-			local closed = false
-			local parts = {}
-			local partStart = p
+			local parts, partStart, hasEscape = nil, p, false
 			while p <= length do
+				if p - lastPosition >= 2048 then
+					local ok, reason = checkpoint()
+					if not ok then
+						return nil, reason
+					end
+					lastPosition = p
+				end
 				local k = source:byte(p)
-				if k == c then
-					parts[#parts + 1] = source:sub(partStart, p - 1)
-					p += 1
-					closed = true
+				if k == quote then
 					break
-				elseif k == 92 and p < length then
-					parts[#parts + 1] = source:sub(partStart, p - 1)
-					local escape = source:sub(p + 1, p + 1)
-					local mapped = ({ n = "\n", r = "\r", t = "\t" })[escape]
-					parts[#parts + 1] = mapped or escape
+				end
+				if k == 92 and p < length then
+					hasEscape = true
+					if p - begin <= 512 then
+						parts = parts or {}
+						parts[#parts + 1] = source:sub(partStart, p - 1)
+						local escape = source:sub(p + 1, p + 1)
+						local mapped = ({ n = "\n", r = "\r", t = "\t" })[escape]
+						parts[#parts + 1] = mapped or escape
+					end
 					p += 2
 					partStart = p
 				elseif k == 10 then
@@ -535,29 +648,45 @@ local function tokenize(source)
 					p += 1
 				end
 			end
-			if not closed then
-				parts[#parts + 1] = source:sub(partStart, length)
+			local value = ""
+			if p - begin <= 512 then
+				if hasEscape and parts then
+					parts[#parts + 1] = source:sub(partStart, p - 1)
+					value = table.concat(parts)
+				elseif not hasEscape then
+					value = source:sub(begin, p - 1)
+				end
 			end
-			result[#result + 1] = { k = "str", v = table.concat(parts), line = startLine }
+			result[#result + 1] = { k = "str", v = value, line = startLine }
+			if source:byte(p) == quote then
+				p += 1
+			end
 		elseif c == 91 then
 			local bodyStart, closeStart, closeFinish = longBracket(source, p, length)
 			if bodyStart then
 				local startLine = line
-				local value = closeStart and source:sub(bodyStart, closeStart - 1) or ""
+				local value = closeStart and closeStart - bodyStart <= 512 and source:sub(bodyStart, closeStart - 1)
+					or ""
 				result[#result + 1] = { k = "str", v = value, line = startLine }
-				line += countNewlines(source, p, closeFinish)
+				local n = countNewlines(source, p, closeFinish, checkpoint)
+				if n == nil then
+					return nil, token == revision and "budget" or "cancelled"
+				end
+				line += n
 				p = closeFinish + 1
 			else
 				result[#result + 1] = { k = "sym", v = "[", line = line }
 				p += 1
 			end
 		elseif isLetter(c) then
-			local start = p
+			local begin = p
 			p += 1
 			while isLetter(source:byte(p)) or isDigit(source:byte(p)) do
 				p += 1
 			end
-			result[#result + 1] = { k = "id", v = source:sub(start, p - 1), line = line }
+			-- Identifiers this long are irrelevant to static module paths.
+			local name = p - begin <= 512 and source:sub(begin, p - 1) or ""
+			result[#result + 1] = { k = "id", v = name, line = line }
 		elseif isDigit(c) then
 			p += 1
 			while isDigit(source:byte(p)) do
@@ -570,7 +699,7 @@ local function tokenize(source)
 			p += 1
 		end
 	end
-	return result, #result >= MAX_TOKENS_PER_SOURCE
+	return result, nil
 end
 
 local function tokenIs(tokensArray, index, value)
@@ -615,7 +744,9 @@ local function resolveReference(t, first, owner, aliases)
 	end
 
 	local i = first + 1
-	while t[i] do
+	local steps = 0
+	while t[i] and steps < 64 do
+		steps += 1
 		if tokenIs(t, i, ".") and t[i + 1] and t[i + 1].k == "id" then
 			local member = t[i + 1].v
 			if member == "Parent" then
@@ -687,25 +818,56 @@ local function addDependency(fromNode, targetObject, line, edgeSeen)
 	return true
 end
 
-local function processSource(node, source, edgeSeen, token)
+-- Parse only scripts containing possible require calls. Most projects have
+-- large UI modules/assets that need no dependency tokenization at all.
+local function processSource(node, source, edgeSeen, token, progress)
 	if #source > MAX_SOURCE_BYTES then
 		warningCount += 1
-		return
+		node.scanWarning = "Source exceeds 2 MiB limit"
+		return true
 	end
-	local t, overLimit = tokenize(source)
-	if token ~= revision then
+	if not source:find("require", 1, true) then
+		return true
+	end
+
+	local t, reason = tokenize(source, token, progress)
+	if reason == "cancelled" or token ~= revision then
 		return false
 	end
-	if overLimit then
+	if reason == "budget" then
+		node.scanWarning = "Tokenizer exceeded per-script CPU budget"
+		skippedBudgetCount += 1
+		warningCount += 1
+		return true
+	end
+	if reason == "tokens" then
+		node.scanWarning = "Source exceeded 45,000-token limit; analyzed prefix only"
+		skippedTokenCount += 1
 		warningCount += 1
 	end
+	if not t then
+		return true
+	end
+
 	local aliases = {}
+	local calls = 0
+	local lastYield = os.clock()
+	local cpuSeconds = 0
 	for i = 1, #t do
-		if i % 4096 == 0 then
+		if i % 512 == 0 then
 			if token ~= revision then
 				return false
 			end
+			local now = os.clock()
+			cpuSeconds += math.max(0, now - lastYield)
+			if cpuSeconds > MAX_SOURCE_CPU_SECONDS then
+				node.scanWarning = "Dependency resolution exceeded per-script CPU budget"
+				skippedBudgetCount += 1
+				warningCount += 1
+				return true
+			end
 			task.wait()
+			lastYield = os.clock()
 		end
 		local tok = t[i]
 		if tok.v == "local" and t[i + 1] and t[i + 1].k == "id" and tokenIs(t, i + 2, "=") then
@@ -719,11 +881,16 @@ local function processSource(node, source, edgeSeen, token)
 			and not tokenIs(t, i - 1, ".")
 			and not tokenIs(t, i - 1, ":")
 		then
+			calls += 1
+			if calls > MAX_RESOLVE_CALLS_PER_SOURCE then
+				node.scanWarning = "Dependency call limit reached"
+				warningCount += 1
+				return true
+			end
 			local target, ending = resolveReference(t, i + 2, node.object, aliases)
 			if not target or not tokenIs(t, ending, ")") then
 				unresolvedCount += 1
 			elseif not addDependency(node, target, tok.line, edgeSeen) then
-				-- Valid static expression, but not an indexed ModuleScript.
 				unresolvedCount += 1
 			end
 		end
@@ -855,7 +1022,7 @@ drawGraph = function()
 		local point = worldToScreen(node.x, node.y)
 		local selected = node == chosen
 		local related = highlighted and highlighted[node]
-		local match = query ~= "" and string.find(string.lower(node.name .. " " .. node.path), query, 1, true) ~= nil
+		local match = query ~= "" and string.find(node.searchKey, query, 1, true) ~= nil
 		local diameter = math.clamp((9 + math.sqrt(node.degree) * 3) * math.sqrt(zoom), 5, 36)
 		if selected then
 			diameter += 5
@@ -912,49 +1079,90 @@ end
 
 local function buildGraph(documentList, token)
 	local edgeSeen = {}
+	positionNodes()
+
+	-- Show bubbles BEFORE resolving, rather than an empty graph for the
+	-- entire parse. This is especially important for large projects.
+	for i, node in ipairs(graphNodes) do
+		if token ~= revision then
+			return false
+		end
+		makeNodeVisual(node)
+		if i % 50 == 0 then
+			setStatus(string.format("Preparing graph... %d / %d", i, #graphNodes))
+			task.wait()
+		end
+	end
+	graphReady = true
+	refreshVisible()
+	fitGraph()
+	countLabel.Text = string.format("%d scripts  ·  resolving links...", #graphNodes)
+
+	local lastProgress = 0
 	for i, entry in ipairs(documentList) do
 		if token ~= revision then
 			return false
 		end
 		local node = nodeByObject[entry.object]
 		if node then
+			-- Identify the precise source in the status bar if one is slow.
+			setStatus(string.format("Resolving %d / %d  ·  %s", i, #documentList, node.name))
 			local source = safeSource(entry.object)
 			if source then
-				if not processSource(node, source, edgeSeen, token) then
+				local function progress(offset, total)
+					local now = os.clock()
+					if now - lastProgress >= 0.10 then
+						lastProgress = now
+						setStatus(
+							string.format(
+								"Resolving %d / %d  ·  %s  ·  %d%%",
+								i,
+								#documentList,
+								node.name,
+								math.floor(offset / math.max(1, total) * 100)
+							)
+						)
+					end
+				end
+				local previousEdges = #graphEdges
+				-- Luau pcall is yieldable. A malformed/unexpected engine object can
+				-- fail independently without aborting the entire graph build.
+				local ok, complete = pcall(processSource, node, source, edgeSeen, token, progress)
+				if not ok then
+					warningCount += 1
+					node.scanWarning = "Source parsing error: " .. tostring(complete)
+					setStatus(string.format("Skipped %s (source parsing error)", node.name))
+				elseif not complete then
 					return false
 				end
+				for j = previousEdges + 1, #graphEdges do
+					makeEdgeVisual(graphEdges[j])
+					if j % 70 == 0 then
+						if token ~= revision then
+							return false
+						end
+						task.wait()
+					end
+				end
 			else
+				node.scanWarning = "Source was unreadable"
 				unreadableCount += 1
 			end
 		end
-		if i % 8 == 0 then
-			setStatus(string.format("Resolving dependencies... %d / %d", i, #documentList))
+		completedSources = i
+		if i % 4 == 0 then
+			countLabel.Text = string.format("%d scripts  ·  %d links", #graphNodes, #graphEdges)
+			drawDirty = true
 			task.wait()
 		end
+		if i % 32 == 0 then
+			updateRows()
+		end
 	end
+
 	if token ~= revision then
 		return false
 	end
-	positionNodes()
-	for i, edge in ipairs(graphEdges) do
-		makeEdgeVisual(edge)
-		if i % 120 == 0 then
-			task.wait()
-			if token ~= revision then
-				return false
-			end
-		end
-	end
-	for i, node in ipairs(graphNodes) do
-		makeNodeVisual(node)
-		if i % 120 == 0 then
-			task.wait()
-			if token ~= revision then
-				return false
-			end
-		end
-	end
-	graphReady = true
 	refreshVisible()
 	return true
 end
@@ -964,7 +1172,9 @@ startScan = function()
 	local token = revision
 	resetVisuals()
 	warningCount, scannedCount, unresolvedCount, unreadableCount = 0, 0, 0, 0
+	skippedBudgetCount, skippedTokenCount, completedSources = 0, 0, 0
 	scanStarted = true
+	scanInProgress = true
 	setStatus("Scanning all game descendants...")
 	task.spawn(function()
 		local startedAt = os.clock()
@@ -996,6 +1206,7 @@ startScan = function()
 						vx = 0,
 						vy = 0,
 					}
+					node.searchKey = string.lower(node.name .. " " .. node.path)
 					graphNodes[#graphNodes + 1] = node
 					nodeByObject[object] = node
 					documents[#documents + 1] = { object = object }
@@ -1018,7 +1229,8 @@ startScan = function()
 		if token ~= revision then
 			return
 		end
-		setStatus("Resolving static require() references...")
+		countLabel.Text = string.format("%d scripts discovered", #graphNodes)
+		setStatus("Preparing script graph...")
 		if not buildGraph(documents, token) then
 			return
 		end
@@ -1035,9 +1247,15 @@ startScan = function()
 		if #graphNodes > PHYSICS_MAX_NODES then
 			suffix ..= " · physics auto-limited"
 		end
+		if skippedBudgetCount > 0 then
+			suffix ..= " · " .. skippedBudgetCount .. " source time-limited"
+		end
+		if skippedTokenCount > 0 then
+			suffix ..= " · " .. skippedTokenCount .. " token-limited"
+		end
 		setStatus(
 			string.format(
-				"%d scripts · %d links · %d unresolved · %d unreadable · %d oversized · %.2fs%s",
+				"%d scripts · %d links · %d unresolved · %d unreadable · %d limited · %.2fs%s",
 				#graphNodes,
 				#graphEdges,
 				unresolvedCount,
@@ -1047,6 +1265,7 @@ startScan = function()
 				suffix
 			)
 		)
+		scanInProgress = false
 	end)
 end
 
@@ -1199,7 +1418,7 @@ RunService.Heartbeat:Connect(function()
 	if physicsEnabled and simulationLeft > 0 then
 		physicsStep()
 	end
-	if drawDirty and os.clock() - lastDraw > (1 / 30) then
+	if drawDirty and os.clock() - lastDraw > (scanInProgress and (1 / 12) or (1 / 30)) then
 		lastDraw = os.clock()
 		drawGraph()
 	end
@@ -1248,6 +1467,24 @@ return {
 	end,
 	GetGraph = function()
 		return graphNodes, graphEdges
+	end,
+	GetDiagnostics = function()
+		local limited = {}
+		for _, node in ipairs(graphNodes) do
+			if node.scanWarning then
+				limited[#limited + 1] = { path = node.path, reason = node.scanWarning }
+			end
+		end
+		return {
+			scanning = scanInProgress,
+			found = scannedCount,
+			indexed = #graphNodes,
+			resolved = completedSources,
+			links = #graphEdges,
+			unresolved = unresolvedCount,
+			unreadable = unreadableCount,
+			limited = limited,
+		}
 	end,
 	IsVisible = function()
 		return panel.Visible
