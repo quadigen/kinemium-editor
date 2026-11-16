@@ -256,12 +256,44 @@ local function safeCall(methodName, ...)
 	return nil
 end
 
+-- The native service can report FrameTime before its history ring is populated.
+-- Preserve method errors for the diagnostic line instead of silently losing them.
+local lastFrameReadError = nil
 local function getFrame(index)
-	return safeCall("GetFrameRecord", index)
+	local ok, result = pcall(function()
+		return ProfilerService:GetFrameRecord(index)
+	end)
+	if not ok then
+		lastFrameReadError = tostring(result)
+		return nil
+	end
+	lastFrameReadError = nil
+	return result
 end
 
 local function getFrameCount()
 	return math.max(0, tonumber(ProfilerService.FrameCount) or 0)
+end
+
+local function getLiveSample()
+	local data = getFrame(1)
+	if data and (tonumber(data.frameMs) or 0) > 0 then
+		return data, "native"
+	end
+
+	-- The FPS/FrameTime ring is maintained by frame_tick even when zone history
+	-- is not being flushed. Render a *real* total-frame-time bar meanwhile.
+	-- Its Others/untracked category is correct: without native zone records
+	-- there is no evidence for subsystem attribution.
+	local ms = tonumber(ProfilerService.FrameTime) or 0
+	if ms > 0 then
+		return {
+			frameMs = ms,
+			fps = tonumber(ProfilerService.FPS) or 0,
+			zones = {},
+		}, "frame-time"
+	end
+	return nil, "empty"
 end
 
 local function summarize(frameData)
@@ -279,6 +311,9 @@ local function summarize(frameData)
 		total += duration
 	end
 
+	-- Zones can be nested or concurrent. Normalize the inclusive zone durations
+	-- to the measured frame time; otherwise a stacked chart would exceed 100%.
+	-- This chart is a visual breakdown, NOT exclusive per-subsystem CPU accounting.
 	if total > ms and total > 0 then
 		local scale = ms / total
 		for key, value in pairs(bucket) do
@@ -307,8 +342,7 @@ local panel, content = UI.window(
 )
 panel.Parent = gui
 panel.Visible = false
-UI.backdrop(panel, 15, Color3.new(0, 0, 0))
-
+-- Inherit the content styling from UI.window, like Explorer / Material Maker.
 content.BackgroundTransparency = 1
 panel.BackgroundTransparency = 0.5
 content.ClipsDescendants = true
@@ -352,6 +386,7 @@ local graphBars = {}
 local samples = {}
 local selectedFrame = nil
 local selectedOffset = 1
+local lastSampleSource = "empty"
 local paused = false
 local activeTab = "Timeline"
 local dirtyGraph, dirtyDetail = true, true
@@ -361,34 +396,53 @@ local setPaused
 local selectOffset
 
 local function graphSlot(index)
-	local hit = button(
-		chart,
-		"",
-		UDim2.new((index - 1) / GRAPH_POINTS, 0, 0, 0),
-		UDim2.new(1 / GRAPH_POINTS, -1, 1, 0),
-		function()
-			if not paused then
-				-- Live samples are spaced in time, not indexed by native frame ID.
-				-- Freeze first, then choose an exact historical frame on the next click.
-				setPaused(true)
-				return
-			end
-			local n = math.min(#samples, GRAPH_POINTS)
-			local firstSlot = GRAPH_POINTS - n + 1
-			local row = index >= firstSlot and samples[#samples - n + index - firstSlot + 1] or nil
-			if row and row.offset then
-				selectOffset(row.offset)
-			end
-		end
-	)
-	hit.BackgroundTransparency = 1
+	-- Draw directly inside the chart: editor_ui buttons contain their own
+	-- interactive chrome, which is not a reliable parent for graph geometry.
 	local columns = {}
 	for _, cat in ipairs(categories) do
-		columns[cat.key] = frame(hit, UDim2.fromOffset(0, 0), UDim2.new(1, 0, 0, 0), cat.color)
-		columns[cat.key].Visible = false
+		local piece = make("Frame", chart, {
+			Name = "CPU_" .. cat.key .. "_" .. tostring(index),
+			Position = UDim2.fromOffset(0, 0),
+			Size = UDim2.fromOffset(0, 0),
+			BackgroundColor3 = cat.color,
+			BorderSizePixel = 0,
+			ZIndex = 3,
+			Visible = false,
+		})
+		columns[cat.key] = piece
 	end
-	local marker = frame(hit, UDim2.fromOffset(0, 0), UDim2.new(1, 0, 0, 2), C.selection)
-	marker.Visible = false
+	local marker = make("Frame", chart, {
+		Name = "SelectedFrame_" .. tostring(index),
+		Position = UDim2.fromOffset(0, 0),
+		Size = UDim2.fromOffset(0, 2),
+		BackgroundColor3 = C.selection,
+		BorderSizePixel = 0,
+		ZIndex = 4,
+		Visible = false,
+	})
+	trackTheme(marker, "BackgroundColor3", C.selection)
+	local hit = make("TextButton", chart, {
+		Name = "FrameHit_" .. tostring(index),
+		Position = UDim2.fromOffset(0, 0),
+		Size = UDim2.fromOffset(0, 0),
+		BackgroundTransparency = 1,
+		BorderSizePixel = 0,
+		Text = "",
+		ZIndex = 5,
+	})
+	hit.MouseButton1Click:Connect(function()
+		if not paused then
+			-- Freeze a frame before navigating native history.
+			setPaused(true)
+			return
+		end
+		local n = math.min(#samples, GRAPH_POINTS)
+		local firstSlot = GRAPH_POINTS - n + 1
+		local row = index >= firstSlot and samples[#samples - n + index - firstSlot + 1] or nil
+		if row and row.offset then
+			selectOffset(row.offset)
+		end
+	end)
 	return { button = hit, pieces = columns, marker = marker }
 end
 
@@ -526,6 +580,17 @@ local function refreshHistorical()
 			table.insert(samples, rec)
 		end
 	end
+	-- If collection was never flushed, retain the most recent real frame
+	-- reading so Pause never makes an otherwise working chart disappear.
+	if #samples == 0 then
+		local data, source = getLiveSample()
+		if data then
+			table.insert(samples, summarize(data))
+			lastSampleSource = source
+		end
+	else
+		lastSampleSource = "native"
+	end
 	dirtyGraph = true
 end
 
@@ -608,34 +673,47 @@ local function drawGraphNow()
 	for i = 1, GRAPH_POINTS do
 		local slot = graphBars[i]
 		local rec = i > GRAPH_POINTS - frameCount and samples[start + i - (GRAPH_POINTS - frameCount)] or nil
+		local x = math.floor((i - 1) * graphWidth / GRAPH_POINTS)
+		local nextX = math.floor(i * graphWidth / GRAPH_POINTS)
+		local w = math.max(1, nextX - x - 1)
 		local stack = 0
 		local selected = rec and paused and selectedFrame and rec.offset == selectedOffset
 		slot.marker.Visible = not not selected
-		slot.marker.Size = UDim2.new(1, 0, 0, 2)
-		slot.marker.Position = UDim2.fromOffset(0, 0)
+		slot.marker.Size = UDim2.fromOffset(w, 2)
+		slot.marker.Position = UDim2.fromOffset(x, 0)
+		slot.button.Position = UDim2.fromOffset(x, 0)
+		slot.button.Size = UDim2.fromOffset(w, graphHeight)
 		for _, cat in ipairs(categories) do
 			local segment = slot.pieces[cat.key]
 			local value = rec and (rec.bucket[cat.key] or 0) or 0
 			if value > 0 and categoryEnabled[cat.key] then
 				local h = math.max(1, math.floor(graphHeight * (value / maximum)))
-				segment.Position = UDim2.new(0, 0, 1, -(stack + h))
-				segment.Size = UDim2.new(1, 0, 0, h)
+				segment.Position = UDim2.fromOffset(x, graphHeight - stack - h)
+				segment.Size = UDim2.fromOffset(w, h)
 				segment.Visible = true
 				stack += h
 			else
 				segment.Visible = false
 			end
 		end
-		slot.button.BackgroundColor3 = C.hover
-		slot.button.BackgroundTransparency = selected and 0.5 or 1
 	end
 	for _, ref in ipairs(chartReference) do
 		local ms = ref.Name == "Reference16.667" and 16.667 or 33.333
 		ref.Position = UDim2.new(0, 0, 1, -math.floor(graphHeight * ms / maximum))
 	end
 	graphFooter.Text = string.format("Guide: 16.67ms / 60 FPS   |   33.33ms / 30 FPS   |   scale %.1fms", maximum)
-	graphHeader.Text = paused and ("Exact capture: latest " .. #samples .. " frames")
-		or ("Live graph: sampling every " .. math.floor(SAMPLE_INTERVAL * 1000) .. "ms")
+	local historyCount = getFrameCount()
+	local sourceText = lastSampleSource == "native" and "native zone history"
+		or lastSampleSource == "frame-time" and "FrameTime fallback (untracked)"
+		or "no frame data"
+	graphHeader.Text = string.format("%s  |  %d samples  |  %d native frames", sourceText, #samples, historyCount)
+	if lastFrameReadError then
+		graphHeader.Text = "GetFrameRecord error: " .. string.sub(lastFrameReadError, 1, 100)
+	elseif historyCount == 0 and #samples > 0 then
+		-- The bars are valid measured frame times, but the engine has not
+		-- delivered frame_flush() records or zone scopes yet.
+		graphHeader.Text = graphHeader.Text .. "  |  check frame_flush()"
+	end
 end
 
 drawGraph = drawGraphNow
@@ -688,6 +766,16 @@ local function drawTimeline()
 		end
 		return a.startMs < b.startMs
 	end)
+	if #zones == 0 then
+		titlePair(
+			"No native zones",
+			"The frame-time graph can still run. Native history needs collecting + frame_flush().",
+			10
+		)
+		detailCaption.Text = "0 zones"
+		statusLabel.Text = "No named native zones in this frame. Instrument engine scopes with profiling.Begin/End."
+		return
+	end
 
 	local ends = {}
 	local laneCount = 0
@@ -940,8 +1028,9 @@ local function update()
 		paused = ProfilerService.Paused == true
 		setButtonText(pauseButton, paused and "Resume" or "Pause")
 		liveLabel.Text = paused and "PAUSED" or "LIVE"
-		-- FrameCount enables native history collection without enabling the
-		-- engine's separate, fullscreen F2 overlay.
+		-- Request native frame history explicitly (requires Odin namecall
+		-- handler), then read FrameCount for older builds with that side effect.
+		safeCall("SetCollectionEnabled", true)
 		getFrameCount()
 		if paused then
 			refreshHistorical()
@@ -952,7 +1041,8 @@ local function update()
 
 	if not paused and now - lastSample >= SAMPLE_INTERVAL then
 		lastSample = now
-		local data = getFrame(1)
+		local data, source = getLiveSample()
+		lastSampleSource = source
 		if data then
 			table.insert(samples, summarize(data))
 			if #samples > GRAPH_POINTS then
