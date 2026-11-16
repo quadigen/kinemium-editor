@@ -35,6 +35,7 @@ local PALETTE = {
 	LocalScript = colors.success or colors.hover,
 	ModuleScript = colors.info or colors.warning or colors.subtext,
 	selected = colors.accent or colors.text,
+	cycle = colors.error or Color3.fromRGB(228, 82, 91),
 }
 
 local panel, content = UI.window(
@@ -106,6 +107,12 @@ local status = UI.label(
 status.ZIndex = 12
 status.TextTruncate = Enum.TextTruncate.AtEnd
 
+local cycleWarning =
+	UI.label(view, "", UDim2.fromOffset(12, 12), UDim2.new(1, -24, 0, 22), tokens.type.caption, PALETTE.cycle)
+cycleWarning.ZIndex = 12
+cycleWarning.Visible = false
+cycleWarning.TextTruncate = Enum.TextTruncate.AtEnd
+
 local function label(parent, text, y, size, color)
 	return UI.label(
 		parent,
@@ -138,11 +145,27 @@ local selectedStats = label(sidebar, "", 220, tokens.type.caption, PALETTE.muted
 selectedStats.Size = UDim2.new(1, -24, 0, 34)
 selectedStats.TextWrapped = true
 
-local listHeader = label(sidebar, "SCRIPTS", 265, tokens.type.caption, PALETTE.muted)
+local cycleHeader = label(sidebar, "CIRCULAR REQUIRES (0)", 260, tokens.type.caption, PALETTE.muted)
+local cycleList = UI.create("ScrollingFrame", {
+	Name = "DependencyCycles",
+	Position = UDim2.fromOffset(8, 283),
+	Size = UDim2.new(1, -16, 0, 0),
+	CanvasSize = UDim2.fromOffset(0, 0),
+	BorderSizePixel = 0,
+	BackgroundTransparency = 1,
+	ScrollBarThickness = 4,
+	ScrollBarImageColor3 = colors.subtext,
+	VirtualizedScrolling = true,
+	ScrollingEnabled = true,
+	ClipsDescendants = true,
+	Visible = false,
+}, sidebar)
+
+local listHeader = label(sidebar, "SCRIPTS", 293, tokens.type.caption, PALETTE.muted)
 local scriptList = UI.create("ScrollingFrame", {
 	Name = "ScriptList",
-	Position = UDim2.fromOffset(8, 292),
-	Size = UDim2.new(1, -16, 1, -344),
+	Position = UDim2.fromOffset(8, 320),
+	Size = UDim2.new(1, -16, 1, -372),
 	CanvasSize = UDim2.fromOffset(0, 0),
 	BorderSizePixel = 0,
 	BackgroundTransparency = 1,
@@ -163,10 +186,14 @@ local revision = 0
 local graphNodes = {}
 local graphEdges = {}
 local nodeByObject = {}
+local cycleGroups = {}
+local cyclicNodeCount = 0
+local cyclicEdgeCount = 0
 local chosen = nil
 local sceneOffset = Vector2.new(0, 0)
 local zoom = 1
 local showIsolated = true
+local showCyclesOnly = false
 local physicsEnabled = true
 local simulationLeft = 0
 local currentMessage = "Ready"
@@ -187,8 +214,12 @@ local scanStarted = false
 local graphReady = false
 local filteredRows = {}
 local rowSlots = {}
+local cycleRowSlots = {}
 local updateDetails
 local updateRowViewport
+local updateCycleViewport
+local updateCycleList
+local focusCycleGroup
 
 local function setStatus(message)
 	currentMessage = message
@@ -245,6 +276,17 @@ _, _, isolatedControl = control("Isolated", 288, 95, function()
 	end
 end)
 UI.setButtonState(isolatedControl, "selected")
+local cyclesControl
+_, _, cyclesControl = control("Cycles", 391, 86, function()
+	showCyclesOnly = not showCyclesOnly
+	UI.setButtonState(cyclesControl, showCyclesOnly and "selected" or nil)
+	if refreshVisible then
+		refreshVisible()
+	end
+	if fitGraph then
+		fitGraph()
+	end
+end)
 
 local legend = UI.label(
 	toolbar,
@@ -282,6 +324,9 @@ local function isScript(object)
 end
 
 local function isVisibleNode(node)
+	if showCyclesOnly and not node.cycleGroup then
+		return false
+	end
 	return showIsolated or node.degree > 0
 end
 
@@ -325,6 +370,10 @@ local function resetVisuals()
 	graphNodes = {}
 	graphEdges = {}
 	nodeByObject = {}
+	cycleGroups = {}
+	cyclicNodeCount, cyclicEdgeCount = 0, 0
+	cycleWarning.Visible = false
+	cycleWarning.Text = ""
 	chosen = nil
 	filteredRows = {}
 	for _, slot in ipairs(rowSlots) do
@@ -333,6 +382,18 @@ local function resetVisuals()
 	end
 	scriptList.CanvasSize = UDim2.fromOffset(0, 0)
 	countLabel.Text = "No scripts indexed"
+	cycleHeader.Text = "CIRCULAR REQUIRES (0)"
+	cycleHeader.TextColor3 = PALETTE.muted
+	cycleList.Visible = false
+	cycleList.CanvasPosition = Vector2.new(0, 0)
+	cycleList.CanvasSize = UDim2.fromOffset(0, 0)
+	for _, slot in ipairs(cycleRowSlots) do
+		slot.group = nil
+		slot.row.Visible = false
+	end
+	listHeader.Position = UDim2.fromOffset(12, 293)
+	scriptList.Position = UDim2.fromOffset(8, 320)
+	scriptList.Size = UDim2.new(1, -16, 1, -372)
 	updateDetails()
 	sceneOffset = Vector2.new(0, 0)
 	zoom = 1
@@ -365,6 +426,20 @@ local function makeNodeVisual(node)
 end
 
 local function makeEdgeVisual(edge)
+	if edge.from == edge.to then
+		-- A self-require has zero line length; render a visible loop symbol.
+		edge.visual = UI.label(
+			edgeLayer,
+			"↻",
+			UDim2.fromOffset(0, 0),
+			UDim2.fromOffset(22, 22),
+			tokens.type.small,
+			PALETTE.cycle
+		)
+		edge.visual.Name = "SelfRequireLoop"
+		edge.visual.ZIndex = 3
+		return
+	end
 	edge.visual = UI.create("Frame", {
 		Name = "DependencyLink",
 		BorderSizePixel = 0,
@@ -384,8 +459,14 @@ updateDetails = function()
 	end
 	selectedName.Text = chosen.name
 	selectedPath.Text = chosen.path
-	selectedStats.Text =
-		string.format("Requires: %d    Required by: %d\nType: %s", chosen.outCount, chosen.inCount, chosen.kind)
+	selectedStats.Text = string.format(
+		"Requires: %d    Required by: %d\n%s%s",
+		chosen.outCount,
+		chosen.inCount,
+		chosen.kind,
+		chosen.cycleGroup and string.format("  ·  Cycle #%d (%d)", chosen.cycleGroup.id, #chosen.cycleGroup.nodes)
+			or ""
+	)
 end
 
 local function selectNode(node)
@@ -397,6 +478,9 @@ local function selectNode(node)
 	end
 	updateDetails()
 	updateRowViewport(true)
+	if updateCycleViewport then
+		updateCycleViewport(true)
+	end
 	drawDirty = true
 end
 
@@ -412,6 +496,121 @@ local function openNode(node)
 		setStatus("Unable to open " .. node.name .. ": " .. tostring(err))
 	end
 end
+
+-- Cycles are groups of mutually reachable ModuleScripts (or a self-require).
+-- Each sidebar warning is actionable: it selects the first member and
+-- frames the entire group on the canvas.
+local function createCycleRowSlot()
+	local slot = { group = nil }
+	local row, _, controller = UI.button(
+		cycleList,
+		"",
+		UDim2.fromOffset(0, 0),
+		UDim2.new(1, -5, 0, ROW_HEIGHT),
+		nil,
+		{ color = colors.rowOdd, hoverColor = colors.hover, radius = 0, border = false }
+	)
+	row.Name = "DependencyCycleRow"
+	local caption = UI.label(
+		row,
+		"",
+		UDim2.fromOffset(8, 2),
+		UDim2.new(1, -14, 0, ROW_HEIGHT - 4),
+		tokens.type.small,
+		PALETTE.cycle
+	)
+	caption.TextTruncate = Enum.TextTruncate.AtEnd
+	row.Activated:Connect(function()
+		local group = slot.group
+		if not group or not group.nodes[1] then
+			return
+		end
+		selectNode(group.nodes[1])
+		if focusCycleGroup then
+			focusCycleGroup(group)
+		end
+		setStatus(
+			string.format(
+				"Cycle #%d: %d affected scripts · inspect red bubbles to view members",
+				group.id,
+				#group.nodes
+			)
+		)
+		if updateCycleViewport then
+			updateCycleViewport(true)
+		end
+	end)
+	slot.row, slot.caption, slot.controller = row, caption, controller
+	row.Visible = false
+	return slot
+end
+
+local lastCycleStart, lastCycleWidth, lastCycleHeight = -1, -1, -1
+updateCycleViewport = function(force)
+	local height, width = cycleList.AbsoluteSize.Y, cycleList.AbsoluteSize.X
+	local first = math.max(1, math.floor(cycleList.CanvasPosition.Y / ROW_HEIGHT) + 1 - 2)
+	if not force and first == lastCycleStart and height == lastCycleHeight and width == lastCycleWidth then
+		return
+	end
+	lastCycleStart, lastCycleHeight, lastCycleWidth = first, height, width
+	local last = math.min(#cycleGroups, first + math.ceil(height / ROW_HEIGHT) + 5)
+	local used = 0
+	for index = first, last do
+		used += 1
+		local slot = cycleRowSlots[used]
+		if not slot then
+			slot = createCycleRowSlot()
+			cycleRowSlots[used] = slot
+		end
+		local group = cycleGroups[index]
+		slot.group = group
+		slot.row.Visible = true
+		slot.row.Position = UDim2.fromOffset(0, (index - 1) * ROW_HEIGHT)
+		slot.row.BackgroundColor3 = index % 2 == 0 and colors.rowEven or colors.rowOdd
+		slot.caption.Text = group.label
+		UI.setButtonState(slot.controller, chosen and chosen.cycleGroup == group and "selected" or nil)
+	end
+	for i = used + 1, #cycleRowSlots do
+		cycleRowSlots[i].group = nil
+		cycleRowSlots[i].row.Visible = false
+	end
+end
+
+updateCycleList = function()
+	local hasCycles = #cycleGroups > 0
+	cycleHeader.Text = "CIRCULAR REQUIRES (" .. #cycleGroups .. ")"
+	cycleHeader.TextColor3 = hasCycles and PALETTE.cycle or PALETTE.muted
+	cycleList.Visible = hasCycles
+	if hasCycles then
+		local height = math.min(108, #cycleGroups * ROW_HEIGHT + 4)
+		cycleList.Size = UDim2.new(1, -16, 0, height)
+		cycleList.CanvasSize = UDim2.fromOffset(0, #cycleGroups * ROW_HEIGHT)
+	else
+		cycleList.CanvasSize = UDim2.fromOffset(0, 0)
+	end
+	local offset = hasCycles and 109 or 0
+	listHeader.Position = UDim2.fromOffset(12, 293 + offset)
+	scriptList.Position = UDim2.fromOffset(8, 320 + offset)
+	scriptList.Size = UDim2.new(1, -16, 1, -(372 + offset))
+	lastCycleStart = -1
+	if hasCycles then
+		updateCycleViewport(true)
+	end
+	cycleWarning.Visible = hasCycles
+	cycleWarning.Text = string.format(
+		"⚠ %d circular require group%s  ·  %d affected scripts",
+		#cycleGroups,
+		#cycleGroups == 1 and "" or "s",
+		cyclicNodeCount
+	)
+end
+
+cycleList:GetPropertyChangedSignal("CanvasPosition"):Connect(function()
+	updateCycleViewport(false)
+end)
+cycleList:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
+	updateCycleViewport(true)
+end)
 
 -- Virtualized sidebar rows share the same editor_UI.button pattern as FIP.
 -- Updating the search no longer destroys and recreates hundreds of buttons.
@@ -472,8 +671,8 @@ updateRowViewport = function(force)
 		slot.row.Visible = true
 		slot.row.Position = UDim2.fromOffset(0, (index - 1) * ROW_HEIGHT)
 		slot.row.BackgroundColor3 = index % 2 == 0 and colors.rowEven or colors.rowOdd
-		slot.caption.Text = "●  " .. node.name
-		slot.caption.TextColor3 = PALETTE[node.kind]
+		slot.caption.Text = (node.cycleGroup and "↻  " or "●  ") .. node.name
+		slot.caption.TextColor3 = node.cycleGroup and PALETTE.cycle or PALETTE[node.kind]
 		UI.setButtonState(slot.controller, node == chosen and "selected" or nil)
 	end
 	for i = used + 1, #rowSlots do
@@ -792,9 +991,6 @@ local function addDependency(fromNode, targetObject, line, edgeSeen)
 	if not toNode or targetObject.ClassName ~= "ModuleScript" then
 		return false
 	end
-	if fromNode == toNode then
-		return false
-	end
 	local group = edgeSeen[fromNode]
 	if not group then
 		group = {}
@@ -803,12 +999,16 @@ local function addDependency(fromNode, targetObject, line, edgeSeen)
 	if group[toNode] then
 		return true
 	end
-	group[toNode] = true
 	if #graphEdges >= MAX_EDGES then
 		return true
 	end
-	local edge = { from = fromNode, to = toNode, line = line }
+	group[toNode] = true
+	local edge = { from = fromNode, to = toNode, line = line, cyclic = false }
 	graphEdges[#graphEdges + 1] = edge
+	fromNode.outgoing[#fromNode.outgoing + 1] = edge
+	if fromNode == toNode then
+		fromNode.selfRequires = true
+	end
 	fromNode.outCount += 1
 	toNode.inCount += 1
 	fromNode.degree += 1
@@ -896,6 +1096,123 @@ local function processSource(node, source, edgeSeen, token, progress)
 		end
 	end
 	return true
+end
+
+-- Iterative Tarjan strongly connected components (O(V + E)). Avoids
+-- recursive call stacks for long require chains. Only edges within an SCC
+-- are marked red; a single node is cyclic only if it explicitly requires itself.
+local function detectCycles(token)
+	cycleGroups = {}
+	cyclicNodeCount, cyclicEdgeCount = 0, 0
+	local nextIndex, steps = 0, 0
+	local stack = {}
+	local frames = {}
+	for _, node in ipairs(graphNodes) do
+		node.cycleGroup = nil
+		node._tarjanIndex = nil
+		node._tarjanLow = nil
+		node._tarjanOnStack = nil
+	end
+	for _, edge in ipairs(graphEdges) do
+		edge.cyclic = false
+	end
+
+	local function enter(node, parent)
+		nextIndex += 1
+		node._tarjanIndex = nextIndex
+		node._tarjanLow = nextIndex
+		node._tarjanOnStack = true
+		stack[#stack + 1] = node
+		frames[#frames + 1] = { node = node, parent = parent, nextEdge = 1 }
+	end
+
+	for _, root in ipairs(graphNodes) do
+		if token ~= revision then
+			return false
+		end
+		if root._tarjanIndex == nil then
+			enter(root, nil)
+			while #frames > 0 do
+				steps += 1
+				if steps % 1024 == 0 then
+					if token ~= revision then
+						return false
+					end
+					task.wait()
+				end
+				local frame = frames[#frames]
+				local node = frame.node
+				local edge = node.outgoing[frame.nextEdge]
+				if edge then
+					frame.nextEdge += 1
+					local target = edge.to
+					if target._tarjanIndex == nil then
+						enter(target, node)
+					elseif target._tarjanOnStack then
+						node._tarjanLow = math.min(node._tarjanLow, target._tarjanIndex)
+					end
+				else
+					table.remove(frames)
+					if frame.parent then
+						frame.parent._tarjanLow = math.min(frame.parent._tarjanLow, node._tarjanLow)
+					end
+					if node._tarjanLow == node._tarjanIndex then
+						local members = {}
+						while true do
+							local member = table.remove(stack)
+							member._tarjanOnStack = false
+							members[#members + 1] = member
+							if member == node then
+								break
+							end
+						end
+						if #members > 1 or members[1].selfRequires then
+							table.sort(members, function(a, b)
+								return a.path < b.path
+							end)
+							local group = { nodes = members, edgeCount = 0 }
+							for _, member in ipairs(members) do
+								member.cycleGroup = group
+							end
+							cycleGroups[#cycleGroups + 1] = group
+							cyclicNodeCount += #members
+						end
+					end
+				end
+			end
+		end
+	end
+
+	table.sort(cycleGroups, function(a, b)
+		if #a.nodes ~= #b.nodes then
+			return #a.nodes > #b.nodes
+		end
+		return a.nodes[1].path < b.nodes[1].path
+	end)
+	for i, group in ipairs(cycleGroups) do
+		group.id = i
+		group.label = string.format(
+			"↻ #%d  ·  %d script%s  ·  %s",
+			i,
+			#group.nodes,
+			#group.nodes == 1 and "" or "s",
+			group.nodes[1].name
+		)
+	end
+	for _, edge in ipairs(graphEdges) do
+		local group = edge.from.cycleGroup
+		if group and group == edge.to.cycleGroup then
+			edge.cyclic = true
+			group.edgeCount += 1
+			cyclicEdgeCount += 1
+		end
+	end
+	for _, node in ipairs(graphNodes) do
+		node._tarjanIndex = nil
+		node._tarjanLow = nil
+		node._tarjanOnStack = nil
+	end
+	return token == revision
 end
 
 local function positionNodes()
@@ -999,6 +1316,25 @@ fitGraph = function()
 	drawDirty = true
 end
 
+focusCycleGroup = function(group)
+	if not group or #group.nodes == 0 then
+		return
+	end
+	local left, top, right, bottom
+	for _, node in ipairs(group.nodes) do
+		left = left and math.min(left, node.x) or node.x
+		top = top and math.min(top, node.y) or node.y
+		right = right and math.max(right, node.x) or node.x
+		bottom = bottom and math.max(bottom, node.y) or node.y
+	end
+	local s = view.AbsoluteSize
+	local w = math.max(1, right - left + 170)
+	local h = math.max(1, bottom - top + 170)
+	zoom = math.clamp(math.min((s.X - 32) / w, (s.Y - 75) / h), MIN_ZOOM, 1.5)
+	sceneOffset = Vector2.new(-(left + right) / 2, -(top + bottom) / 2)
+	drawDirty = true
+end
+
 focusNode = function(node)
 	if not node then
 		return
@@ -1017,11 +1353,12 @@ drawGraph = function()
 		return
 	end
 	local highlighted = chosen and chosen.neighbors
+	local chosenGroup = chosen and chosen.cycleGroup
 	local query = string.lower(queryInput.Text or "")
 	for _, node in ipairs(graphNodes) do
 		local point = worldToScreen(node.x, node.y)
 		local selected = node == chosen
-		local related = highlighted and highlighted[node]
+		local related = (highlighted and highlighted[node]) or (chosenGroup and node.cycleGroup == chosenGroup)
 		local match = query ~= "" and string.find(node.searchKey, query, 1, true) ~= nil
 		local diameter = math.clamp((9 + math.sqrt(node.degree) * 3) * math.sqrt(zoom), 5, 36)
 		if selected then
@@ -1034,7 +1371,8 @@ drawGraph = function()
 		if visible then
 			dot.Position = UDim2.fromOffset(point.X, point.Y)
 			dot.Size = UDim2.fromOffset(diameter, diameter)
-			dot.BackgroundColor3 = selected and PALETTE.selected or PALETTE[node.kind]
+			dot.BackgroundColor3 = node.cycleGroup and PALETTE.cycle
+				or (selected and PALETTE.selected or PALETTE[node.kind])
 			dot.BackgroundTransparency = chosen and not (selected or related) and 0.56 or 0
 		end
 		local text = node.caption
@@ -1043,16 +1381,25 @@ drawGraph = function()
 		if text.Visible then
 			text.Position = UDim2.fromOffset(point.X + diameter / 2 + 5, point.Y - 10)
 			text.Size = UDim2.fromOffset(math.clamp(#node.name * 7.5 + 8, 55, 166), 20)
-			text.TextColor3 = selected and PALETTE.selected or PALETTE.text
+			text.TextColor3 = node.cycleGroup and PALETTE.cycle or (selected and PALETTE.selected or PALETTE.text)
 			text.TextTransparency = chosen and not (selected or related) and 0.62
 				or (query ~= "" and not match and 0.55 or 0)
+			text.Text = (node.selfRequires and "↻ " or "") .. node.name
 		end
 	end
 	for _, edge in ipairs(graphEdges) do
 		local a, b = edge.from, edge.to
 		local drawable = isVisibleNode(a) and isVisibleNode(b)
 		local line = edge.visual
-		if drawable then
+		if drawable and a == b then
+			local p = worldToScreen(a.x, a.y)
+			drawable = p.X >= -30 and p.X <= size.X + 30 and p.Y >= -30 and p.Y <= size.Y + 30
+			if drawable then
+				line.Position = UDim2.fromOffset(p.X + 9, p.Y - 26)
+				line.TextColor3 = PALETTE.cycle
+				line.TextTransparency = chosen and chosen ~= a and 0.85 or 0
+			end
+		elseif drawable then
 			local p1, p2 = worldToScreen(a.x, a.y), worldToScreen(b.x, b.y)
 			local dx, dy = p2.X - p1.X, p2.Y - p1.Y
 			local length = math.sqrt(dx * dx + dy * dy)
@@ -1065,11 +1412,18 @@ drawGraph = function()
 				)
 			if drawable then
 				line.Position = UDim2.fromOffset((p1.X + p2.X) / 2, (p1.Y + p2.Y) / 2)
-				line.Size = UDim2.fromOffset(length, chosen and (a == chosen or b == chosen) and 2 or 1)
+				local selectedEdge = chosen
+					and (
+						a == chosen
+						or b == chosen
+						or (chosenGroup and a.cycleGroup == chosenGroup and b.cycleGroup == chosenGroup)
+					)
+				line.Size = UDim2.fromOffset(length, edge.cyclic and 2 or (selectedEdge and 2 or 1))
 				line.Rotation = math.deg(math.atan2(dy, dx))
-				local selectedEdge = chosen and (a == chosen or b == chosen)
-				line.BackgroundColor3 = selectedEdge and PALETTE.selected or PALETTE.edge
-				line.BackgroundTransparency = chosen and not selectedEdge and 0.91 or (selectedEdge and 0.08 or 0.66)
+				line.BackgroundColor3 = edge.cyclic and PALETTE.cycle
+					or (selectedEdge and PALETTE.selected or PALETTE.edge)
+				line.BackgroundTransparency = chosen and not selectedEdge and 0.91
+					or (selectedEdge and 0.08 or (edge.cyclic and 0.10 or 0.66))
 			end
 		end
 		line.Visible = drawable
@@ -1163,6 +1517,11 @@ local function buildGraph(documentList, token)
 	if token ~= revision then
 		return false
 	end
+	setStatus("Detecting circular requires...")
+	if not detectCycles(token) then
+		return false
+	end
+	updateCycleList()
 	refreshVisible()
 	return true
 end
@@ -1201,6 +1560,9 @@ startScan = function()
 						inCount = 0,
 						degree = 0,
 						neighbors = {},
+						outgoing = {},
+						selfRequires = false,
+						cycleGroup = nil,
 						x = 0,
 						y = 0,
 						vx = 0,
@@ -1237,7 +1599,7 @@ startScan = function()
 		if token ~= revision then
 			return
 		end
-		countLabel.Text = string.format("%d nodes  ·  %d links", #graphNodes, #graphEdges)
+		countLabel.Text = string.format("%d nodes  ·  %d links  ·  %d cycles", #graphNodes, #graphEdges, #cycleGroups)
 		simulationLeft = #graphNodes <= PHYSICS_MAX_NODES and PHYSICS_STEPS or 0
 		fitGraph()
 		local suffix = exceeded and " · script cap reached" or ""
@@ -1253,9 +1615,13 @@ startScan = function()
 		if skippedTokenCount > 0 then
 			suffix ..= " · " .. skippedTokenCount .. " token-limited"
 		end
+		local cycleNotice = #cycleGroups > 0
+				and string.format("⚠ %d circular require groups (%d scripts) · ", #cycleGroups, cyclicNodeCount)
+			or ""
 		setStatus(
 			string.format(
-				"%d scripts · %d links · %d unresolved · %d unreadable · %d limited · %.2fs%s",
+				"%s%d scripts · %d links · %d unresolved · %d unreadable · %d limited · %.2fs%s",
+				cycleNotice,
 				#graphNodes,
 				#graphEdges,
 				unresolvedCount,
@@ -1468,12 +1834,36 @@ return {
 	GetGraph = function()
 		return graphNodes, graphEdges
 	end,
+	FocusCycle = function(id)
+		local group = cycleGroups[tonumber(id) or 0]
+		if not group or not group.nodes[1] then
+			return false
+		end
+		enable()
+		selectNode(group.nodes[1])
+		focusCycleGroup(group)
+		return true
+	end,
 	GetDiagnostics = function()
 		local limited = {}
 		for _, node in ipairs(graphNodes) do
 			if node.scanWarning then
 				limited[#limited + 1] = { path = node.path, reason = node.scanWarning }
 			end
+		end
+		local cycles = {}
+		for _, group in ipairs(cycleGroups) do
+			local members = {}
+			for _, node in ipairs(group.nodes) do
+				members[#members + 1] = node.path
+			end
+			cycles[#cycles + 1] = {
+				id = group.id,
+				size = #members,
+				edges = group.edgeCount,
+				members = members,
+				selfRequire = #members == 1,
+			}
 		end
 		return {
 			scanning = scanInProgress,
@@ -1484,6 +1874,16 @@ return {
 			unresolved = unresolvedCount,
 			unreadable = unreadableCount,
 			limited = limited,
+			cycleCount = #cycleGroups,
+			cyclicScripts = cyclicNodeCount,
+			cyclicEdges = cyclicEdgeCount,
+			cycles = cycles,
+			-- Static analysis can miss dynamic requires and capped/unreadable sources.
+			cyclesMayBeIncomplete = scannedCount > #graphNodes
+				or #graphEdges >= MAX_EDGES
+				or unreadableCount > 0
+				or warningCount > 0
+				or unresolvedCount > 0,
 		}
 	end,
 	IsVisible = function()
