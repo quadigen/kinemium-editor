@@ -10,7 +10,18 @@ local StudioThemeService = game:GetService("StudioThemeService")
 local ProfilerService = game:GetService("ProfilerService")
 local RunService = game:GetService("RunService")
 
-local WINDOW_W, WINDOW_H = 1120, 670
+-- Layout ---------------------------------------------------------------
+local WINDOW_W, WINDOW_H = 1120, 700
+local PAD = 8
+local TOOLBAR_H = 40
+local GRAPH_Y = PAD + TOOLBAR_H + 8
+local GRAPH_H = 232
+local TABS_Y = GRAPH_Y + GRAPH_H + 8
+local TABS_H = 32
+local BODY_Y = TABS_Y + TABS_H + 8
+local STATUS_H = 22
+local SIDE_W = 206
+
 local GRAPH_POINTS = 96
 local SAMPLE_INTERVAL = 0.10
 local PAINT_INTERVAL = 0.15
@@ -18,6 +29,13 @@ local MAX_ZONES = 180
 local DETAIL_LIVE_INTERVAL = 0.45
 local MAX_LANES = 32
 local ROW_H = math.max(24, metrics.treeRow or 22)
+
+local R_SM = tokens.radius.sm
+local R_MD = tokens.radius.md or tokens.radius.sm
+
+-- Status colors are semantic (not theme roles).
+local LIVE_COLOR = Color3.fromRGB(76, 201, 120)
+local PAUSED_COLOR = Color3.fromRGB(240, 170, 50)
 
 local C = {
 	background = colors.surface,
@@ -30,7 +48,7 @@ local C = {
 	outline = colors.subtext,
 	text = colors.text,
 	dim = colors.subtext,
-	accent = colors.selection or colors.text,
+	accent = colors.accent or colors.selection or colors.text,
 	selection = colors.text,
 }
 
@@ -58,7 +76,7 @@ local function themeRepaint()
 	C.outline = palette.subtext
 	C.text = palette.text
 	C.dim = palette.subtext
-	C.accent = palette.selection or palette.text
+	C.accent = palette.accent or palette.selection or palette.text
 	C.selection = palette.text
 	for object, properties in pairs(themed) do
 		if object.Parent then
@@ -172,6 +190,13 @@ local function frame(parent, position, size, color, name)
 	return f
 end
 
+-- A rounded card, the building block of the layout.
+local function card(parent, position, size, color, name)
+	local f = frame(parent, position, size, color or C.panel, name)
+	UI.corner(f, R_MD)
+	return f
+end
+
 local function uiTextSize(requested)
 	if requested <= 10 then
 		return tokens.type.caption
@@ -202,7 +227,7 @@ local function button(parent, value, position, size, action, extra)
 		pressedColor = C.pressed,
 		textColor = C.text,
 		textSize = tokens.type.small,
-		radius = tokens.radius.sm,
+		radius = R_MD,
 		border = false,
 	}
 	if extra then
@@ -226,16 +251,16 @@ local function setButtonText(b, value)
 	end
 end
 
-local function scroller(parent, position, size, color)
+local function scroller(parent, position, size, color, transparency)
 	local scroll = UI.create("ScrollingFrame", {
 		Position = position,
 		Size = size,
 		BackgroundColor3 = color or C.background,
-		BackgroundTransparency = 0.16,
+		BackgroundTransparency = transparency or 0.16,
 		BorderSizePixel = 0,
-		ScrollBarThickness = 5,
+		ScrollBarThickness = 4,
 		ScrollBarImageColor3 = C.dim,
-		ScrollBarImageTransparency = 0.35,
+		ScrollBarImageTransparency = 0.5,
 		CanvasSize = UDim2.fromOffset(0, 0),
 		ClipsDescendants = true,
 		Active = true,
@@ -243,6 +268,12 @@ local function scroller(parent, position, size, color)
 	trackTheme(scroll, "BackgroundColor3", color or C.background)
 	trackTheme(scroll, "ScrollBarImageColor3", C.dim)
 	return scroll
+end
+
+local function formatInt(n)
+	local s = tostring(math.floor(tonumber(n) or 0))
+	local out = s:reverse():gsub("(%d%d%d)", "%1,"):reverse()
+	return (out:gsub("^,", ""))
 end
 
 local function safeCall(methodName, ...)
@@ -332,6 +363,7 @@ local function summarize(frameData)
 	}
 end
 
+-- Window ---------------------------------------------------------------
 local gui = UI.widgetOverlay()
 local panel, content = UI.window(
 	"Profiler",
@@ -342,45 +374,42 @@ local panel, content = UI.window(
 )
 panel.Parent = gui
 panel.Visible = false
--- Inherit the content styling from UI.window, like Explorer / Material Maker.
 content.BackgroundTransparency = 1
-panel.BackgroundTransparency = 0.5
+-- Mostly opaque so the viewport doesn't tint the window (matches Settings).
+panel.BackgroundTransparency = 0.08
 content.ClipsDescendants = true
 
-local toolbar = frame(content, UDim2.fromOffset(0, 0), UDim2.new(1, 0, 0, 42), C.panel)
-toolbar.BackgroundTransparency = 0.35
-local liveLabel = label(toolbar, "LIVE", UDim2.fromOffset(12, 4), UDim2.fromOffset(52, 33), 12, C.accent)
-local readout = label(toolbar, "FPS --    Frame -- ms", UDim2.fromOffset(67, 4), UDim2.new(1, -420, 0, 33), 13)
+-- Toolbar --------------------------------------------------------------
+local toolbar = card(content, UDim2.fromOffset(PAD, PAD), UDim2.new(1, -PAD * 2, 0, TOOLBAR_H), C.panel, "Toolbar")
+
+local livePill = frame(toolbar, UDim2.fromOffset(10, 8), UDim2.fromOffset(84, 24), LIVE_COLOR, "LivePill")
+livePill.BackgroundTransparency = 0.82
+UI.corner(livePill, 12)
+local liveDot = frame(livePill, UDim2.fromOffset(10, 8), UDim2.fromOffset(8, 8), LIVE_COLOR, "LiveDot")
+UI.corner(liveDot, 4)
+local liveLabel = label(livePill, "LIVE", UDim2.fromOffset(24, 0), UDim2.new(1, -28, 1, 0), 11, LIVE_COLOR)
+
+local readout = label(toolbar, "FPS --    Frame -- ms", UDim2.fromOffset(106, 4), UDim2.new(1, -420, 0, 32), 13)
 local pauseButton
 local backButton
 local nextButton
 local frameCounter =
 	label(toolbar, "-- / --", UDim2.new(1, -292, 0, 5), UDim2.fromOffset(82, 30), 11, C.dim, Enum.TextXAlignment.Right)
 
-local graphPanel = frame(content, UDim2.fromOffset(0, 43), UDim2.new(1, 0, 0, 218), C.background)
+-- Graph ----------------------------------------------------------------
+local graphPanel = frame(content, UDim2.fromOffset(PAD, GRAPH_Y), UDim2.new(1, -PAD * 2, 0, GRAPH_H), C.background)
 graphPanel.BackgroundTransparency = 1
-local legend = frame(graphPanel, UDim2.fromOffset(0, 0), UDim2.new(0, 206, 1, 0), C.panel)
-UI.corner(legend, tokens.radius.sm)
-label(legend, "CPU Usage", UDim2.fromOffset(12, 6), UDim2.fromOffset(165, 22), 15)
-local legendHint =
-	label(legend, "Normalized named zones", UDim2.fromOffset(12, 28), UDim2.fromOffset(184, 16), 10, C.dim)
+graphPanel.ClipsDescendants = false
 
-local chartArea = frame(graphPanel, UDim2.fromOffset(207, 0), UDim2.new(1, -207, 1, 0), C.strip)
-UI.corner(chartArea, tokens.radius.sm)
-local graphHeader =
-	label(chartArea, "Frame history  -  96 samples", UDim2.fromOffset(10, 2), UDim2.new(1, -20, 0, 21), 11, C.dim)
-local chart = frame(chartArea, UDim2.fromOffset(8, 26), UDim2.new(1, -16, 1, -52), C.panel)
-UI.corner(chart, tokens.radius.sm)
-local graphFooter = label(
-	chartArea,
-	"16.67ms (60 FPS)     33.33ms (30 FPS)",
-	UDim2.fromOffset(10, 0),
-	UDim2.new(1, -20, 1, 0),
-	10,
-	C.dim
-)
-graphFooter.Position = UDim2.new(0, 10, 1, -24)
-graphFooter.Size = UDim2.new(1, -20, 0, 20)
+local legend = card(graphPanel, UDim2.fromOffset(0, 0), UDim2.new(0, SIDE_W, 1, 0), C.panel, "Legend")
+label(legend, "CPU Usage", UDim2.fromOffset(14, 8), UDim2.fromOffset(165, 22), 15)
+label(legend, "Normalized named zones", UDim2.fromOffset(14, 30), UDim2.fromOffset(184, 16), 10, C.dim)
+
+local chartArea =
+	card(graphPanel, UDim2.fromOffset(SIDE_W + 8, 0), UDim2.new(1, -(SIDE_W + 8), 1, 0), C.strip, "ChartArea")
+local graphHeader = label(chartArea, "Frame history", UDim2.fromOffset(12, 4), UDim2.new(1, -24, 0, 22), 11, C.dim)
+local chart = card(chartArea, UDim2.fromOffset(10, 30), UDim2.new(1, -20, 1, -62), C.panel, "Chart")
+local graphFooter = label(chartArea, "", UDim2.new(0, 12, 1, -26), UDim2.new(1, -24, 0, 22), 10, C.dim)
 
 local graphBars = {}
 local samples = {}
@@ -394,6 +423,14 @@ local drawGraph
 local drawDetail
 local setPaused
 local selectOffset
+
+local function updateLiveBadge()
+	local c = paused and PAUSED_COLOR or LIVE_COLOR
+	livePill.BackgroundColor3 = c
+	liveDot.BackgroundColor3 = c
+	liveLabel.TextColor3 = c
+	liveLabel.Text = paused and "PAUSED" or "LIVE"
+end
 
 local function graphSlot(index)
 	-- Draw directly inside the chart: editor_ui buttons contain their own
@@ -411,13 +448,15 @@ local function graphSlot(index)
 		})
 		columns[cat.key] = piece
 	end
+	-- Selected frame: a soft full-height highlight behind the bars.
 	local marker = make("Frame", chart, {
 		Name = "SelectedFrame_" .. tostring(index),
 		Position = UDim2.fromOffset(0, 0),
-		Size = UDim2.fromOffset(0, 2),
+		Size = UDim2.fromOffset(0, 0),
 		BackgroundColor3 = C.selection,
+		BackgroundTransparency = 0.82,
 		BorderSizePixel = 0,
-		ZIndex = 4,
+		ZIndex = 2,
 		Visible = false,
 	})
 	trackTheme(marker, "BackgroundColor3", C.selection)
@@ -450,74 +489,103 @@ for i = 1, GRAPH_POINTS do
 	graphBars[i] = graphSlot(i)
 end
 
-for _, limit in ipairs({ 16.667, 33.333 }) do
-	local marker = frame(chart, UDim2.new(0, 0, 0, 0), UDim2.new(1, 0, 0, 1), C.outline)
-	marker.Name = "Reference" .. tostring(limit)
-	marker.BackgroundTransparency = 0.3
-	marker.ZIndex = 1
-end
-
+-- 60 / 30 FPS guide lines with small right-aligned captions.
 local chartReference = {}
-for _, child in ipairs(chart:GetChildren()) do
-	if child.Name == "Reference16.667" or child.Name == "Reference33.333" then
-		table.insert(chartReference, child)
-	end
+for _, guide in ipairs({ { ms = 16.667, text = "60 FPS" }, { ms = 33.333, text = "30 FPS" } }) do
+	local line =
+		frame(chart, UDim2.new(0, 0, 0, 0), UDim2.new(1, 0, 0, 1), C.outline, "Reference" .. tostring(guide.ms))
+	line.BackgroundTransparency = 0.6
+	line.ZIndex = 4
+	local caption = label(
+		chart,
+		guide.text,
+		UDim2.new(1, -52, 0, 0),
+		UDim2.fromOffset(46, 14),
+		10,
+		C.dim,
+		Enum.TextXAlignment.Right
+	)
+	caption.ZIndex = 6
+	table.insert(chartReference, { line = line, caption = caption, ms = guide.ms })
 end
 
+-- Legend rows (click to toggle a category) with per-frame milliseconds.
+local legendValues = {}
 for i = 1, #categories do
 	local cat = categories[#categories - i + 1]
-	local row = button(legend, "", UDim2.fromOffset(0, 48 + (i - 1) * 18), UDim2.new(1, 0, 0, 18), function()
+	local row = button(legend, "", UDim2.fromOffset(6, 54 + (i - 1) * 19), UDim2.new(1, -12, 0, 18), function()
 		categoryEnabled[cat.key] = not categoryEnabled[cat.key]
 		dirtyGraph = true
 		dirtyDetail = true
 	end)
 	row.BackgroundTransparency = 1
-	local chip = frame(row, UDim2.fromOffset(11, 5), UDim2.fromOffset(9, 9), cat.color)
-	local caption = label(row, cat.label, UDim2.fromOffset(26, 0), UDim2.new(1, -29, 1, 0), 11, C.text)
+	local chip = frame(row, UDim2.fromOffset(8, 4), UDim2.fromOffset(10, 10), cat.color)
+	UI.corner(chip, 5)
+	local caption = label(row, cat.label, UDim2.fromOffset(26, 0), UDim2.new(1, -90, 1, 0), 11, C.text)
+	legendValues[cat.key] =
+		label(row, "--", UDim2.new(1, -62, 0, 0), UDim2.fromOffset(56, 18), 10, C.dim, Enum.TextXAlignment.Right)
 	row.MouseButton1Click:Connect(function()
 		chip.BackgroundTransparency = categoryEnabled[cat.key] and 0 or 0.72
 		caption.TextColor3 = categoryEnabled[cat.key] and C.text or C.dim
 	end)
 end
 
-local divider = frame(content, UDim2.fromOffset(0, 261), UDim2.new(1, 0, 0, 1), C.outline)
-local detailHead = frame(content, UDim2.fromOffset(0, 262), UDim2.new(1, 0, 0, 37), C.panel)
-detailHead.BackgroundTransparency = 0.35
+-- Detail tabs ----------------------------------------------------------
+local detailHead = frame(content, UDim2.fromOffset(PAD, TABS_Y), UDim2.new(1, -PAD * 2, 0, TABS_H), C.panel)
+detailHead.BackgroundTransparency = 1
+detailHead.ClipsDescendants = false
+
+-- Segmented control: tab buttons share the container colour, the selected
+-- one picks up editor_ui's "selected" state.
+local segmented = card(detailHead, UDim2.fromOffset(0, 0), UDim2.fromOffset(294, TABS_H), C.panel, "Tabs")
 local tabs = {}
 for i, tabName in ipairs({ "Timeline", "Threads", "Scripts" }) do
 	tabs[tabName] = button(
-		detailHead,
+		segmented,
 		tabName,
-		UDim2.fromOffset(10 + (i - 1) * 100, 5),
-		UDim2.fromOffset(94, metrics.buttonHeight),
+		UDim2.fromOffset(3 + (i - 1) * 96, 3),
+		UDim2.fromOffset(94, TABS_H - 6),
 		function()
 			activeTab = tabName
 			dirtyDetail = true
-		end
+		end,
+		{ color = C.panel }
 	)
 end
+
 local zoom = 1
+local zoomBox = card(detailHead, UDim2.new(1, -232, 0, 0), UDim2.fromOffset(112, TABS_H), C.panel, "Zoom")
 local zoomCaption =
-	label(detailHead, "1x", UDim2.new(1, -196, 0, 5), UDim2.fromOffset(36, 26), 12, C.dim, Enum.TextXAlignment.Center)
-button(detailHead, "-", UDim2.new(1, -232, 0, 5), UDim2.fromOffset(30, metrics.buttonHeight), function()
+	label(zoomBox, "1x", UDim2.fromOffset(34, 0), UDim2.fromOffset(44, TABS_H), 12, C.dim, Enum.TextXAlignment.Center)
+button(zoomBox, "-", UDim2.fromOffset(3, 3), UDim2.fromOffset(30, TABS_H - 6), function()
 	zoom = math.max(1, zoom / 2)
 	zoomCaption.Text = tostring(zoom) .. "x"
 	dirtyDetail = true
-end)
-button(detailHead, "+", UDim2.new(1, -156, 0, 5), UDim2.fromOffset(30, metrics.buttonHeight), function()
+end, { color = C.panel })
+button(zoomBox, "+", UDim2.fromOffset(79, 3), UDim2.fromOffset(30, TABS_H - 6), function()
 	zoom = math.min(8, zoom * 2)
 	zoomCaption.Text = tostring(zoom) .. "x"
 	dirtyDetail = true
-end)
+end, { color = C.panel })
 local detailCaption =
-	label(detailHead, "", UDim2.new(1, -118, 0, 5), UDim2.fromOffset(112, 26), 10, C.dim, Enum.TextXAlignment.Right)
+	label(detailHead, "", UDim2.new(1, -112, 0, 0), UDim2.fromOffset(106, TABS_H), 10, C.dim, Enum.TextXAlignment.Right)
 
-local detailBody = frame(content, UDim2.fromOffset(0, 300), UDim2.new(1, 0, 1, -324), C.background)
-detailBody.BackgroundTransparency = 1
-local laneNames = scroller(detailBody, UDim2.fromOffset(0, 0), UDim2.new(0, 206, 1, 0), C.panel)
-local laneCanvas = scroller(detailBody, UDim2.fromOffset(207, 0), UDim2.new(1, -207, 1, 0), C.background)
-local statusBar = frame(content, UDim2.new(0, 0, 1, -23), UDim2.new(1, 0, 0, 23), C.panel)
-statusBar.BackgroundTransparency = 0.3
+-- Detail body ----------------------------------------------------------
+local detailBody = card(
+	content,
+	UDim2.fromOffset(PAD, BODY_Y),
+	UDim2.new(1, -PAD * 2, 1, -(BODY_Y + STATUS_H + PAD + 6)),
+	C.panel,
+	"DetailBody"
+)
+local laneNames = scroller(detailBody, UDim2.fromOffset(0, 0), UDim2.new(0, SIDE_W, 1, 0), C.panel, 1)
+local laneCanvas = scroller(detailBody, UDim2.fromOffset(SIDE_W + 1, 0), UDim2.new(1, -(SIDE_W + 1), 1, 0), C.panel, 1)
+local sideDivider = frame(detailBody, UDim2.fromOffset(SIDE_W, 0), UDim2.new(0, 1, 1, 0), C.outline)
+sideDivider.BackgroundTransparency = 0.8
+sideDivider.ZIndex = 3
+
+local statusBar =
+	card(content, UDim2.new(0, PAD, 1, -(STATUS_H + PAD)), UDim2.new(1, -PAD * 2, 0, STATUS_H), C.panel, "StatusBar")
 local statusLabel = label(statusBar, "Profiler ready", UDim2.fromOffset(10, 0), UDim2.new(1, -20, 1, 0), 10, C.dim)
 
 local laneObjects = {}
@@ -618,8 +686,7 @@ setPaused = function(value)
 		return
 	end
 	setButtonText(pauseButton, paused and "Resume" or "Pause")
-	liveLabel.Text = paused and "PAUSED" or "LIVE"
-	liveLabel.TextColor3 = paused and categories[2].color or C.accent
+	updateLiveBadge()
 	if paused then
 		selectedOffset = 1
 		refreshHistorical()
@@ -675,12 +742,13 @@ local function drawGraphNow()
 		local rec = i > GRAPH_POINTS - frameCount and samples[start + i - (GRAPH_POINTS - frameCount)] or nil
 		local x = math.floor((i - 1) * graphWidth / GRAPH_POINTS)
 		local nextX = math.floor(i * graphWidth / GRAPH_POINTS)
-		local w = math.max(1, nextX - x - 1)
+		-- 2px gutter between bars for a cleaner, less dense look.
+		local w = math.max(1, nextX - x - 2)
 		local stack = 0
 		local selected = rec and paused and selectedFrame and rec.offset == selectedOffset
 		slot.marker.Visible = not not selected
-		slot.marker.Size = UDim2.fromOffset(w, 2)
-		slot.marker.Position = UDim2.fromOffset(x, 0)
+		slot.marker.Size = UDim2.fromOffset(w + 2, graphHeight)
+		slot.marker.Position = UDim2.fromOffset(x - 1, 0)
 		slot.button.Position = UDim2.fromOffset(x, 0)
 		slot.button.Size = UDim2.fromOffset(w, graphHeight)
 		for _, cat in ipairs(categories) do
@@ -698,14 +766,23 @@ local function drawGraphNow()
 		end
 	end
 	for _, ref in ipairs(chartReference) do
-		local ms = ref.Name == "Reference16.667" and 16.667 or 33.333
-		ref.Position = UDim2.new(0, 0, 1, -math.floor(graphHeight * ms / maximum))
+		local y = graphHeight - math.floor(graphHeight * ref.ms / maximum)
+		ref.line.Position = UDim2.fromOffset(0, y)
+		ref.caption.Position = UDim2.new(1, -52, 0, math.max(0, y - 15))
 	end
-	graphFooter.Text = string.format("Guide: 16.67ms / 60 FPS   |   33.33ms / 30 FPS   |   scale %.1fms", maximum)
+
+	-- Legend: milliseconds per category for the current / selected frame.
+	local current = getSelectedFrame()
+	for _, cat in ipairs(categories) do
+		local value = current and current.bucket[cat.key]
+		legendValues[cat.key].Text = value and string.format("%.1f ms", value) or "--"
+	end
+
+	graphFooter.Text = string.format("Guides: 16.67 ms / 60 FPS   |   33.33 ms / 30 FPS   |   scale %.1f ms", maximum)
 	local historyCount = getFrameCount()
-	local sourceText = lastSampleSource == "native" and "native zone history"
+	local sourceText = lastSampleSource == "native" and "Native zone history"
 		or lastSampleSource == "frame-time" and "FrameTime fallback (untracked)"
-		or "no frame data"
+		or "No frame data"
 	graphHeader.Text = string.format("%s  |  %d samples  |  %d native frames", sourceText, #samples, historyCount)
 	if lastFrameReadError then
 		graphHeader.Text = "GetFrameRecord error: " .. string.sub(lastFrameReadError, 1, 100)
@@ -718,14 +795,105 @@ end
 
 drawGraph = drawGraphNow
 
+-- Detail helpers -------------------------------------------------------
 local function titlePair(name, value, y)
-	textRow(laneNames, name, UDim2.fromOffset(10, y), UDim2.new(1, -18, 0, ROW_H), 11, C.dim, nameObjects)
-	textRow(laneCanvas, value, UDim2.fromOffset(8, y), UDim2.new(1, -16, 0, ROW_H), 11, C.text, laneObjects)
+	textRow(laneNames, name, UDim2.fromOffset(12, y), UDim2.new(1, -18, 0, ROW_H), 11, C.dim, nameObjects)
+	textRow(laneCanvas, value, UDim2.fromOffset(12, y), UDim2.new(1, -24, 0, ROW_H), 11, C.text, laneObjects)
+end
+
+local function headerStrip(width)
+	tracked(laneNames, {
+		Position = UDim2.fromOffset(0, 0),
+		Size = UDim2.new(1, 0, 0, ROW_H),
+		BackgroundColor3 = C.strip,
+		BackgroundTransparency = 0.45,
+		BorderSizePixel = 0,
+	}, nameObjects)
+	tracked(laneCanvas, {
+		Position = UDim2.fromOffset(0, 0),
+		Size = UDim2.fromOffset(width, ROW_H),
+		BackgroundColor3 = C.strip,
+		BackgroundTransparency = 0.45,
+		BorderSizePixel = 0,
+	}, laneObjects)
+end
+
+local function rowStripe(index, y, width)
+	if index % 2 ~= 0 then
+		return
+	end
+	tracked(laneNames, {
+		Position = UDim2.fromOffset(0, y),
+		Size = UDim2.new(1, 0, 0, ROW_H),
+		BackgroundColor3 = C.rowAlt,
+		BackgroundTransparency = 0.65,
+		BorderSizePixel = 0,
+	}, nameObjects)
+	tracked(laneCanvas, {
+		Position = UDim2.fromOffset(0, y),
+		Size = UDim2.fromOffset(width, ROW_H),
+		BackgroundColor3 = C.rowAlt,
+		BackgroundTransparency = 0.65,
+		BorderSizePixel = 0,
+	}, laneObjects)
+end
+
+-- Right-aligned numeric columns, laid out from the right edge of the canvas.
+local function columnPositions(widths, contentWidth)
+	local total = 0
+	for _, w in ipairs(widths) do
+		total += w
+	end
+	local x = contentWidth - total - 8
+	local xs = {}
+	for i, w in ipairs(widths) do
+		xs[i] = x
+		x += w
+	end
+	return xs
+end
+
+local function drawHeader(nameText, barText, headers, widths, xs, contentWidth)
+	headerStrip(contentWidth)
+	textRow(laneNames, nameText, UDim2.fromOffset(12, 0), UDim2.new(1, -18, 0, ROW_H), 10, C.dim, nameObjects)
+	textRow(laneCanvas, barText, UDim2.fromOffset(12, 0), UDim2.fromOffset(200, ROW_H), 10, C.dim, laneObjects)
+	for i, text in ipairs(headers) do
+		textRow(
+			laneCanvas,
+			text,
+			UDim2.fromOffset(xs[i], 0),
+			UDim2.fromOffset(widths[i] - 10, ROW_H),
+			10,
+			C.dim,
+			laneObjects,
+			Enum.TextXAlignment.Right
+		)
+	end
+end
+
+local function drawCell(value, x, y, w)
+	textRow(
+		laneCanvas,
+		value,
+		UDim2.fromOffset(x, y),
+		UDim2.fromOffset(w - 10, ROW_H),
+		10,
+		C.text,
+		laneObjects,
+		Enum.TextXAlignment.Right
+	)
 end
 
 local function timeRuler(ms, width, canvasWidth)
 	local step = ms <= 16 and 2 or ms <= 50 and 5 or ms <= 120 and 10 or 20
 	local maxTick = math.ceil(ms / step)
+	tracked(laneCanvas, {
+		Position = UDim2.fromOffset(0, 0),
+		Size = UDim2.fromOffset(canvasWidth, 24),
+		BackgroundColor3 = C.strip,
+		BackgroundTransparency = 0.45,
+		BorderSizePixel = 0,
+	}, laneObjects)
 	for i = 0, maxTick do
 		local x = math.floor((i * step / ms) * canvasWidth)
 		tracked(laneCanvas, {
@@ -733,13 +901,13 @@ local function timeRuler(ms, width, canvasWidth)
 			Size = UDim2.new(0, 1, 1, 0),
 			BorderSizePixel = 0,
 			BackgroundColor3 = C.outline,
-			BackgroundTransparency = 0.65,
+			BackgroundTransparency = 0.85,
 		}, laneObjects)
 		textRow(
 			laneCanvas,
-			tostring(i * step) .. "ms",
+			tostring(i * step) .. " ms",
 			UDim2.fromOffset(x + 4, 0),
-			UDim2.fromOffset(60, 23),
+			UDim2.fromOffset(60, 24),
 			10,
 			C.dim,
 			laneObjects
@@ -787,9 +955,18 @@ local function drawTimeline()
 	maxEnd = math.max(0.1, maxEnd)
 	local canvasWidth = math.max(width, math.floor(width * zoom))
 	local n = math.min(#zones, MAX_ZONES)
-	local rulerHeight = 27
+	local rulerHeight = 28
 
 	timeRuler(maxEnd, width, canvasWidth)
+	tracked(laneNames, {
+		Position = UDim2.fromOffset(0, 0),
+		Size = UDim2.new(1, 0, 0, 24),
+		BackgroundColor3 = C.strip,
+		BackgroundTransparency = 0.45,
+		BorderSizePixel = 0,
+	}, nameObjects)
+	textRow(laneNames, "Lane", UDim2.fromOffset(12, 0), UDim2.new(1, -18, 0, 24), 10, C.dim, nameObjects)
+
 	local drawn = 0
 	for i = 1, n do
 		local zone = zones[i]
@@ -820,10 +997,11 @@ local function drawTimeline()
 			BackgroundColor3 = zoneColor(zone),
 			BorderSizePixel = 0,
 			Text = w >= 55 and tostring(zone.name) or "",
-			TextColor3 = C.text,
-			TextSize = 10,
+			TextColor3 = Color3.new(1, 1, 1),
+			TextSize = tokens.type.caption,
 			TextXAlignment = Enum.TextXAlignment.Left,
 		})
+		UI.corner(bar, 3)
 		table.insert(laneObjects, bar)
 		drawn += 1
 		bar.MouseButton1Click:Connect(function()
@@ -852,7 +1030,7 @@ local function drawTimeline()
 	laneNames.CanvasSize = UDim2.fromOffset(0, math.max(100, laneCount * ROW_H + 40))
 	detailCaption.Text = string.format("%d zones", #zones)
 	statusLabel.Text = string.format(
-		"Recorded zones are relative to the first zone start. Overlapping intervals may be concurrent; no native thread IDs are attached. Showing %d/%d zones.",
+		"Zones are relative to the first zone start; overlaps may be concurrent (no thread IDs). Showing %d/%d zones.",
 		drawn,
 		#zones
 	)
@@ -881,41 +1059,37 @@ local function drawThreads()
 	local width = math.max(200, laneCanvas.AbsoluteSize.X)
 	local contentWidth = math.floor(width * zoom)
 	local shown = math.min(#rows, 100)
-	titlePair("Luau thread", "Per-frame CPU total   |   1 bar = the thread's total recorded CPU time", 0)
+
+	local widths = { 100, 90, 96 }
+	local xs = columnPositions(widths, contentWidth)
+	local barMax = math.max(40, xs[1] - 28)
+	drawHeader("Luau thread", "Per-frame CPU total", { "CPU", "Resumes", "Alloc" }, widths, xs, contentWidth)
+
 	for i = 1, shown do
 		local thread = rows[i]
 		local y = i * ROW_H
+		rowStripe(i, y, contentWidth)
 		local name = names[thread.id] or ("Thread #" .. tostring(thread.id))
-		textRow(laneNames, name, UDim2.fromOffset(10, y), UDim2.new(1, -18, 0, ROW_H), 11, C.text, nameObjects)
-		tracked(laneCanvas, {
-			Position = UDim2.fromOffset(0, y + 3),
+		textRow(laneNames, name, UDim2.fromOffset(12, y), UDim2.new(1, -18, 0, ROW_H), 11, C.text, nameObjects)
+		local bar = tracked(laneCanvas, {
+			Position = UDim2.fromOffset(12, y + 5),
 			Size = UDim2.fromOffset(
-				math.floor((tonumber(thread.totalCpuMs) or 0) / maxValue * (contentWidth - 155)),
-				ROW_H - 6
+				math.max(2, math.floor((tonumber(thread.totalCpuMs) or 0) / maxValue * barMax)),
+				ROW_H - 10
 			),
 			BackgroundColor3 = C.accent,
 			BorderSizePixel = 0,
 		}, laneObjects)
-		textRow(
-			laneCanvas,
-			string.format(
-				"%.3f ms  |  %d resumes  |  %s alloc",
-				tonumber(thread.totalCpuMs) or 0,
-				tonumber(thread.resumes) or 0,
-				memoryText(thread.allocatedBytes)
-			),
-			UDim2.new(0, contentWidth - 150, 0, y),
-			UDim2.fromOffset(150, ROW_H),
-			10,
-			C.text,
-			laneObjects
-		)
+		UI.corner(bar, 3)
+		drawCell(string.format("%.3f ms", tonumber(thread.totalCpuMs) or 0), xs[1], y, widths[1])
+		drawCell(formatInt(thread.resumes), xs[2], y, widths[2])
+		drawCell(memoryText(thread.allocatedBytes), xs[3], y, widths[3])
 	end
 	laneNames.CanvasSize = UDim2.fromOffset(0, (shown + 2) * ROW_H)
 	laneCanvas.CanvasSize = UDim2.fromOffset(contentWidth, (shown + 2) * ROW_H)
 	detailCaption.Text = tostring(#rows) .. " active rows"
 	statusLabel.Text = string.format(
-		"Threads: %d live, %d retired   |   Luau heap %s   |   allocated %.2f MB/s. CPU bars have no scheduling timestamps.",
+		"%d live / %d retired threads   |   Luau heap %s   |   allocating %.2f MB/s   |   CPU bars have no scheduling timestamps.",
 		tonumber(state.threads) or 0,
 		tonumber(state.deadThreads) or 0,
 		memoryText(state.heapBytes),
@@ -936,49 +1110,45 @@ local function drawScripts()
 	for _, scriptStat in ipairs(scripts) do
 		maxValue = math.max(maxValue, tonumber(scriptStat.CpuMs) or 0)
 	end
-	titlePair("Script", "Cumulative CPU (exclusive)     |     total / resumes / allocations", 0)
+
+	local widths = { 100, 100, 100, 90 }
+	local xs = columnPositions(widths, contentWidth)
+	local barMax = math.max(40, xs[1] - 28)
+	drawHeader("Script", "Cumulative CPU (exclusive)", { "CPU", "Total", "Resumes", "Alloc" }, widths, xs, contentWidth)
+
 	for i = 1, shown do
 		local item = scripts[i]
 		local y = i * ROW_H
+		rowStripe(i, y, contentWidth)
 		textRow(
 			laneNames,
 			item.Name or "Unknown",
-			UDim2.fromOffset(10, y),
+			UDim2.fromOffset(12, y),
 			UDim2.new(1, -18, 0, ROW_H),
 			11,
 			C.text,
 			nameObjects
 		)
-		tracked(laneCanvas, {
-			Position = UDim2.fromOffset(0, y + 3),
+		local bar = tracked(laneCanvas, {
+			Position = UDim2.fromOffset(12, y + 5),
 			Size = UDim2.fromOffset(
-				math.floor((tonumber(item.CpuMs) or 0) / maxValue * (math.max(40, contentWidth - 220))),
-				ROW_H - 6
+				math.max(2, math.floor((tonumber(item.CpuMs) or 0) / maxValue * barMax)),
+				ROW_H - 10
 			),
 			BackgroundColor3 = categories[categoryByKey.Scripts].color,
 			BorderSizePixel = 0,
 		}, laneObjects)
-		textRow(
-			laneCanvas,
-			string.format(
-				"%.2f / %.2f ms   |   %d resumes   |   %s",
-				tonumber(item.CpuMs) or 0,
-				tonumber(item.TotalCpuMs) or 0,
-				tonumber(item.Resumes) or 0,
-				memoryText(item.AllocatedBytes)
-			),
-			UDim2.new(0, contentWidth - 216, 0, y),
-			UDim2.fromOffset(216, ROW_H),
-			10,
-			C.text,
-			laneObjects
-		)
+		UI.corner(bar, 3)
+		drawCell(string.format("%.2f ms", tonumber(item.CpuMs) or 0), xs[1], y, widths[1])
+		drawCell(string.format("%.2f ms", tonumber(item.TotalCpuMs) or 0), xs[2], y, widths[2])
+		drawCell(formatInt(item.Resumes), xs[3], y, widths[3])
+		drawCell(memoryText(item.AllocatedBytes), xs[4], y, widths[4])
 	end
 	laneNames.CanvasSize = UDim2.fromOffset(0, (shown + 2) * ROW_H)
 	laneCanvas.CanvasSize = UDim2.fromOffset(contentWidth, (shown + 2) * ROW_H)
 	detailCaption.Text = tostring(#scripts) .. " scripts"
 	statusLabel.Text =
-		"Script totals are cumulative for the current Luau VM; they are not per-frame historical script snapshots."
+		"Script totals are cumulative for the current Luau VM; they are not per-frame historical snapshots."
 end
 
 drawDetail = function()
@@ -1027,7 +1197,7 @@ local function update()
 		wasVisible = true
 		paused = ProfilerService.Paused == true
 		setButtonText(pauseButton, paused and "Resume" or "Pause")
-		liveLabel.Text = paused and "PAUSED" or "LIVE"
+		updateLiveBadge()
 		-- Request native frame history explicitly (requires Odin namecall
 		-- handler), then read FrameCount for older builds with that side effect.
 		safeCall("SetCollectionEnabled", true)
