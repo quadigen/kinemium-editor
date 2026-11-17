@@ -531,8 +531,6 @@ local function makeFinder(query, regex, matchCase, wholeWord)
 end
 
 local viewport = require("@internal/viewport")
-local StudioThemeService = game:GetService("StudioThemeService")
-local theme = StudioThemeService.SelectedTheme
 local tokens = UI.tokens
 
 local ROW_HEIGHT = UI.metrics.treeRow
@@ -540,7 +538,7 @@ local MAX_MATCHES = 25000
 local MAX_PER_SOURCE = 4000
 local MAX_REGEX_LINE = 60000
 local VIEW_OVERSCAN = 6
-local SEARCH_DEBOUNCE = 0.20
+local SEARCH_DEBOUNCE = 0.12
 local SCAN_FRAME_BUDGET = 0.004
 
 local scriptClasses = { Script = true, LocalScript = true, ModuleScript = true }
@@ -569,172 +567,344 @@ local panel, content = UI.window(
 	{ closable = true }
 )
 
-panel.Parent = UI.widgetOverlay()
+local overlay = UI.widgetOverlay()
+panel.Parent = overlay
 panel.Visible = false
-panel.BackgroundTransparency = 0.5
 panel.ClipsDescendants = true
-content.BackgroundTransparency = 1
+-- UI.window owns the matching active title tab/content fill. Leave it opaque.
+content.ClipsDescendants = true
 
 local inset = UI.metrics.panelInset
 local inputHeight = UI.metrics.inputHeight
-local statusHeight = 21
-local filterOpen = false
-local regex = false
-local matchCase = false
-local wholeWord = false
-local selectedOnly = false
+local gap = tokens.space.xs
+local statusHeight = ROW_HEIGHT
+local buttonWidth = 52
+local filterWidth = inputHeight + 4
+local connections = {}
+local destroyed = false
+local function connect(signal, callback)
+	local connection = signal:Connect(callback)
+	connections[#connections + 1] = connection
+	return connection
+end
 
+local regex, matchCase, wholeWord, selectedOnly = false, false, false, false
+local includePath, excludePath = "", ""
+local requestSearch, runSearch, cancelSearch, closeFilters, openFilters
+local filterOpen = false
+local popup, backdrop, popupLayer
+local popupConnections = {}
+local filterRecord, filterIcon
+local jobActive = false
+
+-- A trailing filter icon is part of the search row. It does not overlay the
+-- editable text, so long queries cannot run underneath the hit target.
+local searchRow =
+	UI.frame(content, UDim2.fromOffset(inset, inset), UDim2.new(1, -inset * 2, 0, inputHeight), colors.panel)
+searchRow.BackgroundTransparency = 1
 local input = UI.input(
-	content,
+	searchRow,
 	"Search all code...",
-	UDim2.fromOffset(inset, 6),
-	UDim2.new(1, -inset * 2 - 59, 0, inputHeight),
-	{ selectAllOnFocus = false }
+	UDim2.fromOffset(0, 0),
+	UDim2.new(1, -(buttonWidth + filterWidth + gap * 2), 1, 0),
+	{ selectAllOnFocus = false, animate = not UI.shared().reduceMotion }
 )
 input.Name = "FindInPlaceQuery"
 
-local runSearch
-local queryButton = UI.button(
-	content,
-	"Find",
-	UDim2.new(1, -inset - 56, 0, 6),
-	UDim2.fromOffset(56, inputHeight),
+local filterButton
+filterButton, filterRecord, filterIcon = UI.iconButton(
+	searchRow,
+	"builtin://global-icons/filter.svg",
+	UDim2.new(1, -(buttonWidth + filterWidth + gap), 0, 0),
+	UDim2.fromOffset(filterWidth, inputHeight),
 	function()
-		if runSearch then
+		if filterOpen then
+			closeFilters()
+		else
+			openFilters()
+		end
+	end,
+	{ color = colors.input, hoverColor = colors.hover, iconSize = 14, radius = tokens.radius.sm }
+)
+UI.tooltip(filterButton, "Search filters and options", { placement = "below" })
+
+local queryButton, queryCaption = UI.button(
+	searchRow,
+	"Find",
+	UDim2.new(1, -buttonWidth, 0, 0),
+	UDim2.fromOffset(buttonWidth, inputHeight),
+	function()
+		if jobActive then
+			cancelSearch()
+		elseif runSearch then
 			runSearch()
 		end
 	end,
 	{ radius = tokens.radius.sm }
 )
 
-local function toggleButton(name, position, width, initial, callback)
-	local row, _, controller = UI.button(
-		content,
-		name,
-		UDim2.fromOffset(position, 36),
-		UDim2.fromOffset(width, 23),
-		function()
-			callback()
-		end,
-		{ color = tokens.color.rowOdd, hoverColor = tokens.color.hover, radius = tokens.radius.sm, border = false }
-	)
-	UI.setButtonState(controller, initial and "selected" or nil)
-	return function(active)
-		UI.setButtonState(controller, active and "selected" or nil)
+local function updateFilterState()
+	local active = regex
+		or matchCase
+		or wholeWord
+		or selectedOnly
+		or includePath ~= ""
+		or excludePath ~= ""
+		or not classes.Script
+		or not classes.LocalScript
+		or not classes.ModuleScript
+	UI.setButtonState(filterRecord, (filterOpen or active) and "selected" or nil)
+	filterIcon.ImageColor3 = (filterOpen or active) and colors.text or colors.subtext
+end
+
+local function changeFilters()
+	updateFilterState()
+	if requestSearch then
+		requestSearch()
 	end
 end
 
-local requestSearch
-local updateLayout
-local setRegex, setCase, setWord, setFilter
+local function popupConnect(signal, callback)
+	local connection = signal:Connect(callback)
+	popupConnections[#popupConnections + 1] = connection
+	return connection
+end
 
-setRegex = toggleButton(".*", inset, 39, regex, function()
-	regex = not regex
-	setRegex(regex)
-	requestSearch()
-end)
-setCase = toggleButton("Aa", inset + 43, 40, matchCase, function()
-	matchCase = not matchCase
-	setCase(matchCase)
-	requestSearch()
-end)
-setWord = toggleButton("W", inset + 87, 40, wholeWord, function()
-	wholeWord = not wholeWord
-	setWord(wholeWord)
-	requestSearch()
-end)
-setFilter = toggleButton("Filters", inset + 131, 76, filterOpen, function()
-	filterOpen = not filterOpen
-	setFilter(filterOpen)
-	updateLayout()
-end)
+closeFilters = function()
+	if not filterOpen then
+		return
+	end
+	filterOpen = false
+	for _, connection in ipairs(popupConnections) do
+		connection:Disconnect()
+	end
+	table.clear(popupConnections)
+	if popupLayer then
+		UI.forgetButtons(popupLayer)
+		popupLayer:Destroy()
+	end
+	popup, backdrop, popupLayer = nil, nil, nil
+	if not destroyed then
+		updateFilterState()
+	end
+end
 
-local filterFrame = UI.create("Frame", {
-	BackgroundColor3 = tokens.color.surface,
-	BackgroundTransparency = 0.22,
-	BorderSizePixel = 0,
-	Position = UDim2.fromOffset(inset, 64),
-	Size = UDim2.new(1, -inset * 2, 0, 230),
-	Visible = false,
-	ClipsDescendants = true,
-}, content)
-UI.corner(filterFrame, tokens.radius.md)
+-- This is a compound filter popup (not a single-choice UI.dropdown).
+-- Use the documented popup pattern with an outside-click backdrop; the
+-- result tree keeps its original bounds and scroll position when it opens.
+openFilters = function()
+	if filterOpen or destroyed or not panel.Visible then
+		return
+	end
+	filterOpen = true
+	updateFilterState()
+	local menus = UI.contextMenuOverlay()
+	local z = 100050
+	popupLayer = UI.frame(menus, UDim2.fromOffset(0, 0), UDim2.fromScale(1, 1), colors.panel)
+	popupLayer.Name = "FindInPlaceFilterLayer"
+	popupLayer.BackgroundTransparency = 1
+	popupLayer.ZIndex = z - 1
+	backdrop = UI.button(popupLayer, "", UDim2.fromOffset(0, 0), UDim2.fromScale(1, 1), closeFilters, {
+		color = colors.panel,
+		hoverColor = colors.panel,
+		pressedColor = colors.panel,
+		bgTransparency = 1,
+		radius = 0,
+		border = false,
+	})
+	backdrop.ZIndex = z
 
-local filterScroll = UI.create("ScrollingFrame", {
-	BackgroundTransparency = 1,
-	BorderSizePixel = 0,
-	Size = UDim2.fromScale(1, 1),
-	CanvasSize = UDim2.fromOffset(0, 233),
-	ScrollBarThickness = 4,
-	ScrollingEnabled = true,
-	ClipsDescendants = true,
-	ScrollSpeed = 29,
-}, filterFrame)
-
-local function filterCaption(text, y)
-	return UI.label(
-		filterScroll,
-		text,
-		UDim2.fromOffset(9, y),
-		UDim2.new(1, -18, 0, 19),
-		tokens.type.caption,
-		tokens.color.subtext
+	local margin = tokens.space.sm
+	local width, height = 320, 348
+	local anchor = filterButton.AbsolutePosition
+	local screenW, screenH =
+		panel.AbsolutePosition.X + panel.AbsoluteSize.X + margin,
+		panel.AbsolutePosition.Y + panel.AbsoluteSize.Y + height + margin
+	local ok, dimensions, second = pcall(function()
+		return workspace:GetWindowDimensions()
+	end)
+	if ok and dimensions then
+		local valid, x, y = pcall(function()
+			if type(dimensions) == "number" then
+				return dimensions, second
+			end
+			return dimensions.X, dimensions.Y
+		end)
+		if valid and type(x) == "number" and type(y) == "number" and x > 0 and y > 0 then
+			screenW, screenH = x, y
+		end
+	end
+	width = math.max(1, math.min(width, screenW - margin * 2))
+	height = math.max(1, math.min(height, screenH - margin * 2))
+	local x =
+		math.clamp(anchor.X + filterButton.AbsoluteSize.X - width, margin, math.max(margin, screenW - width - margin))
+	local y = anchor.Y + filterButton.AbsoluteSize.Y + gap
+	if y + height > screenH - margin and anchor.Y - height - gap >= margin then
+		y = anchor.Y - height - gap
+	end
+	y = math.clamp(y, margin, math.max(margin, screenH - height - margin))
+	popup = UI.frame(
+		popupLayer,
+		UDim2.fromOffset(x, y),
+		UDim2.fromOffset(width, height),
+		colors.panelRaised,
+		tokens.radius.md
 	)
+	popup.Name = "FindInPlaceFilters"
+	popup.ZIndex = z + 10
+	popup.Active = true
+	popup.ClipsDescendants = true
+	UI.stroke(popup, colors.borderStrong, 1, 0)
+	local title = UI.label(
+		popup,
+		"Search filters",
+		UDim2.fromOffset(10, 0),
+		UDim2.new(1, -100, 0, 30),
+		tokens.type.body,
+		colors.text
+	)
+	local reset = UI.button(popup, "Reset", UDim2.new(1, -88, 0, 3), UDim2.fromOffset(54, 24), function()
+		regex, matchCase, wholeWord, selectedOnly = false, false, false, false
+		includePath, excludePath = "", ""
+		classes.Script, classes.LocalScript, classes.ModuleScript = true, true, true
+		closeFilters()
+		changeFilters()
+		openFilters()
+	end, { color = colors.panelRaised, border = false })
+	local close = UI.iconButton(
+		popup,
+		"builtin://global-icons/x.svg",
+		UDim2.new(1, -29, 0, 3),
+		UDim2.fromOffset(24, 24),
+		closeFilters,
+		{ color = colors.panelRaised, border = false, iconSize = 12 }
+	)
+	UI.tooltip(close, "Close filters", { placement = "below" })
+	UI.separator(popup, UDim2.fromOffset(0, 30), UDim2.new(1, 0, 0, 1), colors.border)
+	local scroll = UI.create("ScrollingFrame", {
+		Position = UDim2.fromOffset(0, 31),
+		Size = UDim2.new(1, 0, 1, -31),
+		BackgroundTransparency = 1,
+		BorderSizePixel = 0,
+		CanvasSize = UDim2.fromOffset(0, 308),
+		ScrollBarThickness = 5,
+		ScrollBarImageColor3 = colors.subtext,
+		ScrollBarImageTransparency = 0.4,
+		ScrollBarAutoHide = true,
+		ScrollBarFadeDelay = 0.45,
+		ScrollBarFadeSpeed = 12,
+		ScrollBarMinimumHandleSize = 24,
+		ScrollingEnabled = true,
+		ScrollSpeed = 38,
+		ClipsDescendants = true,
+		Active = true,
+		InputSink = true,
+	}, popup)
+	local function caption(text, at)
+		UI.label(scroll, text, UDim2.fromOffset(10, at), UDim2.new(1, -20, 0, 18), tokens.type.caption, colors.subtext)
+	end
+	local function check(text, at, value, changed, half)
+		UI.checkbox(scroll, text, UDim2.new(half and 0.5 or 0, half and 0 or 10, 0, at), value, function(enabled)
+			changed(enabled)
+			changeFilters()
+		end, {
+			size = UDim2.new(0.5, -10, 0, 22),
+			boxSize = 16,
+			markSize = 11,
+			textSize = tokens.type.small,
+			animate = not UI.shared().reduceMotion,
+		})
+	end
+	caption("MATCH OPTIONS", 4)
+	check("Match case", 24, matchCase, function(v)
+		matchCase = v
+	end)
+	check("Whole word", 24, wholeWord, function(v)
+		wholeWord = v
+	end, true)
+	check("Regular expression", 48, regex, function(v)
+		regex = v
+	end)
+	check("Selection only", 48, selectedOnly, function(v)
+		selectedOnly = v
+	end, true)
+	UI.separator(scroll, UDim2.fromOffset(10, 77), UDim2.new(1, -20, 0, 1), colors.border)
+	caption("SCRIPT TYPES", 82)
+	check("Script", 102, classes.Script, function(v)
+		classes.Script = v
+	end)
+	check("LocalScript", 102, classes.LocalScript, function(v)
+		classes.LocalScript = v
+	end, true)
+	check("ModuleScript", 126, classes.ModuleScript, function(v)
+		classes.ModuleScript = v
+	end)
+	UI.separator(scroll, UDim2.fromOffset(10, 154), UDim2.new(1, -20, 0, 1), colors.border)
+	caption("Include paths (separate with semicolons)", 160)
+	local include = UI.input(
+		scroll,
+		"e.g. ServerScriptService;Shared",
+		UDim2.fromOffset(10, 182),
+		UDim2.new(1, -20, 0, inputHeight),
+		{ text = includePath, selectAllOnFocus = false }
+	)
+	caption("Exclude paths (separate with semicolons)", 214)
+	local exclude = UI.input(
+		scroll,
+		"e.g. Vendor;Generated",
+		UDim2.fromOffset(10, 236),
+		UDim2.new(1, -20, 0, inputHeight),
+		{ text = excludePath, selectAllOnFocus = false }
+	)
+	caption("Path filters match substrings, ignoring case.", 272)
+	popupConnect(include.TextChanged, function()
+		includePath = include.Text or ""
+		changeFilters()
+	end)
+	popupConnect(exclude.TextChanged, function()
+		excludePath = exclude.Text or ""
+		changeFilters()
+	end)
+	-- Match the editor dropdown layer even under global ZIndex ordering.
+	for _, child in ipairs(popup:GetDescendants()) do
+		if child:IsA("GuiObject") then
+			local depth, parent = 1, child.Parent
+			while parent and parent ~= popup do
+				depth += 1
+				parent = parent.Parent
+			end
+			child.ZIndex = z + 10 + depth * 4 + math.clamp(child.ZIndex, 0, 3)
+		end
+	end
 end
 
-filterCaption("Include path (substring; use ; to separate)", 4)
-local includeInput = UI.input(
-	filterScroll,
-	"e.g. ServerScriptService;Shared",
-	UDim2.fromOffset(8, 26),
-	UDim2.new(1, -16, 0, inputHeight)
-)
-filterCaption("Exclude path (substring; use ; to separate)", 59)
-local excludeInput =
-	UI.input(filterScroll, "e.g. Vendor;Generated", UDim2.fromOffset(8, 81), UDim2.new(1, -16, 0, inputHeight))
-
-local function classFilter(name, key, y)
-	UI.checkbox(filterScroll, name, UDim2.fromOffset(8, y), classes[key], function(value)
-		classes[key] = value
-		requestSearch()
-	end, { size = UDim2.new(1, -16, 0, 25) })
-end
-
-filterCaption("SCRIPT TYPES", 113)
-classFilter("Script", "Script", 133)
-classFilter("LocalScript", "LocalScript", 157)
-classFilter("ModuleScript", "ModuleScript", 181)
-
-local scopeBox = UI.checkbox(filterScroll, "Selection only", UDim2.fromOffset(8, 205), selectedOnly, function(value)
-	selectedOnly = value
-	requestSearch()
-end, { size = UDim2.new(1, -16, 0, 25) })
-
+local statusY = inset + inputHeight + gap
+local listY = statusY + statusHeight + gap
 local statusLabel = UI.label(
 	content,
 	"Search text in scripts to see matches",
-	UDim2.fromOffset(inset + 3, 66),
+	UDim2.fromOffset(inset + 3, statusY),
 	UDim2.new(1, -inset * 2 - 6, 0, statusHeight),
 	tokens.type.caption,
-	tokens.color.subtext
+	colors.subtext
 )
 statusLabel.TextTruncate = Enum.TextTruncate.AtEnd
+UI.separator(content, UDim2.fromOffset(inset, listY - 1), UDim2.new(1, -inset * 2, 0, 1), colors.border)
 
 local list = UI.create("ScrollingFrame", {
-	Position = UDim2.fromOffset(inset, 90),
-	Size = UDim2.new(1, -inset * 2, 1, -96),
-	BackgroundColor3 = tokens.color.surface,
-	BackgroundTransparency = 0.5,
+	Position = UDim2.fromOffset(inset, listY),
+	Size = UDim2.new(1, -inset * 2, 1, -(listY + inset)),
+	BackgroundTransparency = 1,
 	BorderSizePixel = 0,
 	CanvasPosition = Vector2.new(0, 0),
 	CanvasSize = UDim2.new(1, 0, 0, 0),
 	VirtualizedScrolling = true,
 	ScrollingEnabled = true,
 	ScrollSpeed = 38,
-	SmoothScrollingEnabled = true,
+	SmoothScrollingEnabled = not UI.shared().reduceMotion,
 	ScrollSmoothness = 18,
 	ScrollBarThickness = 5,
-	ScrollBarImageColor3 = tokens.color.subtext,
+	ScrollBarImageColor3 = colors.subtext,
 	ScrollBarImageTransparency = 0.4,
 	ScrollBarAutoHide = true,
 	ScrollBarFadeDelay = 0.45,
@@ -744,16 +914,6 @@ local list = UI.create("ScrollingFrame", {
 	Active = true,
 	InputSink = true,
 }, content)
-UI.corner(list, tokens.radius.md)
-
-updateLayout = function()
-	filterFrame.Visible = filterOpen
-	local filterBottom = filterOpen and 294 or 60
-	statusLabel.Position = UDim2.fromOffset(inset + 3, filterBottom + 3)
-	list.Position = UDim2.fromOffset(inset, filterBottom + 27)
-	list.Size = UDim2.new(1, -inset * 2, 1, -(filterBottom + 33))
-end
-updateLayout()
 
 local function safePath(object)
 	local ok, path = pcall(function()
@@ -823,24 +983,71 @@ local rowPool = {}
 local revision = 0
 local updateViewport
 local rebuildVisible
-local jobActive = false
 
+local knownIcons = {}
+for name in
+	string.gmatch(
+		[=[
+Accessory Actor Add AlignOrientation AlignPosition AngularVelocity Animation Animator ArcHandles
+ArrowDown ArrowRight Atmosphere Attachment Attachment2D Backpack Badge BallSocketConstraint Beam
+BillboardGui BinaryStringValue BindableEvent BindableFunction BlobLoader BloomEffect BlurEffect Body2D BodyColors
+BodyGyro Bone BoolValue Box2DService BoxCollider2D BrickColorValue CFrameValue Camera Camera2D
+CanvasGroup ChangeHistoryService Character CharacterAnimator CharacterCamera CharacterController CharacterInput CharacterMesh CharacterMotor
+ChatService Checkbox CircleCollider2D Class ClickDetector Cloth Clouds CollectionService CollisionController
+Color3Value ColorCorrectionEffect ColorEffect ColorPicker ConfigService Configuration ContentProvider ContentService CoreGui
+CornerWedgePart Cursor CylindricalConstraint DOFEffect DataModel Debris DebugOverlay Decal Dialog
+DialogChoice Divider DoubleConstrainedValue Dropdown EditableImage EditableMesh EncodingService Enum EnumItem
+Explosion File FileDialogService Fire FluidSimulation FogEffect Folder FolderOpen Font
+ForceField Frame GeometryService GetTextBoundsParams GroundDetector GuiObject HUDService Handles Highlight
+HingeConstraint HingeConstraint2D HttpService Humanoid IKControl ImageButton ImageLabel InputActionService IntConstrainedValue
+IntValue InternalStorage IntersectOperation JoltPhysicsService KineFileService KinemiumFFI KinemiumFontService KinemiumIconLoader KinemiumModService
+KinemiumShaderService Layer2D LegIK Lighting LineForce LinearVelocity LocalScript LocalizationService LogService
+MCPService MaterialVariant MeshPart Method Model ModuleScript Motor6D Mouse Move
+MovementController MultipleDevices NegateOperation NetworkController NetworkService NoCollisionConstraint NotFound NumberValue ObjectValue
+Pants Part Part2D ParticleEmitter ParticleEmitter2D PathfindingModifier PathfindingService Pause Physics
+PlaneConstraint Play Player PlayerGui Players PlaytestService Plugin PluginGuiService PluginLoader
+Plus PointLight Poll PolygonCollider2D PostProcess PrismaticConstraint Process ProfilerService ProjectLoaderService
+ProjectSyncService Property ProximityPrompt RadioButton RayValue RemoteData RemoteEvent RemoteFunction ReplicatedStorage
+ReplicatorService RigidConstraint RodConstraint RopeConstraint RopeConstraint2D Rotate RotationController RunService SQLiteService
+SSAOEffect SSEffect SSGIEffect SSILEffect SSREffect ScreenGui Script ScriptContext ScrollingFrame
+Seat SeatPart Selection SelectionBox SelectionSphere SerializationService ServerScriptService ServerStorage Settings
+ShaderFrame Shirt ShirtGraphic Size Sky Slider Smoke Snap SoftBody
+Sound SoundService Sparkles SpawnLocation SpecialMesh SpotLight SpringConstraint SpringConstraint2D StarterGui
+StarterPlayer StateMachine Stepper Stop StringValue Studio StudioService StudioTheme StudioThemeService
+SunRaysEffect SurfaceGui SurfaceLight Switch SyntaxHighlighter Tabs Terrain TextBox TextButton
+TextLabel TextService Texture Tilemap Toggle TonemapEffect Tool TorsionSpringConstraint Trail
+TrussPart TweenService UIAnchorLayout UIAspectRatioConstraint UIBackdrop UICellList UICorner UIDragDetector UIGradient
+UIGridLayout UIListLayout UIMask UINotificationLayout UIPadding UIPageLayout UIRipple UIScale UIScaleDetector
+UIShader UIShadow UISizeConstraint UISquircle UIStackLayout UIStroke UITableLayout UITextSizeConstraint UITilt
+UITooltip UIVignette Union UnionOperation UniversalConstraint UnreliableRemoteEvent UserInputService ValueBase Variable
+Vector3Value VectorForce VehicleSeat VideoFrame ViewportFrame VignetteEffect WedgePart Weld WeldConstraint
+WeldConstraint2D Workspace Workspace2D World2D WorldObject2D clipboard
+]=],
+		"%S+"
+	)
+do
+	knownIcons[name] = true
+end
 local fallbackIcons = {
 	ReplicatedFirst = "ReplicatedStorage",
 	StarterPack = "Backpack",
 	Teams = "Players",
 	TextChatService = "ChatService",
 }
-
+local iconCache = {}
 local function iconFor(node)
 	if node.kind == "match" then
 		return "builtin://icons/TextBox.svg"
 	end
 	if node.kind == "property" then
-		return "builtin://icons/ModuleScript.svg"
+		return "builtin://icons/Property.svg"
 	end
-	local object = node.object
-	return "builtin://icons/" .. (fallbackIcons[object.ClassName] or object.ClassName) .. ".svg"
+	local class = node.object.ClassName
+	if not iconCache[class] then
+		local name = knownIcons[class] and class or fallbackIcons[class] or "File"
+		iconCache[class] = "builtin://icons/" .. name .. ".svg"
+	end
+	return iconCache[class]
 end
 
 local function nodeName(node)
@@ -1096,10 +1303,12 @@ local function createRowSlot()
 	slot.icon = UI.image(row, "builtin://icons/Folder.svg", UDim2.fromOffset(23, 3), UDim2.fromOffset(14, 14))
 	slot.label = UI.label(row, "", UDim2.fromOffset(38, 2), UDim2.new(1, -41, 0, 17), tokens.type.small, colors.text)
 	slot.label.TextTruncate = Enum.TextTruncate.AtEnd
+	slot.arrow.ImageColor3 = colors.subtext
+	slot.icon.ImageColor3 = colors.text
 	slot.arrow.Visible = false
 	row.Visible = false
 	row.Name = "FindInPlaceRow"
-	row.Activated:Connect(function(_, clickCount)
+	connect(row.Activated, function(_, clickCount)
 		local node = slot.node
 		if not node then
 			return
@@ -1142,7 +1351,7 @@ updateViewport = function(force)
 		local row = slot.row
 		slot.node = node
 		row.Position = UDim2.fromOffset(1, 1 + (index - 1) * ROW_HEIGHT)
-		row.BackgroundColor3 = index % 2 == 0 and tokens.color.rowEven or tokens.color.rowOdd
+		slot.button.defaultColor = index % 2 == 0 and tokens.color.rowEven or tokens.color.rowOdd
 		row.BackgroundTransparency = selected and 0 or 0.12
 		UI.setButtonState(slot.button, selected and "selected" or nil)
 		slot.corner.CornerRadius = UDim.new(0, selected and tokens.radius.sm or 0)
@@ -1155,7 +1364,7 @@ updateViewport = function(force)
 		slot.icon.Position = UDim2.fromOffset(indent + 16, 3)
 		slot.label.Position = UDim2.fromOffset(indent + 31, 2)
 		slot.label.Size = UDim2.new(1, -(indent + 34), 0, 17)
-		slot.label.TextColor3 = selected and tokens.color.text or colors.text
+		slot.label.TextColor3 = colors.text
 		slot.label.Text = nodeName(node)
 		row.Visible = true
 	end
@@ -1192,10 +1401,10 @@ rebuildVisible = function()
 	updateViewport(true)
 end
 
-list:GetPropertyChangedSignal("CanvasPosition"):Connect(function()
+connect(list:GetPropertyChangedSignal("CanvasPosition"), function()
 	updateViewport(false)
 end)
-list:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
+connect(list:GetPropertyChangedSignal("AbsoluteSize"), function()
 	updateViewport(true)
 end)
 
@@ -1204,10 +1413,12 @@ local function setStatus(message, isError)
 	statusLabel.TextColor3 = isError and tokens.color.error or tokens.color.subtext
 end
 
-local function scanSource(object, property, source, finder, token, matchesLeft)
+local function scanSource(object, property, source, finder, token, matchesLeft, useRegex)
 	local hits = {}
 	local lineStart, lineNo = 1, 0
 	local maxHits = math.min(MAX_PER_SOURCE, matchesLeft)
+	local deadline = os.clock() + SCAN_FRAME_BUDGET
+	local skippedLongLine = false
 	while lineStart <= #source + 1 and #hits < maxHits do
 		if revision ~= token then
 			return nil
@@ -1218,7 +1429,7 @@ local function scanSource(object, property, source, finder, token, matchesLeft)
 		if lineText:sub(-1) == "\r" then
 			lineText = lineText:sub(1, -2)
 		end
-		if #lineText <= MAX_REGEX_LINE or not regex then
+		if #lineText <= MAX_REGEX_LINE or not useRegex then
 			local from = 1
 			while from <= #lineText + 1 and #hits < maxHits do
 				if revision ~= token then
@@ -1240,21 +1451,55 @@ local function scanSource(object, property, source, finder, token, matchesLeft)
 					snippet = excerpt(lineText, first),
 				}
 				from = math.max(first + 1, last + 1)
+				if os.clock() >= deadline then
+					task.wait()
+					if revision ~= token then
+						return nil
+					end
+					deadline = os.clock() + SCAN_FRAME_BUDGET
+				end
 			end
+		else
+			skippedLongLine = true
 		end
 		if not lineEnd then
 			break
 		end
 		lineStart = lineEnd + 1
 		-- Cooperative scheduling keeps the UI responsive with very large files.
-		if lineNo % 128 == 0 then
+		if lineNo % 128 == 0 or os.clock() >= deadline then
 			task.wait()
+			if revision ~= token then
+				return nil
+			end
+			deadline = os.clock() + SCAN_FRAME_BUDGET
 		end
 	end
-	return hits
+	return hits, (skippedLongLine or #hits >= maxHits) and "Source search limit reached" or nil
+end
+
+local function setJobActive(value)
+	jobActive = value
+	if queryCaption then
+		queryCaption.Text = value and "Stop" or "Find"
+	end
+end
+
+cancelSearch = function()
+	if not jobActive then
+		return
+	end
+	revision += 1
+	setJobActive(false)
+	buildTree()
+	rebuildVisible()
+	setStatus(string.format("Search stopped: %d matches so far", matchCount))
 end
 
 local function startSearch()
+	if destroyed or not panel.Visible or not overlay.Enabled then
+		return
+	end
 	revision += 1
 	local token = revision
 	documents = {}
@@ -1262,7 +1507,7 @@ local function startSearch()
 	expanded = {}
 	selectedNode = nil
 	matchCount = 0
-	jobActive = false
+	setJobActive(false)
 	list.CanvasPosition = Vector2.new(0, 0)
 	rebuildVisible()
 
@@ -1278,12 +1523,17 @@ local function startSearch()
 		return
 	end
 
-	local included = pathTerms(includeInput.Text or "")
-	local excluded = pathTerms(excludeInput.Text or "")
+	local included = pathTerms(includePath)
+	local excluded = pathTerms(excludePath)
+	local useRegex = regex
 	local selected = selectedOnly
 	local includedClasses = table.clone(classes)
-	jobActive = true
-	setStatus("Searching all scripts in game...")
+	if not includedClasses.Script and not includedClasses.LocalScript and not includedClasses.ModuleScript then
+		setStatus("No script types selected")
+		return
+	end
+	setJobActive(true)
+	setStatus(selected and "Searching selected objects..." or "Searching all scripts in game...")
 
 	task.spawn(function()
 		local started = os.clock()
@@ -1330,7 +1580,8 @@ local function startSearch()
 											source,
 											finder,
 											token,
-											MAX_MATCHES - matchCount
+											MAX_MATCHES - matchCount,
+											useRegex
 										)
 										if not hits then
 											return
@@ -1367,7 +1618,7 @@ local function startSearch()
 				end
 			end
 
-			if inspected % 96 == 0 or os.clock() - lastYield > SCAN_FRAME_BUDGET then
+			if os.clock() - lastYield > SCAN_FRAME_BUDGET then
 				setStatus(
 					string.format(
 						"Searching... %d objects · %d scripts · %d matches",
@@ -1394,7 +1645,7 @@ local function startSearch()
 		rebuildVisible()
 		local limit = matchCount >= MAX_MATCHES and " · result limit reached" or ""
 		local warnings = (unreadable > 0 and (" · " .. unreadable .. " unreadable") or "")
-			.. (limited > 0 and (" · " .. limited .. " regex-limited") or "")
+			.. (limited > 0 and (" · " .. limited .. " limited sources") or "")
 		setStatus(
 			string.format(
 				"%d matches · %d scripts found · %d sources searched · %.2fs%s%s",
@@ -1406,24 +1657,31 @@ local function startSearch()
 				warnings
 			)
 		)
-		jobActive = false
+		setJobActive(false)
 	end)
 end
 
 runSearch = startSearch
 requestSearch = function()
+	if destroyed or not panel.Visible or not overlay.Enabled then
+		return
+	end
 	revision += 1
+	setJobActive(false)
 	local token = revision
 	task.delay(SEARCH_DEBOUNCE, function()
-		if token == revision then
+		if not destroyed and panel.Visible and overlay.Enabled and token == revision then
 			startSearch()
 		end
 	end)
 end
 
-input.TextChanged:Connect(requestSearch)
-includeInput.TextChanged:Connect(requestSearch)
-excludeInput.TextChanged:Connect(requestSearch)
+connect(input.TextChanged, requestSearch)
+connect(input.FocusLost, function(enterPressed)
+	if enterPressed then
+		startSearch()
+	end
+end)
 
 local function ctrlDown()
 	return UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) or UserInputService:IsKeyDown(Enum.KeyCode.RightControl)
@@ -1446,31 +1704,30 @@ local function revealIndex(index)
 	end
 end
 
-UserInputService.InputBegan:Connect(function(event, processed)
+connect(UserInputService.InputBegan, function(event, processed)
 	if event.UserInputType ~= Enum.UserInputType.Keyboard then
 		return
 	end
 	if event.KeyCode == Enum.KeyCode.F and ctrlDown() and shiftDown() then
+		closeFilters()
 		panel.Visible = true
 		pcall(function()
 			input:CaptureFocus()
 		end)
 		return
 	end
-	if not panel.Visible or not UI.widgetOverlay().Enabled then
+	if not panel.Visible or not overlay.Enabled then
 		return
 	end
 	if event.KeyCode == Enum.KeyCode.Escape then
 		if filterOpen then
-			filterOpen = false
-			setFilter(false)
-			updateLayout()
+			closeFilters()
 		elseif UserInputService:GetFocusedTextBox() == nil then
 			panel.Visible = false
 		end
 		return
 	end
-	if UserInputService:GetFocusedTextBox() ~= nil or processed then
+	if filterOpen or UserInputService:GetFocusedTextBox() ~= nil or processed then
 		return
 	end
 	local key = event.KeyCode
@@ -1512,7 +1769,56 @@ end
 local function disable()
 	panel.Visible = false
 	revision += 1
+	setJobActive(false)
+	closeFilters()
 end
+
+-- Also handle the native window close button, external UI.toggleWindow,
+-- theme updates, and disposal of the module while a scan is still yielding.
+connect(panel:GetPropertyChangedSignal("Visible"), function()
+	if not panel.Visible then
+		revision += 1
+		setJobActive(false)
+		closeFilters()
+	elseif input.Text ~= "" then
+		requestSearch()
+	end
+end)
+connect(overlay:GetPropertyChangedSignal("Enabled"), function()
+	if not overlay.Enabled then
+		revision += 1
+		setJobActive(false)
+		closeFilters()
+	elseif panel.Visible and input.Text ~= "" then
+		requestSearch()
+	end
+end)
+connect(panel:GetPropertyChangedSignal("AbsolutePosition"), closeFilters)
+connect(panel:GetPropertyChangedSignal("AbsoluteSize"), closeFilters)
+connections[#connections + 1] = UI.onThemeChanged(function()
+	if destroyed then
+		return
+	end
+	updateFilterState()
+	list.SmoothScrollingEnabled = not UI.shared().reduceMotion
+	updateViewport(true)
+end)
+connect(panel.Destroying, function()
+	destroyed = true
+	revision += 1
+	closeFilters()
+	for _, connection in ipairs(connections) do
+		connection:Disconnect()
+	end
+	table.clear(connections)
+	UI.forgetButtons(content)
+	table.clear(rowPool)
+	table.clear(documents)
+	table.clear(roots)
+	table.clear(visibleRows)
+	table.clear(visibleDepths)
+	table.clear(expanded)
+end)
 
 return {
 	Enable = enable,
