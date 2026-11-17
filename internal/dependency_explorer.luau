@@ -18,169 +18,321 @@ local MAX_SOURCE_CPU_SECONDS = 0.70
 local PHYSICS_MAX_NODES = 260
 local PHYSICS_STEPS = 240
 local SCAN_TIME_BUDGET = 0.004
-local SIDEBAR_WIDTH = 224
-local ROW_HEIGHT = 25
+local SIDEBAR_WIDTH = 280
+local ROW_HEIGHT = UI.metrics.treeRow
+local OVERSCAN = 6
+local SEARCH_DELAY = 0.12
 local GOLDEN_ANGLE = 2.399963229728653
 local MIN_ZOOM, MAX_ZOOM = 0.18, 3.6
 
 local colors = tokens.color
-local PALETTE = {
-	background = colors.background or colors.surface,
-	panel = colors.surface,
-	border = colors.border or colors.rowEven,
-	muted = colors.subtext,
-	text = colors.text,
-	edge = colors.subtext,
-	Script = colors.accent or colors.text,
-	LocalScript = colors.success or colors.hover,
-	ModuleScript = colors.info or colors.warning or colors.subtext,
-	selected = colors.accent or colors.text,
-	cycle = colors.error or Color3.fromRGB(228, 82, 91),
+local INSET = UI.metrics.panelInset
+local GAP = tokens.space.xs
+local HEADER = UI.metrics.sectionRow
+local TOOLBAR_HEIGHT = UI.metrics.buttonHeight + INSET * 2 + GAP * 2
+local STATUS_HEIGHT = UI.metrics.treeRow + INSET
+local SEARCH_HEIGHT = UI.metrics.inputHeight
+local DETAIL_HEIGHT = UI.metrics.propertyRow * 7 + INSET * 2
+local ICON_SIZE = 14
+local ICONS = {
+	Script = "builtin://icons/Script.svg",
+	LocalScript = "builtin://icons/LocalScript.svg",
+	ModuleScript = "builtin://icons/ModuleScript.svg",
+	warning = "builtin://global-icons/Warning.svg",
+	info = "builtin://global-icons/Info.svg",
+	error = "builtin://global-icons/Error.svg",
+	refresh = "builtin://global-icons/refresh.svg",
 }
+
+local function graphColor(kind)
+	if kind == "Script" then
+		return colors.accent
+	elseif kind == "LocalScript" then
+		return colors.subtext
+	end
+	return colors.text
+end
 
 local panel, content = UI.window(
 	"ScriptDependencyExplorer",
-	UDim2.fromOffset(108, 74),
-	UDim2.fromOffset(1020, 655),
+	UDim2.fromScale(0.5, 0.5),
+	UDim2.fromOffset(1000, 620),
 	"Script Dependency Explorer",
-	{ closable = true }
+	{ closable = true, closeIcon = "builtin://global-icons/x.svg" }
 )
-panel.Parent = UI.widgetOverlay()
+panel.AnchorPoint = Vector2.new(0.5, 0.5)
+local overlay = UI.widgetOverlay()
+panel.Parent = overlay
 panel.Visible = false
 panel.ClipsDescendants = true
-content.BackgroundTransparency = 1
 content.ClipsDescendants = true
 
-local function frame(parent, name, properties)
-	properties.Name = name
-	return UI.create("Frame", properties, parent)
+local connections = {}
+local destroyed = false
+local function connect(signal, callback)
+	local connection = signal:Connect(callback)
+	connections[#connections + 1] = connection
+	return connection
 end
 
-local toolbar = frame(content, "Toolbar", {
-	Position = UDim2.fromOffset(0, 0),
-	Size = UDim2.new(1, 0, 0, 41),
-	BorderSizePixel = 0,
-	BackgroundColor3 = PALETTE.panel,
-})
-local sidebar = frame(content, "Sidebar", {
-	Position = UDim2.fromOffset(0, 41),
-	Size = UDim2.new(0, SIDEBAR_WIDTH, 1, -41),
-	BorderSizePixel = 0,
-	BackgroundColor3 = PALETTE.panel,
-})
-local sidebarDivider = frame(content, "SidebarDivider", {
-	Position = UDim2.fromOffset(SIDEBAR_WIDTH - 1, 41),
-	Size = UDim2.new(0, 1, 1, -41),
-	BorderSizePixel = 0,
-	BackgroundColor3 = PALETTE.border,
-})
-local view = frame(content, "GraphView", {
-	Position = UDim2.fromOffset(SIDEBAR_WIDTH, 41),
-	Size = UDim2.new(1, -SIDEBAR_WIDTH, 1, -41),
-	BorderSizePixel = 0,
-	BackgroundColor3 = PALETTE.background,
-	ClipsDescendants = true,
-	Active = true,
-})
+local function surface(parent, name, position, size, color, transparent)
+	local object = UI.frame(parent, position, size, color)
+	object.Name = name
+	object.BorderSizePixel = 0
+	object.BackgroundTransparency = transparent and 1 or 0
+	return object
+end
 
-local edgeLayer = frame(view, "Edges", {
-	Size = UDim2.fromScale(1, 1),
-	BorderSizePixel = 0,
-	BackgroundTransparency = 1,
-	ClipsDescendants = true,
-})
-local nodeLayer = frame(view, "Nodes", {
-	Size = UDim2.fromScale(1, 1),
-	BorderSizePixel = 0,
-	BackgroundTransparency = 1,
-	ClipsDescendants = true,
-})
+local function label(parent, text, position, size, font, color)
+	local object = UI.label(parent, text, position, size, font or tokens.type.small, color or colors.text)
+	object.TextTruncate = Enum.TextTruncate.AtEnd
+	return object
+end
 
-local status = UI.label(
-	view,
+local function icon(parent, path, position, size, tint)
+	local image = UI.image(parent, path, position, size)
+	image.ImageColor3 = tint or colors.subtext
+	return image
+end
+
+local toolbar =
+	surface(content, "Toolbar", UDim2.fromOffset(0, 0), UDim2.new(1, 0, 0, TOOLBAR_HEIGHT), colors.panelRaised)
+UI.separator(content, UDim2.fromOffset(0, TOOLBAR_HEIGHT - 1), UDim2.new(1, 0, 0, 1))
+local bodyHeight = -(TOOLBAR_HEIGHT + STATUS_HEIGHT)
+local view = surface(
+	content,
+	"GraphView",
+	UDim2.fromOffset(0, TOOLBAR_HEIGHT),
+	UDim2.new(1, -SIDEBAR_WIDTH, 1, bodyHeight),
+	colors.canvas
+)
+view.ClipsDescendants = true
+view.Active = true
+local sidebar = surface(
+	content,
+	"Sidebar",
+	UDim2.new(1, -SIDEBAR_WIDTH, 0, TOOLBAR_HEIGHT),
+	UDim2.new(0, SIDEBAR_WIDTH, 1, bodyHeight),
+	colors.panel
+)
+UI.separator(content, UDim2.new(1, -SIDEBAR_WIDTH, 0, TOOLBAR_HEIGHT), UDim2.new(0, 1, 1, bodyHeight))
+
+local edgeLayer = surface(view, "Edges", UDim2.fromOffset(0, 0), UDim2.fromScale(1, 1), colors.canvas, true)
+local nodeLayer = surface(view, "Nodes", UDim2.fromOffset(0, 0), UDim2.fromScale(1, 1), colors.canvas, true)
+edgeLayer.ClipsDescendants = true
+nodeLayer.ClipsDescendants = true
+
+local statusBar = surface(
+	content,
+	"StatusBar",
+	UDim2.new(0, 0, 1, -STATUS_HEIGHT),
+	UDim2.new(1, 0, 0, STATUS_HEIGHT),
+	colors.panelRaised
+)
+UI.separator(statusBar, UDim2.fromOffset(0, 0), UDim2.new(1, 0, 0, 1))
+local statusIcon = icon(
+	statusBar,
+	ICONS.info,
+	UDim2.fromOffset(INSET, (STATUS_HEIGHT - ICON_SIZE) / 2),
+	UDim2.fromOffset(ICON_SIZE, ICON_SIZE)
+)
+local status = label(
+	statusBar,
 	"Refresh to scan the game's scripts",
-	UDim2.new(0, 12, 1, -27),
-	UDim2.new(1, -24, 0, 19),
+	UDim2.fromOffset(INSET + ICON_SIZE + GAP, 0),
+	UDim2.new(1, -(INSET * 2 + ICON_SIZE + GAP), 1, 0),
 	tokens.type.caption,
-	PALETTE.muted
+	colors.subtext
 )
-status.ZIndex = 12
-status.TextTruncate = Enum.TextTruncate.AtEnd
 
-local cycleWarning =
-	UI.label(view, "", UDim2.fromOffset(12, 12), UDim2.new(1, -24, 0, 22), tokens.type.caption, PALETTE.cycle)
-cycleWarning.ZIndex = 12
-cycleWarning.Visible = false
-cycleWarning.TextTruncate = Enum.TextTruncate.AtEnd
-
-local function label(parent, text, y, size, color)
-	return UI.label(
-		parent,
-		text,
-		UDim2.fromOffset(12, y),
-		UDim2.new(1, -24, 0, 20),
-		size or tokens.type.small,
-		color or PALETTE.text
-	)
-end
-
-label(sidebar, "SEARCH SCRIPTS", 14, tokens.type.caption, PALETTE.muted)
-local queryInput = UI.input(
-	sidebar,
-	"Filter by script name...",
-	UDim2.fromOffset(12, 40),
-	UDim2.new(1, -24, 0, UI.metrics.inputHeight),
-	{ selectAllOnFocus = false }
+local cycleBanner = UI.group(
+	view,
+	UDim2.fromOffset(INSET, INSET),
+	UDim2.new(1, -INSET * 2, 0, HEADER),
+	{ color = colors.surface, radius = tokens.radius.sm }
 )
+cycleBanner.ZIndex = 12
+UI.stroke(cycleBanner, colors.border, 1, 0)
+local cycleIcon = icon(
+	cycleBanner,
+	ICONS.warning,
+	UDim2.fromOffset(INSET, (HEADER - ICON_SIZE) / 2),
+	UDim2.fromOffset(ICON_SIZE, ICON_SIZE),
+	colors.error
+)
+cycleIcon.ZIndex = 13
+local cycleWarning = label(
+	cycleBanner,
+	"",
+	UDim2.fromOffset(INSET + ICON_SIZE + GAP, 0),
+	UDim2.new(1, -(INSET * 2 + ICON_SIZE + GAP), 1, 0),
+	tokens.type.caption,
+	colors.error
+)
+cycleWarning.ZIndex = 13
+cycleBanner.Visible = false
+
+local emptyGraph = UI.group(
+	view,
+	UDim2.fromScale(0.5, 0.5),
+	UDim2.fromOffset(280, ROW_HEIGHT * 2 + INSET * 2),
+	{ color = colors.panel, radius = tokens.radius.md }
+)
+emptyGraph.AnchorPoint = Vector2.new(0.5, 0.5)
+emptyGraph.ZIndex = 10
+UI.stroke(emptyGraph, colors.border, 1, 0)
+local emptyIcon = icon(
+	emptyGraph,
+	ICONS.info,
+	UDim2.fromOffset(INSET, INSET + ROW_HEIGHT / 2),
+	UDim2.fromOffset(ICON_SIZE, ICON_SIZE)
+)
+emptyIcon.ZIndex = 11
+local emptyText = label(
+	emptyGraph,
+	"Refresh to index project scripts.",
+	UDim2.fromOffset(INSET * 2 + ICON_SIZE, INSET),
+	UDim2.new(1, -(INSET * 3 + ICON_SIZE), 1, -INSET * 2),
+	tokens.type.small,
+	colors.subtext
+)
+emptyText.TextWrapped = true
+emptyText.ZIndex = 11
+
+local queryInput =
+	UI.input(sidebar, "Search scripts...", UDim2.fromOffset(INSET, INSET), UDim2.new(1, -INSET * 2, 0, SEARCH_HEIGHT), {
+		selectAllOnFocus = false,
+		focusColor = colors.focus,
+		caretColor = colors.accent,
+		selectionColor = colors.selection,
+	})
 queryInput.Name = "DependencyGraphSearch"
+local countLabel = label(
+	sidebar,
+	"No scripts indexed",
+	UDim2.fromOffset(INSET, INSET + SEARCH_HEIGHT + GAP),
+	UDim2.new(1, -INSET * 2, 0, ROW_HEIGHT),
+	tokens.type.caption,
+	colors.subtext
+)
+local LIST_HEADER_Y = INSET + SEARCH_HEIGHT + GAP + ROW_HEIGHT
+local listHeader = label(
+	sidebar,
+	"Scripts",
+	UDim2.fromOffset(INSET, LIST_HEADER_Y),
+	UDim2.new(1, -INSET * 2, 0, HEADER),
+	tokens.type.small,
+	colors.text
+)
+local function scrolling(name, position, size)
+	return UI.create("ScrollingFrame", {
+		Name = name,
+		Position = position,
+		Size = size,
+		BackgroundColor3 = colors.surface,
+		BackgroundTransparency = 1,
+		BorderSizePixel = 0,
+		CanvasPosition = Vector2.new(0, 0),
+		CanvasSize = UDim2.new(1, 0, 0, 0),
+		ScrollingEnabled = true,
+		ScrollSpeed = 38,
+		SmoothScrollingEnabled = true,
+		ScrollSmoothness = 18,
+		ScrollBarThickness = 5,
+		ScrollBarImageColor3 = colors.subtext,
+		ScrollBarImageTransparency = 0.4,
+		ScrollBarAutoHide = true,
+		ScrollBarFadeDelay = 0.45,
+		ScrollBarFadeSpeed = 12,
+		ScrollBarMinimumHandleSize = 24,
+		ClipsDescendants = true,
+		Active = true,
+		InputSink = true,
+	}, sidebar)
+end
+local LIST_TOP = LIST_HEADER_Y + HEADER + GAP
+local scriptList = scrolling(
+	"Scripts",
+	UDim2.fromOffset(INSET, LIST_TOP),
+	UDim2.new(1, -INSET * 2, 1, -(LIST_TOP + DETAIL_HEIGHT + GAP))
+)
+local scriptEmpty = label(
+	scriptList,
+	"No scripts to display.",
+	UDim2.fromOffset(INSET, GAP),
+	UDim2.new(1, -INSET * 2, 0, ROW_HEIGHT),
+	tokens.type.caption,
+	colors.subtext
+)
 
-local countLabel = label(sidebar, "No scripts indexed", 85, tokens.type.caption, PALETTE.muted)
-local detailsTitle = label(sidebar, "SELECTED SCRIPT", 122, tokens.type.caption, PALETTE.muted)
-local selectedName = label(sidebar, "Nothing selected", 146, tokens.type.small, PALETTE.text)
-selectedName.TextTruncate = Enum.TextTruncate.AtEnd
-local selectedPath = label(sidebar, "Select a bubble to inspect it", 168, tokens.type.caption, PALETTE.muted)
+local cycleHeader = label(
+	sidebar,
+	"Circular requires (0)",
+	UDim2.new(0, INSET + ICON_SIZE + GAP, 1, -DETAIL_HEIGHT - HEADER),
+	UDim2.new(1, -(INSET * 2 + ICON_SIZE + GAP), 0, HEADER),
+	tokens.type.small,
+	colors.error
+)
+local sidebarCycleIcon = icon(
+	sidebar,
+	ICONS.warning,
+	UDim2.new(0, INSET, 1, -DETAIL_HEIGHT - HEADER + (HEADER - ICON_SIZE) / 2),
+	UDim2.fromOffset(ICON_SIZE, ICON_SIZE),
+	colors.error
+)
+local cycleList = scrolling("DependencyCycles", UDim2.new(0, INSET, 1, -DETAIL_HEIGHT), UDim2.new(1, -INSET * 2, 0, 0))
+cycleHeader.Visible = false
+sidebarCycleIcon.Visible = false
+cycleList.Visible = false
+
+local details = UI.group(
+	sidebar,
+	UDim2.new(0, INSET, 1, -DETAIL_HEIGHT + GAP),
+	UDim2.new(1, -INSET * 2, 0, DETAIL_HEIGHT - INSET - GAP),
+	{ color = colors.surface, radius = tokens.radius.sm }
+)
+UI.stroke(details, colors.border, 1, 0)
+local detailsTitle = label(
+	details,
+	"Selected script",
+	UDim2.fromOffset(INSET, GAP),
+	UDim2.new(1, -INSET * 2, 0, HEADER),
+	tokens.type.caption,
+	colors.subtext
+)
+UI.tooltip(detailsTitle, "Drag to pan. Scroll to zoom. Double-click a script to open it. Press F to fit the graph.")
+local selectedIcon = icon(
+	details,
+	ICONS.info,
+	UDim2.fromOffset(INSET, HEADER + GAP + (ROW_HEIGHT - ICON_SIZE) / 2),
+	UDim2.fromOffset(ICON_SIZE, ICON_SIZE)
+)
+local selectedName = label(
+	details,
+	"Nothing selected",
+	UDim2.fromOffset(INSET + ICON_SIZE + GAP, HEADER + GAP),
+	UDim2.new(1, -(INSET * 2 + ICON_SIZE + GAP), 0, ROW_HEIGHT),
+	tokens.type.body,
+	colors.text
+)
+local selectedPath = label(
+	details,
+	"Select a bubble or script to inspect it.",
+	UDim2.fromOffset(INSET, HEADER + ROW_HEIGHT + GAP),
+	UDim2.new(1, -INSET * 2, 0, ROW_HEIGHT * 2),
+	tokens.type.caption,
+	colors.subtext
+)
 selectedPath.TextWrapped = true
-selectedPath.Size = UDim2.new(1, -24, 0, 46)
-local selectedStats = label(sidebar, "", 220, tokens.type.caption, PALETTE.muted)
-selectedStats.Size = UDim2.new(1, -24, 0, 34)
+local selectedStats = label(
+	details,
+	"",
+	UDim2.fromOffset(INSET, HEADER + ROW_HEIGHT * 3 + GAP),
+	UDim2.new(1, -INSET * 2, 0, ROW_HEIGHT * 3),
+	tokens.type.caption,
+	colors.subtext
+)
 selectedStats.TextWrapped = true
-
-local cycleHeader = label(sidebar, "CIRCULAR REQUIRES (0)", 260, tokens.type.caption, PALETTE.muted)
-local cycleList = UI.create("ScrollingFrame", {
-	Name = "DependencyCycles",
-	Position = UDim2.fromOffset(8, 283),
-	Size = UDim2.new(1, -16, 0, 0),
-	CanvasSize = UDim2.fromOffset(0, 0),
-	BorderSizePixel = 0,
-	BackgroundTransparency = 1,
-	ScrollBarThickness = 4,
-	ScrollBarImageColor3 = colors.subtext,
-	VirtualizedScrolling = true,
-	ScrollingEnabled = true,
-	ClipsDescendants = true,
-	Visible = false,
-}, sidebar)
-
-local listHeader = label(sidebar, "SCRIPTS", 293, tokens.type.caption, PALETTE.muted)
-local scriptList = UI.create("ScrollingFrame", {
-	Name = "ScriptList",
-	Position = UDim2.fromOffset(8, 320),
-	Size = UDim2.new(1, -16, 1, -372),
-	CanvasSize = UDim2.fromOffset(0, 0),
-	BorderSizePixel = 0,
-	BackgroundTransparency = 1,
-	ScrollBarThickness = 4,
-	ScrollBarImageColor3 = colors.subtext,
-	VirtualizedScrolling = true,
-	ScrollingEnabled = true,
-	ClipsDescendants = true,
-}, sidebar)
-
-local sidebarFooter =
-	label(sidebar, "Drag to pan · Wheel zoom\nDouble-click bubble to open", 0, tokens.type.caption, PALETTE.muted)
-sidebarFooter.Position = UDim2.new(0, 12, 1, -43)
-sidebarFooter.Size = UDim2.new(1, -24, 0, 36)
-sidebarFooter.TextWrapped = true
 
 local revision = 0
 local graphNodes = {}
@@ -196,7 +348,12 @@ local showIsolated = true
 local showCyclesOnly = false
 local physicsEnabled = true
 local simulationLeft = 0
-local currentMessage = "Ready"
+local currentMessage = "Refresh to scan the game's scripts"
+local currentSeverity = "info"
+local currentQuery, pendingQuery = "", ""
+local searchDeadline = -1
+local sortedNodes = {}
+local rowsDirty = true
 local warningCount = 0
 local scannedCount = 0
 local unresolvedCount = 0
@@ -221,20 +378,17 @@ local updateCycleViewport
 local updateCycleList
 local focusCycleGroup
 
-local function setStatus(message)
+local function setStatus(message, severity)
+	if destroyed then
+		return
+	end
 	currentMessage = message
+	currentSeverity = severity or "info"
 	status.Text = message
-end
-
-local function control(caption, x, width, onClick)
-	return UI.button(
-		toolbar,
-		caption,
-		UDim2.fromOffset(x, 7),
-		UDim2.fromOffset(width, UI.metrics.inputHeight),
-		onClick,
-		{ radius = tokens.radius.sm }
-	)
+	statusIcon.Image = ICONS[severity or "info"] or ICONS.info
+	statusIcon.ImageColor3 = severity == "error" and colors.error
+		or (severity == "warning" and colors.warning or colors.subtext)
+	status.TextColor3 = severity == "error" and colors.error or colors.subtext
 end
 
 local startScan
@@ -242,30 +396,54 @@ local fitGraph
 local refreshVisible
 local drawGraph
 local focusNode
+local cancelScan
+local enable
+local disable
 
-control("Refresh", 10, 80, function()
+local toolbarX = INSET
+local function control(caption, width, onClick, options)
+	local button, _, record = UI.button(
+		toolbar,
+		caption,
+		UDim2.fromOffset(toolbarX, INSET + GAP),
+		UDim2.fromOffset(width, UI.metrics.buttonHeight),
+		onClick,
+		options or {}
+	)
+	toolbarX += width + GAP
+	return button, record
+end
+control("Refresh", 92, function()
 	if startScan then
 		startScan()
 	end
+end, { icon = ICONS.refresh, iconSize = ICON_SIZE })
+local cancelButton = control("Cancel", 64, function()
+	if cancelScan then
+		cancelScan("Scan cancelled.")
+	end
 end)
-control("Fit graph", 98, 84, function()
+cancelButton.Visible = false
+control("Fit graph", 78, function()
 	if fitGraph then
 		fitGraph()
 	end
 end)
 local physicsControl
-_, _, physicsControl = control("Physics", 190, 90, function()
+local _
+_, physicsControl = control("Physics", 74, function()
 	physicsEnabled = not physicsEnabled
-	if physicsEnabled then
+	if physicsEnabled and not UI.shared().reduceMotion then
 		simulationLeft = PHYSICS_STEPS
+	else
+		simulationLeft = 0
 	end
 	UI.setButtonState(physicsControl, physicsEnabled and "selected" or nil)
-	setStatus(physicsEnabled and "Physics enabled" or "Physics paused")
 	drawDirty = true
 end)
 UI.setButtonState(physicsControl, "selected")
 local isolatedControl
-_, _, isolatedControl = control("Isolated", 288, 95, function()
+_, isolatedControl = control("Isolated", 74, function()
 	showIsolated = not showIsolated
 	UI.setButtonState(isolatedControl, showIsolated and "selected" or nil)
 	if refreshVisible then
@@ -277,7 +455,7 @@ _, _, isolatedControl = control("Isolated", 288, 95, function()
 end)
 UI.setButtonState(isolatedControl, "selected")
 local cyclesControl
-_, _, cyclesControl = control("Cycles", 391, 86, function()
+_, cyclesControl = control("Cycles", 68, function()
 	showCyclesOnly = not showCyclesOnly
 	UI.setButtonState(cyclesControl, showCyclesOnly and "selected" or nil)
 	if refreshVisible then
@@ -288,15 +466,44 @@ _, _, cyclesControl = control("Cycles", 391, 86, function()
 	end
 end)
 
-local legend = UI.label(
+local legendWidth = 0
+for _, kind in ipairs({ "Script", "LocalScript", "ModuleScript" }) do
+	local width = #kind * 7 + ICON_SIZE + GAP + INSET
+	legendWidth += width
+end
+local legend = surface(
 	toolbar,
-	"Script  ·  LocalScript  ·  ModuleScript",
-	UDim2.new(1, -350, 0, 12),
-	UDim2.fromOffset(340, 18),
-	tokens.type.caption,
-	PALETTE.muted
+	"Legend",
+	UDim2.new(1, -legendWidth - INSET, 0, 0),
+	UDim2.fromOffset(legendWidth, TOOLBAR_HEIGHT),
+	colors.panelRaised,
+	true
 )
-legend.TextXAlignment = Enum.TextXAlignment.Right
+local legendX = 0
+for _, kind in ipairs({ "Script", "LocalScript", "ModuleScript" }) do
+	local width = #kind * 7 + ICON_SIZE + GAP + INSET
+	icon(
+		legend,
+		ICONS[kind],
+		UDim2.fromOffset(legendX, (TOOLBAR_HEIGHT - ICON_SIZE) / 2),
+		UDim2.fromOffset(ICON_SIZE, ICON_SIZE),
+		graphColor(kind)
+	)
+	label(
+		legend,
+		kind,
+		UDim2.fromOffset(legendX + ICON_SIZE + GAP, 0),
+		UDim2.fromOffset(width - ICON_SIZE - GAP, TOOLBAR_HEIGHT),
+		tokens.type.caption,
+		colors.subtext
+	)
+	legendX += width
+end
+local function updateToolbar()
+	legend.Visible = toolbar.AbsoluteSize.X >= toolbarX + legendWidth + INSET * 2
+end
+connect(toolbar:GetPropertyChangedSignal("AbsoluteSize"), updateToolbar)
+updateToolbar()
 
 local function safeGetChildren(object)
 	local ok, children = pcall(function()
@@ -354,109 +561,97 @@ local function resetVisuals()
 	graphReady = false
 	simulationLeft = 0
 	dragging = nil
-	for _, node in ipairs(graphNodes) do
-		if node.visual then
-			node.visual:Destroy()
-		end
-		if node.caption then
-			node.caption:Destroy()
-		end
-	end
-	for _, edge in ipairs(graphEdges) do
-		if edge.visual then
-			edge.visual:Destroy()
-		end
-	end
-	graphNodes = {}
-	graphEdges = {}
-	nodeByObject = {}
+	lastClickNode, lastClickTime = nil, 0
+	UI.clear(nodeLayer)
+	UI.clear(edgeLayer)
+	graphNodes, graphEdges, nodeByObject = {}, {}, {}
 	cycleGroups = {}
 	cyclicNodeCount, cyclicEdgeCount = 0, 0
-	cycleWarning.Visible = false
+	warningCount, scannedCount, unresolvedCount, unreadableCount = 0, 0, 0, 0
+	skippedBudgetCount, skippedTokenCount, completedSources = 0, 0, 0
+	cycleBanner.Visible = false
 	cycleWarning.Text = ""
 	chosen = nil
-	filteredRows = {}
+	filteredRows, sortedNodes = {}, {}
+	rowsDirty = true
 	for _, slot in ipairs(rowSlots) do
-		slot.node = nil
+		slot.node, slot.lastNode, slot.lastClick = nil, nil, nil
 		slot.row.Visible = false
 	end
-	scriptList.CanvasSize = UDim2.fromOffset(0, 0)
-	countLabel.Text = "No scripts indexed"
-	cycleHeader.Text = "CIRCULAR REQUIRES (0)"
-	cycleHeader.TextColor3 = PALETTE.muted
-	cycleList.Visible = false
-	cycleList.CanvasPosition = Vector2.new(0, 0)
-	cycleList.CanvasSize = UDim2.fromOffset(0, 0)
 	for _, slot in ipairs(cycleRowSlots) do
 		slot.group = nil
 		slot.row.Visible = false
 	end
-	listHeader.Position = UDim2.fromOffset(12, 293)
-	scriptList.Position = UDim2.fromOffset(8, 320)
-	scriptList.Size = UDim2.new(1, -16, 1, -372)
+	scriptList.CanvasPosition = Vector2.new(0, 0)
+	scriptList.CanvasSize = UDim2.new(1, 0, 0, 0)
+	cycleList.CanvasPosition = Vector2.new(0, 0)
+	cycleList.CanvasSize = UDim2.new(1, 0, 0, 0)
+	countLabel.Text = "No scripts indexed"
+	updateCycleList()
 	updateDetails()
+	listHeader.Text = "Scripts (0)"
+	scriptEmpty.Visible = true
+	emptyGraph.Visible = true
+	emptyText.Text = "Scanning project scripts..."
 	sceneOffset = Vector2.new(0, 0)
 	zoom = 1
 	drawDirty = true
 end
 
+-- Graph nodes and links are data geometry, not clickable controls. Their
+-- interaction is handled by the canvas, so structural UI.frame is sufficient.
 local function makeNodeVisual(node)
-	local dot = UI.create("Frame", {
-		Name = "ScriptBubble",
-		Size = UDim2.fromOffset(12, 12),
-		AnchorPoint = Vector2.new(0.5, 0.5),
-		BorderSizePixel = 0,
-		BackgroundColor3 = PALETTE[node.kind],
-		ZIndex = 5,
-	}, nodeLayer)
-	UI.corner(dot, 100)
+	local dot =
+		surface(nodeLayer, "ScriptBubble", UDim2.fromOffset(0, 0), UDim2.fromOffset(12, 12), graphColor(node.kind))
+	dot.AnchorPoint = Vector2.new(0.5, 0.5)
+	dot.ZIndex = 5
+	UI.corner(dot, 100) -- circular data mark, not a chrome radius
+	dot.Visible = false
 	node.visual = dot
-	local caption = UI.label(
+	local caption = label(
 		nodeLayer,
 		node.name,
 		UDim2.fromOffset(0, 0),
-		UDim2.fromOffset(100, 20),
+		UDim2.fromOffset(100, ROW_HEIGHT),
 		tokens.type.small,
-		PALETTE.text
+		colors.text
 	)
 	caption.Name = "BubbleLabel"
-	caption.TextTruncate = Enum.TextTruncate.AtEnd
 	caption.ZIndex = 6
+	caption.Visible = false
 	node.caption = caption
 end
 
 local function makeEdgeVisual(edge)
 	if edge.from == edge.to then
-		-- A self-require has zero line length; render a visible loop symbol.
-		edge.visual = UI.label(
-			edgeLayer,
-			"↻",
-			UDim2.fromOffset(0, 0),
-			UDim2.fromOffset(22, 22),
-			tokens.type.small,
-			PALETTE.cycle
-		)
-		edge.visual.Name = "SelfRequireLoop"
-		edge.visual.ZIndex = 3
+		-- A zero-length link needs a visible status image rather than a glyph.
+		local image =
+			icon(edgeLayer, ICONS.warning, UDim2.fromOffset(0, 0), UDim2.fromOffset(ICON_SIZE, ICON_SIZE), colors.error)
+		image.Name = "SelfRequireWarning"
+		image.ZIndex = 3
+		image.Visible = false
+		edge.visual = image
 		return
 	end
-	edge.visual = UI.create("Frame", {
-		Name = "DependencyLink",
-		BorderSizePixel = 0,
-		AnchorPoint = Vector2.new(0.5, 0.5),
-		BackgroundColor3 = PALETTE.edge,
-		BackgroundTransparency = 0.67,
-		ZIndex = 2,
-	}, edgeLayer)
+	local line = surface(edgeLayer, "DependencyLink", UDim2.fromOffset(0, 0), UDim2.fromOffset(0, 1), colors.subtext)
+	line.AnchorPoint = Vector2.new(0.5, 0.5)
+	line.BackgroundTransparency = 0.67
+	line.ZIndex = 2
+	line.Visible = false
+	edge.visual = line
 end
 
 updateDetails = function()
 	if not chosen then
+		selectedIcon.Image = ICONS.info
+		selectedIcon.ImageColor3 = colors.subtext
 		selectedName.Text = "Nothing selected"
 		selectedPath.Text = "Select a bubble to inspect it"
 		selectedStats.Text = ""
 		return
 	end
+	selectedIcon.Image = ICONS[chosen.kind]
+	selectedIcon.ImageColor3 = chosen.cycleGroup and colors.error or graphColor(chosen.kind)
 	selectedName.Text = chosen.name
 	selectedPath.Text = chosen.path
 	selectedStats.Text = string.format(
@@ -464,9 +659,11 @@ updateDetails = function()
 		chosen.outCount,
 		chosen.inCount,
 		chosen.kind,
-		chosen.cycleGroup and string.format("  ·  Cycle #%d (%d)", chosen.cycleGroup.id, #chosen.cycleGroup.nodes)
-			or ""
+		chosen.cycleGroup and string.format("  |  Cycle #%d (%d)", chosen.cycleGroup.id, #chosen.cycleGroup.nodes) or ""
 	)
+	if chosen.scanWarning then
+		selectedStats.Text = selectedStats.Text .. "\n" .. chosen.scanWarning
+	end
 end
 
 local function selectNode(node)
@@ -486,227 +683,203 @@ end
 
 local function openNode(node)
 	if not node or not node.object or not node.object.Parent then
-		setStatus("Cannot open: script was removed")
+		setStatus("Cannot open: script was removed", "warning")
 		return
 	end
 	local ok, err = pcall(function()
 		viewport.OpenScript(node.object)
 	end)
 	if not ok then
-		setStatus("Unable to open " .. node.name .. ": " .. tostring(err))
+		setStatus("Unable to open " .. node.name .. ": " .. tostring(err), "error")
 	end
 end
 
--- Cycles are groups of mutually reachable ModuleScripts (or a self-require).
--- Each sidebar warning is actionable: it selects the first member and
--- frames the entire group on the canvas.
-local function createCycleRowSlot()
-	local slot = { group = nil }
-	local row, _, controller = UI.button(
-		cycleList,
-		"",
-		UDim2.fromOffset(0, 0),
-		UDim2.new(1, -5, 0, ROW_HEIGHT),
-		nil,
-		{ color = colors.rowOdd, hoverColor = colors.hover, radius = 0, border = false }
+-- Canonical Explorer-style row pooling. Each slot owns a class/status image,
+-- caption, and controller. Rebinding never registers a new button.
+local function makeRowSlot(scroll, isCycle)
+	local slot = {}
+	local row, builtinLabel, record =
+		UI.button(scroll, "", UDim2.fromOffset(1, 0), UDim2.new(1, -2, 0, ROW_HEIGHT), nil, {
+			color = colors.rowOdd,
+			hoverColor = colors.hover,
+			pressedColor = colors.pressed,
+			bgTransparency = 0.12,
+			radius = 0,
+			border = false,
+		})
+	builtinLabel.Visible = false
+	row.Name = isCycle and "CycleRow" or "ScriptRow"
+	slot.row, slot.controller = row, record
+	slot.icon = icon(
+		row,
+		isCycle and ICONS.warning or ICONS.Script,
+		UDim2.fromOffset(INSET, (ROW_HEIGHT - ICON_SIZE) / 2),
+		UDim2.fromOffset(ICON_SIZE, ICON_SIZE)
 	)
-	row.Name = "DependencyCycleRow"
-	local caption = UI.label(
+	slot.caption = label(
 		row,
 		"",
-		UDim2.fromOffset(8, 2),
-		UDim2.new(1, -14, 0, ROW_HEIGHT - 4),
+		UDim2.fromOffset(INSET + ICON_SIZE + GAP, 1),
+		UDim2.new(1, -(INSET * 2 + ICON_SIZE * 2 + GAP * 2), 0, ROW_HEIGHT - 2),
 		tokens.type.small,
-		PALETTE.cycle
+		colors.text
 	)
-	caption.TextTruncate = Enum.TextTruncate.AtEnd
-	row.Activated:Connect(function()
-		local group = slot.group
-		if not group or not group.nodes[1] then
-			return
-		end
-		selectNode(group.nodes[1])
-		if focusCycleGroup then
+	slot.warning = icon(
+		row,
+		ICONS.warning,
+		UDim2.new(1, -INSET - ICON_SIZE, 0.5, -ICON_SIZE / 2),
+		UDim2.fromOffset(ICON_SIZE, ICON_SIZE),
+		colors.warning
+	)
+	slot.warning.Visible = false
+	connect(row.Activated, function(_, clickCount)
+		if isCycle then
+			local group = slot.group
+			if not group or not group.nodes[1] then
+				return
+			end
+			selectNode(group.nodes[1])
 			focusCycleGroup(group)
-		end
-		setStatus(
-			string.format(
-				"Cycle #%d: %d affected scripts · inspect red bubbles to view members",
-				group.id,
-				#group.nodes
-			)
-		)
-		if updateCycleViewport then
-			updateCycleViewport(true)
+			setStatus(string.format("Cycle #%d: %d affected scripts", group.id, #group.nodes), "warning")
+		else
+			local node = slot.node
+			if not node then
+				return
+			end
+			selectNode(node)
+			focusNode(node)
+			if clickCount == 2 or (slot.lastNode == node and os.clock() - (slot.lastClick or 0) < 0.37) then
+				openNode(node)
+				slot.lastNode = nil
+			else
+				slot.lastNode, slot.lastClick = node, os.clock()
+			end
 		end
 	end)
-	slot.row, slot.caption, slot.controller = row, caption, controller
 	row.Visible = false
 	return slot
 end
 
-local lastCycleStart, lastCycleWidth, lastCycleHeight = -1, -1, -1
-updateCycleViewport = function(force)
-	local height, width = cycleList.AbsoluteSize.Y, cycleList.AbsoluteSize.X
-	local first = math.max(1, math.floor(cycleList.CanvasPosition.Y / ROW_HEIGHT) + 1 - 2)
-	if not force and first == lastCycleStart and height == lastCycleHeight and width == lastCycleWidth then
+local listRanges = { scripts = {}, cycles = {} }
+local function renderRows(scroll, pool, items, range, isCycle, force)
+	local height = scroll.AbsoluteSize.Y
+	local first = math.max(1, math.floor(scroll.CanvasPosition.Y / ROW_HEIGHT) + 1 - OVERSCAN)
+	local last = height > 0 and math.min(#items, first + math.ceil(height / ROW_HEIGHT) + OVERSCAN * 2 + 1) or 0
+	if not force and first == range.first and last == range.last then
 		return
 	end
-	lastCycleStart, lastCycleHeight, lastCycleWidth = first, height, width
-	local last = math.min(#cycleGroups, first + math.ceil(height / ROW_HEIGHT) + 5)
+	range.first, range.last = first, last
 	local used = 0
 	for index = first, last do
 		used += 1
-		local slot = cycleRowSlots[used]
+		local slot = pool[used]
 		if not slot then
-			slot = createCycleRowSlot()
-			cycleRowSlots[used] = slot
+			slot = makeRowSlot(scroll, isCycle)
+			pool[used] = slot
 		end
-		local group = cycleGroups[index]
-		slot.group = group
+		local item = items[index]
+		local selected
+		if isCycle then
+			slot.group = item
+			slot.icon.Image = ICONS.warning
+			slot.icon.ImageColor3 = colors.error
+			slot.caption.Text = item.label
+			slot.caption.TextColor3 = colors.error
+			slot.warning.Visible = false
+			selected = chosen and chosen.cycleGroup == item
+		else
+			slot.node = item
+			slot.icon.Image = ICONS[item.kind]
+			slot.icon.ImageColor3 = graphColor(item.kind)
+			slot.caption.Text = item.name
+			slot.caption.TextColor3 = colors.text
+			slot.warning.Visible = item.cycleGroup ~= nil or item.scanWarning ~= nil
+			slot.warning.ImageColor3 = item.cycleGroup and colors.error or colors.warning
+			selected = chosen == item
+		end
+		slot.row.Position = UDim2.fromOffset(1, (index - 1) * ROW_HEIGHT)
+		slot.controller.defaultColor = index % 2 == 0 and colors.rowEven or colors.rowOdd
+		UI.setButtonState(slot.controller, selected and "selected" or nil)
 		slot.row.Visible = true
-		slot.row.Position = UDim2.fromOffset(0, (index - 1) * ROW_HEIGHT)
-		slot.row.BackgroundColor3 = index % 2 == 0 and colors.rowEven or colors.rowOdd
-		slot.caption.Text = group.label
-		UI.setButtonState(slot.controller, chosen and chosen.cycleGroup == group and "selected" or nil)
 	end
-	for i = used + 1, #cycleRowSlots do
-		cycleRowSlots[i].group = nil
-		cycleRowSlots[i].row.Visible = false
+	for i = used + 1, #pool do
+		pool[i].node, pool[i].group = nil, nil
+		pool[i].row.Visible = false
 	end
+end
+
+updateRowViewport = function(force)
+	renderRows(scriptList, rowSlots, filteredRows, listRanges.scripts, false, force)
+end
+updateCycleViewport = function(force)
+	renderRows(cycleList, cycleRowSlots, cycleGroups, listRanges.cycles, true, force)
 end
 
 updateCycleList = function()
 	local hasCycles = #cycleGroups > 0
-	cycleHeader.Text = "CIRCULAR REQUIRES (" .. #cycleGroups .. ")"
-	cycleHeader.TextColor3 = hasCycles and PALETTE.cycle or PALETTE.muted
+	local height = hasCycles and math.min(ROW_HEIGHT * 5, #cycleGroups * ROW_HEIGHT) or 0
+	local reserved = hasCycles and (height + HEADER + GAP * 2) or 0
+	cycleHeader.Text = "Circular requires (" .. #cycleGroups .. ")"
+	cycleHeader.Visible = hasCycles
+	sidebarCycleIcon.Visible = hasCycles
 	cycleList.Visible = hasCycles
-	if hasCycles then
-		local height = math.min(108, #cycleGroups * ROW_HEIGHT + 4)
-		cycleList.Size = UDim2.new(1, -16, 0, height)
-		cycleList.CanvasSize = UDim2.fromOffset(0, #cycleGroups * ROW_HEIGHT)
-	else
-		cycleList.CanvasSize = UDim2.fromOffset(0, 0)
+	cycleHeader.Position = UDim2.new(0, INSET + ICON_SIZE + GAP, 1, -DETAIL_HEIGHT - reserved + GAP)
+	sidebarCycleIcon.Position = UDim2.new(0, INSET, 1, -DETAIL_HEIGHT - reserved + GAP + (HEADER - ICON_SIZE) / 2)
+	cycleList.Position = UDim2.new(0, INSET, 1, -DETAIL_HEIGHT - height - GAP)
+	cycleList.Size = UDim2.new(1, -INSET * 2, 0, height)
+	cycleList.CanvasSize = UDim2.new(1, 0, 0, #cycleGroups * ROW_HEIGHT)
+	if not hasCycles then
+		cycleList.CanvasPosition = Vector2.new(0, 0)
 	end
-	local offset = hasCycles and 109 or 0
-	listHeader.Position = UDim2.fromOffset(12, 293 + offset)
-	scriptList.Position = UDim2.fromOffset(8, 320 + offset)
-	scriptList.Size = UDim2.new(1, -16, 1, -(372 + offset))
-	lastCycleStart = -1
-	if hasCycles then
-		updateCycleViewport(true)
-	end
-	cycleWarning.Visible = hasCycles
+	scriptList.Size = UDim2.new(1, -INSET * 2, 1, -(LIST_TOP + DETAIL_HEIGHT + reserved + GAP))
+	updateCycleViewport(true)
+	cycleBanner.Visible = hasCycles
 	cycleWarning.Text = string.format(
-		"⚠ %d circular require group%s  ·  %d affected scripts",
+		"%d circular require group%s (%d affected scripts)",
 		#cycleGroups,
 		#cycleGroups == 1 and "" or "s",
 		cyclicNodeCount
 	)
 end
 
-cycleList:GetPropertyChangedSignal("CanvasPosition"):Connect(function()
-	updateCycleViewport(false)
-end)
-cycleList:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
-	updateCycleViewport(true)
-end)
-
--- Virtualized sidebar rows share the same editor_UI.button pattern as FIP.
--- Updating the search no longer destroys and recreates hundreds of buttons.
-local lastRowStart, lastRowWidth, lastRowHeight = -1, -1, -1
-
-local function createRowSlot()
-	local slot = { node = nil }
-	local row, _, controller = UI.button(
-		scriptList,
-		"",
-		UDim2.fromOffset(0, 0),
-		UDim2.new(1, -5, 0, ROW_HEIGHT),
-		nil,
-		{ color = colors.rowOdd, hoverColor = colors.hover, radius = 0, border = false }
-	)
-	row.Name = "DependencyExplorerListRow"
-	local caption =
-		UI.label(row, "", UDim2.fromOffset(8, 2), UDim2.new(1, -14, 0, ROW_HEIGHT - 4), tokens.type.small, colors.text)
-	caption.TextTruncate = Enum.TextTruncate.AtEnd
-	row.Activated:Connect(function(_, clickCount)
-		local node = slot.node
-		if not node then
-			return
-		end
-		selectNode(node)
-		if focusNode then
-			focusNode(node)
-		end
-		if clickCount == 2 then
-			openNode(node)
-		end
-	end)
-	slot.row = row
-	slot.caption = caption
-	slot.controller = controller
-	row.Visible = false
-	return slot
-end
-
-updateRowViewport = function(force)
-	local height, width = scriptList.AbsoluteSize.Y, scriptList.AbsoluteSize.X
-	local first = math.max(1, math.floor(scriptList.CanvasPosition.Y / ROW_HEIGHT) + 1 - 5)
-	if not force and first == lastRowStart and width == lastRowWidth and height == lastRowHeight then
-		return
+local function updateRows(resetPosition)
+	if rowsDirty then
+		sortedNodes = table.clone(graphNodes)
+		table.sort(sortedNodes, function(a, b)
+			if a.degree ~= b.degree then
+				return a.degree > b.degree
+			end
+			return a.path < b.path
+		end)
+		rowsDirty = false
 	end
-	lastRowStart, lastRowWidth, lastRowHeight = first, width, height
-	local last = math.min(#filteredRows, first + math.ceil(height / ROW_HEIGHT) + 12)
-	local used = 0
-	for index = first, last do
-		used += 1
-		local slot = rowSlots[used]
-		if not slot then
-			slot = createRowSlot()
-			rowSlots[used] = slot
-		end
-		local node = filteredRows[index]
-		slot.node = node
-		slot.row.Visible = true
-		slot.row.Position = UDim2.fromOffset(0, (index - 1) * ROW_HEIGHT)
-		slot.row.BackgroundColor3 = index % 2 == 0 and colors.rowEven or colors.rowOdd
-		slot.caption.Text = (node.cycleGroup and "↻  " or "●  ") .. node.name
-		slot.caption.TextColor3 = node.cycleGroup and PALETTE.cycle or PALETTE[node.kind]
-		UI.setButtonState(slot.controller, node == chosen and "selected" or nil)
-	end
-	for i = used + 1, #rowSlots do
-		rowSlots[i].node = nil
-		rowSlots[i].row.Visible = false
-	end
-end
-
-local function updateRows()
-	local query = string.lower(queryInput.Text or "")
-	local sorted = table.clone(graphNodes)
-	table.sort(sorted, function(a, b)
-		if a.degree ~= b.degree then
-			return a.degree > b.degree
-		end
-		return a.path < b.path
-	end)
 	filteredRows = {}
-	for _, node in ipairs(sorted) do
-		if isVisibleNode(node) and (query == "" or string.find(node.searchKey, query, 1, true)) then
+	for _, node in ipairs(sortedNodes) do
+		if isVisibleNode(node) and (currentQuery == "" or string.find(node.searchKey, currentQuery, 1, true)) then
 			filteredRows[#filteredRows + 1] = node
 		end
 	end
-	listHeader.Text = "SCRIPTS  (" .. #filteredRows .. ")"
-	scriptList.CanvasSize = UDim2.new(0, 0, 0, #filteredRows * ROW_HEIGHT)
-	lastRowStart = -1
+	listHeader.Text = string.format("Scripts (%d)", #filteredRows)
+	scriptList.CanvasSize = UDim2.new(1, 0, 0, #filteredRows * ROW_HEIGHT)
+	if resetPosition then
+		scriptList.CanvasPosition = Vector2.new(0, 0)
+	end
+	scriptEmpty.Visible = #filteredRows == 0
+	scriptEmpty.Text = scanInProgress and "Indexing scripts..." or "No matching scripts."
 	updateRowViewport(true)
 end
 
-scriptList:GetPropertyChangedSignal("CanvasPosition"):Connect(function()
+connect(scriptList:GetPropertyChangedSignal("CanvasPosition"), function()
 	updateRowViewport(false)
 end)
-scriptList:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
+connect(scriptList:GetPropertyChangedSignal("AbsoluteSize"), function()
 	updateRowViewport(true)
+end)
+connect(cycleList:GetPropertyChangedSignal("CanvasPosition"), function()
+	updateCycleViewport(false)
+end)
+connect(cycleList:GetPropertyChangedSignal("AbsoluteSize"), function()
+	updateCycleViewport(true)
 end)
 
 -- Tokenizer: ignores comments and string contents, retaining quoted strings
@@ -882,6 +1055,13 @@ local function tokenize(source, token, reportProgress)
 			p += 1
 			while isLetter(source:byte(p)) or isDigit(source:byte(p)) do
 				p += 1
+				if p - lastPosition >= 2048 then
+					local ok, reason = checkpoint()
+					if not ok then
+						return nil, reason
+					end
+					lastPosition = p
+				end
 			end
 			-- Identifiers this long are irrelevant to static module paths.
 			local name = p - begin <= 512 and source:sub(begin, p - 1) or ""
@@ -890,9 +1070,17 @@ local function tokenize(source, token, reportProgress)
 			p += 1
 			while isDigit(source:byte(p)) do
 				p += 1
+				if p - lastPosition >= 2048 then
+					local ok, reason = checkpoint()
+					if not ok then
+						return nil, reason
+					end
+					lastPosition = p
+				end
 			end
+			result[#result + 1] = { k = "num", v = "", line = line }
 		else
-			if c == 40 or c == 41 or c == 46 or c == 58 or c == 61 or c == 93 or c == 44 or c == 59 then
+			if c > 32 then
 				result[#result + 1] = { k = "sym", v = string.char(c), line = line }
 			end
 			p += 1
@@ -902,7 +1090,8 @@ local function tokenize(source, token, reportProgress)
 end
 
 local function tokenIs(tokensArray, index, value)
-	return tokensArray[index] and tokensArray[index].v == value
+	local item = tokensArray[index]
+	return item ~= nil and item.k == "sym" and item.v == value
 end
 
 local function childOf(object, name)
@@ -1009,6 +1198,7 @@ local function addDependency(fromNode, targetObject, line, edgeSeen)
 	if fromNode == toNode then
 		fromNode.selfRequires = true
 	end
+	rowsDirty = true
 	fromNode.outCount += 1
 	toNode.inCount += 1
 	fromNode.degree += 1
@@ -1067,16 +1257,18 @@ local function processSource(node, source, edgeSeen, token, progress)
 				return true
 			end
 			task.wait()
+			if token ~= revision then
+				return false
+			end
 			lastYield = os.clock()
 		end
 		local tok = t[i]
-		if tok.v == "local" and t[i + 1] and t[i + 1].k == "id" and tokenIs(t, i + 2, "=") then
+		if tok.k == "id" and tok.v == "local" and t[i + 1] and t[i + 1].k == "id" and tokenIs(t, i + 2, "=") then
 			local resolved = resolveReference(t, i + 3, node.object, aliases)
-			if resolved then
-				aliases[t[i + 1].v] = resolved
-			end
+			aliases[t[i + 1].v] = resolved
 		elseif
-			tok.v == "require"
+			tok.k == "id"
+			and tok.v == "require"
 			and tokenIs(t, i + 1, "(")
 			and not tokenIs(t, i - 1, ".")
 			and not tokenIs(t, i - 1, ":")
@@ -1139,6 +1331,9 @@ local function detectCycles(token)
 						return false
 					end
 					task.wait()
+					if token ~= revision then
+						return false
+					end
 				end
 				local frame = frames[#frames]
 				local node = frame.node
@@ -1192,7 +1387,7 @@ local function detectCycles(token)
 	for i, group in ipairs(cycleGroups) do
 		group.id = i
 		group.label = string.format(
-			"↻ #%d  ·  %d script%s  ·  %s",
+			"#%d: %d script%s (%s)",
 			i,
 			#group.nodes,
 			#group.nodes == 1 and "" or "s",
@@ -1228,7 +1423,16 @@ local function positionNodes()
 end
 
 local function physicsStep()
-	if not graphReady or not physicsEnabled or simulationLeft <= 0 or #graphNodes > PHYSICS_MAX_NODES then
+	if
+		not graphReady
+		or not physicsEnabled
+		or simulationLeft <= 0
+		or #graphNodes > PHYSICS_MAX_NODES
+		or UI.shared().reduceMotion
+	then
+		if UI.shared().reduceMotion or #graphNodes > PHYSICS_MAX_NODES then
+			simulationLeft = 0
+		end
 		return
 	end
 	simulationLeft -= 1
@@ -1258,7 +1462,7 @@ local function physicsStep()
 	-- Springs draw linked scripts into the same constellation.
 	for _, edge in ipairs(graphEdges) do
 		local a, b = edge.from, edge.to
-		if isVisibleNode(a) and isVisibleNode(b) then
+		if a ~= b and isVisibleNode(a) and isVisibleNode(b) then
 			local dx, dy = b.x - a.x, b.y - a.y
 			local distance = math.max(1, math.sqrt(dx * dx + dy * dy))
 			local f = (distance - 126) * 0.022
@@ -1281,15 +1485,28 @@ local function physicsStep()
 end
 
 refreshVisible = function()
+	local visibleCount = 0
 	for _, node in ipairs(graphNodes) do
-		if node.visual then
-			node.visual.Visible = isVisibleNode(node)
+		if isVisibleNode(node) then
+			visibleCount += 1
 		end
-		if node.caption then
-			node.caption.Visible = isVisibleNode(node)
+		if not isVisibleNode(node) then
+			if node.visual then
+				node.visual.Visible = false
+			end
+			if node.caption then
+				node.caption.Visible = false
+			end
 		end
 	end
+	emptyGraph.Visible = not graphReady or visibleCount == 0
+	emptyText.Text = scanInProgress and "Indexing project scripts..."
+		or (
+			showCyclesOnly and "No circular requires found in indexed scripts."
+			or "No scripts match the active filters."
+		)
 	updateRows()
+	updateDetails()
 	drawDirty = true
 end
 
@@ -1354,53 +1571,60 @@ drawGraph = function()
 	end
 	local highlighted = chosen and chosen.neighbors
 	local chosenGroup = chosen and chosen.cycleGroup
-	local query = string.lower(queryInput.Text or "")
+	local query = currentQuery
+	local rootX = size.X * 0.5 + sceneOffset.X * zoom
+	local rootY = size.Y * 0.5 + sceneOffset.Y * zoom
+	local zoomRoot = math.sqrt(zoom)
 	for _, node in ipairs(graphNodes) do
-		local point = worldToScreen(node.x, node.y)
+		local point = Vector2.new(rootX + node.x * zoom, rootY + node.y * zoom)
+		node.screenPoint = point
+		node.screenVisible = isVisibleNode(node)
 		local selected = node == chosen
 		local related = (highlighted and highlighted[node]) or (chosenGroup and node.cycleGroup == chosenGroup)
 		local match = query ~= "" and string.find(node.searchKey, query, 1, true) ~= nil
-		local diameter = math.clamp((9 + math.sqrt(node.degree) * 3) * math.sqrt(zoom), 5, 36)
+		local diameter = math.clamp((9 + math.sqrt(node.degree) * 3) * zoomRoot, 5, 36)
 		if selected then
 			diameter += 5
 		end
 		local inView = point.X > -100 and point.X < size.X + 100 and point.Y > -50 and point.Y < size.Y + 50
-		local visible = isVisibleNode(node) and inView
+		local visible = node.screenVisible and inView
 		local dot = node.visual
 		dot.Visible = visible
 		if visible then
 			dot.Position = UDim2.fromOffset(point.X, point.Y)
 			dot.Size = UDim2.fromOffset(diameter, diameter)
-			dot.BackgroundColor3 = node.cycleGroup and PALETTE.cycle
-				or (selected and PALETTE.selected or PALETTE[node.kind])
+			dot.BackgroundColor3 = node.cycleGroup and colors.error
+				or (selected and colors.accent or graphColor(node.kind))
 			dot.BackgroundTransparency = chosen and not (selected or related) and 0.56 or 0
 		end
 		local text = node.caption
 		local showLabel = zoom > 0.65 or selected or related or match
 		text.Visible = visible and showLabel
 		if text.Visible then
-			text.Position = UDim2.fromOffset(point.X + diameter / 2 + 5, point.Y - 10)
-			text.Size = UDim2.fromOffset(math.clamp(#node.name * 7.5 + 8, 55, 166), 20)
-			text.TextColor3 = node.cycleGroup and PALETTE.cycle or (selected and PALETTE.selected or PALETTE.text)
+			text.Position = UDim2.fromOffset(point.X + diameter / 2 + tokens.space.sm, point.Y - ROW_HEIGHT / 2)
+			text.Size = UDim2.fromOffset(math.clamp(#node.name * 7.5 + tokens.space.md, 55, 166), ROW_HEIGHT)
+			text.TextColor3 = node.cycleGroup and colors.error or (selected and colors.accent or colors.text)
 			text.TextTransparency = chosen and not (selected or related) and 0.62
 				or (query ~= "" and not match and 0.55 or 0)
-			text.Text = (node.selfRequires and "↻ " or "") .. node.name
 		end
 	end
 	for _, edge in ipairs(graphEdges) do
 		local a, b = edge.from, edge.to
-		local drawable = isVisibleNode(a) and isVisibleNode(b)
+		local drawable = a.screenVisible and b.screenVisible
 		local line = edge.visual
+		if not line then
+			continue
+		end
 		if drawable and a == b then
-			local p = worldToScreen(a.x, a.y)
+			local p = a.screenPoint
 			drawable = p.X >= -30 and p.X <= size.X + 30 and p.Y >= -30 and p.Y <= size.Y + 30
 			if drawable then
 				line.Position = UDim2.fromOffset(p.X + 9, p.Y - 26)
-				line.TextColor3 = PALETTE.cycle
-				line.TextTransparency = chosen and chosen ~= a and 0.85 or 0
+				line.ImageColor3 = colors.error
+				line.ImageTransparency = chosen and chosen ~= a and 0.85 or 0
 			end
 		elseif drawable then
-			local p1, p2 = worldToScreen(a.x, a.y), worldToScreen(b.x, b.y)
+			local p1, p2 = a.screenPoint, b.screenPoint
 			local dx, dy = p2.X - p1.X, p2.Y - p1.Y
 			local length = math.sqrt(dx * dx + dy * dy)
 			drawable = length > 0.5
@@ -1420,8 +1644,8 @@ drawGraph = function()
 					)
 				line.Size = UDim2.fromOffset(length, edge.cyclic and 2 or (selectedEdge and 2 or 1))
 				line.Rotation = math.deg(math.atan2(dy, dx))
-				line.BackgroundColor3 = edge.cyclic and PALETTE.cycle
-					or (selectedEdge and PALETTE.selected or PALETTE.edge)
+				line.BackgroundColor3 = edge.cyclic and colors.error
+					or (selectedEdge and colors.accent or colors.subtext)
 				line.BackgroundTransparency = chosen and not selectedEdge and 0.91
 					or (selectedEdge and 0.08 or (edge.cyclic and 0.10 or 0.66))
 			end
@@ -1442,15 +1666,18 @@ local function buildGraph(documentList, token)
 			return false
 		end
 		makeNodeVisual(node)
-		if i % 50 == 0 then
+		if i % 24 == 0 then
 			setStatus(string.format("Preparing graph... %d / %d", i, #graphNodes))
 			task.wait()
+			if token ~= revision then
+				return false
+			end
 		end
 	end
 	graphReady = true
 	refreshVisible()
 	fitGraph()
-	countLabel.Text = string.format("%d scripts  ·  resolving links...", #graphNodes)
+	countLabel.Text = string.format("%d scripts  |  resolving links...", #graphNodes)
 
 	local lastProgress = 0
 	for i, entry in ipairs(documentList) do
@@ -1460,7 +1687,7 @@ local function buildGraph(documentList, token)
 		local node = nodeByObject[entry.object]
 		if node then
 			-- Identify the precise source in the status bar if one is slow.
-			setStatus(string.format("Resolving %d / %d  ·  %s", i, #documentList, node.name))
+			setStatus(string.format("Resolving %d / %d  |  %s", i, #documentList, node.name))
 			local source = safeSource(entry.object)
 			if source then
 				local function progress(offset, total)
@@ -1469,7 +1696,7 @@ local function buildGraph(documentList, token)
 						lastProgress = now
 						setStatus(
 							string.format(
-								"Resolving %d / %d  ·  %s  ·  %d%%",
+								"Resolving %d / %d  |  %s  |  %d%%",
 								i,
 								#documentList,
 								node.name,
@@ -1482,6 +1709,9 @@ local function buildGraph(documentList, token)
 				-- Luau pcall is yieldable. A malformed/unexpected engine object can
 				-- fail independently without aborting the entire graph build.
 				local ok, complete = pcall(processSource, node, source, edgeSeen, token, progress)
+				if token ~= revision then
+					return false
+				end
 				if not ok then
 					warningCount += 1
 					node.scanWarning = "Source parsing error: " .. tostring(complete)
@@ -1491,11 +1721,14 @@ local function buildGraph(documentList, token)
 				end
 				for j = previousEdges + 1, #graphEdges do
 					makeEdgeVisual(graphEdges[j])
-					if j % 70 == 0 then
+					if j % 32 == 0 then
 						if token ~= revision then
 							return false
 						end
 						task.wait()
+						if token ~= revision then
+							return false
+						end
 					end
 				end
 			else
@@ -1505,12 +1738,16 @@ local function buildGraph(documentList, token)
 		end
 		completedSources = i
 		if i % 4 == 0 then
-			countLabel.Text = string.format("%d scripts  ·  %d links", #graphNodes, #graphEdges)
+			countLabel.Text = string.format("%d scripts  |  %d links", #graphNodes, #graphEdges)
 			drawDirty = true
 			task.wait()
+			if token ~= revision then
+				return false
+			end
 		end
 		if i % 32 == 0 then
 			updateRows()
+			updateDetails()
 		end
 	end
 
@@ -1527,6 +1764,9 @@ local function buildGraph(documentList, token)
 end
 
 startScan = function()
+	if destroyed then
+		return
+	end
 	revision += 1
 	local token = revision
 	resetVisuals()
@@ -1534,105 +1774,149 @@ startScan = function()
 	skippedBudgetCount, skippedTokenCount, completedSources = 0, 0, 0
 	scanStarted = true
 	scanInProgress = true
+	cancelButton.Visible = true
 	setStatus("Scanning all game descendants...")
 	task.spawn(function()
-		local startedAt = os.clock()
-		local stack = { game }
-		local inspected = 0
-		local lastYield = os.clock()
-		local documents = {}
-		local exceeded = false
-		while #stack > 0 do
+		local ok, err = pcall(function()
+			local startedAt = os.clock()
+			local stack = { game }
+			local inspected = 0
+			local lastYield = os.clock()
+			local documents = {}
+			local exceeded = false
+			while #stack > 0 do
+				if token ~= revision then
+					return
+				end
+				local object = table.remove(stack)
+				inspected += 1
+				if object ~= game and isScript(object) then
+					scannedCount += 1
+					if #graphNodes < MAX_SCRIPTS then
+						local node = {
+							object = object,
+							name = object.Name,
+							path = safePath(object),
+							kind = object.ClassName,
+							outCount = 0,
+							inCount = 0,
+							degree = 0,
+							neighbors = {},
+							outgoing = {},
+							selfRequires = false,
+							cycleGroup = nil,
+							x = 0,
+							y = 0,
+							vx = 0,
+							vy = 0,
+						}
+						node.searchKey = string.lower(node.name .. " " .. node.path)
+						graphNodes[#graphNodes + 1] = node
+						rowsDirty = true
+						nodeByObject[object] = node
+						documents[#documents + 1] = { object = object }
+					else
+						exceeded = true
+					end
+				end
+				local children = safeGetChildren(object)
+				if children then
+					for i = #children, 1, -1 do
+						stack[#stack + 1] = children[i]
+					end
+				end
+				if inspected % 90 == 0 or os.clock() - lastYield >= SCAN_TIME_BUDGET then
+					setStatus(string.format("Scanning... %d objects, %d scripts", inspected, scannedCount))
+					task.wait()
+					lastYield = os.clock()
+				end
+			end
 			if token ~= revision then
 				return
 			end
-			local object = table.remove(stack)
-			inspected += 1
-			if object ~= game and isScript(object) then
-				scannedCount += 1
-				if #graphNodes < MAX_SCRIPTS then
-					local node = {
-						object = object,
-						name = object.Name,
-						path = safePath(object),
-						kind = object.ClassName,
-						outCount = 0,
-						inCount = 0,
-						degree = 0,
-						neighbors = {},
-						outgoing = {},
-						selfRequires = false,
-						cycleGroup = nil,
-						x = 0,
-						y = 0,
-						vx = 0,
-						vy = 0,
-					}
-					node.searchKey = string.lower(node.name .. " " .. node.path)
-					graphNodes[#graphNodes + 1] = node
-					nodeByObject[object] = node
-					documents[#documents + 1] = { object = object }
-				else
-					exceeded = true
-				end
+			countLabel.Text = string.format("%d scripts discovered", #graphNodes)
+			setStatus("Preparing script graph...")
+			if not buildGraph(documents, token) then
+				return
 			end
-			local children = safeGetChildren(object)
-			if children then
-				for i = #children, 1, -1 do
-					stack[#stack + 1] = children[i]
-				end
+			if token ~= revision then
+				return
 			end
-			if inspected % 90 == 0 or os.clock() - lastYield >= SCAN_TIME_BUDGET then
-				setStatus(string.format("Scanning... %d objects, %d scripts", inspected, scannedCount))
-				task.wait()
-				lastYield = os.clock()
+			countLabel.Text =
+				string.format("%d nodes  |  %d links  |  %d cycles", #graphNodes, #graphEdges, #cycleGroups)
+			simulationLeft = physicsEnabled
+					and not UI.shared().reduceMotion
+					and #graphNodes <= PHYSICS_MAX_NODES
+					and PHYSICS_STEPS
+				or 0
+			fitGraph()
+			local suffix = exceeded and "; script cap reached" or ""
+			if #graphEdges >= MAX_EDGES then
+				suffix ..= "; edge cap reached"
 			end
-		end
-		if token ~= revision then
-			return
-		end
-		countLabel.Text = string.format("%d scripts discovered", #graphNodes)
-		setStatus("Preparing script graph...")
-		if not buildGraph(documents, token) then
-			return
-		end
-		if token ~= revision then
-			return
-		end
-		countLabel.Text = string.format("%d nodes  ·  %d links  ·  %d cycles", #graphNodes, #graphEdges, #cycleGroups)
-		simulationLeft = #graphNodes <= PHYSICS_MAX_NODES and PHYSICS_STEPS or 0
-		fitGraph()
-		local suffix = exceeded and " · script cap reached" or ""
-		if #graphEdges >= MAX_EDGES then
-			suffix ..= " · edge cap reached"
-		end
-		if #graphNodes > PHYSICS_MAX_NODES then
-			suffix ..= " · physics auto-limited"
-		end
-		if skippedBudgetCount > 0 then
-			suffix ..= " · " .. skippedBudgetCount .. " source time-limited"
-		end
-		if skippedTokenCount > 0 then
-			suffix ..= " · " .. skippedTokenCount .. " token-limited"
-		end
-		local cycleNotice = #cycleGroups > 0
-				and string.format("⚠ %d circular require groups (%d scripts) · ", #cycleGroups, cyclicNodeCount)
-			or ""
-		setStatus(
-			string.format(
-				"%s%d scripts · %d links · %d unresolved · %d unreadable · %d limited · %.2fs%s",
-				cycleNotice,
-				#graphNodes,
-				#graphEdges,
-				unresolvedCount,
-				unreadableCount,
-				warningCount,
-				os.clock() - startedAt,
-				suffix
+			if #graphNodes > PHYSICS_MAX_NODES then
+				suffix ..= "; physics auto-limited"
+			end
+			if skippedBudgetCount > 0 then
+				suffix ..= "; " .. skippedBudgetCount .. " source time-limited"
+			end
+			if skippedTokenCount > 0 then
+				suffix ..= "; " .. skippedTokenCount .. " token-limited"
+			end
+			local cycleNotice = #cycleGroups > 0
+					and string.format("%d circular require groups (%d scripts); ", #cycleGroups, cyclicNodeCount)
+				or ""
+			setStatus(
+				string.format(
+					"%s%d scripts; %d links; %d unresolved; %d unreadable; %d limited; %.2fs%s",
+					cycleNotice,
+					#graphNodes,
+					#graphEdges,
+					unresolvedCount,
+					unreadableCount,
+					warningCount,
+					os.clock() - startedAt,
+					suffix
+				),
+				(
+					#cycleGroups > 0
+					or warningCount > 0
+					or unreadableCount > 0
+					or exceeded
+					or #graphEdges >= MAX_EDGES
+					or unresolvedCount > 0
+				)
+						and "warning"
+					or nil
 			)
-		)
+		end)
+		if token ~= revision or destroyed then
+			return
+		end
 		scanInProgress = false
+		cancelButton.Visible = false
+		if not ok then
+			setStatus("Scan failed: " .. tostring(err), "error")
+			scanStarted = false
+			resetVisuals()
+			emptyText.Text = "Scan failed. Refresh to retry."
+		else
+			refreshVisible()
+		end
 	end)
+end
+
+cancelScan = function(message)
+	if not scanInProgress then
+		return
+	end
+	revision += 1
+	scanInProgress = false
+	scanStarted = false
+	cancelButton.Visible = false
+	resetVisuals()
+	emptyText.Text = "Scan cancelled. Refresh to retry."
+	setStatus(message or "Scan cancelled.")
 end
 
 local function nodeAt(localPoint)
@@ -1651,7 +1935,7 @@ local function nodeAt(localPoint)
 end
 
 local function handlePointerDown(event, processed)
-	if not panel.Visible or not UI.widgetOverlay().Enabled then
+	if destroyed or not panel.Visible or not overlay.Enabled or not graphReady then
 		return
 	end
 	if
@@ -1679,7 +1963,7 @@ end
 
 local function handlePointerMove(event)
 	if event.UserInputType == Enum.UserInputType.MouseWheel then
-		if not panel.Visible then
+		if not panel.Visible or not overlay.Enabled or not graphReady then
 			return
 		end
 		local mouse = UserInputService:GetMouseLocation()
@@ -1737,12 +2021,15 @@ local function handlePointerUp(event)
 	end
 end
 
-UserInputService.InputBegan:Connect(handlePointerDown)
-UserInputService.InputChanged:Connect(handlePointerMove)
-UserInputService.InputEnded:Connect(handlePointerUp)
+connect(UserInputService.InputBegan, handlePointerDown)
+connect(UserInputService.InputChanged, handlePointerMove)
+connect(UserInputService.InputEnded, handlePointerUp)
 
-UserInputService.InputBegan:Connect(function(event, processed)
+connect(UserInputService.InputBegan, function(event, processed)
 	if event.UserInputType ~= Enum.UserInputType.Keyboard then
+		return
+	end
+	if processed or UserInputService:GetFocusedTextBox() ~= nil then
 		return
 	end
 	if event.KeyCode == Enum.KeyCode.G then
@@ -1751,75 +2038,166 @@ UserInputService.InputBegan:Connect(function(event, processed)
 		local shift = UserInputService:IsKeyDown(Enum.KeyCode.LeftShift)
 			or UserInputService:IsKeyDown(Enum.KeyCode.RightShift)
 		if ctrl and shift then
-			panel.Visible = not panel.Visible
-			if panel.Visible and not scanStarted then
-				startScan()
+			if panel.Visible then
+				disable()
+			else
+				enable()
 			end
-			drawDirty = true
 		end
-	elseif panel.Visible and not processed and UserInputService:GetFocusedTextBox() == nil then
+	elseif panel.Visible then
 		if event.KeyCode == Enum.KeyCode.Escape then
 			selectNode(nil)
 		elseif event.KeyCode == Enum.KeyCode.F then
 			fitGraph()
 		elseif event.KeyCode == Enum.KeyCode.Return or event.KeyCode == Enum.KeyCode.KeypadEnter then
-			openNode(chosen)
+			if chosen then
+				openNode(chosen)
+			end
 		end
 	end
 end)
 
-queryInput.TextChanged:Connect(function()
-	updateRows()
+connect(queryInput:GetPropertyChangedSignal("Text"), function()
+	pendingQuery = string.lower(queryInput.Text or "")
+	searchDeadline = os.clock() + SEARCH_DELAY
+end)
+connect(view:GetPropertyChangedSignal("AbsoluteSize"), function()
 	drawDirty = true
 end)
 
-view:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
-	drawDirty = true
-end)
-
-RunService.Heartbeat:Connect(function()
-	if not panel.Visible then
+connect(RunService.Heartbeat, function()
+	if destroyed or not panel.Visible then
 		return
+	end
+	local now = os.clock()
+	if searchDeadline >= 0 and now >= searchDeadline then
+		searchDeadline = -1
+		if currentQuery ~= pendingQuery then
+			currentQuery = pendingQuery
+			updateRows(true)
+			drawDirty = true
+		end
 	end
 	if physicsEnabled and simulationLeft > 0 then
 		physicsStep()
 	end
-	if drawDirty and os.clock() - lastDraw > (scanInProgress and (1 / 12) or (1 / 30)) then
-		lastDraw = os.clock()
+	if drawDirty and now - lastDraw > (scanInProgress and 1 / 12 or 1 / 30) then
+		lastDraw = now
 		drawGraph()
 	end
 end)
 
-local function enable()
+-- Observe visibility, including the library close button and topbar routes.
+connect(panel:GetPropertyChangedSignal("Visible"), function()
+	if destroyed then
+		return
+	end
+	if panel.Visible then
+		if not scanStarted then
+			startScan()
+		end
+		drawDirty = true
+	else
+		dragging = nil
+		if scanInProgress then
+			cancelScan("Scan cancelled while hidden.")
+		end
+	end
+end)
+
+connections[#connections + 1] = UI.onThemeChanged(function()
+	if destroyed then
+		return
+	end
+	updateRowViewport(true)
+	updateCycleViewport(true)
+	updateDetails()
+	setStatus(currentMessage, currentSeverity)
+	drawDirty = true
+end)
+
+enable = function()
+	if destroyed then
+		return
+	end
 	panel.Visible = true
 	if not scanStarted then
 		startScan()
 	end
 	drawDirty = true
 end
-local function disable()
+
+disable = function()
+	if destroyed then
+		return
+	end
 	panel.Visible = false
 	dragging = nil
+	if scanInProgress then
+		cancelScan("Scan cancelled while hidden.")
+	end
 end
 
+local function destroy()
+	if destroyed then
+		return
+	end
+	destroyed = true
+	revision += 1
+	simulationLeft = 0
+	scanInProgress = false
+	searchDeadline = -1
+	dragging, chosen, lastClickNode = nil, nil, nil
+	for _, connection in ipairs(connections) do
+		connection:Disconnect()
+	end
+	table.clear(connections)
+	UI.forgetButtons(panel)
+	graphNodes, graphEdges, nodeByObject = {}, {}, {}
+	cycleGroups, filteredRows, sortedNodes = {}, {}, {}
+	rowSlots, cycleRowSlots = {}, {}
+end
+panel.Destroying:Connect(destroy)
+updateCycleList()
+updateRows()
+scriptEmpty.Text = "Refresh to index project scripts."
+
 return {
+	window = panel,
 	Enable = enable,
 	Disable = disable,
 	Show = enable,
 	Hide = disable,
 	Toggle = function()
+		if destroyed then
+			return
+		end
 		if panel.Visible then
 			disable()
 		else
 			enable()
 		end
 	end,
+	Cancel = function()
+		cancelScan("Scan cancelled.")
+	end,
+	Destroy = function()
+		if not destroyed then
+			destroy()
+			panel:Destroy()
+		end
+	end,
 	Refresh = function()
+		if destroyed then
+			return
+		end
 		UI.refreshWindow("ScriptDependencyExplorer")
 		startScan()
 	end,
 	Fit = function()
-		fitGraph()
+		if not destroyed then
+			fitGraph()
+		end
 	end,
 	Focus = function(object)
 		local node = nodeByObject[object]
@@ -1879,7 +2257,9 @@ return {
 			cyclicEdges = cyclicEdgeCount,
 			cycles = cycles,
 			-- Static analysis can miss dynamic requires and capped/unreadable sources.
-			cyclesMayBeIncomplete = scannedCount > #graphNodes
+			cyclesMayBeIncomplete = scanInProgress
+				or not scanStarted
+				or scannedCount > #graphNodes
 				or #graphEdges >= MAX_EDGES
 				or unreadableCount > 0
 				or warningCount > 0
@@ -1887,6 +2267,6 @@ return {
 		}
 	end,
 	IsVisible = function()
-		return panel.Visible
+		return not destroyed and panel.Visible
 	end,
 }

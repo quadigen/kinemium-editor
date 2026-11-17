@@ -2802,8 +2802,8 @@ function CodeEditor.new(parent)
 		elseif key == "showStatusBar" then
 			self:updateVisibility()
 		elseif key == "vimMode" then
-			self.vimInsert = false
-			editor.TextEditable = not Preferences.get("vimMode")
+			self.vimInsert = Preferences.get("vimMode")
+			editor.TextEditable = true
 		end
 	end
 	for key in pairs(editorProperties) do
