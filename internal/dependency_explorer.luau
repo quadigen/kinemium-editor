@@ -44,6 +44,8 @@ local ICONS = {
 	refresh = "builtin://global-icons/refresh.svg",
 }
 
+-- Graph colors are data marks, not control chrome. Resolve them from the
+-- live theme each time a theme change invalidates the graph.
 local function graphColor(kind)
 	if kind == "Script" then
 		return colors.accent
@@ -66,6 +68,8 @@ panel.Parent = overlay
 panel.Visible = false
 panel.ClipsDescendants = true
 content.ClipsDescendants = true
+-- UI.window defaults: contentColor = colors.panel, activeTabColor = contentColor.
+-- Keep the window-owned content opaque; structural children must not repaint it.
 
 local connections = {}
 local destroyed = false
@@ -96,7 +100,7 @@ local function icon(parent, path, position, size, tint)
 end
 
 local toolbar =
-	surface(content, "Toolbar", UDim2.fromOffset(0, 0), UDim2.new(1, 0, 0, TOOLBAR_HEIGHT), colors.panelRaised)
+	surface(content, "Toolbar", UDim2.fromOffset(0, 0), UDim2.new(1, 0, 0, TOOLBAR_HEIGHT), colors.panel, true)
 UI.separator(content, UDim2.fromOffset(0, TOOLBAR_HEIGHT - 1), UDim2.new(1, 0, 0, 1))
 local bodyHeight = -(TOOLBAR_HEIGHT + STATUS_HEIGHT)
 local view = surface(
@@ -104,7 +108,8 @@ local view = surface(
 	"GraphView",
 	UDim2.fromOffset(0, TOOLBAR_HEIGHT),
 	UDim2.new(1, -SIDEBAR_WIDTH, 1, bodyHeight),
-	colors.canvas
+	colors.panel,
+	true
 )
 view.ClipsDescendants = true
 view.Active = true
@@ -113,12 +118,13 @@ local sidebar = surface(
 	"Sidebar",
 	UDim2.new(1, -SIDEBAR_WIDTH, 0, TOOLBAR_HEIGHT),
 	UDim2.new(0, SIDEBAR_WIDTH, 1, bodyHeight),
-	colors.panel
+	colors.panel,
+	true
 )
 UI.separator(content, UDim2.new(1, -SIDEBAR_WIDTH, 0, TOOLBAR_HEIGHT), UDim2.new(0, 1, 1, bodyHeight))
 
-local edgeLayer = surface(view, "Edges", UDim2.fromOffset(0, 0), UDim2.fromScale(1, 1), colors.canvas, true)
-local nodeLayer = surface(view, "Nodes", UDim2.fromOffset(0, 0), UDim2.fromScale(1, 1), colors.canvas, true)
+local edgeLayer = surface(view, "Edges", UDim2.fromOffset(0, 0), UDim2.fromScale(1, 1), colors.panel, true)
+local nodeLayer = surface(view, "Nodes", UDim2.fromOffset(0, 0), UDim2.fromScale(1, 1), colors.panel, true)
 edgeLayer.ClipsDescendants = true
 nodeLayer.ClipsDescendants = true
 
@@ -127,7 +133,8 @@ local statusBar = surface(
 	"StatusBar",
 	UDim2.new(0, 0, 1, -STATUS_HEIGHT),
 	UDim2.new(1, 0, 0, STATUS_HEIGHT),
-	colors.panelRaised
+	colors.panel,
+	true
 )
 UI.separator(statusBar, UDim2.fromOffset(0, 0), UDim2.new(1, 0, 0, 1))
 local statusIcon = icon(
@@ -149,7 +156,7 @@ local cycleBanner = UI.group(
 	view,
 	UDim2.fromOffset(INSET, INSET),
 	UDim2.new(1, -INSET * 2, 0, HEADER),
-	{ color = colors.surface, radius = tokens.radius.sm }
+	{ color = colors.panel, radius = tokens.radius.sm }
 )
 cycleBanner.ZIndex = 12
 UI.stroke(cycleBanner, colors.border, 1, 0)
@@ -229,7 +236,7 @@ local function scrolling(name, position, size)
 		Name = name,
 		Position = position,
 		Size = size,
-		BackgroundColor3 = colors.surface,
+		BackgroundColor3 = colors.panel,
 		BackgroundTransparency = 1,
 		BorderSizePixel = 0,
 		CanvasPosition = Vector2.new(0, 0),
@@ -289,8 +296,9 @@ local details = UI.group(
 	sidebar,
 	UDim2.new(0, INSET, 1, -DETAIL_HEIGHT + GAP),
 	UDim2.new(1, -INSET * 2, 0, DETAIL_HEIGHT - INSET - GAP),
-	{ color = colors.surface, radius = tokens.radius.sm }
+	{ color = colors.panel, radius = tokens.radius.sm }
 )
+details.BackgroundTransparency = 1
 UI.stroke(details, colors.border, 1, 0)
 local detailsTitle = label(
 	details,
@@ -476,7 +484,7 @@ local legend = surface(
 	"Legend",
 	UDim2.new(1, -legendWidth - INSET, 0, 0),
 	UDim2.fromOffset(legendWidth, TOOLBAR_HEIGHT),
-	colors.panelRaised,
+	colors.panel,
 	true
 )
 local legendX = 0
@@ -2256,7 +2264,6 @@ return {
 			cyclicScripts = cyclicNodeCount,
 			cyclicEdges = cyclicEdgeCount,
 			cycles = cycles,
-			-- Static analysis can miss dynamic requires and capped/unreadable sources.
 			cyclesMayBeIncomplete = scanInProgress
 				or not scanStarted
 				or scannedCount > #graphNodes
