@@ -6,6 +6,7 @@ local viewport = require("@internal/viewport")
 local UI = require("@internal/editor_ui")
 local terrain_editor = require("@internal/terrain_editor")
 local material_editor = require("@internal/material_editor")
+local animator = require("@internal/animator")
 local tokens = UI.tokens
 
 local function selectedPart()
@@ -219,6 +220,14 @@ return {
 			icon = "Terrain.svg",
 			callback = function()
 				material_editor.Toggle()
+			end,
+		},
+		{
+			name = [[Animator]],
+			width = 80,
+			icon = "Terrain.svg",
+			callback = function()
+				animator.Toggle()
 			end,
 		},
 		{
