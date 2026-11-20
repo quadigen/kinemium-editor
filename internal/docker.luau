@@ -45,7 +45,10 @@ container.Visible = false
 
 local Dock = {}
 local pendingWindow: string? = nil
+local builtIn = { Topbar = true, Viewport = true, CodeEditor = true, Explorer = true, Inspector = true, Output = true }
+local custom = {}
 local dragMode = false
+local dragOrigin = nil
 local hovered = nil
 local targets = {}
 
@@ -81,6 +84,7 @@ function Dock.Hide()
 	container.Visible = false
 	pendingWindow = nil
 	dragMode = false
+	dragOrigin = nil
 	hovered = nil
 	hidePreview()
 
@@ -98,6 +102,11 @@ local function dockTo(anchor: string, fullSpan: boolean)
 
 	local ok, err = pcall(function()
 		ThemeService:DockWindow(windowName, anchor, fullSpan)
+		local record = custom[windowName]
+		if record then
+			record.docked = true
+			record.visible = true
+		end
 		Preferences.set("dock." .. windowName, anchor .. (fullSpan and ":full" or ""))
 	end)
 
@@ -267,6 +276,7 @@ function Dock.Show(windowName: string)
 end
 
 function Dock.BeginDrag(windowName: string)
+	dragOrigin = UserInputService:GetMouseLocation()
 	pendingWindow = windowName
 	dragMode = true
 	hovered = nil
@@ -281,12 +291,25 @@ function Dock.EndDrag()
 		return
 	end
 
+	if dragOrigin and (UserInputService:GetMouseLocation() - dragOrigin).Magnitude < 6 then
+		Dock.Hide()
+		return
+	end
 	updateHover()
 
 	local target = hovered
 	if target then
 		dockTo(target.anchor, target.fullSpan)
 	else
+		local name = pendingWindow
+		local record = name and custom[name]
+		if record and record.docked then
+			ThemeService:UndockWindow(name)
+			record.docked = false
+			Preferences.set("dock." .. name, "")
+			record.panel.AnchorPoint = Vector2.new(0, 0)
+			record.panel.Size = record.floatingSize
+		end
 		Dock.Hide()
 	end
 end
@@ -319,6 +342,88 @@ end
 function Dock.Refresh()
 	return UI.refreshAllWindows()
 end
+
+local function restoreCustom(name, record)
+	if not Preferences.get("restoreLayout") then
+		return
+	end
+	local saved = Preferences.get("dock." .. name)
+	local anchor, span = string.match(saved or "", "^(%a+)(.*)$")
+	if anchor then
+		local ok = pcall(function()
+			ThemeService:DockWindow(name, anchor, span == ":full")
+		end)
+		record.docked = ok
+		record.visible = ok
+	end
+end
+
+renderer.Pool.new("2d", function()
+	local windows = UI.shared().windows
+	for name, record in pairs(custom) do
+		if not UI.isAlive(record.panel) or windows[string.lower(name)] ~= record.panel then
+			if record.docked then
+				pcall(function()
+					ThemeService:UndockWindow(name)
+				end)
+			end
+			wasDragging[record.panel] = nil
+			custom[name] = nil
+		end
+	end
+	for _, panel in pairs(windows) do
+		if not UI.isAlive(panel) then
+			continue
+		end
+		local name = panel.Name
+		if builtIn[name] or panel:GetAttribute("Dockable") == false then
+			continue
+		end
+		if panel.Parent ~= UI.root() and panel.Parent ~= UI.widgetOverlay() and panel.Parent ~= UI.RootOverlay() then
+			continue
+		end
+		local record = custom[name]
+		if not record then
+			record = { panel = panel, docked = false, visible = false, floatingSize = panel.Size }
+			custom[name] = record
+		end
+		if not panel.Visible then
+			if record.docked and record.visible then
+				ThemeService:SetDockWindowVisible(name, false)
+				record.visible = false
+			end
+			continue
+		end
+		if not record.initialized then
+			record.initialized = true
+			restoreCustom(name, record)
+		end
+		if record.docked and not record.visible then
+			ThemeService:SetDockWindowVisible(name, true)
+			record.visible = true
+		end
+		if not record.docked and panel:GetAttribute("Dragging") ~= true then
+			record.floatingSize = panel.Size
+		end
+		local dragging = Dock.Update(panel, name)
+		if record.docked and not dragging then
+			local coordinates = ThemeService.SelectedTheme.DockedWindows
+			local slot = coordinates and coordinates[name]
+			if slot then
+				panel.AnchorPoint = Vector2.new(0, 0)
+				if panel.Position ~= slot.Position then
+					panel.Position = slot.Position
+				end
+				if panel.Size ~= slot.Size then
+					panel.Size = slot.Size
+				end
+			elseif record.visible then
+				record.docked = false
+				record.initialized = false
+			end
+		end
+	end
+end)
 
 Dock.HiddenSignal = HiddenSignal
 

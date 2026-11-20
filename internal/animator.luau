@@ -57,9 +57,7 @@ local function line(parent, p, s)
 	return o
 end
 local function clear(o)
-	for _, child in ipairs(o:GetChildren()) do
-		child:Destroy()
-	end
+	UI.clear(o)
 end
 local function safeDestroy(o)
 	if o then
@@ -72,7 +70,21 @@ local function msg(s) -- assigned after constructing status bar
 	print("[Animator] " .. tostring(s))
 end
 
-local toolbar = rect(content, "Toolbar", UDim2.fromOffset(0, 0), UDim2.new(1, 0, 0, TOOL))
+local toolbar = UI.create("ScrollingFrame", {
+	Name = "Toolbar",
+	Position = UDim2.fromOffset(0, 0),
+	Size = UDim2.new(1, 0, 0, TOOL),
+	BackgroundTransparency = 1,
+	BorderSizePixel = 0,
+	CanvasSize = UDim2.fromOffset(0, 0),
+	ScrollingEnabled = true,
+	ScrollingDirection = Enum.ScrollingDirection.X,
+	ScrollBarThickness = 3,
+	ScrollBarImageColor3 = colors.subtext,
+	ScrollBarImageTransparency = 0.4,
+	ScrollBarAutoHide = true,
+	ClipsDescendants = true,
+}, content)
 local ruler = rect(content, "Ruler", UDim2.fromOffset(LEFT, TOOL), UDim2.new(1, -LEFT, 0, HEADER))
 ruler.ClipsDescendants = true
 local trackHeader =
@@ -144,8 +156,9 @@ local destroyed = false
 local render, seek, editFields, reload, pause, setPlaying, closeSession
 local setMode, showPicker, pickerClick
 local cancelPoseDrag, updatePoseDrag, finishPoseDrag, beginPoseDrag
-local frameInput, endInput, nameInput, inspectorTitle
-local fields, axisLabels = {}, {}
+local frameInput, endInput, nameInput, inspectorTitle, weightInput
+local axisLabels = {}
+local bindTransforms, boneDepth = {}, {}
 local keyColor = Color3.fromRGB(227, 178, 92) -- data marker, not window chrome
 local EPS = 0.000001
 local function same(a, b)
@@ -251,8 +264,6 @@ local function removePose(bone, t)
 	end
 end
 
--- The preview uses a separate temporary source: terminal empty keyframes set
--- the playback range without polluting the authored asset.
 local previewAnimation, previewSequence
 local function releaseTrack()
 	if track then
@@ -539,8 +550,8 @@ end
 editFields = function()
 	if not chosenBone or not sequence then
 		inspectorTitle.Text = "Select a bone channel to edit a pose"
-		for _, f in ipairs(fields) do
-			f.Text = ""
+		if weightInput then
+			weightInput.Text = ""
 		end
 		return
 	end
@@ -550,9 +561,8 @@ editFields = function()
 		.. "  |  "
 		.. string.format("Frame %.2f", frameOf(t))
 		.. (p and "  •  keyframe" or "  •  sampled pose")
-	local values = getNumbers(p and poseData(p) or interpolate(chosenBone, t))
-	for i, f in ipairs(fields) do
-		f.Text = values and string.format("%.5g", values[i]) or ""
+	if weightInput then
+		weightInput.Text = string.format("%.3g", (p and poseData(p) or interpolate(chosenBone, t)).weight)
 	end
 end
 local function dataFromNumbers(v)
@@ -561,86 +571,34 @@ local function dataFromNumbers(v)
 		weight = math.clamp(v[7], 0, 1),
 	}
 end
-local function applyFields()
-	if not chosenBone or not sequence then
-		msg("Select a bone channel first.")
-		return
-	end
-	local v = {}
-	for i, f in ipairs(fields) do
-		v[i] = tonumber(f.Text)
-		if not finite(v[i]) then
-			msg("Invalid transform. Enter seven finite numbers.")
-			return
-		end
-	end
-	local t = chosenTime or timeOf(cursor)
-	checkpoint()
-	local data = dataFromNumbers(v)
-	insertPose(chosenBone, t, data)
-	chosenTime = t
-	commit("Pose applied at frame " .. string.format("%.2f", frameOf(t)))
-end
--- Dragging one axis uses a single temporary clip whose time is the axis value.
--- This keeps the real animation unchanged until mouse-up and avoids compiling
--- a new track on every mouse movement. Other bones hold their sampled poses.
 local function dragValues(d, delta)
 	local v = table.clone(d.values)
 	v[d.axis] += delta
 	return v
 end
+
 local function startDragPreview(d)
-	-- Shared animators are opt-in and don't document a per-track destroy API.
-	-- Avoid adding an extra temporary track to a game-owned host.
+	-- A game-owned animator still owns the mesh pose. Never override its tracks.
 	if suppliedHost then
 		return false
 	end
 	releaseTrack()
-	local ok, err = pcall(function()
-		previewSequence = Instance.new("KeyframeSequence")
-		previewSequence.Name = "__PoseDrag"
-		previewSequence.Loop = false
-		previewSequence.Priority = Enum.AnimationPriority.Action
-		local held = {}
-		for _, b in ipairs(bones) do
-			if b ~= d.bone then
-				held[b] = interpolate(b, d.t)
-			end
+	local transforms = {}
+	for _, bone in ipairs(bones) do
+		local bind = bindTransforms[bone]
+		if bind then
+			local data = interpolate(bone, d.t)
+			transforms[bone] = bind * CFrame.new():Lerp(data.cf, data.weight)
 		end
-		-- Rotation samples span at most 45 degrees between keys so rotations
-		-- interpolate along the intended axis rather than taking a short arc
-		-- across a full revolution. Translation only needs three samples.
-		local steps = d.axis <= 3 and 2 or 8
-		for j = 0, steps do
-			local alpha = j / steps
-			local k = Instance.new("Keyframe")
-			k.Time = alpha * 2
-			previewSequence:AddKeyframe(k)
-			local function add(b, data)
-				local p = Instance.new("Pose")
-				p.Name = b
-				p.CFrame = data.cf
-				p.Weight = data.weight
-				k:AddPose(p)
-			end
-			for b, data in pairs(held) do
-				add(b, data)
-			end
-			add(d.bone, dataFromNumbers(dragValues(d, (alpha * 2 - 1) * d.range)))
-		end
-		previewAnimation = Instance.new("Animation")
-		previewSequence.Parent = previewAnimation
-		previewAnimation.Source = previewSequence
-		controller, ownsController = findHost()
-		track = controller:LoadAnimation(previewAnimation)
-		track:Play(0, 1, 0)
-		track.TimePosition = 1
-	end)
-	if not ok then
-		releaseTrack()
-		msg("Live drag preview unavailable; the pose will be applied on release: " .. tostring(err))
 	end
-	return ok
+	local ok, applied = pcall(function()
+		return rig:SetBoneTransforms(transforms)
+	end)
+	if not ok or not applied then
+		msg("Direct bone preview unavailable. The pose will be applied on release.")
+		return false
+	end
+	return true
 end
 beginPoseDrag = function(axis, mouseX)
 	if not chosenBone or not sequence or drag then
@@ -684,12 +642,17 @@ updatePoseDrag = function(d, mouseX)
 	local fine = UIS:IsKeyDown(Enum.KeyCode.LeftShift) or UIS:IsKeyDown(Enum.KeyCode.RightShift)
 	local delta = math.clamp(dx * d.range / (fine and 1800 or 360), -d.range, d.range)
 	d.delta = delta
-	local v = dragValues(d, delta)
-	for i, f in ipairs(fields) do
-		f.Text = string.format("%.5g", v[i])
-	end
-	if d.preview and track then
-		applyPreview(1 + delta / d.range)
+	if d.preview then
+		local data = dataFromNumbers(dragValues(d, delta))
+		local bind = bindTransforms[d.bone]
+		if bind then
+			local ok = pcall(function()
+				rig:SetBoneTransform(d.bone, bind * CFrame.new():Lerp(data.cf, data.weight))
+			end)
+			if not ok then
+				d.preview = false
+			end
+		end
 	end
 end
 finishPoseDrag = function(d)
@@ -916,12 +879,18 @@ render = function()
 		end
 		local title = label(
 			rows,
-			"  ◇  " .. b,
-			UDim2.fromOffset(5, y),
-			UDim2.fromOffset(LEFT - 9, ROW),
+			b,
+			UDim2.fromOffset(23 + math.min(boneDepth[b] or 0, 6) * 12, y),
+			UDim2.fromOffset(LEFT - 28 - math.min(boneDepth[b] or 0, 6) * 12, ROW),
 			b == chosenBone and colors.accent or colors.text
 		)
 		title.TextTruncate = Enum.TextTruncate.AtEnd
+		UI.image(
+			rows,
+			"builtin://icons/Attachment.svg",
+			UDim2.fromOffset(5 + math.min(boneDepth[b] or 0, 6) * 12, y + 5),
+			UDim2.fromOffset(14, 14)
+		)
 		line(rows, UDim2.fromOffset(0, y + ROW - 1), UDim2.new(1, 0, 0, 1)).BackgroundTransparency = 0.72
 	end
 	if sequence then
@@ -974,6 +943,7 @@ closeSession = function()
 	disposeStack(future)
 	rig, suppliedHost = nil, nil
 	bones, boneSet = {}, {}
+	bindTransforms, boneDepth = {}, {}
 	chosenBone, chosenTime = nil, nil
 	saved, dirty = false, false
 	generated = setmetatable({}, { __mode = "k" })
@@ -1033,6 +1003,39 @@ local function openRig(mesh, source, host, newName)
 			boneSet[b] = true
 		end
 	end
+	-- Order channels by the actual skeleton hierarchy.
+	local children, roots = {}, {}
+	for _, bone in ipairs(bones) do
+		local okBind, bind = pcall(function()
+			return mesh:GetBoneBindTransform(bone)
+		end)
+		bindTransforms[bone] = okBind and bind or mesh:GetBoneTransform(bone)
+		local parent = mesh:GetBoneParent(bone)
+		if parent and boneSet[parent] and parent ~= bone then
+			children[parent] = children[parent] or {}
+			table.insert(children[parent], bone)
+		else
+			table.insert(roots, bone)
+		end
+	end
+	local ordered, visited = {}, {}
+	local function visit(bone, depth)
+		if visited[bone] then
+			return
+		end
+		visited[bone], boneDepth[bone] = true, depth
+		table.insert(ordered, bone)
+		for _, child in ipairs(children[bone] or {}) do
+			visit(child, depth + 1)
+		end
+	end
+	for _, bone in ipairs(roots) do
+		visit(bone, 0)
+	end
+	for _, bone in ipairs(bones) do
+		visit(bone, 0)
+	end
+	bones = ordered
 	chosenBone, chosenTime = bones[1], 0
 	if seq then
 		sequence, animation, saved = seq, anim, true
@@ -1112,7 +1115,6 @@ local function save()
 		return
 	end
 	if not animation then
-		-- Do not reparent an existing, independently-owned sequence.
 		animation = Instance.new("Animation")
 		animation.Source = sequence
 	end
@@ -1130,8 +1132,15 @@ local function save()
 end
 
 local x = 6
-local function tool(text, w, callback, tip)
-	local o, _, rec = UI.button(toolbar, text, UDim2.fromOffset(x, 4), UDim2.fromOffset(w, 26), callback, {})
+local function tool(text, w, callback, tip, icon)
+	local o, _, rec = UI.button(
+		toolbar,
+		text,
+		UDim2.fromOffset(x, 4),
+		UDim2.fromOffset(w, 24),
+		callback,
+		icon and { icon = icon, iconSize = 14 } or {}
+	)
 	if tip and UI.tooltip then
 		UI.tooltip(o, tip)
 	end
@@ -1142,25 +1151,25 @@ tool("Rig", 45, function()
 	showPicker()
 end, "Choose a rig or start a new animation")
 tool("Save", 49, save)
-tool("|◀", 30, function()
+tool("First", 42, function()
 	seek(0)
 end, "First frame")
-tool("◀◆", 32, function()
+tool("Prev", 42, function()
 	neighbor(-1)
 end, "Previous keyframe")
-local playButton, playRecord = tool("▶", 36, function()
+local playButton, playRecord = tool("Play", 44, function()
 	setPlaying()
 end, "Play / pause")
-tool("◆▶", 32, function()
+tool("Next", 42, function()
 	neighbor(1)
 end, "Next keyframe")
-tool("▶|", 30, function()
+tool("Last", 42, function()
 	seek(endFrame)
 end, "Last frame")
-tool("+ Key", 56, function()
+tool("Key", 48, function()
 	addKey(false)
 end, "Insert a key for the selected bone")
-tool("+ All", 54, function()
+tool("Key all", 56, function()
 	addKey(true)
 end, "Key every bone")
 tool("Delete", 60, deleteKey)
@@ -1170,11 +1179,11 @@ end)
 tool("Redo", 48, function()
 	undo(true)
 end)
-tool("−", 28, function()
+tool("Zoom out", 68, function()
 	span = math.min(MAX_TIME * FPS, span * 1.5)
 	render()
 end, "Zoom out")
-tool("+", 28, function()
+tool("Zoom in", 62, function()
 	span = math.max(5, span / 1.5)
 	follow(cursor)
 	render()
@@ -1184,11 +1193,11 @@ tool("Fit", 36, function()
 	span = math.max(endFrame, 5)
 	render()
 end)
-tool("<", 27, function()
+tool("Earlier", 53, function()
 	first = math.max(0, first - span / 2)
 	render()
 end, "Pan earlier")
-tool(">", 27, function()
+tool("Later", 47, function()
 	first = math.min(MAX_TIME * FPS - span, first + span / 2)
 	render()
 end, "Pan later")
@@ -1212,7 +1221,8 @@ frameInput = input(toolbar, "0", UDim2.fromOffset(x, 4), UDim2.fromOffset(54, 26
 x += 58
 label(toolbar, "End", UDim2.fromOffset(x, 0), UDim2.fromOffset(29, TOOL), colors.subtext)
 x += 30
-endInput = input(toolbar, "120", UDim2.fromOffset(x, 4), UDim2.fromOffset(58, 26))
+endInput = input(toolbar, "120", UDim2.fromOffset(x, 4), UDim2.fromOffset(58, 24))
+toolbar.CanvasSize = UDim2.fromOffset(x + 64, 0)
 
 inspectorTitle = label(
 	inspector,
@@ -1223,42 +1233,58 @@ inspectorTitle = label(
 )
 nameInput = input(inspector, "NewAnimation", UDim2.new(1, -174, 0, 4), UDim2.fromOffset(166, 23))
 inspectorTitle.Size = UDim2.new(1, -190, 0, 24)
-local fieldLabels =
-	{ "Move X ↔", "Move Y ↔", "Move Z ↔", "Rotate X ↔", "Rotate Y ↔", "Rotate Z ↔", "Weight" }
-local axisColors = { Color3.fromRGB(231, 105, 105), Color3.fromRGB(118, 203, 139), Color3.fromRGB(112, 161, 235) }
+local fieldLabels = { "Move X", "Move Y", "Move Z", "Rotate X", "Rotate Y", "Rotate Z" }
 for i, title in ipairs(fieldLabels) do
-	local px = 8 + (i - 1) * 100
-	local axisLabel = label(
+	local axis, group = (i - 1) % 3 + 1, math.floor((i - 1) / 3)
+	local button = UI.button(
 		inspector,
 		title,
-		UDim2.fromOffset(px, 26),
-		UDim2.fromOffset(94, 18),
-		i <= 6 and axisColors[(i - 1) % 3 + 1] or colors.subtext
+		UDim2.new((i - 1) / 6, 4, 0, 31),
+		UDim2.new(1 / 6, -8, 0, UI.metrics.buttonHeight),
+		nil,
+		{
+			textColor = ({ UI.axisColors.X, UI.axisColors.Y, UI.axisColors.Z })[axis] or colors.text,
+		}
 	)
-	if i <= 6 then
-		axisLabel.Active = true
-		axisLabels[i] = axisLabel
-		if UI.tooltip then
-			UI.tooltip(
-				axisLabel,
-				"Drag horizontally to pose the selected bone. Shift = fine adjustment. Release to key."
-			)
-		end
-	end
-	fields[i] = input(inspector, i == 7 and "1" or "0", UDim2.fromOffset(px, 45), UDim2.fromOffset(94, 25))
+	axisLabels[i] = button
+	UI.tooltip(
+		button,
+		(group == 0 and "Move" or "Rotate") .. " the selected bone. Drag horizontally; Shift for precision."
+	)
 end
-UI.button(inspector, "Apply pose", UDim2.fromOffset(710, 45), UDim2.fromOffset(96, 25), applyFields, {})
-UI.button(inspector, "Copy", UDim2.fromOffset(812, 45), UDim2.fromOffset(58, 25), copyKey, {})
-UI.button(inspector, "Paste", UDim2.fromOffset(876, 45), UDim2.fromOffset(58, 25), pasteKey, {})
-UI.button(inspector, "Reset", UDim2.fromOffset(940, 45), UDim2.fromOffset(68, 25), resetPose, {})
+UI.button(inspector, "Copy", UDim2.fromOffset(8, 60), UDim2.fromOffset(58, 24), copyKey, {})
+UI.button(inspector, "Paste", UDim2.fromOffset(70, 60), UDim2.fromOffset(58, 24), pasteKey, {})
+UI.button(inspector, "Reset", UDim2.fromOffset(132, 60), UDim2.fromOffset(68, 24), resetPose, {})
+label(inspector, "Weight", UDim2.fromOffset(208, 60), UDim2.fromOffset(48, 24), colors.subtext)
+weightInput = input(inspector, "1", UDim2.fromOffset(256, 60), UDim2.fromOffset(48, 24))
+UI.tooltip(weightInput, "Blend weight of the selected bone pose")
+connect(weightInput.FocusLost, function()
+	local n = tonumber(weightInput.Text)
+	if not chosenBone or not sequence or not finite(n) then
+		editFields()
+		return
+	end
+	local t = chosenTime or timeOf(cursor)
+	local p = findPose(chosenBone, t)
+	local data = p and poseData(p) or interpolate(chosenBone, t)
+	n = math.clamp(n, 0, 1)
+	if math.abs(n - data.weight) < 0.00001 then
+		editFields()
+		return
+	end
+	pause()
+	checkpoint()
+	insertPose(chosenBone, t, { cf = data.cf, weight = n })
+	chosenTime = t
+	commit("Updated pose weight.")
+end)
 label(
 	inspector,
-	"Drag any colored axis label to move or rotate • Release to insert a key • Shift for precision • Esc to cancel",
-	UDim2.fromOffset(8, 71),
-	UDim2.new(1, -100, 0, 20),
+	"Drag an axis to pose the bone. Shift for precision; Esc to cancel.",
+	UDim2.fromOffset(312, 60),
+	UDim2.new(1, -320, 0, 20),
 	colors.subtext
 )
-label(inspector, "30 FPS", UDim2.new(1, -85, 0, 71), UDim2.fromOffset(77, 20), colors.subtext)
 connect(frameInput.FocusLost, function()
 	local n = tonumber(frameInput.Text)
 	if finite(n) then
@@ -1286,8 +1312,6 @@ local function inside(o, p)
 	local a, s = o.AbsolutePosition, o.AbsoluteSize
 	return p.X >= a.X and p.Y >= a.Y and p.X < a.X + s.X and p.Y < a.Y + s.Y
 end
--- Rig picker is another view of the same themed window, not a separate
--- overlay. Its children inherit the active title tab's background.
 local timelineChildren = {}
 for _, child in ipairs(content:GetChildren()) do
 	if child:IsA("GuiObject") then
@@ -1348,7 +1372,6 @@ local startButton, _, startRecord = UI.button(
 	UDim2.fromOffset(0, 153),
 	UDim2.new(1, 0, 0, 30),
 	function()
-		-- Callback assigned through a forward function below.
 		if Animator.StartSelected then
 			Animator.StartSelected()
 		end
@@ -1596,7 +1619,6 @@ local function scanRigs()
 		table.sort(found, function(a, b)
 			return string.lower(a.path) < string.lower(b.path)
 		end)
-		-- A manual choice made during the scan takes priority.
 		if selectedEntry then
 			previous = selectedEntry.mesh
 		end
@@ -1812,7 +1834,6 @@ connect(UIS.InputChanged, function(event)
 			drag.moved = true
 		end
 		if drag.moved then
-			-- Move only the indicator until mouse-up; native data is committed once.
 			local f = frameFor(p.X)
 			playTime = timeOf(f)
 			cursor = f
@@ -1998,7 +2019,6 @@ function Animator.Refresh()
 	editFields()
 end
 function Animator.Discard()
-	-- Discards only an unsaved draft; already-saved instance edits are live.
 	closeSession()
 	trackHeader.Text = "  BONE CHANNELS"
 	showPicker()

@@ -341,23 +341,35 @@ end
 
 search.TextChanged:Connect(Rebuild)
 
-task.spawn(function()
-	local success, result = pcall(GetAllFonts)
+local catalogLoaded = false
+local catalogLoading = false
 
-	if not success then
-		warn(result)
-		SetStatus("Could not load the font catalog")
+local function EnsureCatalog()
+	if catalogLoaded or catalogLoading then
 		return
 	end
+	catalogLoading = true
+	SetStatus("Loading font catalog...")
+	task.spawn(function()
+		local success, result = pcall(GetAllFonts)
+		catalogLoading = false
+		if not success then
+			warn(result)
+			SetStatus("Could not load the font catalog")
+			return
+		end
 
-	print(`Loaded {#result} font families`)
-	allFonts = result
-	Rebuild()
-end)
+		catalogLoaded = true
+		print(`Loaded {#result} font families`)
+		allFonts = result
+		Rebuild()
+	end)
+end
 
 return {
 	Enable = function()
 		panel.Visible = true
+		EnsureCatalog()
 	end,
 
 	Disable = function()
@@ -366,11 +378,19 @@ return {
 
 	Toggle = function()
 		panel.Visible = not panel.Visible
+		if panel.Visible then
+			EnsureCatalog()
+		end
 	end,
 
 	Refresh = function()
 		UI.refreshWindow("Fonts")
-		Rebuild()
+		if panel.Visible then
+			EnsureCatalog()
+		end
+		if catalogLoaded then
+			Rebuild()
+		end
 	end,
 
 	IsVisible = function()

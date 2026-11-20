@@ -30,6 +30,7 @@ return function(ctx)
 		local panel = UI.frame(UI.root(), position, size, colors.panel, radius)
 
 		panel.Name = name
+		panel:SetAttribute("Dockable", draggable and options.dockable ~= false)
 		panel.ClipsDescendants = true
 
 		shared.windows[string.lower(name)] = panel
@@ -208,6 +209,7 @@ return function(ctx)
 			)
 
 			dragHandle.Name = "DragHandle"
+			UI.tooltip(dragHandle, "Drag to move or dock this window")
 
 			local dragging = false
 			local dragStartX, dragStartY = 0, 0
@@ -231,6 +233,11 @@ return function(ctx)
 
 					dragging = true
 					dragStartX, dragStartY = mouse.X, mouse.Y
+					local absolute = panel.AbsolutePosition
+					local parent = panel.Parent
+					local offset = parent and parent:IsA("GuiObject") and parent.AbsolutePosition or Vector2.new(0, 0)
+					panel.AnchorPoint = Vector2.new(0, 0)
+					panel.Position = UDim2.fromOffset(absolute.X - offset.X, absolute.Y - offset.Y)
 					startPos = panel.Position
 
 					panel:SetAttribute("Dragging", true)
@@ -505,6 +512,9 @@ return function(ctx)
 
 		panel.Destroying:Connect(function()
 			shared.windowBindings[windowKey] = nil
+			if shared.windows[windowKey] == panel then
+				shared.windows[windowKey] = nil
+			end
 
 			for _, binding in ipairs(controls.refreshBindings) do
 				binding:Disconnect()

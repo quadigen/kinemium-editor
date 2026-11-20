@@ -45,7 +45,8 @@ SettingsWindow.AnchorPoint = Vector2.new(0.5, 0.5)
 SettingsWindow.Visible = false
 SettingsWindow.Parent = UI.widgetOverlay()
 
-plugin_marketplace(Marketplace_windowControls.pages.Marketplace, Marketplace_windowControls, gui)
+local ensureMarketplace =
+	plugin_marketplace(Marketplace_windowControls.pages.Marketplace, Marketplace_windowControls, gui)
 credits_page(Credits_windowControls.pages.Credits, Credits_windowControls, gui)
 user(Settings_windowControls.pages.Settings, false)
 
@@ -72,6 +73,7 @@ local category = {
 			name = "Marketplace",
 			callback = function()
 				MarketplaceWindow.Visible = true
+				ensureMarketplace()
 				CreditsWindow.Visible = false
 				SettingsWindow.Visible = false
 			end,
@@ -85,7 +87,9 @@ task.defer(function()
 		if enabled then
 			topbar.AddButton("Studio", {
 				name = "Developer Console",
-				callback = function() UI.toggleWindow("Console") end,
+				callback = function()
+					UI.toggleWindow("Console")
+				end,
 			})
 		else
 			topbar.RemoveButton("Studio", "Developer Console")

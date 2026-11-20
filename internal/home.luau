@@ -88,6 +88,7 @@ DiscordRPC:SetPresence({
 	LargeText = _RUNTIME.url,
 })
 
+local ensureMarketplace
 local window, _, _, windowControls = UI.window("Projects", UDim2.new(0, 15, 0, 15), UDim2.new(1, -30, 1, -30), "Home", {
 	tabs = {
 		"Projects",
@@ -96,6 +97,11 @@ local window, _, _, windowControls = UI.window("Projects", UDim2.new(0, 15, 0, 1
 		"Credits",
 	},
 	selectedTab = "Projects",
+	onTabChanged = function(tabName)
+		if tabName == "Marketplace" and ensureMarketplace then
+			ensureMarketplace()
+		end
+	end,
 })
 
 window.Parent = gui
@@ -105,7 +111,7 @@ UI.root().Enabled = false
 UI.RootOverlay().Enabled = false
 
 local project_active = project_manager(windowControls.pages.Projects, windowControls, gui)
-plugin_marketplace(windowControls.pages.Marketplace, windowControls, gui)
+ensureMarketplace = plugin_marketplace(windowControls.pages.Marketplace, windowControls, gui)
 credits_page(windowControls.pages.Credits, windowControls, gui)
 user(windowControls.pages.Settings, false)
 

@@ -8,6 +8,7 @@ local UI = require("@internal/editor_ui")
 local StudioThemeService = game:GetService("StudioThemeService")
 local theme = StudioThemeService.SelectedTheme
 local Selection = game:GetService("Selection")
+local PlaytestTree = require("@internal/playtest_tree")
 local CollectionService = game:GetService("CollectionService")
 local docker = require("@internal/docker")
 local picker = require("@internal/picker")
@@ -132,7 +133,9 @@ local readonlyProperties = {
 
 local panel, content =
 	UI.window("Inspector", theme.InspectorCoordinates.Position, theme.InspectorCoordinates.Size, "Inspector")
-Preferences.observe("showProperties", function(value) panel.Visible = value end)
+Preferences.observe("showProperties", function(value)
+	panel.Visible = value
+end)
 
 local inset = UI.metrics.panelInset
 
@@ -259,6 +262,9 @@ local function animateBubble(anim)
 end
 
 local function selectedObject()
+	if PlaytestTree.role then
+		return PlaytestTree.selected
+	end
 	local selected = Selection:Get()
 	return selected and selected[1]
 end
@@ -349,6 +355,44 @@ end
 local function buildStructure(object, searchQuery)
 	if not object then
 		return nil, "none|search=" .. searchQuery
+	end
+
+	if PlaytestTree.role then
+		local visible, pieces = {}, { PlaytestTree.role, object.Id, searchQuery }
+		local values = PlaytestTree.properties()
+		if propertyMatchesSearch("InstanceId", object.Id, searchQuery) then
+			table.insert(
+				visible,
+				{ name = "InstanceId", value = object.Id, datatype = "__remoteId", category = "Uncategorized" }
+			)
+			table.insert(pieces, "InstanceId")
+		end
+		local keys = {}
+		for name in pairs(values) do
+			table.insert(keys, name)
+		end
+		table.sort(keys)
+		for _, name in ipairs(keys) do
+			local value = values[name]
+			local isReference = type(value) == "table" and value.InstanceId ~= nil
+			local referenceId = isReference and value.InstanceId or nil
+			if isReference then
+				local target = PlaytestTree.nodes[value.InstanceId]
+				value = target and target.Name or value.InstanceId
+			end
+			if propertyMatchesSearch(name, value, searchQuery) then
+				local datatype = isReference and "__remoteReference" or typeof(value)
+				table.insert(visible, {
+					name = name,
+					value = value,
+					referenceId = referenceId,
+					datatype = datatype,
+					category = categories[name] or "Uncategorized",
+				})
+				table.insert(pieces, name .. ":" .. datatype)
+			end
+		end
+		return visible, table.concat(pieces, "|")
 	end
 
 	local visible = {}
@@ -491,6 +535,12 @@ local function updateEditors()
 end
 
 local function setProperty(object, propertyName, value)
+	if type(object) == "table" and object.Id then
+		return PlaytestTree.setProperty(object, propertyName, value)
+	end
+	if PlaytestTree.role then
+		return false
+	end
 	local attribute = attributeName(propertyName)
 
 	return (
@@ -1677,6 +1727,41 @@ registerAdapter("thread", readonlyAdapter())
 
 registerAdapter("userdata", readonlyAdapter())
 
+registerAdapter("__remoteId", {
+	height = PROPERTY_HEIGHT,
+	render = function(row, _, property)
+		return textFieldController(readonlyField(row, property.value), tostring)
+	end,
+})
+registerAdapter("__remoteReference", {
+	height = PROPERTY_HEIGHT,
+	render = function(row, object, property)
+		if property.name == "Parent" then
+			return textFieldController(readonlyField(row, property.value), displayValue)
+		end
+		local field = valueField(row, property.referenceId or "")
+		UI.tooltip(field, "Remote instance ID. Enter an ID from this game tree, or clear it to remove the reference.")
+		watchEditor(field, function()
+			local id = string.gsub(field.Text or "", "^%s*(.-)%s*$", "%1")
+			if id == "" or PlaytestTree.nodes[id] then
+				PlaytestTree.setProperty(object, property.name, { InstanceId = id })
+			else
+				UI.toast("playtest-reference", {
+					type = "warning",
+					title = "Unknown instance",
+					message = "Use an instance ID from the current playtest tree.",
+				})
+			end
+		end)
+		return {
+			refresh = function(_, current)
+				if game:GetService("UserInputService"):GetFocusedTextBox() ~= field then
+					field.Text = current and current.referenceId or ""
+				end
+			end,
+		}
+	end,
+})
 local fallbackAdapter = readonlyAdapter()
 
 local function adapterFor(property)
@@ -1989,11 +2074,12 @@ local function refreshValueControllers(visible)
 		local controller = renderedControllers[property.name]
 
 		if controller and controller.refresh then
-			pcall(controller.refresh, property.value)
+			pcall(controller.refresh, property.value, property)
 		end
 	end
 end
 
+local lastRuntimeRole
 renderer.Pool.new("2d", function()
 	local dragging = docker.Update(panel, "Inspector")
 
@@ -2002,8 +2088,19 @@ renderer.Pool.new("2d", function()
 		panel.Size = theme.InspectorCoordinates.Size
 	end
 
+	if lastRuntimeRole ~= PlaytestTree.role then
+		lastRuntimeRole = PlaytestTree.role
+		activeEditors = {}
+		closeInspectorColorPicker()
+		objectPreview.clear()
+		lastStructure = ""
+		signatureClock = SIGNATURE_INTERVAL
+	end
 	updateEditors()
-	objectPreview.update(list, panel.Visible and not dragging and not picker.isActive() and not inspectorColorPopup)
+	objectPreview.update(
+		list,
+		panel.Visible and not PlaytestTree.role and not dragging and not picker.isActive() and not inspectorColorPopup
+	)
 
 	signatureClock += 1
 

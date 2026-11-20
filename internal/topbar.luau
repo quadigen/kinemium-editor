@@ -394,7 +394,7 @@ rebuildFlyout = function()
 	end
 
 	local function renderButton(parent, definition, height)
-		UI.TopbarButton(parent, definition, {
+		local item, _, controller = UI.TopbarButton(parent, definition, {
 			position = UDim2.new(),
 			size = UDim2.fromOffset(definition.width or 52, height or (FLYOUT_HEIGHT - 12)),
 			colors = colors,
@@ -408,6 +408,17 @@ rebuildFlyout = function()
 				end
 			end),
 		})
+		if definition.tooltip then
+			UI.tooltip(item, definition.tooltip)
+		end
+		if definition.bind then
+			local connection = definition.bind(controller)
+			if connection then
+				item.Destroying:Connect(function()
+					connection:Disconnect()
+				end)
+			end
+		end
 	end
 
 	local renderedSections = {}

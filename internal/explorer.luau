@@ -14,6 +14,7 @@ local package_upload = require("@internal/package_upload")
 local StudioThemeService = game:GetService("StudioThemeService")
 local theme = StudioThemeService.SelectedTheme
 local Selection = game:GetService("Selection")
+local PlaytestTree = require("@internal/playtest_tree")
 local Project = game:GetService("Project")
 local UserInputService = game:GetService("UserInputService")
 local TweenService = game:GetService("TweenService")
@@ -180,6 +181,9 @@ local list = UI.create("ScrollingFrame", {
 }, content)
 UI.corner(list, tokens.radius.md)
 local function selectedObject()
+	if PlaytestTree.role then
+		return PlaytestTree.selected
+	end
 	local selection = Selection:Get()
 	return selection and selection[1]
 end
@@ -344,6 +348,9 @@ local dropdown, label, ctrl =
 		maxVisibleItems = 10,
 		itemHeight = UI.metrics.inputHeight,
 		onChanged = function(className)
+			if PlaytestTree.role then
+				return
+			end
 			local parent = selectedObject() or workspace
 			local ok, object = pcall(Instance.new, className)
 			if not ok or not object then
@@ -431,15 +438,8 @@ end
 requestModelRefresh = invalidateTree
 
 local fallbackIcons = {
-	ReplicatedFirst = "ReplicatedStorage",
-	StarterPack = "Backpack",
-	Teams = "Players",
 	Chat = "ChatService",
-	TextChatService = "ChatService",
-	MaterialService = "Texture",
 	TestService = "StudioService",
-	TaskScheduler = "RunService",
-	ExampleService = "StudioService",
 }
 local function iconPathFor(instance)
 	return "builtin://icons/" .. (fallbackIcons[instance.ClassName] or instance.ClassName) .. ".svg"
@@ -666,6 +666,22 @@ local function createRowSlot()
 		if instance == nil then
 			return
 		end
+		if PlaytestTree.role then
+			if type(instance) ~= "table" or PlaytestTree.nodes[instance.Id] ~= instance then
+				return
+			end
+			PlaytestTree.select(instance)
+			table.clear(selectedSet)
+			selectedSet[instance] = true
+			if slot.childCount > 0 then
+				expanded[instance] = not expanded[instance]
+			end
+			invalidateLayout()
+			return
+		end
+		if type(instance) == "table" then
+			return
+		end
 		if picker.isActive() then
 			picker.submit(instance)
 			return
@@ -690,7 +706,7 @@ local function createRowSlot()
 
 	row.InputBegan:Connect(function(input)
 		local instance = slot.instance
-		if instance == nil or picker.isActive() then
+		if instance == nil or type(instance) == "table" or PlaytestTree.role or picker.isActive() then
 			return
 		end
 		if input.UserInputType == Enum.UserInputType.MouseButton2 then
@@ -800,10 +816,11 @@ end
 local function startModelBuild()
 	modelDirty = false
 	firstModelChange = nil
+	local root = PlaytestTree.role and PlaytestTree.root or (not PlaytestTree.role and game or nil)
 	modelJob = {
 		revision = modelRevision,
 		nodes = {},
-		stack = { { parent = game, children = sortedChildren(game), next = 1, depth = 0, owner = nil } },
+		stack = root and { { parent = root, children = sortedChildren(root), next = 1, depth = 0, owner = nil } } or {},
 	}
 end
 
@@ -898,7 +915,7 @@ local function advanceLayoutBuild(deadline)
 				job.i = 1
 			else
 				local entry = nodes[job.i]
-				if job.keep[entry.instance] and entry.parent ~= game then
+				if job.keep[entry.instance] and entry.parent ~= game and entry.parent ~= PlaytestTree.root then
 					job.keep[entry.parent] = true
 				end
 				job.i -= 1
@@ -960,6 +977,9 @@ local function updateRowSelection(instance, selected)
 	end
 end
 Selection.SelectionChanged:Connect(function()
+	if PlaytestTree.role then
+		return
+	end
 	local nextSelected = {}
 	for _, instance in ipairs(Selection:Get()) do
 		nextSelected[instance] = true
@@ -1451,7 +1471,7 @@ local function focusOn(target: Instance)
 	camera.CFrame = CFrame.lookAt(position, center)
 end
 UserInputService.InputBegan:Connect(function(input: InputObject, gameProcessed: boolean)
-	if gameProcessed or picker.isActive() then
+	if gameProcessed or picker.isActive() or PlaytestTree.role then
 		return
 	end
 	local typing = UserInputService:GetFocusedTextBox() ~= nil
@@ -1598,10 +1618,18 @@ UserInputService.InputBegan:Connect(function(input: InputObject, gameProcessed: 
 end)
 local function watchModelSignals()
 	pcall(function()
-		game.DescendantAdded:Connect(invalidateTree)
+		game.DescendantAdded:Connect(function()
+			if not PlaytestTree.role then
+				invalidateTree()
+			end
+		end)
 	end)
 	pcall(function()
-		game.DescendantRemoving:Connect(invalidateTree)
+		game.DescendantRemoving:Connect(function()
+			if not PlaytestTree.role then
+				invalidateTree()
+			end
+		end)
 	end)
 end
 watchModelSignals()
@@ -1640,6 +1668,18 @@ local function scanForRenames()
 	end
 end
 
+local remoteRevision = -1
+local remoteRole
+local remoteStatus = UI.label(
+	content,
+	"",
+	UDim2.fromOffset(inset, 0),
+	UDim2.new(1, -inset * 2, 0, 18),
+	tokens.type.caption,
+	tokens.color.subtext
+)
+remoteStatus.Visible = false
+
 docker.HiddenSignal:Connect(function()
 	IsDockingMode = false
 end)
@@ -1654,6 +1694,56 @@ renderer.Pool.new("2d", function()
 		return
 	end
 
+	local role = PlaytestTree.role
+	if role ~= remoteRole or remoteRevision ~= PlaytestTree.revision then
+		local sourceChanged = role ~= remoteRole
+		if sourceChanged then
+			table.clear(expanded)
+			table.clear(selectedSet)
+			anchor = nil
+			cancelRename()
+			closeContextMenu()
+			if drag then
+				finishDrop(false)
+			end
+			remoteRole = role
+			searchField.Position = UDim2.fromOffset(inset, role and 20 or 6)
+			list.Position = UDim2.fromOffset(inset, role and 50 or 36)
+			list.Size = UDim2.new(1, -inset * 2, 1, role and -56 or -42)
+			dropdown.Visible = not role
+			remoteStatus.Visible = role ~= nil
+			list.CanvasPosition = Vector2.new(0, 0)
+		end
+		remoteRevision = PlaytestTree.revision
+		table.clear(selectedSet)
+		if role and PlaytestTree.selected then
+			selectedSet[PlaytestTree.selected] = true
+		elseif not role then
+			for _, object in ipairs(Selection:Get() or {}) do
+				selectedSet[object] = true
+			end
+		end
+		if role then
+			for node in pairs(expanded) do
+				if type(node) ~= "table" or PlaytestTree.nodes[node.Id] ~= node then
+					expanded[node] = nil
+				end
+			end
+		end
+		-- Preserve current rows while a new snapshot is being indexed.
+		if sourceChanged then
+			visibleRows, visibleDepths, visibleChildCounts, visibleIndex = {}, {}, {}, {}
+			updateViewport(true)
+		end
+		invalidateTree()
+	end
+	if role then
+		local status = PlaytestTree.caption()
+			.. (PlaytestTree.error and " - unavailable" or (PlaytestTree.root and " - live tree" or " - loading"))
+		if remoteStatus.Text ~= status then
+			remoteStatus.Text = status
+		end
+	end
 	local now = os.clock()
 	if modelDirty and modelJob == nil and now >= modelReadyAt then
 		startModelBuild()
@@ -1667,7 +1757,9 @@ renderer.Pool.new("2d", function()
 		if layoutJob ~= nil then
 			advanceLayoutBuild(os.clock() + LAYOUT_FRAME_BUDGET)
 		end
-		scanForRenames()
+		if not role then
+			scanForRenames()
+		end
 	end
 	updateViewport(false)
 end)

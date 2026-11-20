@@ -772,6 +772,7 @@ return function(page, windowControls, gui)
 		end
 	end
 
+	local loaded = false
 	local function loadMarketplace()
 		local params = { sort = "recent", limit = 24 }
 		local query = marketplaceSearch.Text
@@ -785,6 +786,7 @@ return function(page, windowControls, gui)
 		marketplacePlugins = {}
 
 		if ok then
+			loaded = true
 			for _, entry in ipairs(packageEntries(data)) do
 				local package = normalizePackage(entry)
 
@@ -835,5 +837,10 @@ return function(page, windowControls, gui)
 		loadMarketplace()
 	end)
 
-	loadMarketplace()
+	-- The caller requests data when the marketplace actually becomes visible.
+	return function()
+		if not loaded then
+			loadMarketplace()
+		end
+	end
 end
