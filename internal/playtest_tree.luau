@@ -8,6 +8,9 @@ local Selection = game:GetService("Selection")
 local Tree = { role = nil, root = nil, nodes = {}, selected = nil, revision = 0, error = nil }
 local nextTree, nextProperties = 0, 0
 local pending, edits = {}, {}
+local copyQueued, copySerial = nil, 0
+Tree.clipboard = nil
+Tree.copyPending = false
 local generation = 0
 local treeVersion = nil
 local selectionGeneration = 0
@@ -135,14 +138,23 @@ local function begin(role, kind, node, edit)
 		if kind == "properties" then
 			return service:RequestInstanceProperties(role, node.Id)
 		end
+		if kind == "copy" then
+			return service:RequestCopyInstance(role, node.Id)
+		end
 		if type(edit.value) == "table" and edit.value.InstanceId ~= nil then
 			return service:RequestSetInstanceReference(role, node.Id, edit.key, edit.value.InstanceId)
 		end
 		return service:RequestSetInstanceProperty(role, node.Id, edit.key, edit.value)
 	end)
 	if ok and type(token) == "number" then
-		pending[role] =
-			{ token = token, kind = kind, generation = generation, selection = selectionGeneration, node = node }
+		pending[role] = {
+			token = token,
+			kind = kind,
+			generation = generation,
+			selection = selectionGeneration,
+			node = node,
+			copySerial = kind == "copy" and edit.serial or nil,
+		}
 		return true
 	end
 	Tree.error = tostring(err or token or "Unable to send request")
@@ -168,6 +180,25 @@ local function poll(dt)
 			continue
 		end
 		pending[role] = nil
+		if request.kind == "copy" then
+			if request.copySerial == copySerial then
+				Tree.copyPending = false
+				if ok and typeof(result) == "buffer" then
+					Tree.clipboard = result
+					UI.toast(
+						"playtest-copy",
+						{
+							type = "success",
+							title = "Instance copied",
+							message = "Switch to Editor and paste to insert " .. request.node.Name .. ".",
+						}
+					)
+				else
+					notify(err or result or "Could not copy the live instance.")
+				end
+			end
+			continue
+		end
 		if request.generation ~= generation or role ~= Tree.role then
 			if request.kind == "edit" and (not ok or result == nil) then
 				notify(err or result or "A submitted edit failed.")
@@ -198,6 +229,14 @@ local function poll(dt)
 			nextTree, nextProperties = clock, clock
 		end
 	end
+	if copyQueued and not pending[copyQueued.role] then
+		local request = copyQueued
+		copyQueued = nil
+		if not available(request.role) or not begin(request.role, "copy", request.node, request) then
+			Tree.copyPending = false
+			notify("Could not copy the live instance. The playtest may have ended.")
+		end
+	end
 	local role = Tree.role
 	if not role or pending[role] then
 		return
@@ -218,6 +257,28 @@ local function poll(dt)
 			nextProperties = clock + 2
 		end
 	end
+end
+
+function Tree.copy(node)
+	if not Tree.role or not node or Tree.nodes[node.Id] ~= node then
+		return false
+	end
+	-- The root and direct services cannot be copied.
+	if not node.Parent or not node.Parent.Parent then
+		notify("Select an instance beneath a game service.")
+		return false
+	end
+	copySerial += 1
+	Tree.clipboard = nil
+	Tree.copyPending = true
+	copyQueued = { role = Tree.role, node = node, serial = copySerial }
+	return true
+end
+
+function Tree.clearClipboard()
+	copySerial += 1
+	copyQueued, Tree.clipboard = nil, nil
+	Tree.copyPending = false
 end
 
 function Tree.setProperty(node, key, value)

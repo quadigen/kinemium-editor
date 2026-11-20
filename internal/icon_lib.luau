@@ -1,10 +1,11 @@
-if IsPlaytest then
+if IsServer or IsClient or IsPlaytest then
 	return
 end
 
 local UI = require("@internal/editor_ui")
 local colors = UI.tokens.color
 local HttpService = game:GetService("HttpService")
+local Assets = require("@internal/project_assets")
 
 local API = "https://api.iconify.design"
 local PREFIX = "lucide"
@@ -22,7 +23,7 @@ local MAX_LIMIT = 384
 local FETCH_CHUNK = 48
 local DEBOUNCE = 0.35
 local PAD = 8
-local CARD_HEIGHT = 112
+local CARD_HEIGHT = 144
 
 local function ColorToHex(color)
 	return string.format(
@@ -214,6 +215,31 @@ local requestId = 0
 local function SetStatus(text)
 	status.Text = text
 end
+
+UI.button(card, "Import to Project", UDim2.new(0, 8, 1, -30), UDim2.new(1, -16, 0, UI.metrics.buttonHeight), function()
+	local name, root = selected, Assets.root()
+	if not name or not entries[name] or not root then
+		SetStatus("Select an icon and open a project first.")
+		return
+	end
+	local ok, uri = pcall(function()
+		return Assets.import(root, "icons", PREFIX .. "-" .. name, "svg", SvgFor(name, 24))
+	end)
+	if ok then
+		local files = require("@internal/explorer").filesController
+		if files and files.Refresh then
+			files.Refresh()
+		end
+	end
+	UI.toast(
+		"icon-import",
+		{
+			type = ok and "success" or "error",
+			title = ok and "Icon imported" or "Icon import failed",
+			message = tostring(uri),
+		}
+	)
+end, { icon = "builtin://global-icons/plus.svg" })
 
 local function MetaText()
 	local parts = { setInfo.name }

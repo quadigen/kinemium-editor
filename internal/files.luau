@@ -7,6 +7,7 @@ local viewport = require("@internal/viewport")
 
 local Preferences = require("@internal/preferences")
 local Project = game:GetService("Project")
+local Assets = require("@internal/project_assets")
 local dialog = game:GetService("DialogService")
 local export_service = game:GetService("ExportService")
 local filesystem = game:GetService("Filesystem")
@@ -235,8 +236,8 @@ registerFileType({
 
 	onDrop = function(ctx)
 		local selected = selectedObject()
-		if selected:IsA("TextButton") or selected:IsA("TextLabel") then
-			local face = Font.new(ctx.Path)
+		if selected and (selected:IsA("TextButton") or selected:IsA("TextLabel") or selected:IsA("TextBox")) then
+			local face = Font.new(Assets.uri(ctx.Path))
 			if face then
 				selected.FontFace = face
 			end
@@ -294,8 +295,8 @@ registerFileType({
 	onDrop = function(ctx)
 		local parent = selectedObject()
 
-		if parent:IsA("ImageLabel") or parent:IsA("ImageButton") then
-			parent.Image = ctx.Path
+		if parent and (parent:IsA("ImageLabel") or parent:IsA("ImageButton")) then
+			parent.Image = Assets.uri(ctx.Path)
 			return
 		end
 
@@ -305,7 +306,7 @@ registerFileType({
 		end
 
 		local new = Instance.new("ImageLabel")
-		new.Image = ctx.Path
+		new.Image = Assets.uri(ctx.Path)
 		new.Parent = parent
 	end,
 
@@ -318,7 +319,7 @@ registerFileType({
 				local parent = selectedObject()
 				if parent then
 					local new = Instance.new("ImageLabel")
-					new.Image = ctx.Path
+					new.Image = Assets.uri(ctx.Path)
 					new.Parent = parent
 				end
 			end,
@@ -330,7 +331,7 @@ registerFileType({
 				local parent = selectedObject()
 				if parent then
 					local new = Instance.new("Decal")
-					new.Image = ctx.Path
+					new.Image = Assets.uri(ctx.Path)
 					new.Parent = parent
 				end
 			end,
@@ -348,8 +349,35 @@ registerFileType({
 		openImageViewer(ctx)
 	end,
 
+	onDrop = function(ctx)
+		local parent = selectedObject()
+		if not parent then
+			toastMessage("warning", "Nothing selected", "Select an object to drop the icon onto.")
+			return
+		end
+		if parent:IsA("ImageLabel") or parent:IsA("ImageButton") then
+			parent.Image = Assets.uri(ctx.Path)
+			return
+		end
+		local image = Instance.new("ImageLabel")
+		image.Image = Assets.uri(ctx.Path)
+		image.Parent = parent
+	end,
+
 	contextItems = {
 		{ label = "Open in Image Viewer", icon = "builtin://icons/ImageLabel.svg", callback = openImageViewer },
+		{
+			label = "Import as ImageLabel",
+			icon = "builtin://icons/ImageLabel.svg",
+			callback = function(ctx)
+				local parent = selectedObject()
+				if parent then
+					local image = Instance.new("ImageLabel")
+					image.Image = Assets.uri(ctx.Path)
+					image.Parent = parent
+				end
+			end,
+		},
 		{
 			label = "Edit as Text",
 			icon = "builtin://icons/Script.svg",
@@ -1295,7 +1323,12 @@ return function(content, windowControls)
 
 			UI.corner(slot, tokens.radius.sm)
 
-			visual = UI.image(slot, fileType.modelPreview and iconFor(entry) or imageSource(entry.Path), UDim2.fromOffset(2, 2), UDim2.new(1, -4, 1, -4))
+			visual = UI.image(
+				slot,
+				fileType.modelPreview and iconFor(entry) or imageSource(entry.Path),
+				UDim2.fromOffset(2, 2),
+				UDim2.new(1, -4, 1, -4)
+			)
 			if fileType.modelPreview then
 				KinePreview.Attach(slot, entry.Path, visual)
 			end
@@ -1542,7 +1575,9 @@ return function(content, windowControls)
 		if not confirmed and Preferences.get("confirmDelete") then
 			local projectRoot = rootPath
 			UI.confirm("Delete file or folder?", nameOf(path), function()
-				if rootPath == projectRoot then deleteEntry(path, true) end
+				if rootPath == projectRoot then
+					deleteEntry(path, true)
+				end
 			end)
 			return
 		end
@@ -2744,9 +2779,13 @@ return function(content, windowControls)
 		end
 
 		local keyboardActive = windowControls and windowControls.isKeyboardActive
-		if keyboardActive and not keyboardActive() then return end
+		if keyboardActive and not keyboardActive() then
+			return
+		end
 
-		if not Preferences.get("enableKeyboardShortcuts") then return end
+		if not Preferences.get("enableKeyboardShortcuts") then
+			return
+		end
 		if input.KeyCode == Enum.KeyCode.Escape then
 			if drag ~= nil then
 				finishDrop(false)
@@ -3039,7 +3078,9 @@ return function(content, windowControls)
 	end)
 
 	Preferences.Changed:Connect(function(key)
-		if key == "showFileExtensions" then lastHash = "" end
+		if key == "showFileExtensions" then
+			lastHash = ""
+		end
 	end)
 
 	return {

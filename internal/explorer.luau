@@ -706,7 +706,24 @@ local function createRowSlot()
 
 	row.InputBegan:Connect(function(input)
 		local instance = slot.instance
-		if instance == nil or type(instance) == "table" or PlaytestTree.role or picker.isActive() then
+		if instance == nil or picker.isActive() then
+			return
+		end
+		if PlaytestTree.role then
+			if
+				type(instance) == "table"
+				and PlaytestTree.nodes[instance.Id] == instance
+				and input.UserInputType == Enum.UserInputType.MouseButton2
+			then
+				PlaytestTree.select(instance)
+				table.clear(selectedSet)
+				selectedSet[instance] = true
+				invalidateLayout()
+				openContextMenu(instance, input.Position)
+			end
+			return
+		end
+		if type(instance) == "table" then
 			return
 		end
 		if input.UserInputType == Enum.UserInputType.MouseButton2 then
@@ -1069,11 +1086,65 @@ local function duplicateInstances(list)
 	end
 end
 local function pasteInto(destination)
-	if destination == nil or clipboard == nil then
+	if destination == nil or PlaytestTree.role then
+		return
+	end
+	if PlaytestTree.copyPending then
+		UI.toast(
+			"playtest-copy",
+			{
+				type = "info",
+				title = "Copy in progress",
+				message = "The playtest is still preparing the instance. Paste again after the copy finishes.",
+			}
+		)
+		return
+	end
+	if clipboard == nil and PlaytestTree.clipboard == nil then
+		return
+	end
+	if PlaytestTree.clipboard then
+		local ok, clones = pcall(function()
+			return game:GetService("SerializationService"):DeserializeInstancesAsync(PlaytestTree.clipboard, true)
+		end)
+		if not ok then
+			UI.toast("playtest-paste", { type = "error", title = "Paste failed", message = tostring(clones) })
+			return
+		end
+		if not UI.isAlive(destination) then
+			for _, clone in ipairs(clones) do
+				clone:Destroy()
+			end
+			return
+		end
+		local inserted = {}
+		for _, clone in ipairs(clones) do
+			local accepted = pcall(function()
+				clone.Parent = destination
+			end)
+			if accepted and clone.Parent == destination then
+				table.insert(inserted, clone)
+			else
+				clone:Destroy()
+			end
+		end
+		if #inserted > 0 then
+			selectObject(inserted)
+			invalidateTree()
+		else
+			UI.toast(
+				"playtest-paste",
+				{
+					type = "error",
+					title = "Paste failed",
+					message = "The selected destination cannot contain the copied instance.",
+				}
+			)
+		end
 		return
 	end
 	local clones = {}
-	for _, source in ipairs(clipboard) do
+	for _, source in ipairs(clipboard or {}) do
 		if UI.isAlive(source) then
 			local ok, clone = pcall(function()
 				return source:Clone()
@@ -1181,7 +1252,15 @@ local contextMenu
 local contextMenuOptions
 local contextTarget = nil
 openContextMenu = function(instance, screenPoint)
-	if instance == nil or instance:IsA("DataModel") then
+	if instance == nil then
+		return
+	end
+	local remote = type(instance) == "table"
+	if remote then
+		if not PlaytestTree.role or not instance.Parent or not instance.Parent.Parent then
+			return
+		end
+	elseif instance:IsA("DataModel") then
 		return
 	end
 	contextTarget = instance
@@ -1201,6 +1280,15 @@ openContextMenu = function(instance, screenPoint)
 				local target = contextTarget
 				contextTarget = nil
 				if target == nil then
+					return
+				end
+				if type(target) == "table" then
+					if action == "copy" and PlaytestTree.copy(target) then
+						clipboard = nil
+					end
+					return
+				end
+				if PlaytestTree.role then
 					return
 				end
 				if action == "rename" then
@@ -1253,6 +1341,7 @@ openContextMenu = function(instance, screenPoint)
 				elseif action == "delete" then
 					deleteInstances(targetsFor(target))
 				elseif action == "copy" then
+					PlaytestTree.clearClipboard()
 					clipboard = targetsFor(target)
 				elseif action == "paste" then
 					pasteInto(target)
@@ -1269,7 +1358,9 @@ openContextMenu = function(instance, screenPoint)
 		)
 		contextMenu = controller
 	end
-	contextMenu:SetItems({
+	contextMenu:SetItems(remote and {
+		{ label = "Copy to Editor", value = "copy", icon = "builtin://global-icons/copy.svg" },
+	} or {
 		{ label = "Rename", value = "rename", icon = "builtin://global-icons/pencil.svg" },
 		{ label = "Duplicate", value = "duplicate", icon = "builtin://global-icons/plus.svg" },
 		{ label = "Delete", value = "delete", icon = "builtin://global-icons/x.svg" },
@@ -1471,10 +1562,30 @@ local function focusOn(target: Instance)
 	camera.CFrame = CFrame.lookAt(position, center)
 end
 UserInputService.InputBegan:Connect(function(input: InputObject, gameProcessed: boolean)
-	if gameProcessed or picker.isActive() or PlaytestTree.role then
+	if gameProcessed or picker.isActive() then
 		return
 	end
 	local typing = UserInputService:GetFocusedTextBox() ~= nil
+	if PlaytestTree.role then
+		if
+			input.UserInputType == Enum.UserInputType.Keyboard
+			and explorerTabActive()
+			and not typing
+			and Preferences.get("enableKeyboardShortcuts")
+			and input.KeyCode == Enum.KeyCode.C
+			and ctrlHeld()
+		then
+			if PlaytestTree.copy(PlaytestTree.selected) then
+				clipboard = nil
+			end
+		elseif input.UserInputType == Enum.UserInputType.MouseButton1 then
+			local mouse = UserInputService:GetMouseLocation()
+			if not (contextMenu and contextMenu:ContainsPoint(mouse.X, mouse.Y)) then
+				closeContextMenu()
+			end
+		end
+		return
+	end
 	if input.UserInputType == Enum.UserInputType.MouseButton2 then
 		if not mouseInList() then
 			closeContextMenu()
@@ -1586,6 +1697,7 @@ UserInputService.InputBegan:Connect(function(input: InputObject, gameProcessed: 
 		local ctrlDown = UserInputService:IsKeyDown(Enum.KeyCode.LeftControl)
 			or UserInputService:IsKeyDown(Enum.KeyCode.RightControl)
 		if ctrlDown and selected ~= nil then
+			PlaytestTree.clearClipboard()
 			clipboard = selectionRoots()
 		end
 		return

@@ -1,4 +1,4 @@
-if IsPlaytest then
+if IsServer or IsClient or IsPlaytest then
 	return
 end
 
@@ -11,6 +11,7 @@ local CSS_URL = "https://fonts.googleapis.com/css2?family="
 
 local explorer = require("@internal/explorer")
 local files = explorer.filesController
+local Assets = require("@internal/project_assets")
 
 local CSS_USER_AGENT =
 	"Mozilla/5.0 (Linux; U; Android 2.2; en-us) AppleWebKit/533.1 (KHTML, like Gecko) Version/4.0 Mobile Safari/533.1"
@@ -19,7 +20,7 @@ local CATALOG_USER_AGENT = "Mozilla/5.0"
 local ROW_HEIGHT = 28
 local MAX_ROWS = 100
 local PAD = 8
-local PREVIEW_HEIGHT = 100
+local PREVIEW_HEIGHT = 132
 
 local function Get(url, userAgent)
 	local response = HttpService:RequestAsync({
@@ -84,6 +85,7 @@ local function ResolveFontUrl(family)
 end
 
 local faces = {}
+local fontBytes = {}
 local pending = {}
 
 local function LoadFace(family)
@@ -98,7 +100,12 @@ local function LoadFace(family)
 		error(`empty font download for {family}`)
 	end
 
+	local magic = bytes:sub(1, 4)
+	if magic ~= "\0\1\0\0" and magic ~= "OTTO" and magic ~= "true" then
+		error("Google returned a font format other than TTF or OTF")
+	end
 	local face = Font.fromMemory(bytes)
+	fontBytes[family] = bytes
 	faces[family] = face
 	return face
 end
@@ -155,7 +162,7 @@ local preview = UI.label(
 	previewCard,
 	"The quick brown fox jumps over the lazy dog 0123456789",
 	UDim2.fromOffset(8, 6),
-	UDim2.new(1, -16, 1, -30),
+	UDim2.new(1, -16, 1, -62),
 	22,
 	colors.text
 )
@@ -166,7 +173,7 @@ preview.TextYAlignment = Enum.TextYAlignment.Top
 local status = UI.label(
 	previewCard,
 	"Loading catalog...",
-	UDim2.new(0, 8, 1, -22),
+	UDim2.new(0, 8, 1, -54),
 	UDim2.new(1, -16, 0, 18),
 	UI.tokens.type.small,
 	colors.muted
@@ -181,6 +188,50 @@ local selected = nil
 local function SetStatus(text)
 	status.Text = text
 end
+
+local importing = false
+UI.button(
+	previewCard,
+	"Import to Project",
+	UDim2.new(0, 8, 1, -30),
+	UDim2.new(1, -16, 0, UI.metrics.buttonHeight),
+	function()
+		local family, root = selected, Assets.root()
+		if importing then
+			return
+		end
+		if not family or not root then
+			SetStatus("Select a font and open a project first.")
+			return
+		end
+		importing = true
+		task.spawn(function()
+			local ok, uri = pcall(function()
+				if not fontBytes[family] then
+					LoadFace(family)
+				end
+				local data = fontBytes[family]
+				return Assets.import(root, "fonts", family, data:sub(1, 4) == "OTTO" and "otf" or "ttf", data)
+			end)
+			importing = false
+			if ok and files and files.Refresh then
+				files.Refresh()
+			end
+			UI.toast(
+				"font-import",
+				{
+					type = ok and "success" or "error",
+					title = ok and "Font imported" or "Font import failed",
+					message = tostring(uri),
+				}
+			)
+			if selected == family then
+				SetStatus(ok and "Saved to assets/fonts" or "Import failed")
+			end
+		end)
+	end,
+	{ icon = "builtin://global-icons/plus.svg" }
+)
 
 local function PaintRow(row)
 	local isSelected = selected == row.family
