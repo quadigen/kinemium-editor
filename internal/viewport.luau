@@ -17,6 +17,7 @@ local TextService = game:GetService("TextService")
 local Selection = game:GetService("Selection")
 local PlaytestService = game:GetService("PlaytestService")
 local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
 
 local colors = UI.colors
 local tokens = UI.tokens
@@ -921,9 +922,130 @@ for index = 1, 42 do
 	}, grid)
 end
 
+local grid2D = UI.create("Frame", {
+	Name = "ViewportGrid2D",
+	BackgroundTransparency = 1,
+	BorderSizePixel = 0,
+	ClipsDescendants = true,
+	Visible = false,
+}, viewportRoot)
+local grid2DLines = {}
+local camera2D
+local pan2D = Vector2.new(0, 0)
+local dragPoint2D
+local lastGrid2DPan, lastGrid2DSize
+
+local function is2DViewportOpen()
+	return workspace.Dimension == Enum.Dimension.D2 and rootOverlay.Enabled and not scriptRoot.Visible
+end
+
+local function updateCamera2D()
+	local enabled = is2DViewportOpen()
+	if enabled and not UI.isAlive(camera2D) then
+		camera2D = Instance.new("Camera2D")
+		camera2D.Name = "EditorViewportCamera2D"
+		UI.keepSceneHelper(camera2D)
+		camera2D.Parent = game:GetService("Workspace2D")
+	end
+	if UI.isAlive(camera2D) then
+		if enabled then
+			local position = UDim2.new(0.5, -pan2D.X, 0.5, -pan2D.Y)
+			if camera2D.Position ~= position then
+				camera2D.Position = position
+			end
+		end
+		if camera2D.Enabled ~= enabled then
+			camera2D.Enabled = enabled
+		end
+	end
+	if not enabled then
+		dragPoint2D = nil
+	end
+end
+
+UserInputService.InputBegan:Connect(function(input)
+	if input.UserInputType ~= Enum.UserInputType.MouseButton3
+		or not is2DViewportOpen() or not viewportSettings.viewportCameraControls
+	then
+		return
+	end
+	local origin, size = getRenderBounds()
+	local mouse = Vector2.new(input.Position.X, input.Position.Y)
+	local localPoint = mouse - origin
+	if localPoint.X >= 0 and localPoint.X < size.X and localPoint.Y >= 0 and localPoint.Y < size.Y then
+		dragPoint2D = mouse
+	end
+end)
+
+UserInputService.InputChanged:Connect(function(input)
+	if not dragPoint2D or input.UserInputType ~= Enum.UserInputType.MouseMovement then
+		return
+	end
+	if not is2DViewportOpen() or not UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton3) then
+		dragPoint2D = nil
+		return
+	end
+	local mouse = Vector2.new(input.Position.X, input.Position.Y)
+	pan2D += mouse - dragPoint2D
+	dragPoint2D = mouse
+end)
+
+UserInputService.InputEnded:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseButton3 then
+		dragPoint2D = nil
+	end
+end)
+
+local function updateGrid2D()
+	updateCamera2D()
+	local origin, size = getRenderBounds()
+	local visible = is2DViewportOpen() and viewportSettings.viewportGrid and size.X > 0 and size.Y > 0
+	grid2D.Visible = visible == true
+	if not visible then
+		return
+	end
+	local offset = origin - viewportRoot.AbsolutePosition
+	grid2D.Position = UDim2.fromOffset(offset.X, offset.Y)
+	if pan2D == lastGrid2DPan and size == lastGrid2DSize then
+		return
+	end
+	lastGrid2DPan, lastGrid2DSize = pan2D, size
+	grid2D.Size = UDim2.fromOffset(size.X, size.Y)
+
+	local spacing = 32
+	local used = 0
+	local function drawLines(vertical, pan, extent, length)
+		local first = math.ceil(-pan / spacing)
+		local last = math.floor((extent - pan) / spacing)
+		for index = first, last do
+			used += 1
+			local line = grid2DLines[used]
+			if not line then
+				line = UI.create("Frame", {
+					BackgroundColor3 = tokens.color.subtext,
+					BorderSizePixel = 0,
+				}, grid2D)
+				grid2DLines[used] = line
+			end
+			local coordinate = pan + index * spacing
+			line.Position = if vertical then UDim2.fromOffset(coordinate, 0) else UDim2.fromOffset(0, coordinate)
+			line.Size = if vertical then UDim2.fromOffset(1, length) else UDim2.fromOffset(length, 1)
+			line.BackgroundTransparency = if index == 0 then 0.40 elseif index % 4 == 0 then 0.62 else 0.82
+			line.Visible = true
+		end
+	end
+	drawLines(true, pan2D.X, size.X, size.Y)
+	drawLines(false, pan2D.Y, size.Y, size.X)
+	for index = used + 1, #grid2DLines do
+		grid2DLines[index].Visible = false
+	end
+end
+
 local lastGridCFrame, lastGridFocus, lastGridSize, lastGridOrigin, lastGridDimension
 local function updateGrid()
-	grid.Visible = viewportSettings.viewportGrid and not scriptRoot.Visible and rootOverlay.Enabled
+	updateGrid2D()
+	grid.Visible = workspace.Dimension ~= Enum.Dimension.D2
+		and viewportSettings.viewportGrid and not scriptRoot.Visible and rootOverlay.Enabled
 	if not grid.Visible then
 		return
 	end
@@ -1005,6 +1127,7 @@ renderer.Pool.new("2da", function()
 	local absoluteHeight = absoluteSize.Y
 
 	if absoluteWidth <= 0 or absoluteHeight <= 0 then
+		renderer:SetViewportRect(0, 0, 0, 0)
 		return
 	end
 
@@ -1013,6 +1136,7 @@ renderer.Pool.new("2da", function()
 	local renderHeight = renderSize.Y
 
 	if renderHeight <= 0 then
+		renderer:SetViewportRect(0, 0, 0, 0)
 		return
 	end
 
