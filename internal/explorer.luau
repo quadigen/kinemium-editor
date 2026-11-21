@@ -358,6 +358,9 @@ local dropdown, label, ctrl =
 			end
 			object.Name = className
 			object.Parent = parent
+			UI.history.recordParents("Create " .. className, {
+				{ object = object, before = nil, after = parent },
+			}, requestModelRefresh)
 			expanded[parent] = true
 			selectObject({
 				object,
@@ -594,13 +597,21 @@ local function canDropAny(sources, target)
 end
 local function reparentAll(sources, target)
 	local moved = {}
+	local changes = {}
 	for _, source in ipairs(sources) do
-		if canReparent(source, target) then
-			source.Parent = target
-			table.insert(moved, source)
+		if canReparent(source, target) and source.Parent ~= target then
+			local previous = source.Parent
+			local ok = pcall(function()
+				source.Parent = target
+			end)
+			if ok and source.Parent == target then
+				table.insert(moved, source)
+				table.insert(changes, { object = source, before = previous, after = target })
+			end
 		end
 	end
 	if #moved > 0 then
+		UI.history.recordParents("Reparent " .. #moved .. " object(s)", changes, invalidateTree)
 		expanded[target] = true
 		selectObject(moved)
 		invalidateTree()
@@ -1023,8 +1034,19 @@ local function deleteInstance(instance)
 	expanded[instance] = nil
 	renaming = nil
 	selectObject({})
-	instance:Destroy()
+	-- Detach instead of Destroy so undo can restore the original identity.
+	instance.Parent = nil
 	invalidateTree()
+end
+
+local function recordCreated(label, objects)
+	local changes = {}
+	for _, object in ipairs(objects) do
+		if object.Parent ~= nil then
+			table.insert(changes, { object = object, before = nil, after = object.Parent })
+		end
+	end
+	UI.history.recordParents(label, changes, invalidateTree)
 end
 local function duplicateInstance(instance)
 	if isProtected(instance) then
@@ -1039,6 +1061,7 @@ local function duplicateInstance(instance)
 		selectObject({
 			clone,
 		})
+		recordCreated("Duplicate " .. clone.Name, { clone })
 		invalidateTree()
 	end
 end
@@ -1053,11 +1076,17 @@ local function deleteInstances(list)
 		return
 	end
 	local function remove()
+		local changes = {}
 		for _, instance in ipairs(targets) do
-			if UI.isAlive(instance) then
-				deleteInstance(instance)
+			if UI.isAlive(instance) and instance.Parent ~= nil then
+				local previous = instance.Parent
+				local ok = pcall(deleteInstance, instance)
+				if ok and instance.Parent == nil then
+					table.insert(changes, { object = instance, before = previous, after = nil })
+				end
 			end
 		end
+		UI.history.recordParents("Delete " .. #changes .. " object(s)", changes, invalidateTree)
 		anchor = nil
 	end
 	if Preferences.get("confirmDelete") then
@@ -1082,6 +1111,7 @@ local function duplicateInstances(list)
 	end
 	if #clones > 0 then
 		selectObject(clones)
+		recordCreated("Duplicate " .. #clones .. " object(s)", clones)
 		invalidateTree()
 	end
 end
@@ -1090,14 +1120,11 @@ local function pasteInto(destination)
 		return
 	end
 	if PlaytestTree.copyPending then
-		UI.toast(
-			"playtest-copy",
-			{
-				type = "info",
-				title = "Copy in progress",
-				message = "The playtest is still preparing the instance. Paste again after the copy finishes.",
-			}
-		)
+		UI.toast("playtest-copy", {
+			type = "info",
+			title = "Copy in progress",
+			message = "The playtest is still preparing the instance. Paste again after the copy finishes.",
+		})
 		return
 	end
 	if clipboard == nil and PlaytestTree.clipboard == nil then
@@ -1130,16 +1157,14 @@ local function pasteInto(destination)
 		end
 		if #inserted > 0 then
 			selectObject(inserted)
+			recordCreated("Paste " .. #inserted .. " object(s)", inserted)
 			invalidateTree()
 		else
-			UI.toast(
-				"playtest-paste",
-				{
-					type = "error",
-					title = "Paste failed",
-					message = "The selected destination cannot contain the copied instance.",
-				}
-			)
+			UI.toast("playtest-paste", {
+				type = "error",
+				title = "Paste failed",
+				message = "The selected destination cannot contain the copied instance.",
+			})
 		end
 		return
 	end
@@ -1157,6 +1182,7 @@ local function pasteInto(destination)
 	end
 	if #clones > 0 then
 		selectObject(clones)
+		recordCreated("Paste " .. #clones .. " object(s)", clones)
 		invalidateTree()
 	end
 end
@@ -1199,7 +1225,9 @@ local function beginRename(instance, row)
 		end
 		renaming = nil
 		if apply and text ~= nil and text ~= "" and text ~= instance.Name then
+			local previous = instance.Name
 			instance.Name = text
+			UI.history.recordProperty(instance, "Name", previous, instance.Name)
 			invalidateTree()
 		end
 		if pendingRebuild then
@@ -1302,6 +1330,14 @@ openContextMenu = function(instance, screenPoint)
 						local imported = export_service:ImportFile(file)
 						if imported then
 							util.parent(imported, target)
+							if
+								not imported:IsA("DataModel")
+								and not imported:IsA("Service")
+								and imported.Parent ~= nil
+							then
+								recordCreated("Import " .. imported.Name, { imported })
+							end
+							invalidateTree()
 						end
 					end
 				elseif action == "upload_package" then

@@ -235,8 +235,6 @@ function Editor.new(options)
 	self.guideList = {}
 	self.guideFrames = {}
 	self.extraFrames = {}
-	self.undoStack = {}
-	self.redoStack = {}
 	self.clipboard = {}
 	self.pasteCount = 0
 	self.menu = nil
@@ -768,32 +766,19 @@ function Editor:commit(label, before, mergeKey)
 		return false
 	end
 
-	local command = {
-		label = label,
-		merge = mergeKey,
-		time = os.clock(),
-		undo = function()
-			self:restore(before)
-		end,
-		redo = function()
-			self:restore(after)
-		end,
-	}
-
-	local top = self.undoStack[#self.undoStack]
-
-	if mergeKey and top and top.merge == mergeKey and os.clock() - top.time < 0.8 then
-		top.redo = command.redo
-		top.time = command.time
-	else
-		table.insert(self.undoStack, command)
-
-		if #self.undoStack > 100 then
-			table.remove(self.undoStack, 1)
-		end
+	local function restoreSelection(values, description)
+		self.drag = nil
+		self:flushGoals()
+		self:restore(values)
+		self:syncSelection()
+		self:notify(description .. " " .. label)
 	end
 
-	self.redoStack = {}
+	UI.history.record(label, function()
+		restoreSelection(before, "Undo")
+	end, function()
+		restoreSelection(after, "Redo")
+	end, mergeKey and (tostring(self) .. "|" .. mergeKey) or nil)
 
 	return true
 end
@@ -830,45 +815,11 @@ function Editor:syncSelection()
 end
 
 function Editor:Undo()
-	local command = table.remove(self.undoStack)
-
-	if not command then
-		self:notify("Nothing to undo")
-		return false
-	end
-
-	self.drag = nil
-	self:flushGoals()
-
-	command.undo()
-
-	table.insert(self.redoStack, command)
-
-	self:syncSelection()
-	self:notify("Undo " .. command.label)
-
-	return true
+	return UI.history.undo()
 end
 
 function Editor:Redo()
-	local command = table.remove(self.redoStack)
-
-	if not command then
-		self:notify("Nothing to redo")
-		return false
-	end
-
-	self.drag = nil
-	self:flushGoals()
-
-	command.redo()
-
-	table.insert(self.undoStack, command)
-
-	self:syncSelection()
-	self:notify("Redo " .. command.label)
-
-	return true
+	return UI.history.redo()
 end
 
 function Editor:collectCandidates(obj)
@@ -1758,18 +1709,9 @@ function Editor:onKey(input)
 		return
 	end
 
-	if key == Enum.KeyCode.Z then
-		if isShift() then
-			if #self.redoStack > 0 then
-				self:Redo()
-			end
-		elseif #self.undoStack > 0 then
-			self:Undo()
-		end
-	elseif key == Enum.KeyCode.Y then
-		if #self.redoStack > 0 then
-			self:Redo()
-		end
+	if key == Enum.KeyCode.Z or key == Enum.KeyCode.Y or key == Enum.KeyCode.R then
+		-- The shared ChangeHistoryService shortcut handler owns undo/redo.
+		return
 	elseif key == Enum.KeyCode.C and self.target then
 		self:Copy()
 	elseif key == Enum.KeyCode.V and #self.clipboard > 0 then

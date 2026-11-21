@@ -542,16 +542,19 @@ local function setProperty(object, propertyName, value)
 		return false
 	end
 	local attribute = attributeName(propertyName)
-
-	return (
-		pcall(function()
-			if attribute then
-				object:SetAttribute(attribute, value)
-			else
-				object[propertyName] = value
-			end
-		end)
-	)
+	local before = propertyValue(object, propertyName)
+	local success = pcall(function()
+		if attribute then
+			object:SetAttribute(attribute, value)
+		else
+			object[propertyName] = value
+		end
+	end)
+	if success and not UI.history.isReplaying() then
+		local after = propertyValue(object, propertyName)
+		UI.history.recordProperty(object, propertyName, before, after, tostring(object) .. "|" .. propertyName)
+	end
+	return success
 end
 
 local function openInspectorColorPicker(anchor, color, callback)

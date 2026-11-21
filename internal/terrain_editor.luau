@@ -75,8 +75,7 @@ local cfg = {
 	previewTransparency = 0.6,
 }
 
-local history = {}
-local strokeId = 0
+local strokeEntries = {}
 local painting = false
 local lastPos, lastTime = nil, 0
 
@@ -301,26 +300,28 @@ end
 local function pushHistory(cf, dims)
 	local region = brushRegion(cf, dims)
 	local mats, occs = terrain:ReadVoxels(region, VOXEL)
-
-	table.insert(history, { id = strokeId, region = region, mats = mats, occs = occs })
-
-	while #history > MAX_HISTORY do
-		table.remove(history, 1)
-	end
+	local entry = { region = region, mats = mats, occs = occs }
+	table.insert(strokeEntries, entry)
+	return entry
 end
 
-local function undo()
-	local top = history[#history]
-
-	if not top then
+local function commitStroke()
+	if #strokeEntries == 0 then
 		return
 	end
-
-	-- one undo reverts a whole stroke
-	while #history > 0 and history[#history].id == top.id do
-		local entry = table.remove(history)
-		terrain:WriteVoxels(entry.region, VOXEL, entry.mats, entry.occs)
-	end
+	local steps = strokeEntries
+	strokeEntries = {}
+	-- Each brush movement can overlap earlier ones; replay in exact order.
+	UI.history.record("Terrain brush stroke", function()
+		for index = #steps, 1, -1 do
+			local entry = steps[index]
+			terrain:WriteVoxels(entry.region, VOXEL, entry.mats, entry.occs)
+		end
+	end, function()
+		for _, entry in ipairs(steps) do
+			terrain:WriteVoxels(entry.region, VOXEL, entry.afterMats, entry.afterOccs)
+		end
+	end)
 end
 
 ------------------------------------------------------------------ applying the brush
@@ -355,24 +356,27 @@ end
 
 local function applyBrush(cf)
 	local dims = brushDims()
-
-	pushHistory(cf, dims)
+	local entry = pushHistory(cf, dims)
 
 	if cfg.mode == "Paint" then
 		paintBrush(cf, dims)
-		return
-	end
-
-	local material = cfg.mode == "Subtract" and Enum.Material.Air or cfg.material
-
-	if cfg.shape == "Ball" then
-		terrain:FillBall(cf.Position, cfg.radius, material)
-	elseif cfg.shape == "Block" then
-		terrain:FillBlock(cf, dims, material)
-	elseif cfg.shape == "Cylinder" then
-		terrain:FillCylinder(cf, cfg.height, cfg.radius, material)
 	else
-		terrain:FillWedge(cf, dims, material)
+		local material = cfg.mode == "Subtract" and Enum.Material.Air or cfg.material
+		if cfg.shape == "Ball" then
+			terrain:FillBall(cf.Position, cfg.radius, material)
+		elseif cfg.shape == "Block" then
+			terrain:FillBlock(cf, dims, material)
+		elseif cfg.shape == "Cylinder" then
+			terrain:FillCylinder(cf, cfg.height, cfg.radius, material)
+		else
+			terrain:FillWedge(cf, dims, material)
+		end
+	end
+	entry.afterMats, entry.afterOccs = terrain:ReadVoxels(entry.region, VOXEL)
+	-- Bound one transaction's snapshots during extremely long brush drags.
+	-- Such drags become multiple individually undoable contiguous segments.
+	if #strokeEntries >= MAX_HISTORY then
+		commitStroke()
 	end
 end
 
@@ -518,14 +522,16 @@ local function confirmClear()
 				role = "danger",
 				callback = function()
 					terrain:Clear()
-					table.clear(history)
+					table.clear(strokeEntries)
+					UI.history.clear()
 				end,
 			},
 		},
 	})
 end
 
-place((UI.button(scroller, "Undo (Ctrl+Z)", nil, UDim2.new(1, 0, 0, UI.metrics.buttonHeight), undo)))
+place((UI.button(scroller, "Undo (Ctrl+Z)", nil, UDim2.new(1, 0, 0, UI.metrics.buttonHeight), UI.history.undo)))
+place((UI.button(scroller, "Redo (Ctrl+R)", nil, UDim2.new(1, 0, 0, UI.metrics.buttonHeight), UI.history.redo)))
 place((UI.button(scroller, "Clear terrain", nil, UDim2.new(1, 0, 0, UI.metrics.buttonHeight), confirmClear, {
 	textColor = colors.error,
 })))
@@ -630,7 +636,7 @@ UserInputService.InputBegan:Connect(function(input, processed)
 	end
 
 	painting = true
-	strokeId += 1
+	strokeEntries = {}
 	lastPos = cf.Position
 	lastTime = os.clock()
 
@@ -638,8 +644,9 @@ UserInputService.InputBegan:Connect(function(input, processed)
 end)
 
 UserInputService.InputEnded:Connect(function(input)
-	if input.UserInputType == Enum.UserInputType.MouseButton1 then
+	if input.UserInputType == Enum.UserInputType.MouseButton1 and painting then
 		painting = false
+		commitStroke()
 	end
 end)
 
@@ -670,8 +677,9 @@ UserInputService.InputBegan:Connect(function(input, processed)
 	local ctrl = UserInputService:IsKeyDown(Enum.KeyCode.LeftControl)
 		or UserInputService:IsKeyDown(Enum.KeyCode.RightControl)
 
-	if input.KeyCode == Enum.KeyCode.Z and ctrl then
-		undo()
+	if ctrl and (input.KeyCode == Enum.KeyCode.Z or input.KeyCode == Enum.KeyCode.Y or input.KeyCode == Enum.KeyCode.R) then
+		-- Shared ChangeHistoryService owns undo/redo shortcuts.
+		return
 	elseif input.KeyCode == Enum.KeyCode.RightBracket then
 		scaleBrush(1.25)
 	elseif input.KeyCode == Enum.KeyCode.LeftBracket then

@@ -3,6 +3,8 @@ if IsServer or IsClient or IsPlaytest then
 end
 
 local UI = require("@internal/editor_ui")
+local viewport = require("@internal/viewport")
+local createBoneTool = require("@internal/animator_viewport")
 local UIS = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
 local Selection = game:GetService("Selection")
@@ -157,8 +159,8 @@ local render, seek, editFields, reload, pause, setPlaying, closeSession
 local setMode, showPicker, pickerClick
 local cancelPoseDrag, updatePoseDrag, finishPoseDrag, beginPoseDrag
 local frameInput, endInput, nameInput, inspectorTitle, weightInput
-local axisLabels = {}
-local bindTransforms, boneDepth = {}, {}
+local boneTool
+local bindTransforms, boneDepth, boneParents = {}, {}, {}
 local keyColor = Color3.fromRGB(227, 178, 92) -- data marker, not window chrome
 local EPS = 0.000001
 local function same(a, b)
@@ -272,6 +274,8 @@ local function releaseTrack()
 		end)
 	end
 	if ownsController then
+		-- Detach the native animator before direct posing in this frame.
+		pcall(function() controller.MeshPart = nil end)
 		safeDestroy(controller)
 		controller = nil
 		ownsController = false
@@ -440,7 +444,11 @@ local function disposeStack(stack)
 	end
 	table.clear(stack)
 end
+local pendingHistory = false
+local undo
+
 local function checkpoint()
+	pendingHistory = true
 	table.insert(history, snapshot())
 	if #history > 20 then
 		safeDestroy(table.remove(history, 1).source)
@@ -479,8 +487,21 @@ local function commit(message)
 	if reload() then
 		msg(message)
 	end
+	if pendingHistory then
+		pendingHistory = false
+		local editedSequence = sequence
+		UI.history.record(message, function()
+			if sequence == editedSequence then
+				undo(false)
+			end
+		end, function()
+			if sequence == editedSequence then
+				undo(true)
+			end
+		end)
+	end
 end
-local function undo(redo)
+undo = function(redo)
 	if not sequence then
 		return
 	end
@@ -521,33 +542,14 @@ local function interpolate(bone, t)
 	end
 	return { cf = CFrame.new(), weight = 1 }
 end
-local function getNumbers(data)
-	local cf = data.cf
-	local v = cf.Position
-	local rx, ry, rz
-	local ok = pcall(function()
-		rx, ry, rz = cf:ToEulerAnglesXYZ()
-	end)
-	if not ok or not finite(rx) or not finite(ry) or not finite(rz) then
-		-- XYZ decomposition from the local basis for builds without the helper.
-		ok = pcall(function()
-			local r, u, b = cf.RightVector, cf.UpVector, -cf.LookVector
-			ry = math.asin(math.clamp(b.X, -1, 1))
-			if math.abs(math.cos(ry)) > 0.00001 then
-				rx = math.atan2(-b.Y, b.Z)
-				rz = math.atan2(-u.X, r.X)
-			else
-				rx = math.atan2(u.Z, u.Y)
-				rz = 0
-			end
-		end)
-	end
-	if not ok or not finite(rx) or not finite(ry) or not finite(rz) then
-		return nil
-	end
-	return { v.X, v.Y, v.Z, math.deg(rx), math.deg(ry), math.deg(rz), data.weight }
+local function syncBoneTool()
+	if not boneTool then return end
+	local active = panel.Visible and not pickerOpen and sequence ~= nil and UI.isAlive(rig)
+	boneTool:SetRig(if active then rig else nil, bones, boneParents, chosenBone)
+	viewport.SetSelectionTool(if active then boneTool else nil)
 end
 editFields = function()
+	syncBoneTool()
 	if not chosenBone or not sequence then
 		inspectorTitle.Text = "Select a bone channel to edit a pose"
 		if weightInput then
@@ -565,18 +567,6 @@ editFields = function()
 		weightInput.Text = string.format("%.3g", (p and poseData(p) or interpolate(chosenBone, t)).weight)
 	end
 end
-local function dataFromNumbers(v)
-	return {
-		cf = CFrame.new(v[1], v[2], v[3]) * CFrame.Angles(math.rad(v[4]), math.rad(v[5]), math.rad(v[6])),
-		weight = math.clamp(v[7], 0, 1),
-	}
-end
-local function dragValues(d, delta)
-	local v = table.clone(d.values)
-	v[d.axis] += delta
-	return v
-end
-
 local function startDragPreview(d)
 	-- A game-owned animator still owns the mesh pose. Never override its tracks.
 	if suppliedHost then
@@ -600,77 +590,92 @@ local function startDragPreview(d)
 	end
 	return true
 end
-beginPoseDrag = function(axis, mouseX)
+beginPoseDrag = function(pivot, frames)
 	if not chosenBone or not sequence or drag then
-		return
+		return false
 	end
+	local bind = bindTransforms[chosenBone]
+	if not bind then return false end
 	pause()
 	local t = chosenTime or timeOf(cursor)
-	local p = findPose(chosenBone, t)
-	local v = getNumbers(p and poseData(p) or interpolate(chosenBone, t))
-	if not v then
-		msg("Cannot read this bone transform.")
-		return
-	end
-	local range = 180
-	if axis <= 3 then
-		local size = rig.Size
-		range = math.clamp(size.Magnitude * 0.75, 2, 1000)
+	local pose = findPose(chosenBone, t)
+	local data = pose and poseData(pose) or interpolate(chosenBone, t)
+	local rigFrame = rig.CFrame
+	local parentFrame = frames[boneParents[chosenBone]]
+	local base = (parentFrame and rigFrame:ToObjectSpace(parentFrame) or CFrame.new()) * bind
+	local x, y, z = base.RightVector, base.UpVector, base.ZVector
+	local determinant = x:Dot(y:Cross(z))
+	local meshScale = rig.Size * 0.5
+	if math.abs(determinant) < EPS or math.min(meshScale.X, meshScale.Y, meshScale.Z) < EPS then
+		return false
 	end
 	drag = {
 		kind = "pose",
 		bone = chosenBone,
 		t = t,
-		axis = axis,
-		values = v,
-		startX = mouseX,
-		range = range,
-		delta = 0,
-		moved = false,
-		preview = false,
+		pivot = pivot,
+		rigFrame = rigFrame,
+		meshScale = meshScale,
+		basis = { y:Cross(z) / determinant, z:Cross(x) / determinant, x:Cross(y) / determinant },
+		bind = bind,
+		data = data,
+		mode = boneTool.mode,
 	}
+	return true
 end
-updatePoseDrag = function(d, mouseX)
-	local dx = mouseX - d.startX
+
+updatePoseDrag = function(d, pivot)
+	local effective = CFrame.new():Lerp(d.data.cf, d.data.weight)
+	local hasWeight = d.data.weight > EPS
+	local weight = if hasWeight then d.data.weight else 1
+	local changed, data
+	if d.mode == "Move" then
+		local delta = d.rigFrame:VectorToObjectSpace(pivot.Position - d.pivot.Position)
+		local scale = d.meshScale
+		delta = Vector3.new(delta.X / scale.X, delta.Y / scale.Y, delta.Z / scale.Z)
+		local offset = Vector3.new(d.basis[1]:Dot(delta), d.basis[2]:Dot(delta), d.basis[3]:Dot(delta))
+		changed = delta.Magnitude > EPS
+		local rotation = if hasWeight then d.data.cf.Rotation else CFrame.new()
+		data = {
+			cf = CFrame.new((effective.Position + offset) / weight) * rotation,
+			weight = weight,
+		}
+	else
+		local relative = d.pivot:ToObjectSpace(pivot).Rotation
+		local _, turn = relative:ToAxisAngle()
+		changed = math.abs(turn) > EPS
+		local axis, angle = (effective.Rotation * relative):ToAxisAngle()
+		-- A weighted key cannot represent a turn beyond its share of 180 degrees.
+		if angle > math.pi * weight then weight = 1 end
+		data = {
+			cf = CFrame.new(effective.Position / weight) * CFrame.fromAxisAngle(axis, angle / weight),
+			weight = weight,
+		}
+	end
+	if not d.moved and not changed then return end
 	if not d.moved then
-		if math.abs(dx) < 3 then
-			return
-		end
 		d.moved = true
 		d.preview = startDragPreview(d)
 	end
-	local fine = UIS:IsKeyDown(Enum.KeyCode.LeftShift) or UIS:IsKeyDown(Enum.KeyCode.RightShift)
-	local delta = math.clamp(dx * d.range / (fine and 1800 or 360), -d.range, d.range)
-	d.delta = delta
+	d.result = if changed then data else nil
 	if d.preview then
-		local data = dataFromNumbers(dragValues(d, delta))
-		local bind = bindTransforms[d.bone]
-		if bind then
-			local ok = pcall(function()
-				rig:SetBoneTransform(d.bone, bind * CFrame.new():Lerp(data.cf, data.weight))
-			end)
-			if not ok then
-				d.preview = false
-			end
-		end
+		local result = d.result or d.data
+		rig:SetBoneTransform(d.bone, d.bind * CFrame.new():Lerp(result.cf, result.weight))
 	end
 end
+
 finishPoseDrag = function(d)
-	if not d.moved or not sequence then
-		return
-	end
-	if math.abs(d.delta) < EPS then
-		if d.preview or not track then
-			reload()
-		end
+	if not d.moved or not sequence then return end
+	if not d.result then
+		if d.preview or not track then reload() end
 		editFields()
 		return
 	end
 	checkpoint()
 	chosenBone, chosenTime = d.bone, d.t
 	cursor = boundFrame(frameOf(d.t))
-	insertPose(d.bone, d.t, dataFromNumbers(dragValues(d, d.delta)))
-	commit("Moved " .. d.bone .. " — keyframe set at frame " .. tostring(cursor))
+	insertPose(d.bone, d.t, d.result)
+	commit((if d.mode == "Move" then "Moved " else "Rotated ") .. d.bone .. " at frame " .. tostring(cursor))
 end
 cancelPoseDrag = function()
 	if not drag or drag.kind ~= "pose" then
@@ -678,6 +683,7 @@ cancelPoseDrag = function()
 	end
 	local d = drag
 	drag = nil
+	if boneTool then boneTool:Cancel() end
 	if d.moved and sequence then
 		reload()
 	end
@@ -934,19 +940,27 @@ local function closeDraft()
 	end
 	animation, sequence = nil, nil
 end
+local function clearDrag()
+	if drag and drag.kind == "pose" and drag.preview and UI.isAlive(rig) then
+		rig:SetBoneTransforms(bindTransforms)
+	end
+	drag = nil
+	if boneTool then boneTool:Cancel() end
+end
 closeSession = function()
 	pause()
-	drag = nil
+	clearDrag()
 	releaseTrack()
 	closeDraft()
 	disposeStack(history)
 	disposeStack(future)
 	rig, suppliedHost = nil, nil
 	bones, boneSet = {}, {}
-	bindTransforms, boneDepth = {}, {}
+	bindTransforms, boneDepth, boneParents = {}, {}, {}
 	chosenBone, chosenTime = nil, nil
 	saved, dirty = false, false
 	generated = setmetatable({}, { __mode = "k" })
+	syncBoneTool()
 end
 local function openRig(mesh, source, host, newName)
 	if not mesh or not mesh:IsA("MeshPart") then
@@ -1012,6 +1026,7 @@ local function openRig(mesh, source, host, newName)
 		bindTransforms[bone] = okBind and bind or mesh:GetBoneTransform(bone)
 		local parent = mesh:GetBoneParent(bone)
 		if parent and boneSet[parent] and parent ~= bone then
+			boneParents[bone] = parent
 			children[parent] = children[parent] or {}
 			table.insert(children[parent], bone)
 		else
@@ -1061,7 +1076,7 @@ local function openRig(mesh, source, host, newName)
 	render()
 	editFields()
 	if reload() then
-		msg("Loaded " .. mesh.Name .. ". Select a bone and drag an axis label to pose it.")
+		msg("Loaded " .. mesh.Name .. ". Click a bone in the viewport or timeline to pose it.")
 	end
 	return true
 end
@@ -1174,10 +1189,10 @@ tool("Key all", 56, function()
 end, "Key every bone")
 tool("Delete", 60, deleteKey)
 tool("Undo", 48, function()
-	undo(false)
+	UI.history.undo()
 end)
 tool("Redo", 48, function()
-	undo(true)
+	UI.history.redo()
 end)
 tool("Zoom out", 68, function()
 	span = math.min(MAX_TIME * FPS, span * 1.5)
@@ -1233,25 +1248,22 @@ inspectorTitle = label(
 )
 nameInput = input(inspector, "NewAnimation", UDim2.new(1, -174, 0, 4), UDim2.fromOffset(166, 23))
 inspectorTitle.Size = UDim2.new(1, -190, 0, 24)
-local fieldLabels = { "Move X", "Move Y", "Move Z", "Rotate X", "Rotate Y", "Rotate Z" }
-for i, title in ipairs(fieldLabels) do
-	local axis, group = (i - 1) % 3 + 1, math.floor((i - 1) / 3)
-	local button = UI.button(
-		inspector,
-		title,
-		UDim2.new((i - 1) / 6, 4, 0, 31),
-		UDim2.new(1 / 6, -8, 0, UI.metrics.buttonHeight),
-		nil,
-		{
-			textColor = ({ UI.axisColors.X, UI.axisColors.Y, UI.axisColors.Z })[axis] or colors.text,
-		}
-	)
-	axisLabels[i] = button
-	UI.tooltip(
-		button,
-		(group == 0 and "Move" or "Rotate") .. " the selected bone. Drag horizontally; Shift for precision."
-	)
+local moveToolRecord, rotateToolRecord
+local function setBoneMode(mode)
+	cancelPoseDrag()
+	boneTool.mode = mode
+	UI.setButtonState(moveToolRecord, if mode == "Move" then "selected" else nil)
+	UI.setButtonState(rotateToolRecord, if mode == "Rotate" then "selected" else nil)
 end
+local _, _, moveRecord = UI.button(inspector, "Move", UDim2.fromOffset(8, 31), UDim2.fromOffset(68, 24), function()
+	setBoneMode("Move")
+end, {})
+local _, _, rotateRecord = UI.button(inspector, "Rotate", UDim2.fromOffset(80, 31), UDim2.fromOffset(68, 24), function()
+	setBoneMode("Rotate")
+end, {})
+moveToolRecord, rotateToolRecord = moveRecord, rotateRecord
+label(inspector, "Drag a viewport handle to pose the selected bone.", UDim2.fromOffset(158, 31),
+	UDim2.new(1, -166, 0, 24), colors.subtext)
 UI.button(inspector, "Copy", UDim2.fromOffset(8, 60), UDim2.fromOffset(58, 24), copyKey, {})
 UI.button(inspector, "Paste", UDim2.fromOffset(70, 60), UDim2.fromOffset(58, 24), pasteKey, {})
 UI.button(inspector, "Reset", UDim2.fromOffset(132, 60), UDim2.fromOffset(68, 24), resetPose, {})
@@ -1280,7 +1292,7 @@ connect(weightInput.FocusLost, function()
 end)
 label(
 	inspector,
-	"Drag an axis to pose the bone. Shift for precision; Esc to cancel.",
+	"Esc cancels a handle drag.",
 	UDim2.fromOffset(312, 60),
 	UDim2.new(1, -320, 0, 20),
 	colors.subtext
@@ -1671,6 +1683,7 @@ setMode = function(isPicker)
 		child.Visible = not isPicker
 	end
 	picker.Visible = isPicker
+	syncBoneTool()
 	if isPicker then
 		updatePickerSelection()
 	end
@@ -1742,12 +1755,7 @@ connect(UIS.InputBegan, function(event, processed)
 		return
 	end
 	if event.UserInputType == Enum.UserInputType.MouseButton1 then
-		for i, axis in ipairs(axisLabels) do
-			if inside(axis, p) then
-				beginPoseDrag(i, p.X)
-				return
-			end
-		end
+		if drag and drag.kind == "pose" then return end
 		if inside(ruler, p) then
 			drag = { kind = "scrub" }
 			seek(frameFor(p.X))
@@ -1811,10 +1819,9 @@ connect(UIS.InputBegan, function(event, processed)
 			copyKey()
 		elseif ctrl and key == Enum.KeyCode.V then
 			pasteKey()
-		elseif ctrl and key == Enum.KeyCode.Z then
-			undo(shift)
-		elseif ctrl and key == Enum.KeyCode.Y then
-			undo(true)
+		elseif ctrl and (key == Enum.KeyCode.Z or key == Enum.KeyCode.Y or key == Enum.KeyCode.R) then
+			-- Shared ChangeHistoryService handler owns all undo/redo shortcuts.
+			return
 		elseif ctrl and key == Enum.KeyCode.S then
 			save()
 		end
@@ -1825,9 +1832,7 @@ connect(UIS.InputChanged, function(event)
 		return
 	end
 	local p = UIS:GetMouseLocation()
-	if drag.kind == "pose" then
-		updatePoseDrag(drag, p.X)
-	elseif drag.kind == "scrub" then
+	if drag.kind == "scrub" then
 		seek(frameFor(p.X))
 	elseif drag.kind == "key" then
 		if math.abs(p.X - drag.startX) > 3 then
@@ -1847,17 +1852,12 @@ connect(UIS.InputChanged, function(event)
 	end
 end)
 connect(UIS.InputEnded, function(event)
-	if event.UserInputType ~= Enum.UserInputType.MouseButton1 or not drag then
+	if event.UserInputType ~= Enum.UserInputType.MouseButton1 or not drag or drag.kind == "pose" then
 		return
 	end
 	local d = drag
 	drag = nil
-	if d.kind == "pose" then
-		if d.moved then
-			updatePoseDrag(d, UIS:GetMouseLocation().X)
-		end
-		finishPoseDrag(d)
-	elseif d.kind == "key" and d.moved then
+	if d.kind == "key" and d.moved then
 		local f = frameFor(UIS:GetMouseLocation().X)
 		moveKey(d.bone, d.t, timeOf(f))
 		if same(chosenTime, d.t) then
@@ -1883,8 +1883,9 @@ end)
 connect(panel:GetPropertyChangedSignal("Visible"), function()
 	if not panel.Visible then
 		pause()
-		drag = nil
+		clearDrag()
 		releaseTrack()
+		syncBoneTool()
 		scanRevision += 1
 	end
 end)
@@ -2024,6 +2025,23 @@ function Animator.Discard()
 	showPicker()
 	msg("Session closed. Choose a rig to start again.")
 end
+boneTool = createBoneTool({
+	select = Animator.SelectBone,
+	begin = beginPoseDrag,
+	move = function(pivot)
+		if drag and drag.kind == "pose" then updatePoseDrag(drag, pivot) end
+	end,
+	finish = function()
+		if drag and drag.kind == "pose" then
+			local d = drag
+			drag = nil
+			finishPoseDrag(d)
+		end
+	end,
+	cancel = cancelPoseDrag,
+})
+setBoneMode("Move")
+
 function Animator.Destroy()
 	if destroyed then
 		return
@@ -2034,6 +2052,7 @@ function Animator.Destroy()
 		c:Disconnect()
 	end
 	table.clear(connections)
+	boneTool:Destroy()
 	panel:Destroy()
 end
 return Animator

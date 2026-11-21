@@ -22,6 +22,20 @@ return {
 	name = "Home",
 	buttons = {
 		{
+			name = "history_actions",
+			type = "custom",
+			width = 96,
+			create = function(parent, colors, position, size)
+				UI.buttonList(parent, position, size, {
+					{ name = "Undo", callback = UI.history.undo },
+					{ name = "Redo", callback = UI.history.redo },
+				}, { scale = 0.9 })
+			end,
+		},
+		{
+			type = "separator",
+		},
+		{
 			name = "Paste",
 			icon = "clipboard.svg",
 			callback = function()

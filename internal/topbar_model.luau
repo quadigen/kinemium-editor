@@ -3,6 +3,7 @@ if (IsServer or IsClient) or IsPlaytest then
 end
 
 local Selection = game:GetService("Selection")
+local History = require("@internal/change_history")
 
 return {
 	name = "Model",
@@ -13,6 +14,9 @@ return {
 			callback = function()
 				local part = Instance.new("Part")
 				part.Parent = game.Workspace
+				History.recordParents("Insert " .. part.ClassName, {
+					{ object = part, before = nil, after = game.Workspace },
+				})
 				Selection:Set({ part })
 			end,
 		},
@@ -22,6 +26,9 @@ return {
 			callback = function()
 				local part = Instance.new("MeshPart")
 				part.Parent = game.Workspace
+				History.recordParents("Insert " .. part.ClassName, {
+					{ object = part, before = nil, after = game.Workspace },
+				})
 				Selection:Set({ part })
 			end,
 		},

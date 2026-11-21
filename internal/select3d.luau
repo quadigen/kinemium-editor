@@ -347,10 +347,10 @@ local function paintsOverlay(gui: GuiObject): boolean
 	return false
 end
 
-local function overlayContainsPointer(root: Instance, point: Vector2): boolean
+local function overlayContainsPointer(root: Instance, point: Vector2, ignored: Instance?): boolean
 	for _, child in ipairs(root:GetChildren()) do
 		if child:IsA("GuiObject") then
-			if not child.Visible or child == (hud and hud.bar) or child == (readout and readout.frame) then
+			if not child.Visible or child == ignored or child == (hud and hud.bar) or child == (readout and readout.frame) then
 				continue
 			end
 			local position, size = child.AbsolutePosition, child.AbsoluteSize
@@ -363,7 +363,7 @@ local function overlayContainsPointer(root: Instance, point: Vector2): boolean
 			if inside and paintsOverlay(child) then
 				return true
 			end
-			if (inside or not child.ClipsDescendants) and overlayContainsPointer(child, point) then
+			if (inside or not child.ClipsDescendants) and overlayContainsPointer(child, point, ignored) then
 				return true
 			end
 		end
@@ -376,8 +376,11 @@ local function canUseViewport(): boolean
 	if not viewport.ContainsPoint(point) then
 		return false
 	end
+	local tool = viewport.GetSelectionTool()
 	for _, root in ipairs(game.CoreGui:GetChildren()) do
-		if root:IsA("ScreenGui") and root.Enabled and root.RenderOnTop and overlayContainsPointer(root, point) then
+		if root:IsA("ScreenGui") and root.Enabled and root.RenderOnTop
+			and overlayContainsPointer(root, point, tool and tool.overlay)
+		then
 			return false
 		end
 	end
@@ -531,6 +534,41 @@ local function centroidOf(parts: { BasePart }): Vector3
 	return count > 0 and sum / count or Vector3.zero
 end
 
+-- Record only the final manipulation once, not the hundreds of intermediate
+-- CFrame/Size updates emitted by dragging handles.
+local function recordTransform(label, parts, startCFrames, startSizes)
+	local before = {}
+	local after = {}
+	local changed = false
+	for _, part in ipairs(parts) do
+		if editor_ui.isAlive(part) and part.Parent and startCFrames[part] then
+			local oldSize = startSizes and startSizes[part] or part.Size
+			local newCFrame, newSize = part.CFrame, part.Size
+			before[part] = { cframe = startCFrames[part], size = oldSize }
+			after[part] = { cframe = newCFrame, size = newSize }
+			if newCFrame ~= startCFrames[part] or newSize ~= oldSize then
+				changed = true
+			end
+		end
+	end
+	if not changed then
+		return
+	end
+	local function restore(states)
+		for part, values in pairs(states) do
+			if editor_ui.isAlive(part) and part.Parent then
+				part.Size = values.size
+				part.CFrame = values.cframe
+			end
+		end
+	end
+	editor_ui.history.record(label, function()
+		restore(before)
+	end, function()
+		restore(after)
+	end)
+end
+
 local function beginGizmoTracking()
 	local parts = collectMovableParts()
 	if #parts == 0 then
@@ -586,6 +624,7 @@ local function updateGizmoTracking()
 end
 
 local function endGizmoTracking()
+	recordTransform("Transform parts", gizmo.parts, gizmo.startCFrames, gizmo.startSizes)
 	gizmo.active = false
 	gizmo.parts = {}
 	gizmo.startCFrames = {}
@@ -723,6 +762,8 @@ local function endDrag(commit: boolean)
 				part.CFrame = cf
 			end
 		end
+	else
+		recordTransform("Move parts", drag.parts, drag.startCFrames)
 	end
 
 	drag.active = false
@@ -793,6 +834,7 @@ RunService.RenderStepped:Connect(function()
 
 	if
 		mouseOverGui
+		or viewport.GetSelectionTool() ~= nil
 		or not canUseViewport()
 		or gizmoCapturesMouse()
 		or UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton2)
@@ -860,6 +902,11 @@ UserInputService.InputBegan:Connect(function(input, processed)
 		if not canUseViewport() or gizmoCapturesMouse() then
 			return
 		end
+		local tool = viewport.GetSelectionTool()
+		if tool then
+			tool:Pick(UserInputService:GetMouseLocation())
+			return
+		end
 
 		local target = pickPart()
 		handleClick(target)
@@ -888,7 +935,10 @@ UserInputService.InputBegan:Connect(function(input, processed)
 	elseif key == KEY_TOGGLE_SNAP then
 		state.snapEnabled = not state.snapEnabled
 		updateHud()
-	elseif key == KEY_ROTATE and drag.active then
+	elseif key == KEY_ROTATE and drag.active
+		and not UserInputService:IsKeyDown(Enum.KeyCode.LeftControl)
+		and not UserInputService:IsKeyDown(Enum.KeyCode.RightControl)
+	then
 		drag.rotY += math.pi / 2
 	elseif key == KEY_CANCEL then
 		if drag.active then

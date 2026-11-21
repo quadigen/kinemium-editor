@@ -1653,6 +1653,8 @@ function UI.shared()
 	return shared
 end
 
+UI.history = require("@internal/change_history")
+
 local studioAvailable, Studio = pcall(function()
 	return game:GetService("Studio")
 end)

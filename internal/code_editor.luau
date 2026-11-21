@@ -3065,17 +3065,42 @@ function CodeEditor:commitDocument(document)
 
 	if document.path ~= nil then
 		document.commitSerial = (document.commitSerial or 0) + 1
+		local before
+		local after = document.source
 
 		local ok, written = pcall(function()
-			if Filesystem:ReadFile(document.path) ~= document.committed then
+			before = Filesystem:ReadFile(document.path)
+			if document.committed ~= nil and before ~= document.committed then
 				self:notify("The source file changed on disk.", 5)
 				return false
 			end
-			return Filesystem:WriteFile(document.path, document.source)
+			return Filesystem:WriteFile(document.path, after)
 		end)
 
 		if ok and written then
-			document.committed = document.source
+			document.committed = after
+			if type(before) == "string" and before ~= after and not UI.history.isReplaying() then
+				local function restore(expected, source)
+					if Filesystem:ReadFile(document.path) ~= expected then
+						error("Cannot restore source: file changed outside the editor")
+					end
+					if not Filesystem:WriteFile(document.path, source) then
+						error("Cannot restore source: file write failed")
+					end
+					document.committed = source
+					document.source = source
+					if self.activeDocument == document and not self.destroyed then
+						self.TextBox.Text = source
+						self.lastText = source
+						self:refreshDiagnostics()
+					end
+				end
+				UI.history.record("Edit file " .. document.name, function()
+					restore(after, before)
+				end, function()
+					restore(before, after)
+				end, document)
+			end
 		end
 
 		return
@@ -3087,12 +3112,37 @@ function CodeEditor:commitDocument(document)
 		return
 	end
 
+	local before
+	local okBefore, previousSource = pcall(function()
+		return instance.Source
+	end)
+	if okBefore then
+		before = previousSource
+	end
+	local after = document.source
 	local ok = pcall(function()
-		instance.Source = document.source
+		instance.Source = after
 	end)
 
 	if ok then
-		document.committed = document.source
+		document.committed = after
+		if before ~= nil and before ~= after and not UI.history.isReplaying() then
+			local function restore(source)
+				instance.Source = source
+				document.committed = source
+				document.source = source
+				if self.activeDocument == document and not self.destroyed then
+					self.TextBox.Text = source
+					self.lastText = source
+					self:refreshDiagnostics()
+				end
+			end
+			UI.history.record("Edit script " .. document.name, function()
+				restore(before)
+			end, function()
+				restore(after)
+			end, document)
+		end
 	end
 end
 
@@ -5717,7 +5767,15 @@ end
 function CodeEditor:handleShortcut(keyCode)
 	local K = Enum.KeyCode
 
-	if keyCode == K.F then
+	if keyCode == K.Z then
+		if shiftHeld() then
+			UI.history.redo()
+		else
+			UI.history.undo()
+		end
+	elseif keyCode == K.Y or keyCode == K.R then
+		UI.history.redo()
+	elseif keyCode == K.F then
 		self:openFind(false)
 	elseif keyCode == K.H then
 		self:openFind(true)

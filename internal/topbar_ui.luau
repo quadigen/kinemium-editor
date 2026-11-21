@@ -3,6 +3,7 @@ if (IsServer or IsClient) or IsPlaytest then
 end
 
 local Selection = game:GetService("Selection")
+local UI = require("@internal/editor_ui")
 
 local icon_lib = require("@internal/icon_lib")
 local google_fonts_lib = require("@internal/google_fonts_lib")
@@ -25,6 +26,9 @@ return {
 				if selected then
 					local object = Instance.new("Frame")
 					object.Parent = selected
+					UI.history.recordParents("Insert " .. object.ClassName, {
+						{ object = object, before = nil, after = selected },
+					})
 					Selection:Set({ object })
 				end
 			end,
@@ -40,6 +44,9 @@ return {
 				if selected then
 					local object = Instance.new("TextButton")
 					object.Parent = selected
+					UI.history.recordParents("Insert " .. object.ClassName, {
+						{ object = object, before = nil, after = selected },
+					})
 					Selection:Set({ object })
 				end
 			end,
@@ -55,6 +62,9 @@ return {
 				if selected then
 					local object = Instance.new("ImageLabel")
 					object.Parent = selected
+					UI.history.recordParents("Insert " .. object.ClassName, {
+						{ object = object, before = nil, after = selected },
+					})
 					Selection:Set({ object })
 				end
 			end,
@@ -70,6 +80,9 @@ return {
 				if selected then
 					local object = Instance.new("ImageButton")
 					object.Parent = selected
+					UI.history.recordParents("Insert " .. object.ClassName, {
+						{ object = object, before = nil, after = selected },
+					})
 					Selection:Set({ object })
 				end
 			end,
@@ -89,6 +102,9 @@ return {
 				if selected then
 					local object = Instance.new("UICorner")
 					object.Parent = selected
+					UI.history.recordParents("Insert " .. object.ClassName, {
+						{ object = object, before = nil, after = selected },
+					})
 					Selection:Set({ object })
 				end
 			end,
@@ -104,6 +120,9 @@ return {
 				if selected then
 					local object = Instance.new("UIStroke")
 					object.Parent = selected
+					UI.history.recordParents("Insert " .. object.ClassName, {
+						{ object = object, before = nil, after = selected },
+					})
 					Selection:Set({ object })
 				end
 			end,
@@ -119,6 +138,9 @@ return {
 				if selected then
 					local object = Instance.new("UIShadow")
 					object.Parent = selected
+					UI.history.recordParents("Insert " .. object.ClassName, {
+						{ object = object, before = nil, after = selected },
+					})
 					Selection:Set({ object })
 				end
 			end,
@@ -134,6 +156,9 @@ return {
 				if selected then
 					local object = Instance.new("UIPadding")
 					object.Parent = selected
+					UI.history.recordParents("Insert " .. object.ClassName, {
+						{ object = object, before = nil, after = selected },
+					})
 					Selection:Set({ object })
 				end
 			end,
@@ -149,6 +174,9 @@ return {
 				if selected then
 					local object = Instance.new("UIGradient")
 					object.Parent = selected
+					UI.history.recordParents("Insert " .. object.ClassName, {
+						{ object = object, before = nil, after = selected },
+					})
 					Selection:Set({ object })
 				end
 			end,

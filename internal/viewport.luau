@@ -92,6 +92,7 @@ UI.stroke(dropHighlight, colors.accent, 2, 0.2)
 
 local activeTool = renderer.Dimension == "2D" and "Select" or "Move"
 local snapEnabled = true
+local selectionTool
 
 local handles = Instance.new("Handles")
 handles.Name = "ViewportHandles"
@@ -147,7 +148,7 @@ local function updateGizmos()
 	local moving = activeTool == "Move"
 	local resizing = activeTool == "Size"
 	local rotating = activeTool == "Rotate"
-	local adornee = selectedTransformTarget(moving)
+	local adornee = if selectionTool then nil else selectedTransformTarget(moving)
 	local is3D = renderer.Dimension == "3D" and not picker.isActive()
 	selectionOutline.Adornee = adornee
 	selectionOutline.Enabled = is3D and adornee ~= nil and viewportSettings.viewportSelectionOutline
@@ -300,7 +301,11 @@ end
 local function applyColor(color)
 	local object = selectedTransformTarget()
 	if UI.isAlive(object) and (object:IsA("Part") or object:IsA("SoftBody") or object:IsA("MeshPart")) then
-		object.Color = color
+		local previous = object.Color
+		if previous ~= color then
+			object.Color = color
+			UI.history.recordProperty(object, "Color", previous, object.Color, tostring(object) .. "|Color")
+		end
 	end
 end
 
@@ -1132,6 +1137,7 @@ renderer.Pool.new("2da", function()
 
 	if absoluteWidth <= 0 or absoluteHeight <= 0 then
 		renderer:SetViewportRect(0, 0, 0, 0)
+		if selectionTool then selectionTool:Update() end
 		return
 	end
 
@@ -1141,6 +1147,7 @@ renderer.Pool.new("2da", function()
 
 	if renderHeight <= 0 then
 		renderer:SetViewportRect(0, 0, 0, 0)
+		if selectionTool then selectionTool:Update() end
 		return
 	end
 
@@ -1155,6 +1162,10 @@ renderer.Pool.new("2da", function()
 		renderer:SetViewportRect(absoluteX, renderTop, absoluteWidth, renderHeight)
 	else
 		renderer:SetViewportRect(0, 0, 0, 0)
+	end
+
+	if selectionTool then
+		selectionTool:Update()
 	end
 
 	local overlayInset = math.max(0, renderTop - absoluteY)
@@ -1268,6 +1279,27 @@ local API = {
 		end
 
 		return true, Vector2.new(point.X - position.X, point.Y - position.Y)
+	end,
+
+	GetOverlay = function()
+		return viewportOverlay
+	end,
+
+	IsSceneVisible = function()
+		local _, size = getRenderBounds()
+		return panel.Visible and rootOverlay.Enabled and not scriptRoot.Visible and not picker.isActive()
+			and size.X > 0 and size.Y > 0
+	end,
+
+	SetSelectionTool = function(tool)
+		if selectionTool ~= tool then
+			selectionTool = tool
+			updateGizmos()
+		end
+	end,
+
+	GetSelectionTool = function()
+		return selectionTool
 	end,
 
 	ScreenToViewportPoint = screenToViewportPoint,

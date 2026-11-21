@@ -49,6 +49,12 @@ local menu = {
 					local imported = export_service:ImportFile(file)
 					if imported then
 						util.parent(imported)
+						if not imported:IsA("DataModel") and not imported:IsA("Service")
+							and imported.Parent ~= nil then
+							UI.history.recordParents("Import " .. imported.Name, {
+								{ object = imported, before = nil, after = imported.Parent },
+							})
+						end
 
 						UI.toast("creation", {
 							type = "success",
@@ -116,6 +122,7 @@ local menu = {
 					Sync.stop()
 				end
 				Preferences.set("sessionProject", "")
+				UI.history.clear()
 				local gui = game.CoreGui.Home
 				if gui then
 					gui.Enabled = true
