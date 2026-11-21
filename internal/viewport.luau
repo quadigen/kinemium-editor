@@ -964,8 +964,10 @@ local function updateCamera2D()
 end
 
 UserInputService.InputBegan:Connect(function(input)
-	if input.UserInputType ~= Enum.UserInputType.MouseButton3
-		or not is2DViewportOpen() or not viewportSettings.viewportCameraControls
+	if
+		input.UserInputType ~= Enum.UserInputType.MouseButton3
+		or not is2DViewportOpen()
+		or not viewportSettings.viewportCameraControls
 	then
 		return
 	end
@@ -1045,7 +1047,9 @@ local lastGridCFrame, lastGridFocus, lastGridSize, lastGridOrigin, lastGridDimen
 local function updateGrid()
 	updateGrid2D()
 	grid.Visible = workspace.Dimension ~= Enum.Dimension.D2
-		and viewportSettings.viewportGrid and not scriptRoot.Visible and rootOverlay.Enabled
+		and viewportSettings.viewportGrid
+		and not scriptRoot.Visible
+		and rootOverlay.Enabled
 	if not grid.Visible then
 		return
 	end
