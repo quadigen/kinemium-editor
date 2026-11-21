@@ -730,9 +730,21 @@ SignalPipe:Connect(function(signal, value)
 				height = 320
 			end
 
+			local overlaySize = UI.widgetOverlay().AbsoluteSize
+			local windowX, windowY = 120, 140
+			local margin = 16
+			if overlaySize.X > 0 then
+				windowX = math.min(windowX, math.max(margin, overlaySize.X - margin))
+				width = math.min(width, math.max(1, overlaySize.X - windowX - margin))
+			end
+			if overlaySize.Y > 0 then
+				windowY = math.min(windowY, math.max(margin, overlaySize.Y - margin))
+				height = math.min(height, math.max(1, overlaySize.Y - windowY - margin))
+			end
+
 			local window, _, _, windowControls = UI.window(
 				windowName,
-				UDim2.fromOffset(120, 140),
+				UDim2.fromOffset(windowX, windowY),
 				UDim2.fromOffset(width, height),
 				type(value.Title) == "string" and value.Title or "Plugin",
 				{
@@ -751,13 +763,16 @@ SignalPipe:Connect(function(signal, value)
 
 			window.Parent = UI.widgetOverlay()
 			window.Visible = value.Visible ~= false
+			window.ClipsDescendants = true
 
 			local page = windowControls and windowControls.pages and windowControls.pages.Content
 
 			if page then
+				page.ClipsDescendants = true
 				value.Object.Parent = page
 				value.Object.Position = UDim2.new()
 				value.Object.Size = UDim2.new(1, 0, 1, 0)
+				value.Object.ClipsDescendants = true
 			end
 
 			pluginDockWindows[value.Id] = window

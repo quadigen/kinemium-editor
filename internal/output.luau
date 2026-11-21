@@ -19,13 +19,17 @@ panel.window.Parent = UI.root()
 Preferences.observe("showOutput", function(value) panel.window.Visible = value end)
 panel.gui:Destroy()
 
-renderer.Pool.new("2d", function()
-	local output = theme.OutputCoordinates
-	local dragging = docker.Update(panel.window, "Output")
+local lastPosition = output.Position
+local lastSize = output.Size
 
-	if not dragging then
+renderer.Pool.new("2d", function()
+	local coordinates = StudioThemeService.SelectedTheme.OutputCoordinates
+	local dragging = docker.Update(panel.window, "Output")
+	if not dragging and (coordinates.Position ~= lastPosition or coordinates.Size ~= lastSize) then
+		lastPosition = coordinates.Position
+		lastSize = coordinates.Size
 		panel.window.AnchorPoint = Vector2.new(0, 0)
-		panel.window.Position = output.Position
-		panel.window.Size = output.Size
+		panel.window.Position = lastPosition
+		panel.window.Size = lastSize
 	end
 end)

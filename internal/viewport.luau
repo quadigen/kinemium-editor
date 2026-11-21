@@ -1023,12 +1023,10 @@ renderer.Pool.new("2da", function()
 		lastHeight = renderHeight
 	end
 
-	if renderer.Dimension == "3D" then
-		if rootOverlay.Enabled then
-			renderer:Set3DTexProps(absoluteX, renderTop, absoluteWidth, renderHeight)
-		else
-			renderer:Set3DTexProps(0, 0, 0, 0)
-		end
+	if rootOverlay.Enabled then
+		renderer:SetViewportRect(absoluteX, renderTop, absoluteWidth, renderHeight)
+	else
+		renderer:SetViewportRect(0, 0, 0, 0)
 	end
 
 	local overlayInset = math.max(0, renderTop - absoluteY)
