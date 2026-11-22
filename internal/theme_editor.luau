@@ -88,16 +88,23 @@ return function(scroller)
     local dropdowns = {}
     local disposed = false
     local rebuild
+    local rebuildSerial = 0
     local picker
     local sections = {}
     local sectionByCard = {}
     local sectionGap = UI.tokens.space.lg
     local rowGap = UI.tokens.space.xs
+    local valueWidth = 220
+    local valueInset = valueWidth + 8
 
     -- This engine doesn't reliably include nested AutomaticSize frames in a
     -- ScrollingFrame's automatic canvas bounds. Measure the sections ourselves.
     scroller.AutomaticCanvasSize = Enum.AutomaticSize.None
     scroller.ScrollingEnabled = true
+    scroller.ScrollingDirection = Enum.ScrollingDirection.Y
+    -- Enter the Themes page from its header, never from a previous category's
+    -- retained scroll offset. Rebuilding within this page preserves scroll.
+    scroller.CanvasPosition = Vector2.new(0, 0)
 
     local function updateCanvas()
         local height = 12 + math.max(0, #sections - 1) * sectionGap
@@ -158,14 +165,16 @@ return function(scroller)
             measureSection(meta)
         end
         if label then
-            local name = UI.label(frame, label, UDim2.fromOffset(4, 5), UDim2.new(1, -188, 0, 22), UI.tokens.type.small, colors.text)
+            local name = UI.label(frame, label, UDim2.fromOffset(4, 5), UDim2.new(1, -(valueInset + 12), 0, 22), UI.tokens.type.small, colors.text)
             name.TextWrapped = false
         end
         return frame
     end
 
     local function action(parent, text, x, width, onClick, danger)
-        return UI.button(parent, text, UDim2.new(x, 0, 0, 3), UDim2.fromOffset(width, 26), onClick, {
+        -- x is a pixel offset. Fractional positioning spread actions far apart
+        -- and made them collide when the Settings window was resized.
+        return UI.button(parent, text, UDim2.fromOffset(x, 3), UDim2.fromOffset(width, 26), onClick, {
             color = colors.input, hoverColor = colors.hover, textColor = danger and colors.error or colors.text,
             textSize = UI.tokens.type.small, radius = UI.tokens.radius.sm, border = false,
         })
@@ -183,7 +192,7 @@ return function(scroller)
             return tostring(value or "")
         end
         local button, label, controller = UI.dropdown(parent, current,
-            UDim2.new(1, -186, 0, 3), UDim2.fromOffset(172, 25),
+            UDim2.new(1, -valueInset, 0, 3), UDim2.fromOffset(valueWidth, 25),
             "builtin://global-icons/chevron-down.svg", {
                 items = items, showSearch = #items > 12, maxVisibleItems = 9,
                 menuWidth = 200, menuParent = UI.contextMenuOverlay(),
@@ -290,6 +299,15 @@ return function(scroller)
 
     rebuild = function()
         if disposed then return end
+        -- A rebuild briefly clears the scroll canvas. Remember the previous
+        -- position before clearing, then restore it after the new bounds exist.
+        local previousScrollY = scroller.CanvasPosition.Y
+        rebuildSerial += 1
+        local serial = rebuildSerial
+        -- A newly applied theme can change the spacing tokens. Re-measure with
+        -- the current values instead of reusing gaps from the previous theme.
+        sectionGap = UI.tokens.space.lg
+        rowGap = UI.tokens.space.xs
         for _, controller in ipairs(dropdowns) do
             if controller and controller.Close then controller:Close() end
         end
@@ -302,6 +320,9 @@ return function(scroller)
         sectionByCard = {}
         UI.forgetButtons(root)
         UI.clear(root)
+        UI.create("UIPadding", {
+            PaddingTop = UDim.new(0, 12),
+        }, root)
         UI.create("UIListLayout", {
             SortOrder = Enum.SortOrder.LayoutOrder,
             Padding = UDim.new(0, UI.tokens.space.lg),
@@ -319,8 +340,8 @@ return function(scroller)
             task.defer(rebuild)
         end)
         local nameRow = row(management, "Theme Name", 2)
-        local nameInput = UI.input(nameRow, "Name your theme", UDim2.new(1, -178, 0, 3),
-            UDim2.fromOffset(172, 25), { text = draftName, maxLength = 64 })
+        local nameInput = UI.input(nameRow, "Name your theme", UDim2.new(1, -valueInset, 0, 3),
+            UDim2.fromOffset(valueWidth, 25), { text = draftName, maxLength = 64 })
         nameInput.FocusLost:Connect(function()
             draftName = nameInput.Text
         end)
@@ -330,12 +351,12 @@ return function(scroller)
             draftName = nameInput.Text
             if save() then task.defer(rebuild) end
         end)
-        action(controls, "Restore Source", 0.34, 122, function()
+        action(controls, "Restore Source", 128, 122, function()
             draft = UI.getThemeSpec(sourceName)
             selectedSaved = UI.isCustomTheme(sourceName) and sourceName or nil
             task.defer(rebuild)
         end)
-        action(controls, "Delete Saved", 0.68, 109, function()
+        action(controls, "Delete Saved", 258, 109, function()
             if not UI.isCustomTheme(sourceName) then
                 notify("Only saved custom themes can be deleted", false)
                 return
@@ -353,7 +374,7 @@ return function(scroller)
         local exchange = section("Share Themes", "Import or export a theme JSON file.")
         local exchangeRow = row(exchange, nil, 1, 34)
         action(exchangeRow, "Import JSON", 0, 130, performImport)
-        action(exchangeRow, "Export JSON", 0.42, 130, performExport)
+        action(exchangeRow, "Export JSON", 138, 130, performExport)
 
         local fontSection = section("Typography", "Font family, weight, style, and sizes.")
         local fontRow = row(fontSection, "Font Family", 1)
@@ -380,33 +401,44 @@ return function(scroller)
 
         -- Theme-wide ImageLabel background for editor windows.
         local background = section("Window Background", "Image behind editor windows.")
-        local imageRow = row(background, "Image Source", 1)
+        -- Paths need more space than a normal token value. Place the editable
+        -- path on a full-width second line rather than truncating it to 172px.
+        local imageRow = row(background, nil, 1, 60)
+        UI.label(imageRow, "Image Source", UDim2.fromOffset(4, 2),
+            UDim2.new(1, -8, 0, 19), UI.tokens.type.small, colors.text)
         local imageField = UI.input(imageRow, "No image selected",
-            UDim2.new(1, -186, 0, 3), UDim2.fromOffset(172, 25),
+            UDim2.fromOffset(4, 27), UDim2.new(1, -8, 0, 26),
             { text = draft.window.backgroundImage, maxLength = 2048 })
 
-        local previewRow = row(background, nil, 3, 86)
-        local preview = UI.image(previewRow, draft.window.backgroundImage,
-            UDim2.fromOffset(4, 3), UDim2.new(1, -8, 1, -6))
-        preview.ScaleType = Enum.ScaleType[draft.window.backgroundImageScaleType]
-        preview.ImageTransparency = draft.window.backgroundImageTransparency
-        local overlay = UI.frame(previewRow, UDim2.fromOffset(4, 3),
-            UDim2.new(1, -8, 1, -6), colors.panel)
-        overlay.BackgroundTransparency = draft.window.contentTransparency
-        overlay.ZIndex = preview.ZIndex + 1
-        local emptyPreview = UI.label(previewRow, "No background selected",
-            UDim2.fromOffset(8, 3), UDim2.new(1, -16, 1, -6),
-            UI.tokens.type.small, colors.muted)
-        emptyPreview.TextXAlignment = Enum.TextXAlignment.Center
+        -- An empty theme should not reserve a large, unusable preview area.
+        -- Create a compact preview only when a source has actually been set.
+        local preview
+        local overlay
+        if draft.window.backgroundImage ~= "" then
+            local previewRow = row(background, nil, 3, 90)
+            preview = UI.image(previewRow, draft.window.backgroundImage,
+                UDim2.fromOffset(4, 3), UDim2.new(1, -8, 1, -6))
+            preview.ScaleType = Enum.ScaleType[draft.window.backgroundImageScaleType]
+            preview.ImageTransparency = draft.window.backgroundImageTransparency
+            overlay = UI.frame(previewRow, UDim2.fromOffset(4, 3),
+                UDim2.new(1, -8, 1, -6), colors.panel)
+            overlay.BackgroundTransparency = draft.window.contentTransparency
+            overlay.ZIndex = preview.ZIndex + 1
+        end
 
         local function updatePreview()
-            local visible = draft.window.backgroundImage ~= ""
-            preview.Image = draft.window.backgroundImage
-            preview.Visible = visible
-            overlay.Visible = visible
-            emptyPreview.Visible = not visible
+            local hasImage = draft.window.backgroundImage ~= ""
+            if (preview ~= nil) ~= hasImage then
+                -- The total section height changes when preview appears or
+                -- disappears. Rebuild so scroll bounds are recalculated.
+                task.defer(rebuild)
+                return
+            end
+            if preview then
+                preview.Image = draft.window.backgroundImage
+                preview.Visible = hasImage
+            end
         end
-        updatePreview()
 
         imageField.FocusLost:Connect(function()
             if draft.window.backgroundImage ~= imageField.Text then
@@ -433,7 +465,7 @@ return function(scroller)
                 updatePreview()
             end)
         end)
-        action(browseRow, "Remove Image", 0.5, 125, function()
+        action(browseRow, "Remove Image", 140, 125, function()
             draft.window.backgroundImage = ""
             selectedSaved = nil
             imageField.Text = ""
@@ -444,7 +476,7 @@ return function(scroller)
         dropdown(scaleRow, draft.window.backgroundImageScaleType,
             { "Crop", "Fit", "Stretch" }, function(value)
                 draft.window.backgroundImageScaleType = value
-                preview.ScaleType = Enum.ScaleType[value]
+                if preview then preview.ScaleType = Enum.ScaleType[value] end
                 selectedSaved = nil
             end)
 
@@ -455,15 +487,15 @@ return function(scroller)
                 return tostring(math.floor((inverse and (1 - value) or value) * 100 + 0.5))
             end
             local field = UI.input(optionRow, "0-100",
-                UDim2.new(1, -186, 0, 3), UDim2.fromOffset(172, 25),
+                UDim2.new(1, -valueInset, 0, 3), UDim2.fromOffset(valueWidth, 25),
                 { text = displayed(), maxLength = 3 })
             field.FocusLost:Connect(function()
                 local value = tonumber(field.Text)
                 if value and value >= 0 and value <= 100 and value % 1 == 0 then
                     draft.window[key] = inverse and (1 - value / 100) or (value / 100)
-                    if key == "backgroundImageTransparency" then
+                    if key == "backgroundImageTransparency" and preview then
                         preview.ImageTransparency = draft.window[key]
-                    elseif key == "contentTransparency" then
+                    elseif key == "contentTransparency" and overlay then
                         overlay.BackgroundTransparency = draft.window[key]
                     end
                     selectedSaved = nil
@@ -483,19 +515,19 @@ return function(scroller)
             { title = "Corner Radii", hint = "Adjust control rounding.", key = "radius" },
             { title = "Text Sizes", hint = "Interface text sizes in pixels.", key = "type" },
         }
-        local textSection = fontSection
         local index = 1
         for _, group in ipairs(groups) do
-            local card = group.key == "type" and textSection or section(group.title, group.hint)
+            local card = section(group.title, group.hint)
             local keys = {}
             for key in pairs(draft[group.key]) do table.insert(keys, key) end
             table.sort(keys)
             for _, token in ipairs(keys) do
-                local tokenRow = row(card, token, group.key == "type" and index + 3 or index)
+                local tokenLabel = token:gsub("(%l)(%u)", "%1 %2"):gsub("^%l", string.upper)
+                local tokenRow = row(card, tokenLabel, index)
                 local value = draft[group.key][token]
                 if group.key == "color" then
-                    local field = UI.input(tokenRow, "#RRGGBB", UDim2.new(1, -178, 0, 3),
-                        UDim2.fromOffset(137, 25), { text = toHex(value), maxLength = 7 })
+                    local field = UI.input(tokenRow, "#RRGGBB", UDim2.new(1, -valueInset, 0, 3),
+                        UDim2.fromOffset(valueWidth - 32, 25), { text = toHex(value), maxLength = 7 })
                     local swatch, _, swatchRecord
                     local function reflectColor(color)
                         field.Text = toHex(color)
@@ -509,7 +541,7 @@ return function(scroller)
                         end
                     end
                     swatch, _, swatchRecord = UI.button(tokenRow, "",
-                        UDim2.new(1, -34, 0, 4), UDim2.fromOffset(27, 23), function()
+                        UDim2.new(1, -33, 0, 4), UDim2.fromOffset(25, 23), function()
                             if picker then
                                 picker:Destroy()
                                 picker = nil
@@ -555,8 +587,8 @@ return function(scroller)
                         end
                     end)
                 else
-                    local field = UI.input(tokenRow, "Pixels", UDim2.new(1, -178, 0, 3),
-                        UDim2.fromOffset(171, 25), { text = tostring(value), maxLength = 3 })
+                    local field = UI.input(tokenRow, "Pixels", UDim2.new(1, -valueInset, 0, 3),
+                        UDim2.fromOffset(valueWidth, 25), { text = tostring(value), maxLength = 3 })
                     field.FocusLost:Connect(function()
                         local n = tonumber(field.Text)
                         local min, max = group.key == "type" and 8 or 0,
@@ -574,6 +606,11 @@ return function(scroller)
             end
         end
         updateCanvas()
+        task.defer(function()
+            if disposed or serial ~= rebuildSerial or root.Parent ~= scroller then return end
+            local maximumY = math.max(0, scroller.CanvasSize.Y.Offset - scroller.AbsoluteSize.Y)
+            scroller.CanvasPosition = Vector2.new(0, math.clamp(previousScrollY, 0, maximumY))
+        end)
     end
 
     root.Destroying:Connect(function()
