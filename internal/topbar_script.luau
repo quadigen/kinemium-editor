@@ -4,6 +4,7 @@ end
 
 local fip = require("@internal/fip")
 local profiler = require("@internal/profiler")
+local debugger = require("@internal/debugger")
 local dep_explorer = require("@internal/dependency_explorer")
 
 return {
@@ -25,6 +26,13 @@ return {
 			end,
 		},
 
+		{
+			name = "Debugger",
+			icon = "Stop.svg",
+			callback = function()
+				debugger.Toggle()
+			end,
+		},
 		{
 			name = "Dependencies",
 			icon = "Stop.svg",

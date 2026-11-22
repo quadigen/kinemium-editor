@@ -6085,6 +6085,23 @@ function CodeEditor:wireEditor()
 			return
 		end
 
+		if shortcuts and keyCode == Enum.KeyCode.F9 then
+			local currentScript = self:ActiveScript()
+			local toggleBreakpoint = UI.shared().toggleDebugBreakpoint
+			if currentScript and type(toggleBreakpoint) == "function" then
+				local currentLine = lineColumn(
+					self.TextBox.Text, math.max(self.TextBox.CursorPosition or 1, 1)
+				)
+				if toggleBreakpoint(currentScript, currentLine) then
+					self:notify("Breakpoint toggled · line " .. tostring(currentLine))
+				else
+					self:notify("Could not update breakpoint · see Debugger panel")
+				end
+				self.TextBox.KeyHandled = true
+				return
+			end
+		end
+
 		if shortcuts and keyCode == Enum.KeyCode.F8 then
 			self:goToDiagnostic()
 			self.TextBox.KeyHandled = true
