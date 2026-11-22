@@ -758,7 +758,7 @@ return function(ctx)
 				ClipsDescendants = true,
 			}, menuOverlay())
 
-			UI.corner(menu, options.radius or UI.tokens.radius.sm)
+			UI.corner(menu, options.radius or UI.tokens.radius.sm, options.radius == nil and "sm" or nil)
 
 			if options.backdrop then
 				UI.create("UIBackdrop", {

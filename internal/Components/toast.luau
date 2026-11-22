@@ -119,7 +119,7 @@ return function(ctx)
 			ZIndex = zIndex,
 		}, root)
 
-		UI.corner(frame, options.radius or UI.tokens.radius.md)
+		UI.corner(frame, options.radius or UI.tokens.radius.md, options.radius == nil and "md" or nil)
 
 		local border = UI.stroke(frame, options.borderColor or colors.borderStrong, options.borderThickness or 1, 1)
 

@@ -343,7 +343,7 @@ return function(ctx)
 						ZIndex = z,
 					}, menu.list)
 
-					UI.corner(row, options.itemRadius or UI.tokens.radius.sm)
+					UI.corner(row, options.itemRadius or UI.tokens.radius.sm, options.itemRadius == nil and "sm" or nil)
 
 					local record = {
 						button = row,

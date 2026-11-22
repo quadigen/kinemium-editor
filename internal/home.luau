@@ -266,7 +266,13 @@ SignalPipe:Connect(function(signal, value)
 				return color[key] or fallback
 			end
 
+			-- Native/custom themes may supply a full style spec in addition to colors.
 			UI.registerTheme(value.Name, {
+				basedOn = value.BasedOn,
+				font = type(value.Font) == "table" and value.Font or nil,
+				radius = type(value.Radius) == "table" and value.Radius or nil,
+				space = type(value.Space) == "table" and value.Space or nil,
+				type = type(value.Type) == "table" and value.Type or nil,
 				color = {
 					canvas = c("Canvas", Color3.fromRGB(30, 30, 46)),
 					panel = c("Panel", Color3.fromRGB(30, 30, 46)),

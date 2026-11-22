@@ -27,7 +27,7 @@ return function(ctx)
 
 		local filletRadius = options.tabFilletRadius or 8
 
-		local panel = UI.frame(UI.root(), position, size, colors.panel, radius)
+		local panel = UI.frame(UI.root(), position, size, colors.panel, radius, options.radius == nil and "md" or nil)
 
 		panel.Name = name
 		panel:SetAttribute("Dockable", draggable and options.dockable ~= false)
@@ -344,7 +344,7 @@ return function(ctx)
 			tabsController = controller
 		end
 
-		local clip = UI.frame(panel, UDim2.fromOffset(0, 0), UDim2.new(1, 0, 1, 0), colors.panel, radius)
+		local clip = UI.frame(panel, UDim2.fromOffset(0, 0), UDim2.new(1, 0, 1, 0), colors.panel, radius, options.radius == nil and "md" or nil)
 
 		clip.Name = "WindowClip"
 		clip.BackgroundTransparency = 1

@@ -31,7 +31,7 @@ return function(ctx)
 			ClipsDescendants = true,
 		}, parent)
 
-		UI.corner(pad, options.radius or UI.tokens.radius.xs)
+		UI.corner(pad, options.radius or UI.tokens.radius.xs, options.radius == nil and "xs" or nil)
 		UI.stroke(pad, options.borderColor or colors.border, 1, 0)
 
 		local centerX =

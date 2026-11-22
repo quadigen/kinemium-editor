@@ -111,8 +111,8 @@ return function(ctx)
 
 		local radius = options.radius or UI.tokens.radius.sm
 
-		if radius and radius > 0 then
-			UI.corner(button, radius)
+		if options.radius == nil or (radius and radius > 0) then
+			UI.corner(button, radius, options.radius == nil and "sm" or nil)
 		end
 
 		local label = UI.label(

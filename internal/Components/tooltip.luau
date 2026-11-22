@@ -88,7 +88,7 @@ return function(ctx)
 			ZIndex = options.zIndex or 100000,
 		}, root)
 
-		UI.corner(tooltip, options.cornerRadius or UI.tokens.radius.sm)
+		UI.corner(tooltip, options.cornerRadius or UI.tokens.radius.sm, options.cornerRadius == nil and "sm" or nil)
 
 		local stroke = UI.stroke(tooltip, options.borderColor or colors.borderStrong, options.borderThickness or 1, 1)
 

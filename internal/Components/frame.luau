@@ -1,7 +1,7 @@
 return function(ctx)
 	local UI = ctx.UI
 
-	function UI.frame(parent, position, size, color, radius)
+	function UI.frame(parent, position, size, color, radius, cornerRole)
 		local frame = UI.create("Frame", {
 
 			Position = position or UDim2.fromOffset(0, 0),
@@ -13,8 +13,8 @@ return function(ctx)
 			BorderSizePixel = 0,
 		}, parent)
 
-		if radius and radius > 0 then
-			UI.corner(frame, radius)
+		if radius and (radius > 0 or cornerRole) then
+			UI.corner(frame, radius, cornerRole)
 		end
 
 		return frame

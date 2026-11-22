@@ -15,10 +15,17 @@ local shared = {
 	themeObjects = setmetatable({}, { __mode = "k" }),
 	themeBindings = setmetatable({}, { __mode = "k" }),
 	themeFontFaces = setmetatable({}, { __mode = "k" }),
+	themeCornerRoles = setmetatable({}, { __mode = "k" }),
 	themes = {},
 	themeOrder = {},
 	themeListeners = {},
 	themeName = "Dark",
+	appearanceOptions = {
+		font = "Theme Default",
+		corners = "Theme Default",
+		density = "Theme Default",
+		textSize = "Theme Default",
+	},
 	trackedRoots = setmetatable({}, { __mode = "k" }),
 	focusInputs = setmetatable({}, { __mode = "k" }),
 	focusInputConnection = nil,
@@ -311,6 +318,8 @@ function UI.track(object)
 			or object:IsA("UIGradient")
 			or object:IsA("UIShadow")
 			or object:IsA("UIBackdrop")
+			or object:IsA("UIPadding")
+			or object:IsA("UIListLayout")
 		)
 	then
 		shared.themeObjects[object] = true
@@ -740,6 +749,74 @@ do
 		},
 	})
 
+	-- A preset describes the entire visual language, not just its palette.
+	-- These fonts are bundled with Kinemium and do not require a network request.
+	local APPEARANCE_FONTS = {
+		Montserrat = "builtin://fonts/Montserrat-Regular.ttf",
+		Roboto = "builtin://fonts/Roboto-Regular.ttf",
+		["Source Sans 3"] = "builtin://fonts/SourceSans3-Regular.ttf",
+		Nunito = "builtin://fonts/Nunito-Regular.ttf",
+		Ubuntu = "builtin://fonts/Ubuntu-Regular.ttf",
+		Arimo = "builtin://fonts/Arimo-Regular.ttf",
+		["Google Sans Code"] = "builtin://fonts/GoogleSansCode-Regular.ttf",
+		["Roboto Mono"] = "builtin://fonts/RobotoMono-Regular.ttf",
+	}
+
+	local THEME_APPEARANCE = {
+		Dark = { font = "Montserrat", radius = { xs = 3, sm = 4, md = 6 }, space = { xs = 3, sm = 5, md = 8, lg = 12 } },
+		Light = { font = "Source Sans 3", radius = { xs = 4, sm = 6, md = 9 }, space = { xs = 3, sm = 6, md = 9, lg = 13 } },
+		Blue = { font = "Nunito", radius = { xs = 5, sm = 8, md = 12 }, space = { xs = 4, sm = 6, md = 10, lg = 14 } },
+		Night = { font = "Roboto", radius = { xs = 1, sm = 2, md = 3 }, space = { xs = 2, sm = 4, md = 7, lg = 10 } },
+		["Catppuccin Mocha"] = { font = "Nunito", radius = { xs = 6, sm = 10, md = 14 }, space = { xs = 4, sm = 7, md = 10, lg = 15 } },
+		Void = { font = "Google Sans Code", radius = { xs = 0, sm = 1, md = 2 }, space = { xs = 2, sm = 3, md = 6, lg = 9 }, type = { caption = 10, small = 11, body = 12, title = 13 } },
+		Red = { font = "Ubuntu", radius = { xs = 2, sm = 3, md = 4 }, space = { xs = 3, sm = 5, md = 7, lg = 11 } },
+	}
+
+	for name, appearance in pairs(THEME_APPEARANCE) do
+		local theme = shared.themes[name]
+		theme.font.family = APPEARANCE_FONTS[appearance.font]
+		theme.radius = copyTable(appearance.radius)
+		theme.space = copyTable(appearance.space)
+		if appearance.type then
+			theme.type = copyTable(appearance.type)
+		end
+	end
+
+	local CORNER_STYLES = {
+		Square = { xs = 0, sm = 0, md = 0 },
+		Subtle = { xs = 1, sm = 3, md = 5 },
+		Rounded = { xs = 6, sm = 9, md = 13 },
+		Pill = { xs = 10, sm = 16, md = 22 },
+	}
+	local DENSITY_STYLES = {
+		Compact = { xs = 2, sm = 3, md = 5, lg = 8 },
+		Comfortable = { xs = 3, sm = 5, md = 8, lg = 12 },
+		Spacious = { xs = 5, sm = 8, md = 12, lg = 18 },
+	}
+	local TEXT_STYLES = {
+		Small = { caption = 10, small = 11, body = 12, title = 13 },
+		Normal = { caption = 11, small = 12, body = 13, title = 14 },
+		Large = { caption = 12, small = 14, body = 16, title = 18 },
+	}
+
+	local function applyAppearanceOptions(spec)
+		local options = shared.appearanceOptions
+		local family = APPEARANCE_FONTS[options.font]
+		if family then
+			spec.font.family = family
+		end
+		for key, value in pairs(CORNER_STYLES[options.corners] or {}) do
+			spec.radius[key] = value
+		end
+		for key, value in pairs(DENSITY_STYLES[options.density] or {}) do
+			spec.space[key] = value
+		end
+		for key, value in pairs(TEXT_STYLES[options.textSize] or {}) do
+			spec.type[key] = value
+		end
+		return spec
+	end
+
 	function UI.getTheme()
 		return shared.themeName
 	end
@@ -866,7 +943,7 @@ do
 		end)
 	end
 
-	local function applyToInstance(instance, maps, radiusMap, typeMap, font)
+	local function applyToInstance(instance, maps, radiusMap, spaceMap, typeMap, font)
 		if instance == nil then
 			return
 		end
@@ -925,15 +1002,27 @@ do
 			applyColorProperty(instance, "ScrollBarImageColor3", maps.stroke)
 		end
 
-		if className == "UICorner" then
+		if className == "UIPadding" and next(spaceMap) ~= nil then
+			for _, property in ipairs({ "PaddingLeft", "PaddingRight", "PaddingTop", "PaddingBottom" }) do
+				local current = instance[property]
+				if current.Scale == 0 and spaceMap[current.Offset] ~= nil then
+					instance[property] = UDim.new(0, spaceMap[current.Offset])
+				end
+			end
+		elseif instance:IsA("UIListLayout") and next(spaceMap) ~= nil then
+			local current = instance.Padding
+			if current.Scale == 0 and spaceMap[current.Offset] ~= nil then
+				instance.Padding = UDim.new(0, spaceMap[current.Offset])
+			end
+		elseif className == "UICorner" then
 			local ok, corner = pcall(function()
 				return instance.CornerRadius
 			end)
 
 			if ok and typeof(corner) == "UDim" and corner.Scale == 0 then
-				local mapped = radiusMap[corner.Offset]
-
-				if mapped then
+				local role = shared.themeCornerRoles[instance]
+				local mapped = role and UI.tokens.radius[role] or radiusMap[corner.Offset]
+				if mapped ~= nil then
 					pcall(function()
 						instance.CornerRadius = UDim.new(0, mapped)
 					end)
@@ -1079,7 +1168,7 @@ do
 		end
 	end
 
-	local function applyThemeNow(spec, maps, radiusMap, typeMap)
+	local function applyThemeNow(spec, maps, radiusMap, spaceMap, typeMap)
 		for key, value in pairs(spec.color) do
 			UI.tokens.color[key] = value
 		end
@@ -1088,7 +1177,7 @@ do
 		syncLegacyColors()
 
 		for instance in pairs(shared.themeObjects) do
-			applyToInstance(instance, maps, radiusMap, typeMap, spec.font)
+			applyToInstance(instance, maps, radiusMap, spaceMap, typeMap, spec.font)
 		end
 
 		applyButtonRecords(maps)
@@ -1117,7 +1206,7 @@ do
 		syncLegacyColors()
 
 		for instance in pairs(shared.themeObjects) do
-			applyToInstance(instance, maps, transition.radiusMap, transition.typeMap, transition.font)
+			applyToInstance(instance, maps, transition.radiusMap, transition.spaceMap, transition.typeMap, transition.font)
 		end
 
 		applyButtonRecords(maps)
@@ -1128,12 +1217,13 @@ do
 		end
 	end
 
-	local function beginThemeTransition(name, spec, old, radiusMap, typeMap)
+	local function beginThemeTransition(name, spec, old, radiusMap, spaceMap, typeMap)
 		local transition = {
 			name = name,
 			target = spec.color,
 			previous = old.color,
 			radiusMap = radiusMap,
+			spaceMap = spaceMap,
 			typeMap = typeMap,
 			font = spec.font,
 			elapsed = 0,
@@ -1173,11 +1263,12 @@ do
 			syncLegacyColors()
 
 			local stepRadiusMap = firstStep and radiusMap or EMPTY_MAP
+			local stepSpaceMap = firstStep and spaceMap or EMPTY_MAP
 			local stepTypeMap = firstStep and typeMap or EMPTY_MAP
 			local stepFont = firstStep and spec.font or nil
 
 			for instance in pairs(shared.themeObjects) do
-				applyToInstance(instance, maps, stepRadiusMap, stepTypeMap, stepFont)
+				applyToInstance(instance, maps, stepRadiusMap, stepSpaceMap, stepTypeMap, stepFont)
 			end
 
 			applyButtonRecords(maps)
@@ -1199,6 +1290,10 @@ do
 
 		local spec = resolveTheme(name)
 
+		if spec then
+			spec = applyAppearanceOptions(spec)
+		end
+
 		if not spec then
 			return false, "unknown theme: " .. tostring(name)
 		end
@@ -1208,6 +1303,7 @@ do
 		local old = {
 			color = copyTable(UI.tokens.color),
 			radius = copyTable(UI.tokens.radius),
+			space = copyTable(UI.tokens.space),
 			type = copyTable(UI.tokens.type),
 		}
 
@@ -1222,6 +1318,7 @@ do
 
 		local maps = buildColorMaps(old.color, spec.color)
 		local radiusMap = buildNumberMap(old.radius, spec.radius)
+		local spaceMap = buildNumberMap(old.space, spec.space)
 		local typeMap = buildNumberMap(old.type, spec.type)
 
 		local animate = not instant
@@ -1231,7 +1328,7 @@ do
 			and next(shared.themeObjects) ~= nil
 
 		if not animate then
-			applyThemeNow(spec, maps, radiusMap, typeMap)
+			applyThemeNow(spec, maps, radiusMap, spaceMap, typeMap)
 
 			shared.themeName = name
 
@@ -1240,9 +1337,30 @@ do
 			return true
 		end
 
-		beginThemeTransition(name, spec, old, radiusMap, typeMap)
+		beginThemeTransition(name, spec, old, radiusMap, spaceMap, typeMap)
 
 		return true
+	end
+
+	function UI.setAppearanceOption(key, value)
+		if shared.appearanceOptions[key] == nil or type(value) ~= "string" then
+			return false, "unknown appearance option"
+		end
+		if value ~= "Theme Default" then
+			local options = { font = APPEARANCE_FONTS, corners = CORNER_STYLES, density = DENSITY_STYLES, textSize = TEXT_STYLES }
+			if not options[key][value] then
+				return false, "unknown appearance value"
+			end
+		end
+		if shared.appearanceOptions[key] ~= value then
+			shared.appearanceOptions[key] = value
+			UI.setTheme(shared.themeName, true)
+		end
+		return true
+	end
+
+	function UI.getAppearanceOption(key)
+		return shared.appearanceOptions[key]
 	end
 
 	function UI.setMonochrome(value)
@@ -1291,7 +1409,7 @@ do
 			end
 			syncLegacyColors()
 			for instance in pairs(shared.themeObjects) do
-				applyToInstance(instance, maps, transition.radiusMap, transition.typeMap, transition.font)
+				applyToInstance(instance, maps, transition.radiusMap, transition.spaceMap, transition.typeMap, transition.font)
 			end
 			applyButtonRecords(maps)
 			applyThemeBindings()
@@ -1664,6 +1782,14 @@ if studioAvailable and Studio then
 			UI.setMonochrome(Studio:GetSetting(key, false) == true)
 		elseif key == "reduceMotion" then
 			UI.setReduceMotion(Studio:GetSetting(key, false) == true)
+		elseif key == "appearanceFont" then
+			UI.setAppearanceOption("font", Studio:GetSetting(key, "Theme Default"))
+		elseif key == "appearanceCorners" then
+			UI.setAppearanceOption("corners", Studio:GetSetting(key, "Theme Default"))
+		elseif key == "appearanceDensity" then
+			UI.setAppearanceOption("density", Studio:GetSetting(key, "Theme Default"))
+		elseif key == "appearanceTextSize" then
+			UI.setAppearanceOption("textSize", Studio:GetSetting(key, "Theme Default"))
 		elseif key == "diagnostics" then
 			shared.scriptDiagnostics = Studio:GetSetting(key, true) ~= false
 		elseif key == "theme" then
@@ -1678,7 +1804,7 @@ if studioAvailable and Studio then
 	if Studio.SettingChanged then
 		shared._studioSettingConn = Studio.SettingChanged:Connect(applyStudioPreference)
 	end
-	for _, key in ipairs({ "reduceMotion", "diagnostics", "theme", "monochrome" }) do
+	for _, key in ipairs({ "reduceMotion", "diagnostics", "theme", "monochrome", "appearanceFont", "appearanceCorners", "appearanceDensity", "appearanceTextSize" }) do
 		applyStudioPreference(key)
 	end
 end
