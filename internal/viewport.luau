@@ -341,8 +341,9 @@ local toolbar, toolControls =
 		selected = activeTool,
 		buttonSize = toolButtonSize,
 		iconSize = 18,
-		padding = 2,
-		gap = 2,
+		paddingToken = "xs",
+		gapToken = "xs",
+		animateResize = false,
 		color = tokens.color.surface,
 		radius = tokens.radius.md,
 	})
@@ -379,7 +380,6 @@ toolControls.Changed:Connect(function(name, value)
 	updateGizmos()
 end)
 
-local STYLE_BAR_GAP = 10
 local MENU_GAP = 8
 
 if renderer.Dimension == "3D" then
@@ -391,8 +391,9 @@ if renderer.Dimension == "3D" then
 		orientation = "vertical",
 		buttonSize = toolButtonSize,
 		iconSize = 18,
-		padding = 2,
-		gap = 2,
+		paddingToken = "xs",
+		gapToken = "xs",
+		animateResize = false,
 		color = tokens.color.surface,
 		radius = tokens.radius.md,
 	})
@@ -1175,7 +1176,7 @@ renderer.Pool.new("2da", function()
 	if styleBar then
 		styleBar.Position = UDim2.fromOffset(
 			toolbar.Position.X.Offset,
-			toolbar.Position.Y.Offset + toolbar.AbsoluteSize.Y + STYLE_BAR_GAP
+			toolbar.Position.Y.Offset + toolbar.AbsoluteSize.Y + tokens.space.md
 		)
 
 		placeMenu(colorPicker, "Color")

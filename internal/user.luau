@@ -26,6 +26,7 @@ local ICONS = {
 }
 
 local Preferences = require("@internal/preferences")
+local BuildThemeEditor = require("@internal/theme_editor")
 
 local function SetImage(session, image)
 	local ok, profile = MatrixService:GetProfile(session)
@@ -80,7 +81,7 @@ local function buildCategories()
 							key = "theme",
 							title = "Theme",
 							description = "Theme used throughout the interface.",
-							items = { "Dark", "Light", "Blue", "Night", "Catppuccin Mocha", "Void", "Red" },
+							items = UI.getThemes(),
 						},
 						{
 							kind = "dropdown",
@@ -205,6 +206,13 @@ local function buildCategories()
 			},
 		},
 
+		{
+			name = "Themes",
+			icon = "builtin://icons/Settings.svg",
+			description = "Design, save, import, and share complete Studio themes.",
+			themeEditor = true,
+			sections = {},
+		},
 		{
 			name = "Editor",
 			icon = ICONS.editor or ICONS.general,
@@ -640,7 +648,7 @@ return function(parent, createProfileButton)
 		local categories = buildCategories()
 
 		-- Sidebar groups (like Obsidian's "Options" / "Core plugins" headings)
-		local OPTION_CATEGORIES = { General = true, Editor = true, Studio = true, Projects = true }
+		local OPTION_CATEGORIES = { General = true, Themes = true, Editor = true, Studio = true, Projects = true }
 
 		local function groupOf(category)
 			return category.group or (OPTION_CATEGORIES[category.name] and "Options" or "Advanced")
@@ -855,6 +863,7 @@ return function(parent, createProfileButton)
 			end
 
 			if row.kind == "dropdown" then
+				if row.key == "theme" then row.items = UI.getThemes() end
 				local enabled = row.disabledKey == nil or not Preferences.get(row.disabledKey)
 
 				local dropdown
@@ -1052,8 +1061,12 @@ return function(parent, createProfileButton)
 			closeDropdowns()
 			clearKeepingLayout(scroller)
 
-			for index, section in ipairs(category.sections) do
-				createSection(section, index)
+			if category.themeEditor then
+				BuildThemeEditor(scroller)
+			else
+				for index, section in ipairs(category.sections) do
+					createSection(section, index)
+				end
 			end
 
 			if not keepScroll then

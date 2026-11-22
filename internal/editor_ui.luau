@@ -14,6 +14,7 @@ local shared = {
 
 	themeObjects = setmetatable({}, { __mode = "k" }),
 	themeBindings = setmetatable({}, { __mode = "k" }),
+	themeSpacingBindings = setmetatable({}, { __mode = "k" }),
 	themeFontFaces = setmetatable({}, { __mode = "k" }),
 	themeCornerRoles = setmetatable({}, { __mode = "k" }),
 	themes = {},
@@ -190,7 +191,7 @@ UI.tokens = {
 	space = { xs = 3, sm = 5, md = 8, lg = 12 },
 	radius = { xs = 3, sm = 4, md = 6 },
 	type = { caption = 11, small = 12, body = 13, title = 14 },
-	font = { family = "builtin://fonts/Montserrat-Regular.ttf" },
+	font = { family = "builtin://fonts/Montserrat-Regular.ttf", weight = Enum.FontWeight.Regular, style = Enum.FontStyle.Normal },
 }
 
 local function themedFont(font)
@@ -198,15 +199,8 @@ local function themedFont(font)
 		return nil
 	end
 
-	if font.weight then
-		local ok, face = pcall(Font.new, font.family, font.weight)
-
-		if ok then
-			return face
-		end
-	end
-
-	local ok, face = pcall(Font.new, font.family)
+	local ok, face = pcall(Font.new, font.family,
+		font.weight or Enum.FontWeight.Regular, font.style or Enum.FontStyle.Normal)
 
 	return ok and face or nil
 end
@@ -228,7 +222,11 @@ local function fontFaceKey(face)
 		return face.Weight
 	end)
 
+	local styleOk, style = pcall(function()
+		return face.Style
+	end)
 	return tostring(family) .. "|" .. tostring(weightOk and weight or "")
+		.. "|" .. tostring(styleOk and style or "")
 end
 
 local function isAlive(instance)
@@ -399,7 +397,7 @@ do
 				md = theme.CornerRadius or 6,
 			},
 			type = { caption = 11, small = 12, body = 13, title = 14 },
-			font = { family = "builtin://fonts/Montserrat-Regular.ttf" },
+			font = { family = "builtin://fonts/Montserrat-Regular.ttf", weight = Enum.FontWeight.Regular, style = Enum.FontStyle.Normal },
 		}
 	end
 
@@ -821,6 +819,26 @@ do
 		return shared.themeName
 	end
 
+	-- Return an independent, fully resolved token snapshot for editing/export.
+	function UI.getThemeSpec(name)
+		local spec = resolveTheme(name)
+		return spec and mergeSpec(spec, {}) or nil
+	end
+
+	function UI.unregisterTheme(name)
+		if type(name) ~= "string" or not shared.themes[name] then
+			return false
+		end
+		shared.themes[name] = nil
+		for index, value in ipairs(shared.themeOrder) do
+			if value == name then
+				table.remove(shared.themeOrder, index)
+				break
+			end
+		end
+		return true
+	end
+
 	function UI.getThemes()
 		local list = {}
 
@@ -853,6 +871,24 @@ do
 
 		table.insert(bindings, { property = property, key = key })
 
+		return instance
+	end
+
+	-- Pixel distances are ambiguous (e.g. a deliberate 3px toolbar gap may
+	-- equal space.xs). Only explicitly bound layout properties follow density.
+	function UI.bindSpacing(instance, property, token)
+		if not instance or type(property) ~= "string" or UI.tokens.space[token] == nil then
+			return instance
+		end
+		local bindings = shared.themeSpacingBindings[instance]
+		if not bindings then
+			bindings = {}
+			shared.themeSpacingBindings[instance] = bindings
+		end
+		bindings[property] = token
+		pcall(function()
+			instance[property] = UDim.new(0, UI.tokens.space[token])
+		end)
 		return instance
 	end
 
@@ -943,7 +979,7 @@ do
 		end)
 	end
 
-	local function applyToInstance(instance, maps, radiusMap, spaceMap, typeMap, font)
+	local function applyToInstance(instance, maps, radiusMap, typeMap, font)
 		if instance == nil then
 			return
 		end
@@ -1002,19 +1038,7 @@ do
 			applyColorProperty(instance, "ScrollBarImageColor3", maps.stroke)
 		end
 
-		if className == "UIPadding" and next(spaceMap) ~= nil then
-			for _, property in ipairs({ "PaddingLeft", "PaddingRight", "PaddingTop", "PaddingBottom" }) do
-				local current = instance[property]
-				if current.Scale == 0 and spaceMap[current.Offset] ~= nil then
-					instance[property] = UDim.new(0, spaceMap[current.Offset])
-				end
-			end
-		elseif instance:IsA("UIListLayout") and next(spaceMap) ~= nil then
-			local current = instance.Padding
-			if current.Scale == 0 and spaceMap[current.Offset] ~= nil then
-				instance.Padding = UDim.new(0, spaceMap[current.Offset])
-			end
-		elseif className == "UICorner" then
+		if className == "UICorner" then
 			local ok, corner = pcall(function()
 				return instance.CornerRadius
 			end)
@@ -1108,10 +1132,24 @@ do
 			if isAlive(instance) then
 				for _, binding in ipairs(bindings) do
 					local value = resolveToken(binding.key)
-
 					if value ~= nil then
 						pcall(function()
 							instance[binding.property] = value
+						end)
+					end
+				end
+			end
+		end
+		for instance, bindings in pairs(shared.themeSpacingBindings) do
+			if isAlive(instance) then
+				for property, token in pairs(bindings) do
+					local pixels = UI.tokens.space[token]
+					if pixels ~= nil then
+						pcall(function()
+							local desired = UDim.new(0, pixels)
+							if instance[property] ~= desired then
+								instance[property] = desired
+							end
 						end)
 					end
 				end
@@ -1168,7 +1206,7 @@ do
 		end
 	end
 
-	local function applyThemeNow(spec, maps, radiusMap, spaceMap, typeMap)
+	local function applyThemeNow(spec, maps, radiusMap, typeMap)
 		for key, value in pairs(spec.color) do
 			UI.tokens.color[key] = value
 		end
@@ -1177,7 +1215,7 @@ do
 		syncLegacyColors()
 
 		for instance in pairs(shared.themeObjects) do
-			applyToInstance(instance, maps, radiusMap, spaceMap, typeMap, spec.font)
+			applyToInstance(instance, maps, radiusMap, typeMap, spec.font)
 		end
 
 		applyButtonRecords(maps)
@@ -1206,7 +1244,7 @@ do
 		syncLegacyColors()
 
 		for instance in pairs(shared.themeObjects) do
-			applyToInstance(instance, maps, transition.radiusMap, transition.spaceMap, transition.typeMap, transition.font)
+			applyToInstance(instance, maps, transition.radiusMap, transition.typeMap, transition.font)
 		end
 
 		applyButtonRecords(maps)
@@ -1217,13 +1255,12 @@ do
 		end
 	end
 
-	local function beginThemeTransition(name, spec, old, radiusMap, spaceMap, typeMap)
+	local function beginThemeTransition(name, spec, old, radiusMap, typeMap)
 		local transition = {
 			name = name,
 			target = spec.color,
 			previous = old.color,
 			radiusMap = radiusMap,
-			spaceMap = spaceMap,
 			typeMap = typeMap,
 			font = spec.font,
 			elapsed = 0,
@@ -1263,12 +1300,11 @@ do
 			syncLegacyColors()
 
 			local stepRadiusMap = firstStep and radiusMap or EMPTY_MAP
-			local stepSpaceMap = firstStep and spaceMap or EMPTY_MAP
 			local stepTypeMap = firstStep and typeMap or EMPTY_MAP
 			local stepFont = firstStep and spec.font or nil
 
 			for instance in pairs(shared.themeObjects) do
-				applyToInstance(instance, maps, stepRadiusMap, stepSpaceMap, stepTypeMap, stepFont)
+				applyToInstance(instance, maps, stepRadiusMap, stepTypeMap, stepFont)
 			end
 
 			applyButtonRecords(maps)
@@ -1303,7 +1339,6 @@ do
 		local old = {
 			color = copyTable(UI.tokens.color),
 			radius = copyTable(UI.tokens.radius),
-			space = copyTable(UI.tokens.space),
 			type = copyTable(UI.tokens.type),
 		}
 
@@ -1318,7 +1353,6 @@ do
 
 		local maps = buildColorMaps(old.color, spec.color)
 		local radiusMap = buildNumberMap(old.radius, spec.radius)
-		local spaceMap = buildNumberMap(old.space, spec.space)
 		local typeMap = buildNumberMap(old.type, spec.type)
 
 		local animate = not instant
@@ -1328,7 +1362,7 @@ do
 			and next(shared.themeObjects) ~= nil
 
 		if not animate then
-			applyThemeNow(spec, maps, radiusMap, spaceMap, typeMap)
+			applyThemeNow(spec, maps, radiusMap, typeMap)
 
 			shared.themeName = name
 
@@ -1337,7 +1371,7 @@ do
 			return true
 		end
 
-		beginThemeTransition(name, spec, old, radiusMap, spaceMap, typeMap)
+		beginThemeTransition(name, spec, old, radiusMap, typeMap)
 
 		return true
 	end
@@ -1409,7 +1443,7 @@ do
 			end
 			syncLegacyColors()
 			for instance in pairs(shared.themeObjects) do
-				applyToInstance(instance, maps, transition.radiusMap, transition.spaceMap, transition.typeMap, transition.font)
+				applyToInstance(instance, maps, transition.radiusMap, transition.typeMap, transition.font)
 			end
 			applyButtonRecords(maps)
 			applyThemeBindings()
@@ -1777,6 +1811,9 @@ local studioAvailable, Studio = pcall(function()
 	return game:GetService("Studio")
 end)
 if studioAvailable and Studio then
+	-- Restore validated custom themes before applying the selected theme name.
+	require("@internal/theme_store")(UI)
+
 	local function applyStudioPreference(key)
 		if key == "monochrome" then
 			UI.setMonochrome(Studio:GetSetting(key, false) == true)

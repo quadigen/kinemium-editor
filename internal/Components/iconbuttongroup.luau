@@ -31,8 +31,10 @@ return function(ctx)
 		local vertical = options.orientation == "vertical"
 		local mode = options.mode or "momentary"
 		local defaultSize = options.buttonSize or Vector2.new(28, 21)
-		local gap = options.gap or 4
-		local pad = options.padding or 1
+		local gapToken = options.gapToken
+		local paddingToken = options.paddingToken
+		local gap = (gapToken and tokens.space[gapToken]) or options.gap or 4
+		local pad = (paddingToken and tokens.space[paddingToken]) or options.padding or 1
 		local iconSize = options.iconSize or 14
 		local animate = options.animate ~= false
 		local animateIn = animate and options.animateIn ~= false
@@ -79,12 +81,17 @@ return function(ctx)
 			ZIndex = group.ZIndex + 1,
 		}, group)
 
-		UI.create("UIPadding", {
+		local itemsPadding = UI.create("UIPadding", {
 			PaddingLeft = UDim.new(0, pad),
 			PaddingRight = UDim.new(0, pad),
 			PaddingTop = UDim.new(0, pad),
 			PaddingBottom = UDim.new(0, pad),
 		}, itemsFrame)
+		if paddingToken then
+			for _, property in ipairs({ "PaddingLeft", "PaddingRight", "PaddingTop", "PaddingBottom" }) do
+				UI.bindSpacing(itemsPadding, property, paddingToken)
+			end
+		end
 
 		local layout = UI.create("UIListLayout", {
 			FillDirection = vertical and Enum.FillDirection.Vertical or Enum.FillDirection.Horizontal,
@@ -93,6 +100,9 @@ return function(ctx)
 			SortOrder = Enum.SortOrder.LayoutOrder,
 			Padding = UDim.new(0, gap),
 		}, itemsFrame)
+		if gapToken then
+			UI.bindSpacing(layout, "Padding", gapToken)
+		end
 
 		local indicator = nil
 		if mode == "radio" then
@@ -352,17 +362,41 @@ return function(ctx)
 			end
 		end
 
-		connect(layout:GetPropertyChangedSignal("AbsoluteContentSize"), function()
+		local resizeTween
+		local function reflow()
+			if destroyed then
+				return
+			end
+			local currentPad = (paddingToken and tokens.space[paddingToken]) or pad
 			local content = layout.AbsoluteContentSize
-			local goal = vertical and UDim2.fromOffset(cross, content.Y + pad * 2)
-				or UDim2.fromOffset(content.X + pad * 2, cross)
-			if animate and group.Visible then
-				tween(group, { Size = goal }, 0.2)
+			-- The content bounds are supplied by the layout engine, not guessed from
+			-- the previous theme's gaps. Keep the outer container in sync.
+			if (vertical and content.Y <= 0) or (not vertical and content.X <= 0) then
+				return
+			end
+			-- The cross-axis size is known from the declared button sizes. Do not
+			-- depend on AbsoluteSize during first layout (it may still be zero).
+			local crossExtent = cross - pad * 2 + currentPad * 2
+			local goal = vertical and UDim2.fromOffset(crossExtent, content.Y + currentPad * 2)
+				or UDim2.fromOffset(content.X + currentPad * 2, crossExtent)
+			if resizeTween then
+				resizeTween:Cancel()
+				resizeTween = nil
+			end
+			if animate and options.animateResize ~= false and group.Visible then
+				resizeTween = tween(group, { Size = goal }, 0.2)
 			else
 				group.Size = goal
 			end
 			task.defer(refreshIndicator, true)
-		end)
+		end
+		connect(layout:GetPropertyChangedSignal("AbsoluteContentSize"), reflow)
+		local themeListener
+		if gapToken or paddingToken then
+			themeListener = UI.onThemeChanged(function()
+				task.defer(reflow)
+			end)
+		end
 
 		-- Staggered fade-in of the icons
 		local function playIn()
@@ -580,6 +614,14 @@ return function(ctx)
 
 		function controller:Destroy()
 			destroyed = true
+			if themeListener then
+				themeListener:Disconnect()
+				themeListener = nil
+			end
+			if resizeTween then
+				resizeTween:Cancel()
+				resizeTween = nil
+			end
 			for _, c in ipairs(connections) do
 				c:Disconnect()
 			end
@@ -590,6 +632,14 @@ return function(ctx)
 
 		group.Destroying:Connect(function()
 			destroyed = true
+			if themeListener then
+				themeListener:Disconnect()
+				themeListener = nil
+			end
+			if resizeTween then
+				resizeTween:Cancel()
+				resizeTween = nil
+			end
 			for _, c in ipairs(connections) do
 				c:Disconnect()
 			end
