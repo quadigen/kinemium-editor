@@ -7,7 +7,7 @@ local RunService = game:GetService("RunService")
 local tokens = UI.tokens
 local colors = tokens.color
 local PAD = tokens.space.lg
-local ROW = UI.metrics.treeRow or 24
+local ROW = UI.metrics.treeRow
 local TOOLBAR = 52
 local FOOTER = 31
 local SIDEBAR = 224
@@ -44,13 +44,14 @@ local function text(parent, label, x, y, width, height, color, size)
 end
 
 local function line(parent, y)
-	UI.frame(parent, UDim2.new(0, PAD, 0, y), UDim2.new(1, -PAD * 2, 0, 1), colors.border, 0)
+	UI.separator(parent, UDim2.new(0, PAD, 0, y), UDim2.new(1, -PAD * 2, 0, 1), colors.border)
 end
 
 local function surface(parent, name, position, size)
 	local widget = UI.frame(parent, position, size, colors.panel)
 	widget.Name = name
 	widget.BorderSizePixel = 0
+	widget.BackgroundTransparency = 1
 	return widget
 end
 
@@ -61,11 +62,22 @@ local function scroll(parent, name, position, size)
 		Size = size,
 		BackgroundTransparency = 1,
 		BorderSizePixel = 0,
-		CanvasSize = UDim2.fromOffset(0, 0),
+		CanvasSize = UDim2.new(1, 0, 0, 0),
+		CanvasPosition = Vector2.new(0, 0),
+		ScrollSpeed = 38,
+		SmoothScrollingEnabled = true,
+		ScrollSmoothness = 18,
+		ScrollBarAutoHide = true,
+		ScrollBarFadeDelay = 0.45,
+		ScrollBarFadeSpeed = 12,
+		ScrollBarImageTransparency = 0.4,
+		ScrollBarMinimumHandleSize = 24,
 		ScrollBarThickness = 5,
 		ScrollBarImageColor3 = colors.subtext,
 		ScrollingDirection = Enum.ScrollingDirection.Y,
 		ScrollingEnabled = true,
+		Active = true,
+		InputSink = true,
 		ClipsDescendants = true,
 	}, parent)
 end
@@ -149,6 +161,57 @@ local state = {
 	lastError = nil,
 }
 
+local request
+local playtest = game:GetService("PlaytestService")
+local remote = {
+	role = "Server",
+	activeRole = nil,
+	pending = false,
+	connected = false,
+	snapshot = nil,
+	pendingAction = nil,
+	queued = {},
+	synced = nil,
+	lastError = nil,
+}
+local function runningRole()
+	local ok, running = pcall(function() return playtest.IsRunning end)
+	if not ok or not running then return nil end
+	local server, client = 0, 0
+	pcall(function()
+		server = playtest.ServerProcessId or 0
+		client = playtest.ClientProcessId or 0
+	end)
+	if remote.role == "Server" and server > 0 then return "Server" end
+	if remote.role == "Client" and client > 0 then return "Client" end
+	if server > 0 then return "Server" end
+	if client > 0 then return "Client" end
+	return nil
+end
+
+local function breakpointSignature(points)
+	local keys = {}
+	for _, item in ipairs(points or {}) do
+		table.insert(keys, tostring(item.source) .. ":" .. tostring(item.line))
+	end
+	table.sort(keys)
+	return table.concat(keys, "|")
+end
+
+local function enqueueRemote(actionName, mode, id, frame)
+	if not runningRole() then return false end
+	if actionName ~= "detach" and not state.enabled then
+		request("DebugEnable", true)
+	end
+	table.insert(remote.queued, {
+		action = actionName,
+		mode = mode or "continue",
+		id = id or 0,
+		frame = frame or 0,
+	})
+	return true
+end
+
 local context
 local function resolveContext()
 	if context then
@@ -163,7 +226,7 @@ local function resolveContext()
 	return context
 end
 
-local function request(method, ...)
+request = function(method, ...)
 	local service = resolveContext()
 	if not service then
 		state.lastError = "ScriptContext is unavailable in this editor session"
@@ -216,65 +279,104 @@ local function goToSource(source, line)
 	return false
 end
 
-local function rowButton(parent, labelValue, index, handler, selected, secondary)
-	local button = UI.button(
-		parent,
-		labelValue,
-		UDim2.fromOffset(3, (index - 1) * ROW + 2),
-		UDim2.new(1, -8, 0, ROW - 2),
-		handler,
-		{
-			color = selected and colors.accentSoft or (index % 2 == 0 and colors.rowEven or colors.rowOdd),
-			hoverColor = colors.hover,
-			textColor = secondary and colors.subtext or colors.text,
-			textSize = tokens.type.small,
-			radius = 0,
-			border = false,
-			paddingX = 8,
-		}
-	)
-	button.Name = "DebuggerRow" .. tostring(index)
-	return button
+-- Each list owns a small reusable button pool. Scroll changes reposition its
+-- existing rows; even a project with hundreds of breakpoints only creates
+-- enough controls for the visible viewport and a few overscan rows.
+local OVERSCAN = 6
+local rowPools = {}
+local emptyLabels = {
+	[threadList] = text(threadList, "No paused threads", 12, 5, UDim2.new(1, -20, 0, ROW), ROW, colors.muted),
+	[frameList] = text(frameList, "Select a thread to inspect its call stack", 10, 4,
+		UDim2.new(1, -20, 0, ROW), ROW, colors.muted),
+	[variableList] = text(variableList, "No locals in this frame", 10, 4,
+		UDim2.new(1, -20, 0, ROW), ROW, colors.muted),
+	[breakpointList] = text(breakpointList, "Press F9 in a script to set a breakpoint", 12, 4,
+		UDim2.new(1, -24, 0, ROW), ROW, colors.muted),
+}
+
+local function visibleRange(list, count)
+	list.CanvasSize = UDim2.new(1, 0, 0, count * ROW + 5)
+	local start = math.max(1, math.floor(list.CanvasPosition.Y / ROW) - OVERSCAN + 1)
+	local viewRows = math.ceil(math.max(list.AbsoluteSize.Y, ROW * 10) / ROW) + OVERSCAN * 2
+	return start, math.min(count, start + math.min(viewRows, MAX_VISIBLE_ROWS) - 1)
 end
 
-local function populate(container, count)
-	container.CanvasSize = UDim2.fromOffset(0, math.max(0, count * ROW + 5))
+local function rowButton(parent, labelValue, index, slot, handler, selected, secondary, iconPath)
+	local pool = rowPools[parent]
+	if not pool then
+		pool = {}
+		rowPools[parent] = pool
+	end
+	local record = pool[slot]
+	if not record then
+		local button, caption, buttonRecord = UI.button(
+			parent, "", UDim2.fromOffset(3, 0),
+			UDim2.new(1, -8, 0, ROW - 2),
+			nil, {
+				color = colors.rowOdd,
+				hoverColor = colors.hover,
+				textColor = colors.text,
+				textSize = tokens.type.small,
+				radius = 0,
+				border = false,
+				paddingX = 8,
+				icon = iconPath,
+				iconSize = 14,
+			}
+		)
+		record = { button = button, label = caption, action = buttonRecord }
+		pool[slot] = record
+	end
+	local base = index % 2 == 0 and colors.rowEven or colors.rowOdd
+	record.button.Name = "DebuggerRow" .. tostring(index)
+	record.button.Position = UDim2.fromOffset(3, (index - 1) * ROW + 2)
+	record.button.Visible = true
+	record.label.Text = labelValue
+	record.label.TextColor3 = secondary and colors.subtext or colors.text
+	record.action.callback = handler
+	record.action.defaultColor = base
+	record.action.defaultHoverColor = colors.hover
+	UI.setButtonState(record.action, selected and "selected" or nil)
+	return record.button
+end
+
+local function hideUnused(parent, used)
+	for i = used + 1, #(rowPools[parent] or {}) do
+		local item = rowPools[parent][i]
+		item.button.Visible = false
+		item.action.callback = nil
+	end
 end
 
 local function refreshLists()
-	UI.clear(threadList)
-	UI.clear(frameList)
-	UI.clear(variableList)
-	UI.clear(breakpointList)
-
 	local threads = state.pausedThreads
-	for i, item in ipairs(threads) do
-		if i > MAX_VISIBLE_ROWS then
-			break
-		end
+	local first, last = visibleRange(threadList, #threads)
+	local used = 0
+	for i = first, last do
+		local item = threads[i]
 		local labelValue = ("%s · %s:%s"):format(
 			item.script ~= "" and item.script or ("Thread " .. tostring(item.id)),
-			tostring(item.source or "?"),
-			tostring(item.line or 0)
+			tostring(item.source or "?"), tostring(item.line or 0)
 		)
-		rowButton(threadList, labelValue, i, function()
+		used += 1
+		rowButton(threadList, labelValue, i, used, function()
 			state.selectedThread = item.id
 			state.selectedFrame = 0
 			refresh(true)
 		end, state.selectedThread == item.id)
 	end
-	populate(threadList, math.max(math.min(#threads, MAX_VISIBLE_ROWS), 1))
-	if #threads == 0 then
-		text(threadList, "No paused threads", 12, 5, UDim2.new(1, -20, 0, ROW), ROW, colors.muted)
-	end
+	hideUnused(threadList, used)
+	emptyLabels[threadList].Visible = #threads == 0
 
-	for i, item in ipairs(state.frames) do
-		if i > MAX_VISIBLE_ROWS then
-			break
-		end
+	local frames = state.frames
+	first, last = visibleRange(frameList, #frames)
+	used = 0
+	for i = first, last do
+		local item = frames[i]
 		local name = item.name or ""
 		local title = ("%s  :%s"):format(name ~= "" and name or "(anonymous)", tostring(item.line or 0))
-		rowButton(frameList, title, i, function()
+		used += 1
+		rowButton(frameList, title, i, used, function()
 			state.selectedFrame = item.depth or (i - 1)
 			if not goToSource(item.source, item.line) then
 				state.lastError = "The selected frame's script is not in this editor's DataModel"
@@ -282,51 +384,93 @@ local function refreshLists()
 			refresh(true)
 		end, state.selectedFrame == (item.depth or i - 1))
 	end
-	populate(frameList, math.max(math.min(#state.frames, MAX_VISIBLE_ROWS), 1))
+	hideUnused(frameList, used)
+	emptyLabels[frameList].Visible = #frames == 0
 
-	for i, variable in ipairs(state.locals) do
-		if i > MAX_VISIBLE_ROWS then
-			break
-		end
-		rowButton(
-			variableList,
-			("%s  =  %s"):format(variable.name or "?", variable.value or "nil"),
-			i,
-			nil,
-			false,
-			false
-		)
+	local vars = state.locals
+	first, last = visibleRange(variableList, #vars)
+	used = 0
+	for i = first, last do
+		local variable = vars[i]
+		used += 1
+		rowButton(variableList,
+			("%s = %s"):format(variable.name or "?", variable.value or "nil"),
+			i, used, nil, false, false)
 	end
-	if #state.locals == 0 then
-		text(variableList, "No locals in this frame", 10, 4, UDim2.new(1, -20, 0, ROW), ROW, colors.muted)
-	end
-	populate(variableList, math.max(math.min(#state.locals, MAX_VISIBLE_ROWS), 1))
+	hideUnused(variableList, used)
+	emptyLabels[variableList].Visible = #vars == 0
 
-	for i, point in ipairs(state.breakpoints) do
-		if i > MAX_VISIBLE_ROWS then
-			break
-		end
+	local points = state.breakpoints
+	first, last = visibleRange(breakpointList, #points)
+	used = 0
+	for i = first, last do
+		local point = points[i]
 		local source = point.source or "?"
-		local displayLine = point.resolvedLine and point.resolvedLine > 0 and tostring(point.resolvedLine)
-			or tostring(point.line)
-		local labelValue = ("●  %s  :%s    (click to remove)"):format(source, displayLine)
-		rowButton(breakpointList, labelValue, i, function()
-			request("DebugSetBreakpoint", source, point.line, false)
-			refresh(true)
-		end, false)
+		local line = point.resolvedLine and point.resolvedLine > 0 and point.resolvedLine or point.line
+		used += 1
+		rowButton(breakpointList, ("%s :%s  (click to remove)"):format(source, tostring(line)),
+			i, used, function()
+				request("DebugSetBreakpoint", source, point.line, false)
+				remote.synced = nil
+				refresh(true)
+			end, false, false, "builtin://icons/Script.svg")
 	end
-	if #state.breakpoints == 0 then
-		text(
-			breakpointList,
-			"No breakpoints. Open a script and press F9.",
-			12,
-			4,
-			UDim2.new(1, -24, 0, ROW),
-			ROW,
-			colors.muted
-		)
+	hideUnused(breakpointList, used)
+	emptyLabels[breakpointList].Visible = #points == 0
+end
+
+local scrollConnections = {}
+for _, list in ipairs({ threadList, frameList, variableList, breakpointList }) do
+	table.insert(scrollConnections, list:GetPropertyChangedSignal("CanvasPosition"):Connect(function()
+		if panel.Visible then refreshLists() end
+	end))
+end
+
+local function updateRemote()
+	local role = runningRole()
+	if role ~= remote.activeRole then
+		remote.activeRole = role
+		remote.pending = false
+		remote.connected = false
+		remote.snapshot = nil
+		remote.synced = nil
+		remote.lastError = nil
+		state.selectedThread = nil
+		state.selectedFrame = 0
 	end
-	populate(breakpointList, math.max(math.min(#state.breakpoints, MAX_VISIBLE_ROWS), 1))
+	if not role then return end
+	if remote.pending then
+		local result = request("DebugRemotePoll", role)
+		if type(result) == "table" then
+			remote.pending = false
+			remote.connected = true
+			remote.lastError = nil
+			remote.snapshot = result
+		elseif state.lastError then
+			remote.pending = false
+			remote.lastError = state.lastError
+		end
+		return
+	end
+	local localPoints = request("DebugGetBreakpoints") or {}
+	local signature = state.enabled and breakpointSignature(localPoints) or ""
+	local nextCommand = nil
+	-- User actions take precedence; otherwise synchronize pending breakpoint edits.
+	if #remote.queued > 0 then
+		nextCommand = remote.queued[1]
+	elseif state.enabled and remote.synced ~= signature then
+		nextCommand = { action = "sync", id = state.selectedThread or 0, frame = state.selectedFrame }
+	else
+		nextCommand = { action = "snapshot", id = state.selectedThread or 0, frame = state.selectedFrame }
+	end
+	if request("DebugRemoteSend", role, nextCommand.action,
+		nextCommand.id or 0, nextCommand.frame or 0, nextCommand.mode or "continue") then
+		if #remote.queued > 0 then table.remove(remote.queued, 1) end
+		if nextCommand.action == "sync" then remote.synced = signature end
+		remote.pending = true
+	elseif state.lastError then
+		remote.lastError = state.lastError
+	end
 end
 
 refresh = function(force)
@@ -343,8 +487,16 @@ refresh = function(force)
 		resultEnabled = ok and value == true
 	end
 	state.enabled = resultEnabled
-	state.pausedThreads = request("DebugGetPausedThreads") or {}
-	state.breakpoints = request("DebugGetBreakpoints") or {}
+	local localBreakpoints = request("DebugGetBreakpoints") or {}
+	local role = runningRole()
+	local snapshot = role and remote.snapshot or nil
+	if snapshot then
+		state.pausedThreads = snapshot.pausedThreads or {}
+		state.breakpoints = snapshot.breakpoints or localBreakpoints
+	else
+		state.pausedThreads = role and {} or (request("DebugGetPausedThreads") or {})
+		state.breakpoints = localBreakpoints
+	end
 	local current = state.selectedThread
 	local found = false
 	for _, thread in ipairs(state.pausedThreads) do
@@ -358,23 +510,41 @@ refresh = function(force)
 		state.selectedThread = current
 		state.selectedFrame = 0
 	end
-	state.frames = current and (request("DebugGetFrames", current) or {}) or {}
-	if state.selectedFrame >= #state.frames then
-		state.selectedFrame = 0
+	if snapshot then
+		state.frames = snapshot.frames or {}
+		state.locals = snapshot.locals or {}
+	else
+		state.frames = current and (request("DebugGetFrames", current) or {}) or {}
+		if state.selectedFrame >= #state.frames then state.selectedFrame = 0 end
+		state.locals = current and (request("DebugGetLocals", current, state.selectedFrame) or {}) or {}
 	end
-	state.locals = current and (request("DebugGetLocals", current, state.selectedFrame) or {}) or {}
-	if state.lastError then
+	if remote.lastError and role then
+		status.Text = remote.lastError
+		status.TextColor3 = colors.error
+	elseif state.lastError then
 		status.Text = state.lastError
 		status.TextColor3 = colors.error
+	elseif role and not state.enabled then
+		status.Text = ("Playtest %s is running. Attach to start debugging."):format(role)
+		status.TextColor3 = colors.subtext
+	elseif role and not remote.connected then
+		status.Text = ("Connecting to %s playtest debugger..."):format(role)
+		status.TextColor3 = colors.warning
+	elseif role and snapshot then
+		local count = #state.pausedThreads
+		status.Text = count > 0
+			and ("%s playtest paused · %d thread(s)"):format(role, count)
+			or ("%s playtest connected · waiting for breakpoint"):format(role)
+		status.TextColor3 = count > 0 and colors.warning or colors.success
 	elseif not state.enabled then
-		status.Text = "Debugger disabled · Local VM only; external playtest requires a debugger transport"
+		status.Text = "Debugger disabled · Set F9 breakpoints and attach before starting a playtest"
 		status.TextColor3 = colors.subtext
 	elseif #state.pausedThreads > 0 then
-		status.Text = ("%d paused thread(s) · Select a frame to inspect execution"):format(#state.pausedThreads)
+		status.Text = ("%d paused local thread(s)"):format(#state.pausedThreads)
 		status.TextColor3 = colors.warning
 	else
-		status.Text = "Debugger attached · Waiting for local Luau breakpoint"
-		status.TextColor3 = colors.success
+		status.Text = "No playtest running · Debugger armed for the next playtest"
+		status.TextColor3 = colors.subtext
 	end
 	local bits = { tostring(state.enabled), tostring(state.selectedThread), tostring(state.selectedFrame) }
 	for _, thread in ipairs(state.pausedThreads) do
@@ -403,37 +573,52 @@ local function selectedAction(mode)
 		refresh(true)
 		return
 	end
-	request("DebugResume", state.selectedThread, mode)
+	if runningRole() then
+		enqueueRemote("resume", mode, state.selectedThread, state.selectedFrame)
+	else
+		request("DebugResume", state.selectedThread, mode)
+	end
 	refresh(true)
 end
 
-action("Attach", 0, 96, function()
+action("Attach", 0, 79, function()
 	request("DebugEnable", true)
+	remote.synced = nil
 	refresh(true)
 end)
-action("Detach", 102, 94, function()
+action("Detach", 83, 79, function()
+	enqueueRemote("detach")
 	request("DebugEnable", false)
+	remote.synced = ""
 	refresh(true)
 end)
-action("Pause", 202, 78, function()
-	request("DebugPause")
+action("Pause", 166, 79, function()
+	if not enqueueRemote("pause") then request("DebugPause") end
 	refresh(true)
 end)
-action("Continue", 286, 104, function()
-	selectedAction("continue")
-end)
-action("Step Into", 396, 104, function()
-	selectedAction("into")
-end)
-action("Step Over", 506, 110, function()
-	selectedAction("over")
-end)
-action("Step Out", 622, 108, function()
-	selectedAction("out")
-end)
-action("Refresh", 736, 105, function()
+action("Continue", 249, 86, function() selectedAction("continue") end)
+action("Step Into", 339, 83, function() selectedAction("into") end)
+action("Step Over", 426, 84, function() selectedAction("over") end)
+action("Step Out", 514, 80, function() selectedAction("out") end)
+action("Refresh", 598, 79, function()
+	remote.synced = nil
 	refresh(true)
 end)
+local serverButton, _, serverRecord = action("Server", 682, 80, function()
+	remote.role = "Server"
+	refresh(true)
+end)
+local clientButton, _, clientRecord = action("Client", 766, 80, function()
+	remote.role = "Client"
+	refresh(true)
+end)
+local function markRoleButtons()
+	if UI.setButtonState then
+		UI.setButtonState(serverRecord, remote.role == "Server" and "selected" or nil)
+		UI.setButtonState(clientRecord, remote.role == "Client" and "selected" or nil)
+	end
+end
+markRoleButtons()
 
 local function toggleBreakpoint(scriptInstance, line)
 	if
@@ -464,6 +649,7 @@ local function toggleBreakpoint(scriptInstance, line)
 		end
 	end
 	local result = request("DebugSetBreakpoint", scriptInstance, n, enabled)
+	if result then remote.synced = nil end
 	refresh(true)
 	return result == true
 end
@@ -480,11 +666,14 @@ local heartbeat = RunService.Heartbeat:Connect(function(dt)
 		return
 	end
 	updateElapsed = 0
+	updateRemote()
+	markRoleButtons()
 	refresh()
 end)
 
 panel.Destroying:Connect(function()
 	heartbeat:Disconnect()
+	for _, connection in ipairs(scrollConnections) do connection:Disconnect() end
 	if UI.shared().toggleDebugBreakpoint == toggleBreakpoint then
 		UI.shared().toggleDebugBreakpoint = nil
 	end

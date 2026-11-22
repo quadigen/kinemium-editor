@@ -625,6 +625,9 @@ _, toolbarTabs = UI.tabs(nil, nil, nil, {
 	end,
 
 	onTabClicked = function(_, wasSelected)
+		print("hello world!")
+		print(wasSelected)
+		print(_)
 		if wasSelected then
 			setExpanded(not expanded)
 		end
