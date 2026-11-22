@@ -3,6 +3,7 @@ local UI = require("@internal/editor_ui")
 local Preferences = require("@internal/preferences")
 local Dialog = game:GetService("DialogService")
 local Filesystem = game:GetService("Filesystem")
+local BackgroundBundle = require("@internal/theme_background_bundle")
 
 local colors = UI.tokens.color
 local FONT_CHOICES = {
@@ -74,7 +75,7 @@ return function(scroller)
     local root = UI.frame(scroller, UDim2.fromOffset(0, 0), UDim2.new(1, -8, 0, 0), colors.panel)
     root.BackgroundTransparency = 1
     root.LayoutOrder = 1
-    root.AutomaticSize = Enum.AutomaticSize.Y
+    -- The canvas is measured explicitly below; AutomaticSize would fight it.
 
     local currentTheme = Preferences.get("theme")
     if currentTheme ~= sourceName and UI.getThemeSpec(currentTheme) then
@@ -88,31 +89,61 @@ return function(scroller)
     local disposed = false
     local rebuild
     local picker
+    local sections = {}
+    local sectionByCard = {}
+    local sectionGap = UI.tokens.space.lg
+    local rowGap = UI.tokens.space.xs
+
+    -- This engine doesn't reliably include nested AutomaticSize frames in a
+    -- ScrollingFrame's automatic canvas bounds. Measure the sections ourselves.
+    scroller.AutomaticCanvasSize = Enum.AutomaticSize.None
+    scroller.ScrollingEnabled = true
+
+    local function updateCanvas()
+        local height = 12 + math.max(0, #sections - 1) * sectionGap
+        for _, meta in ipairs(sections) do
+            height += meta.frame.Size.Y.Offset
+        end
+        root.Size = UDim2.new(1, -16, 0, height)
+        scroller.CanvasSize = UDim2.new(0, 0, 0, height + 20)
+    end
+
+    local function measureSection(meta)
+        local slots = meta.description and 3 or 2
+        local outerHeight = 24 + (meta.description and 18 or 0)
+            + (slots - 1) * UI.tokens.space.sm + meta.cardHeight
+        meta.card.Size = UDim2.new(1, 0, 0, meta.cardHeight)
+        meta.frame.Size = UDim2.new(1, 0, 0, outerHeight)
+    end
 
     local function section(title, description)
         local frame = UI.frame(root, UDim2.fromOffset(0, 0), UDim2.new(1, 0, 0, 0), colors.panel)
         frame.BackgroundTransparency = 1
-        frame.AutomaticSize = Enum.AutomaticSize.Y
         UI.create("UIListLayout", { SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, UI.tokens.space.sm) }, frame)
         local heading = UI.label(frame, title, UDim2.new(), UDim2.new(1, 0, 0, 24), UI.tokens.type.title, colors.text)
         heading.LayoutOrder = 1
         if description then
-            local hint = UI.label(frame, description, UDim2.new(), UDim2.new(1, 0, 0, 30), UI.tokens.type.caption, colors.subtext)
+            local hint = UI.label(frame, description, UDim2.new(), UDim2.new(1, 0, 0, 18), UI.tokens.type.caption, colors.subtext)
             hint.LayoutOrder = 2
-            hint.TextWrapped = true
-            hint.AutomaticSize = Enum.AutomaticSize.Y
+            hint.TextWrapped = false
         end
         local card = UI.card(frame, UDim2.new(), UDim2.new(1, 0, 0, 0), {
             color = colors.surface, radius = UI.tokens.radius.md, border = true,
             borderColor = colors.border, borderTransparency = 0.6,
         })
         card.LayoutOrder = 3
-        card.AutomaticSize = Enum.AutomaticSize.Y
         UI.create("UIPadding", {
             PaddingTop = UDim.new(0, UI.tokens.space.sm), PaddingBottom = UDim.new(0, UI.tokens.space.sm),
             PaddingLeft = UDim.new(0, UI.tokens.space.md), PaddingRight = UDim.new(0, UI.tokens.space.md),
         }, card)
-        UI.create("UIListLayout", { SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, UI.tokens.space.xs) }, card)
+        UI.create("UIListLayout", { SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, rowGap) }, card)
+        local meta = {
+            frame = frame, card = card, description = description ~= nil,
+            cardHeight = UI.tokens.space.sm * 2, count = 0,
+        }
+        table.insert(sections, meta)
+        sectionByCard[card] = meta
+        measureSection(meta)
         return card
     end
 
@@ -120,6 +151,12 @@ return function(scroller)
         local frame = UI.frame(parent, UDim2.new(), UDim2.new(1, 0, 0, height or 31), colors.surface)
         frame.BackgroundTransparency = 1
         frame.LayoutOrder = order
+        local meta = sectionByCard[parent]
+        if meta then
+            meta.cardHeight += (height or 31) + (meta.count > 0 and rowGap or 0)
+            meta.count += 1
+            measureSection(meta)
+        end
         if label then
             local name = UI.label(frame, label, UDim2.fromOffset(4, 5), UDim2.new(1, -188, 0, 22), UI.tokens.type.small, colors.text)
             name.TextWrapped = false
@@ -139,16 +176,25 @@ return function(scroller)
         for _, item in ipairs(options) do
             table.insert(items, { label = item.label or item, value = item.value or item })
         end
-        local button, _, controller = UI.dropdown(parent, current,
-            UDim2.new(1, -177, 0, 3), UDim2.fromOffset(171, 25),
+        local function display(value)
+            for _, item in ipairs(items) do
+                if item.value == value then return item.label end
+            end
+            return tostring(value or "")
+        end
+        local button, label, controller = UI.dropdown(parent, current,
+            UDim2.new(1, -186, 0, 3), UDim2.fromOffset(172, 25),
             "builtin://global-icons/chevron-down.svg", {
                 items = items, showSearch = #items > 12, maxVisibleItems = 9,
                 menuWidth = 200, menuParent = UI.contextMenuOverlay(),
                 color = colors.input, hoverColor = colors.hover,
                 borderColor = colors.border, radius = UI.tokens.radius.sm,
                 textSize = UI.tokens.type.small,
+                format = display,
                 onChanged = changed,
             })
+        button.ClipsDescendants = true
+        label.TextWrapped = false
         table.insert(dropdowns, controller)
         return button
     end
@@ -184,7 +230,12 @@ return function(scroller)
                 notify("Unable to read the selected file", false)
                 return
             end
-            local name, err = UI.importThemeJSON(data)
+            local unpacked, bundleError = BackgroundBundle.unpack(data, path)
+            if not unpacked then
+                notify(bundleError, false)
+                return
+            end
+            local name, err = UI.importThemeJSON(unpacked)
             if not name then
                 notify(err, false)
                 return
@@ -208,6 +259,11 @@ return function(scroller)
         local data, err = UI.exportThemeJSON(selectedSaved)
         if not data then notify(err, false); return end
         task.spawn(function()
+            local packaged, packageError = BackgroundBundle.pack(data)
+            if not packaged then
+                notify(packageError, false)
+                return
+            end
             local ok, folder = pcall(function() return Dialog:PickFolder() end)
             if disposed then return end
             if not ok then notify("Could not open the folder picker", false); return end
@@ -223,7 +279,7 @@ return function(scroller)
                 existsOK, exists = pcall(function() return Filesystem:PathExists(path) end)
             end
             if not existsOK or exists then notify("Cannot find a free export filename", false); return end
-            local wrote, result = pcall(function() return Filesystem:WriteFileAtomic(path, data) end)
+            local wrote, result = pcall(function() return Filesystem:WriteFileAtomic(path, packaged) end)
             if not wrote or result ~= true then
                 notify("Could not write the theme JSON", false)
                 return
@@ -242,6 +298,8 @@ return function(scroller)
             picker:Destroy()
             picker = nil
         end
+        sections = {}
+        sectionByCard = {}
         UI.forgetButtons(root)
         UI.clear(root)
         UI.create("UIListLayout", {
@@ -249,7 +307,7 @@ return function(scroller)
             Padding = UDim.new(0, UI.tokens.space.lg),
         }, root)
 
-        local management = section("Theme Library", "Choose a base theme, edit its tokens, then Save & Apply. Applying your own theme clears separate appearance overrides so your authored styling is visible.")
+        local management = section("Theme Library", "Edit a preset, then save and apply it.")
         local sourceRow = row(management, "Source Theme", 1)
         local names = UI.getThemes()
         table.sort(names)
@@ -292,12 +350,12 @@ return function(scroller)
             end)
         end, true)
 
-        local exchange = section("Share Themes", "Export a saved preset as a .json file, or import a theme someone shared with you.")
+        local exchange = section("Share Themes", "Import or export a theme JSON file.")
         local exchangeRow = row(exchange, nil, 1, 34)
         action(exchangeRow, "Import JSON", 0, 130, performImport)
         action(exchangeRow, "Export JSON", 0.42, 130, performExport)
 
-        local fontSection = section("Typography", "Set the interface font family and each text-size token.")
+        local fontSection = section("Typography", "Font family, weight, style, and sizes.")
         local fontRow = row(fontSection, "Font Family", 1)
         local options = {}
         local current = FONT_CHOICES[1].path
@@ -320,11 +378,110 @@ return function(scroller)
             selectedSaved = nil
         end)
 
+        -- Theme-wide ImageLabel background for editor windows.
+        local background = section("Window Background", "Image behind editor windows.")
+        local imageRow = row(background, "Image Source", 1)
+        local imageField = UI.input(imageRow, "No image selected",
+            UDim2.new(1, -186, 0, 3), UDim2.fromOffset(172, 25),
+            { text = draft.window.backgroundImage, maxLength = 2048 })
+
+        local previewRow = row(background, nil, 3, 86)
+        local preview = UI.image(previewRow, draft.window.backgroundImage,
+            UDim2.fromOffset(4, 3), UDim2.new(1, -8, 1, -6))
+        preview.ScaleType = Enum.ScaleType[draft.window.backgroundImageScaleType]
+        preview.ImageTransparency = draft.window.backgroundImageTransparency
+        local overlay = UI.frame(previewRow, UDim2.fromOffset(4, 3),
+            UDim2.new(1, -8, 1, -6), colors.panel)
+        overlay.BackgroundTransparency = draft.window.contentTransparency
+        overlay.ZIndex = preview.ZIndex + 1
+        local emptyPreview = UI.label(previewRow, "No background selected",
+            UDim2.fromOffset(8, 3), UDim2.new(1, -16, 1, -6),
+            UI.tokens.type.small, colors.muted)
+        emptyPreview.TextXAlignment = Enum.TextXAlignment.Center
+
+        local function updatePreview()
+            local visible = draft.window.backgroundImage ~= ""
+            preview.Image = draft.window.backgroundImage
+            preview.Visible = visible
+            overlay.Visible = visible
+            emptyPreview.Visible = not visible
+        end
+        updatePreview()
+
+        imageField.FocusLost:Connect(function()
+            if draft.window.backgroundImage ~= imageField.Text then
+                draft.window.backgroundImage = imageField.Text
+                selectedSaved = nil
+                updatePreview()
+            end
+        end)
+
+        local browseRow = row(background, nil, 2, 33)
+        action(browseRow, "Browse Image", 0, 132, function()
+            task.spawn(function()
+                local ok, path = pcall(function() return Dialog:PickFile() end)
+                if disposed or not ok or not path then return end
+                local extension = path:lower():match("%.([%a%d]+)$")
+                if not ({ png = true, jpg = true, jpeg = true, webp = true,
+                    gif = true, svg = true })[extension] then
+                    notify("Choose PNG, JPG, WebP, GIF or SVG", false)
+                    return
+                end
+                draft.window.backgroundImage = path
+                selectedSaved = nil
+                imageField.Text = path
+                updatePreview()
+            end)
+        end)
+        action(browseRow, "Remove Image", 0.5, 125, function()
+            draft.window.backgroundImage = ""
+            selectedSaved = nil
+            imageField.Text = ""
+            updatePreview()
+        end)
+
+        local scaleRow = row(background, "Image Scaling", 4)
+        dropdown(scaleRow, draft.window.backgroundImageScaleType,
+            { "Crop", "Fit", "Stretch" }, function(value)
+                draft.window.backgroundImageScaleType = value
+                preview.ScaleType = Enum.ScaleType[value]
+                selectedSaved = nil
+            end)
+
+        local function percentRow(label, key, order, inverse)
+            local optionRow = row(background, label, order)
+            local function displayed()
+                local value = draft.window[key]
+                return tostring(math.floor((inverse and (1 - value) or value) * 100 + 0.5))
+            end
+            local field = UI.input(optionRow, "0-100",
+                UDim2.new(1, -186, 0, 3), UDim2.fromOffset(172, 25),
+                { text = displayed(), maxLength = 3 })
+            field.FocusLost:Connect(function()
+                local value = tonumber(field.Text)
+                if value and value >= 0 and value <= 100 and value % 1 == 0 then
+                    draft.window[key] = inverse and (1 - value / 100) or (value / 100)
+                    if key == "backgroundImageTransparency" then
+                        preview.ImageTransparency = draft.window[key]
+                    elseif key == "contentTransparency" then
+                        overlay.BackgroundTransparency = draft.window[key]
+                    end
+                    selectedSaved = nil
+                else
+                    notify("Enter an opacity between 0 and 100", false)
+                end
+                field.Text = displayed()
+            end)
+        end
+
+        percentRow("Image Opacity %", "backgroundImageTransparency", 5, true)
+        percentRow("Panel Tint %", "contentTransparency", 6, true)
+
         local groups = {
-            { title = "Color Tokens", hint = "Enter a six-digit RGB hex value for each semantic color.", key = "color" },
-            { title = "Spacing Tokens", hint = "Pixel gaps and padding for theme-aware components.", key = "space" },
-            { title = "Corner Radii", hint = "Pixel corner rounding used by themed controls.", key = "radius" },
-            { title = "Text Sizes", hint = "Font sizes in pixels for interface labels.", key = "type" },
+            { title = "Color Tokens", hint = "Edit each color using hex or the picker.", key = "color" },
+            { title = "Spacing Tokens", hint = "Control layout spacing in pixels.", key = "space" },
+            { title = "Corner Radii", hint = "Adjust control rounding.", key = "radius" },
+            { title = "Text Sizes", hint = "Interface text sizes in pixels.", key = "type" },
         }
         local textSection = fontSection
         local index = 1
@@ -416,6 +573,7 @@ return function(scroller)
                 index += 1
             end
         end
+        updateCanvas()
     end
 
     root.Destroying:Connect(function()

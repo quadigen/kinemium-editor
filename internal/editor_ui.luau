@@ -192,6 +192,12 @@ UI.tokens = {
 	radius = { xs = 3, sm = 4, md = 6 },
 	type = { caption = 11, small = 12, body = 13, title = 14 },
 	font = { family = "builtin://fonts/Montserrat-Regular.ttf", weight = Enum.FontWeight.Regular, style = Enum.FontStyle.Normal },
+	window = {
+		backgroundImage = "",
+		backgroundImageTransparency = 0.18,
+		backgroundImageScaleType = "Crop",
+		contentTransparency = 0.78,
+	},
 }
 
 local function themedFont(font)
@@ -398,6 +404,14 @@ do
 			},
 			type = { caption = 11, small = 12, body = 13, title = 14 },
 			font = { family = "builtin://fonts/Montserrat-Regular.ttf", weight = Enum.FontWeight.Regular, style = Enum.FontStyle.Normal },
+			-- Keep the fallback stable across theme switches: never inherit the
+			-- currently active theme's window image into a different preset.
+			window = {
+				backgroundImage = "",
+				backgroundImageTransparency = 0.18,
+				backgroundImageScaleType = "Crop",
+				contentTransparency = 0.78,
+			},
 		}
 	end
 
@@ -515,6 +529,7 @@ do
 			radius = copyTable(spec.radius or {}),
 			type = copyTable(spec.type or {}),
 			font = copyTable(spec.font or {}),
+			window = copyTable(spec.window or {}),
 		}
 
 		if not shared.themes[name] then
@@ -533,9 +548,9 @@ do
 	end
 
 	local function mergeSpec(base, overrides)
-		local result = { color = {}, space = {}, radius = {}, type = {}, font = {} }
+		local result = { color = {}, space = {}, radius = {}, type = {}, font = {}, window = {} }
 
-		for _, section in ipairs({ "color", "space", "radius", "type", "font" }) do
+		for _, section in ipairs({ "color", "space", "radius", "type", "font", "window" }) do
 			for key, value in pairs(base[section] or {}) do
 				result[section][key] = value
 			end
@@ -1197,6 +1212,9 @@ do
 
 		for key, value in pairs(spec.font) do
 			UI.tokens.font[key] = value
+		end
+		for key, value in pairs(spec.window) do
+			UI.tokens.window[key] = value
 		end
 	end
 

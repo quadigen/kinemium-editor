@@ -1064,6 +1064,9 @@ return function(parent, createProfileButton)
 			if category.themeEditor then
 				BuildThemeEditor(scroller)
 			else
+				-- Restore automatic scrolling on regular Settings pages.
+				scroller.CanvasSize = UDim2.new()
+				scroller.AutomaticCanvasSize = Enum.AutomaticSize.Y
 				for index, section in ipairs(category.sections) do
 					createSection(section, index)
 				end

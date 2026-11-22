@@ -84,14 +84,21 @@ return function(ctx)
 			return label
 		end
 
+		local defaultWindow = UI.tokens.window
+		local initialImage = options.backgroundImage
+		if initialImage == nil then initialImage = defaultWindow.backgroundImage end
+		local initialTransparency = options.backgroundImageTransparency
+		if initialTransparency == nil then initialTransparency = defaultWindow.backgroundImageTransparency end
+		local initialScaleType = options.backgroundImageScaleType or defaultWindow.backgroundImageScaleType
+
 		backgroundImageLabel = createBackgroundImage(
-			options.backgroundImage,
-			options.backgroundImageTransparency,
+			initialImage,
+			initialTransparency,
 			options.backgroundImageColor,
-			options.backgroundImageScaleType
+			initialScaleType
 		)
 
-		local hasBackgroundImage = type(options.backgroundImage) == "string" and options.backgroundImage ~= ""
+		local hasBackgroundImage = type(initialImage) == "string" and initialImage ~= ""
 
 		backgroundImageLabel.Visible = hasBackgroundImage
 
@@ -301,7 +308,7 @@ return function(ctx)
 		if options.contentTransparency ~= nil then
 			content.BackgroundTransparency = options.contentTransparency
 		elseif hasBackgroundImage then
-			content.BackgroundTransparency = 1
+			content.BackgroundTransparency = defaultWindow.contentTransparency
 		end
 
 		local tabsController = nil
@@ -358,7 +365,11 @@ return function(ctx)
 				return value
 			end
 
-			return options[key]
+			if options[key] ~= nil then
+				return options[key]
+			end
+
+			return UI.tokens.window[key]
 		end
 
 		local function updateCorner(instance, cornerRadius)
@@ -388,7 +399,9 @@ return function(ctx)
 			local imageVisible = type(image) == "string" and image ~= ""
 
 			if imageVisible then
-				backgroundImageLabel.Image = image
+				if backgroundImageLabel.Image ~= image then
+					backgroundImageLabel.Image = image
+				end
 				backgroundImageLabel.ImageTransparency = styleValue(props, "backgroundImageTransparency") or 0
 				backgroundImageLabel.ImageColor3 = styleValue(props, "backgroundImageColor") or Color3.new(1, 1, 1)
 				backgroundImageLabel.ScaleType = resolveScaleType(styleValue(props, "backgroundImageScaleType"))
@@ -419,10 +432,12 @@ return function(ctx)
 
 			content.BackgroundColor3 = nextContentColor
 
-			local contentTransparency = styleValue(props, "contentTransparency")
-
+			local contentTransparency = props.contentTransparency
 			if contentTransparency == nil then
-				contentTransparency = backgroundImageLabel.Visible and 1 or 0
+				contentTransparency = options.contentTransparency
+			end
+			if contentTransparency == nil then
+				contentTransparency = imageVisible and UI.tokens.window.contentTransparency or 0
 			end
 
 			content.BackgroundTransparency = contentTransparency
@@ -508,7 +523,15 @@ return function(ctx)
 		controls.refreshBindings = {
 			UI.onComponentRefresh("window", applyOverrides),
 			UI.onComponentRefresh(componentKey, applyWindowComponent),
+			UI.onThemeChanged(function()
+				-- Refresh the current theme's background while retaining any
+				-- window-specific component overrides.
+				applyWindowComponent(UI.getComponentProps(componentKey))
+			end),
 		}
+
+		-- Restores component styling for windows created after a theme switch.
+		applyWindowComponent(UI.getComponentProps(componentKey))
 
 		panel.Destroying:Connect(function()
 			shared.windowBindings[windowKey] = nil

@@ -56,12 +56,30 @@ return function(UI)
         space = { 0, 48 }, radius = { 0, 64 }, type = { 8, 32 },
     }
 
+    local imageTypes = { png = true, jpg = true, jpeg = true, webp = true, gif = true, svg = true }
+    local scaleTypes = { Crop = true, Fit = true, Stretch = true }
+
+    local function validImageSource(source)
+        if type(source) ~= "string" or #source > 2048 or source:find("[%c]") then
+            return false
+        end
+        if source == "" then return true end
+        local extension = source:lower():match("%.([%w]+)$")
+        if not imageTypes[extension] then return false end
+        -- The ImageLabel renderer accepts installed builtin images,
+        -- project asset URIs and filesystem paths, not remote URLs.
+        if source:match("^%a+://") then
+            return source:sub(1, 10) == "builtin://" or source:sub(1, 10) == "project://"
+        end
+        return true
+    end
+
     -- Canonical full snapshot. Unknown keys or invalid values reject the file.
     local function normalize(source, serialized)
         if type(source) ~= "table" then
             return nil, "Theme tokens must be an object"
         end
-        local result = { color = {}, space = {}, radius = {}, type = {}, font = {} }
+        local result = { color = {}, space = {}, radius = {}, type = {}, font = {}, window = {} }
         for _, section in ipairs({ "color", "space", "radius", "type" }) do
             local values = source[section]
             if values ~= nil and type(values) ~= "table" then
@@ -122,6 +140,34 @@ return function(UI)
             return nil, "Unknown font style"
         end
         result.font.family, result.font.weight, result.font.style = family, weight, style
+
+        if source.window ~= nil and type(source.window) ~= "table" then
+            return nil, "Window options must be an object"
+        end
+        local window = source.window or {}
+        for key in pairs(window) do
+            if DEFAULT.window[key] == nil then
+                return nil, "Unknown window option: " .. tostring(key)
+            end
+        end
+        for key, defaultValue in pairs(DEFAULT.window) do
+            local value = window[key]
+            if value == nil then value = defaultValue end
+            if key == "backgroundImage" then
+                if not validImageSource(value) then
+                    return nil, "Window background must be an image file path or asset URI"
+                end
+            elseif key == "backgroundImageScaleType" then
+                if type(value) ~= "string" or not scaleTypes[value] then
+                    return nil, "Window image scaling must be Crop, Fit or Stretch"
+                end
+            else
+                if type(value) ~= "number" or value ~= value or value < 0 or value > 1 then
+                    return nil, "Window image opacity values must be between 0 and 1"
+                end
+            end
+            result.window[key] = value
+        end
         return result
     end
 
@@ -138,7 +184,8 @@ return function(UI)
                     weight = normalized.font.weight.Name,
                     style = normalized.font.style.Name,
                 },
-                space = normalized.space, radius = normalized.radius, type = normalized.type },
+                space = normalized.space, radius = normalized.radius, type = normalized.type,
+                window = normalized.window },
         }
         for key, value in pairs(normalized.color) do
             data.tokens.color[key] = hex(value)
