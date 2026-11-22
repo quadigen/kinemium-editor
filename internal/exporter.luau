@@ -127,7 +127,12 @@ scrollLayout.PaddingLeft = UDim.new(0, LIST_PAD)
 scrollLayout.Parent = scroll
 
 local function selectedPlatform()
-	if selected and sectionByName[selected] and not sectionByName[selected].page.Global and not sectionByName[selected].page.Unavailable then
+	if
+		selected
+		and sectionByName[selected]
+		and not sectionByName[selected].page.Global
+		and not sectionByName[selected].page.Unavailable
+	then
 		return selected
 	end
 	return nil
@@ -219,8 +224,11 @@ local function refreshPreview(section)
 	end
 
 	local name = section.page.Name
-	section.preview.Text =
-		string.format("Output: %s/%s", platformOutputFolder(values.General.outputDir, name, values.General.gameType), resolveOutput(name))
+	section.preview.Text = string.format(
+		"Output: %s/%s",
+		platformOutputFolder(values.General.outputDir, name, values.General.gameType),
+		resolveOutput(name)
+	)
 end
 
 local function applyEnabled(section)
@@ -374,7 +382,14 @@ local pages = {
 		Fields = {
 			ENABLED_FIELD,
 			{ key = "arch", label = "Architecture", type = "dropdown", options = { "x86_64" }, default = "x86_64" },
-			{ key = "mode", label = "Build Mode", type = "dropdown", options = MODES, default = "Release", unavailable = "Export uses prebuilt release templates." },
+			{
+				key = "mode",
+				label = "Build Mode",
+				type = "dropdown",
+				options = MODES,
+				default = "Release",
+				unavailable = "Export uses prebuilt release templates.",
+			},
 			{
 				key = "output",
 				label = "Output Name",
@@ -382,7 +397,14 @@ local pages = {
 				default = "Game.exe",
 				validate = fileName("Output name"),
 			},
-			{ key = "icon", label = "Icon", type = "text", default = "", placeholder = "path/to/icon.ico", tooltip = "Optional .ico path, absolute or relative to your project. Requires the Windows editor." },
+			{
+				key = "icon",
+				label = "Icon",
+				type = "text",
+				default = "",
+				placeholder = "path/to/icon.ico",
+				tooltip = "Optional .ico path, absolute or relative to your project. Requires the Windows editor.",
+			},
 			{ key = "compression", label = "Compression", type = "dropdown", options = COMPRESS, default = "Fast" },
 			{
 				key = "embedAssets",
@@ -403,7 +425,14 @@ local pages = {
 		Fields = {
 			ENABLED_FIELD,
 			{ key = "arch", label = "Architecture", type = "dropdown", options = DESKTOP_ARCH, default = "x86_64" },
-			{ key = "mode", label = "Build Mode", type = "dropdown", options = MODES, default = "Release", unavailable = "Export uses prebuilt release templates." },
+			{
+				key = "mode",
+				label = "Build Mode",
+				type = "dropdown",
+				options = MODES,
+				default = "Release",
+				unavailable = "Export uses prebuilt release templates.",
+			},
 			{
 				key = "output",
 				label = "Output Name",
@@ -411,10 +440,29 @@ local pages = {
 				default = "Game.x86_64",
 				validate = fileName("Output name"),
 			},
-			{ key = "icon", label = "Icon", type = "text", default = "", placeholder = "path/to/icon.png", unavailable = "Linux executable templates do not provide a desktop icon." },
+			{
+				key = "icon",
+				label = "Icon",
+				type = "text",
+				default = "",
+				placeholder = "path/to/icon.png",
+				unavailable = "Linux executable templates do not provide a desktop icon.",
+			},
 			{ key = "compression", label = "Compression", type = "dropdown", options = COMPRESS, default = "Fast" },
-			{ key = "embedAssets", label = "Embed Assets", type = "checkbox", default = true, unavailable = "Game assets are embedded in desktop exports." },
-			{ key = "strip", label = "Strip Symbols", type = "checkbox", default = true, unavailable = "Linux release templates are already stripped." },
+			{
+				key = "embedAssets",
+				label = "Embed Assets",
+				type = "checkbox",
+				default = true,
+				unavailable = "Game assets are embedded in desktop exports.",
+			},
+			{
+				key = "strip",
+				label = "Strip Symbols",
+				type = "checkbox",
+				default = true,
+				unavailable = "Linux release templates are already stripped.",
+			},
 		},
 	},
 
@@ -432,7 +480,14 @@ local pages = {
 				options = DESKTOP_ARCH,
 				default = "arm64",
 			},
-			{ key = "mode", label = "Build Mode", type = "dropdown", options = MODES, default = "Release", unavailable = "Export uses prebuilt release templates." },
+			{
+				key = "mode",
+				label = "Build Mode",
+				type = "dropdown",
+				options = MODES,
+				default = "Release",
+				unavailable = "Export uses prebuilt release templates.",
+			},
 			{
 				key = "output",
 				label = "Output Name",
@@ -448,9 +503,22 @@ local pages = {
 				validate = reverseDomain("Bundle identifier"),
 				unavailable = "Requires a macOS app bundle.",
 			},
-			{ key = "icon", label = "Icon", type = "text", default = "", placeholder = "path/to/icon.icns", unavailable = "Requires a macOS app bundle." },
+			{
+				key = "icon",
+				label = "Icon",
+				type = "text",
+				default = "",
+				placeholder = "path/to/icon.icns",
+				unavailable = "Requires a macOS app bundle.",
+			},
 			{ key = "compression", label = "Compression", type = "dropdown", options = COMPRESS, default = "Fast" },
-			{ key = "codesign", label = "Code Sign", type = "checkbox", default = false, unavailable = "Signing requires a macOS packaging toolchain." },
+			{
+				key = "codesign",
+				label = "Code Sign",
+				type = "checkbox",
+				default = false,
+				unavailable = "Signing requires a macOS packaging toolchain.",
+			},
 			{
 				key = "notarize",
 				label = "Notarize",
@@ -484,7 +552,14 @@ local pages = {
 				options = { "arm64-v8a", "armeabi-v7a", "x86_64" },
 				default = "arm64-v8a",
 			},
-			{ key = "mode", label = "Build Mode", type = "dropdown", options = MODES, default = "Release", unavailable = "Export uses prebuilt release templates." },
+			{
+				key = "mode",
+				label = "Build Mode",
+				type = "dropdown",
+				options = MODES,
+				default = "Release",
+				unavailable = "Export uses prebuilt release templates.",
+			},
 			{
 				key = "package",
 				label = "Package Name",
@@ -516,7 +591,14 @@ local pages = {
 		CloseCallback = function() end,
 		Fields = {
 			ENABLED_FIELD,
-			{ key = "mode", label = "Build Mode", type = "dropdown", options = MODES, default = "Release", unavailable = "Export uses prebuilt release templates." },
+			{
+				key = "mode",
+				label = "Build Mode",
+				type = "dropdown",
+				options = MODES,
+				default = "Release",
+				unavailable = "Export uses prebuilt release templates.",
+			},
 			{
 				key = "output",
 				label = "Output Name",
@@ -822,7 +904,9 @@ local function validateSection(name)
 
 	for _, field in ipairs(section.page.Fields) do
 		local value = store[field.key]
-		local relevant = value ~= nil and not field.unavailable and not (field.dependsOn and store[field.dependsOn] ~= true)
+		local relevant = value ~= nil
+			and not field.unavailable
+			and not (field.dependsOn and store[field.dependsOn] ~= true)
 
 		if relevant and type(value) == "string" then
 			if field.required and trim(value) == "" then
@@ -1019,7 +1103,8 @@ local function runExport(names)
 		})
 
 		if configs[1].general.openFolder then
-			local output = #names == 1 and platformOutputFolder(buildFolder, names[1], configs[1].general.gameType) or buildFolder
+			local output = #names == 1 and platformOutputFolder(buildFolder, names[1], configs[1].general.gameType)
+				or buildFolder
 			local opened, openError = pcall(openOutputFolder, output)
 			if not opened then
 				UI.toast("Could not open output folder", { type = "warning", message = tostring(openError) })
@@ -1146,6 +1231,15 @@ end)
 return {
 	Enable = function()
 		panel.Visible = true
+	end,
+
+	OpenFromHome = function(homeGui)
+		panel.Parent = homeGui
+		panel.Visible = true
+	end,
+
+	UseEditorOverlay = function()
+		panel.Parent = gui
 	end,
 
 	Disable = function()

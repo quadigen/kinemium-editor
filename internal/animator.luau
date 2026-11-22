@@ -253,12 +253,10 @@ local function removePose(bone, t)
 		return
 	end
 	local parent = p.Parent
-	-- Preserve child channels when deleting just this bone's key.
 	for _, child in ipairs(p:GetSubPoses()) do
 		child.Parent = parent
 	end
 	p:Destroy()
-	-- Authored event-only keyframes remain intact. Only prune our generated frames.
 	if generated[k] and #k:GetPoses() == 0 and #k:GetMarkers() == 0 then
 		generated[k] = nil
 		sequence:RemoveKeyframe(k)
@@ -275,7 +273,9 @@ local function releaseTrack()
 	end
 	if ownsController then
 		-- Detach the native animator before direct posing in this frame.
-		pcall(function() controller.MeshPart = nil end)
+		pcall(function()
+			controller.MeshPart = nil
+		end)
 		safeDestroy(controller)
 		controller = nil
 		ownsController = false
@@ -543,7 +543,9 @@ local function interpolate(bone, t)
 	return { cf = CFrame.new(), weight = 1 }
 end
 local function syncBoneTool()
-	if not boneTool then return end
+	if not boneTool then
+		return
+	end
 	local active = panel.Visible and not pickerOpen and sequence ~= nil and UI.isAlive(rig)
 	boneTool:SetRig(if active then rig else nil, bones, boneParents, chosenBone)
 	viewport.SetSelectionTool(if active then boneTool else nil)
@@ -595,7 +597,9 @@ beginPoseDrag = function(pivot, frames)
 		return false
 	end
 	local bind = bindTransforms[chosenBone]
-	if not bind then return false end
+	if not bind then
+		return false
+	end
 	pause()
 	local t = chosenTime or timeOf(cursor)
 	local pose = findPose(chosenBone, t)
@@ -646,13 +650,17 @@ updatePoseDrag = function(d, pivot)
 		changed = math.abs(turn) > EPS
 		local axis, angle = (effective.Rotation * relative):ToAxisAngle()
 		-- A weighted key cannot represent a turn beyond its share of 180 degrees.
-		if angle > math.pi * weight then weight = 1 end
+		if angle > math.pi * weight then
+			weight = 1
+		end
 		data = {
 			cf = CFrame.new(effective.Position / weight) * CFrame.fromAxisAngle(axis, angle / weight),
 			weight = weight,
 		}
 	end
-	if not d.moved and not changed then return end
+	if not d.moved and not changed then
+		return
+	end
 	if not d.moved then
 		d.moved = true
 		d.preview = startDragPreview(d)
@@ -665,9 +673,13 @@ updatePoseDrag = function(d, pivot)
 end
 
 finishPoseDrag = function(d)
-	if not d.moved or not sequence then return end
+	if not d.moved or not sequence then
+		return
+	end
 	if not d.result then
-		if d.preview or not track then reload() end
+		if d.preview or not track then
+			reload()
+		end
 		editFields()
 		return
 	end
@@ -683,7 +695,9 @@ cancelPoseDrag = function()
 	end
 	local d = drag
 	drag = nil
-	if boneTool then boneTool:Cancel() end
+	if boneTool then
+		boneTool:Cancel()
+	end
 	if d.moved and sequence then
 		reload()
 	end
@@ -945,7 +959,9 @@ local function clearDrag()
 		rig:SetBoneTransforms(bindTransforms)
 	end
 	drag = nil
-	if boneTool then boneTool:Cancel() end
+	if boneTool then
+		boneTool:Cancel()
+	end
 end
 closeSession = function()
 	pause()
@@ -1262,8 +1278,13 @@ local _, _, rotateRecord = UI.button(inspector, "Rotate", UDim2.fromOffset(80, 3
 	setBoneMode("Rotate")
 end, {})
 moveToolRecord, rotateToolRecord = moveRecord, rotateRecord
-label(inspector, "Drag a viewport handle to pose the selected bone.", UDim2.fromOffset(158, 31),
-	UDim2.new(1, -166, 0, 24), colors.subtext)
+label(
+	inspector,
+	"Drag a viewport handle to pose the selected bone.",
+	UDim2.fromOffset(158, 31),
+	UDim2.new(1, -166, 0, 24),
+	colors.subtext
+)
 UI.button(inspector, "Copy", UDim2.fromOffset(8, 60), UDim2.fromOffset(58, 24), copyKey, {})
 UI.button(inspector, "Paste", UDim2.fromOffset(70, 60), UDim2.fromOffset(58, 24), pasteKey, {})
 UI.button(inspector, "Reset", UDim2.fromOffset(132, 60), UDim2.fromOffset(68, 24), resetPose, {})
@@ -1290,13 +1311,7 @@ connect(weightInput.FocusLost, function()
 	chosenTime = t
 	commit("Updated pose weight.")
 end)
-label(
-	inspector,
-	"Esc cancels a handle drag.",
-	UDim2.fromOffset(312, 60),
-	UDim2.new(1, -320, 0, 20),
-	colors.subtext
-)
+label(inspector, "Esc cancels a handle drag.", UDim2.fromOffset(312, 60), UDim2.new(1, -320, 0, 20), colors.subtext)
 connect(frameInput.FocusLost, function()
 	local n = tonumber(frameInput.Text)
 	if finite(n) then
@@ -1755,7 +1770,9 @@ connect(UIS.InputBegan, function(event, processed)
 		return
 	end
 	if event.UserInputType == Enum.UserInputType.MouseButton1 then
-		if drag and drag.kind == "pose" then return end
+		if drag and drag.kind == "pose" then
+			return
+		end
 		if inside(ruler, p) then
 			drag = { kind = "scrub" }
 			seek(frameFor(p.X))
@@ -2029,7 +2046,9 @@ boneTool = createBoneTool({
 	select = Animator.SelectBone,
 	begin = beginPoseDrag,
 	move = function(pivot)
-		if drag and drag.kind == "pose" then updatePoseDrag(drag, pivot) end
+		if drag and drag.kind == "pose" then
+			updatePoseDrag(drag, pivot)
+		end
 	end,
 	finish = function()
 		if drag and drag.kind == "pose" then

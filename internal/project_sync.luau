@@ -719,7 +719,7 @@ end
 
 function Sync.start(project)
 	if not Sync.available then
-		return
+		return true
 	end
 	active = {
 		project = project,
@@ -728,7 +728,7 @@ function Sync.start(project)
 		recovering = not Filesystem:PathExists(project.Path .. "/autosave.kine"),
 	}
 	elapsed = 0
-	Sync.step()
+	return Sync.step()
 end
 
 RunService.Heartbeat:Connect(function(dt)

@@ -100,7 +100,9 @@ local function new(callbacks)
 	end
 
 	local endInput = UIS.InputEnded:Connect(function(input)
-		if input.UserInputType == Enum.UserInputType.MouseButton1 then armed = false end
+		if input.UserInputType == Enum.UserInputType.MouseButton1 then
+			armed = false
+		end
 	end)
 
 	function tool:Cancel()
@@ -122,11 +124,16 @@ local function new(callbacks)
 
 	function tool:Update()
 		local camera = workspace.CurrentCamera
-		local visible = UI.isAlive(rig) and camera and viewport.IsSceneVisible() and workspace.Dimension == Enum.Dimension.D3
+		local visible = UI.isAlive(rig)
+			and camera
+			and viewport.IsSceneVisible()
+			and workspace.Dimension == Enum.Dimension.D3
 		overlay.Visible = visible == true
 		if not visible then
 			move.Visible, rotate.Visible = false, false
-			if activeHandle then callbacks.cancel() end
+			if activeHandle then
+				callbacks.cancel()
+			end
 			return
 		end
 
@@ -184,7 +191,6 @@ local function new(callbacks)
 		local transform = frames[chosen]
 		local showHandles = transform ~= nil and points[chosen] ~= nil
 		if showHandles and not (move.Dragging or rotate.Dragging) then
-			-- The imported bone can carry scale. Give the gizmo a unit basis.
 			local right = transform.RightVector.Unit
 			local back = right:Cross(transform.UpVector).Unit
 			proxy.CFrame = CFrame.fromMatrix(transform.Position, right, back:Cross(right), back)
@@ -227,7 +233,6 @@ local function new(callbacks)
 		end)
 		local target = hits[1] and hits[1].bone
 		if target then
-			-- Repeated clicks cycle through joints whose markers overlap.
 			local overlap = {}
 			for _, hit in ipairs(hits) do
 				if (points[hit.bone] - points[target]).Magnitude <= NEAR_COINCIDENT then
@@ -253,7 +258,6 @@ local function new(callbacks)
 		if target then
 			callbacks.select(target)
 		else
-			-- The native gizmo may receive a fresh hover result after the click.
 			armed = true
 		end
 	end

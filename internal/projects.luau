@@ -4,6 +4,8 @@ end
 local UI = require("@internal/editor_ui")
 local Explorer = require("@internal/explorer")
 local Sync = require("@internal/project_sync")
+local Playtest = require("@internal/playtest")
+local exporter = require("@internal/exporter")
 
 local Project = game.Project
 local Dialog = game.DialogService
@@ -69,6 +71,13 @@ return function(page, windowControls, gui)
 	local CARD_HEIGHT = 90
 	local LIST_PADDING = 10
 	local DOUBLE_CLICK = 0.35
+	local ACTION_PLAY_WIDTH = 138
+	local ACTION_BUILD_WIDTH = 90
+	local ACTION_GAP = 6
+	local ACTION_RIGHT = 14
+	local ACTION_TOP = 12
+	local ACTION_HEIGHT = UI.metrics.buttonHeight + 4
+	local ACTIONS_WIDTH = ACTION_PLAY_WIDTH + ACTION_BUILD_WIDTH + ACTION_GAP + ACTION_RIGHT
 
 	local projectsPage = windowControls.pages.Projects
 
@@ -91,6 +100,7 @@ return function(page, windowControls, gui)
 		Preferences.set("lastProject", project.Path)
 		Preferences.set("sessionProject", project.Path)
 		Sync.start(project)
+		exporter.UseEditorOverlay()
 		Explorer.filesController.Refresh()
 		gui.Enabled = false
 		UI.root().Enabled = true
@@ -109,6 +119,38 @@ return function(page, windowControls, gui)
 			print(opened, project)
 			notify("error", "Could not open project", project.Path)
 		end
+	end
+
+	-- Quick actions work from Home: load the selected project without opening
+	-- the editor chrome or activating another project by accident.
+	local function prepareProjectAction(project)
+		if type(project.Path) ~= "string" or project.Path == "" then
+			notify("error", "Project unavailable", "This project has no folder path.")
+			return false
+		end
+
+		local active = Project:GetActiveProject()
+		if not active or active.Path ~= project.Path then
+			if active and Project:HasUnsavedChanges() then
+				notify("warning", "Unsaved changes", "Open the editor and save your current project before switching.")
+				return false
+			end
+
+			local ok, opened = pcall(function()
+				return Project:OpenProject(project.Path)
+			end)
+			if not ok or not opened then
+				notify("error", "Could not load project", ok and project.Path or tostring(opened))
+				return false
+			end
+		end
+
+		-- Synchronize disk-backed scripts before exporting the in-memory world.
+		if Sync.available and not Sync.start(project) then
+			notify("error", "Project source sync failed", "Resolve source conflicts before playtesting or building.")
+			return false
+		end
+		return true
 	end
 
 	local function validate(props)
@@ -950,7 +992,7 @@ return function(page, windowControls, gui)
 		title.Name = "Title"
 		title.BackgroundTransparency = 1
 		title.Position = UDim2.new(0, 94, 0, 18)
-		title.Size = UDim2.new(1, -110, 0, 24)
+		title.Size = UDim2.new(1, -(94 + ACTIONS_WIDTH + 8), 0, 24)
 		title.Text = project.Name or "Untitled Project"
 		title.TextColor3 = tokens.color.text
 		title.TextSize = 16
@@ -971,6 +1013,58 @@ return function(page, windowControls, gui)
 		description.TextYAlignment = Enum.TextYAlignment.Top
 		description.Parent = card
 
+		-- Keep quick actions separate from the card's select/double-click handler.
+		local _, _, playDropdown = UI.dropdown(
+			card,
+			"Playtest",
+			UDim2.new(1, -(ACTION_RIGHT + ACTION_BUILD_WIDTH + ACTION_GAP + ACTION_PLAY_WIDTH), 0, ACTION_TOP),
+			UDim2.fromOffset(ACTION_PLAY_WIDTH, ACTION_HEIGHT),
+			CHEVRON_ICON,
+			{
+				icon = "builtin://icons/Play.svg",
+				iconSize = 14,
+				keepLabel = true,
+				showSearch = false,
+				menuWidth = 185,
+				menuSide = "left",
+				items = {
+					{ value = "Local Server", label = "Client + Server" },
+					{ value = "Server", label = "Server" },
+					{ value = "Client", label = "Client" },
+				},
+				onChanged = function(mode)
+					selectedProject = project
+					applySelection()
+					if prepareProjectAction(project) then
+						-- Client-only joins a server already running on localhost.
+						Playtest.start(mode, false)
+					end
+				end,
+			}
+		)
+		UI.tooltip(playDropdown.button, "Start a local playtest (Client needs a running local server)", {
+			placement = "below",
+		})
+
+		local buildButton = UI.button(
+			card,
+			"Build",
+			UDim2.new(1, -(ACTION_RIGHT + ACTION_BUILD_WIDTH), 0, ACTION_TOP),
+			UDim2.fromOffset(ACTION_BUILD_WIDTH, ACTION_HEIGHT),
+			function()
+				selectedProject = project
+				applySelection()
+				if prepareProjectAction(project) then
+					exporter.OpenFromHome(gui)
+				end
+			end,
+			{
+				icon = "builtin://icons/Process.svg",
+				iconSize = 14,
+			}
+		)
+		UI.tooltip(buildButton, "Open build and export settings for this project", { placement = "below" })
+
 		local projectsShadow = Instance.new("UIShadow")
 		projectsShadow.BlurRadius = UDim.new(0, 5)
 		projectsShadow.Enabled = false
@@ -980,6 +1074,7 @@ return function(page, windowControls, gui)
 			frame = card,
 			record = record,
 			shadow = projectsShadow,
+			playDropdown = playDropdown,
 			project = project,
 		}
 
@@ -996,6 +1091,7 @@ return function(page, windowControls, gui)
 
 	refreshList = function()
 		for _, entry in ipairs(cardEntries) do
+			entry.playDropdown:Destroy()
 			UI.forgetButtons(entry.frame)
 			entry.frame:Destroy()
 		end
