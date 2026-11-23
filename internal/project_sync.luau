@@ -27,6 +27,38 @@ local function check(ok, message)
 	return ok
 end
 
+local function cachedScriptSource(path)
+	local cache = active and active.fileCache
+	if not cache then
+		local source = Filesystem:ReadFile(path)
+		check(type(source) == "string", "Could not read " .. path)
+		return source
+	end
+
+	active.seenFiles[path] = true
+	local version = Filesystem:GetFileVersion(path)
+	check(type(version) == "string", "Could not stat " .. path)
+	local hit = cache[path]
+	if hit and hit.version == version then
+		return hit.source
+	end
+
+	local source = Filesystem:ReadFile(path)
+	check(type(source) == "string", "Could not read " .. path)
+	local after = Filesystem:GetFileVersion(path)
+	if after ~= version then
+		version = after
+		source = Filesystem:ReadFile(path)
+		check(type(source) == "string", "Could not read " .. path)
+		check(
+			version ~= nil and Filesystem:GetFileVersion(path) == version,
+			"Source was modified while syncing " .. path
+		)
+	end
+	cache[path] = { version = version, source = source }
+	return source
+end
+
 local function validName(name)
 	return name ~= ""
 		and name ~= "."
@@ -128,8 +160,7 @@ local function scanSourcemap(projectPath, tree)
 				if type(relative) == "string" and scriptFile(relative) then
 					local path = findFile(relative)
 					if path then
-						local source = Filesystem:ReadFile(path)
-						check(type(source) == "string", "Could not read " .. path)
+						local source = cachedScriptSource(path)
 						local filename = path:match("[^/]+$")
 						add(sources, names, {
 							path = path,
@@ -165,8 +196,7 @@ local function scanDisk(root, names, records, mappedPaths)
 			if scriptName and validName(scriptName) then
 				local isInit = scriptName == "init"
 				check(not isInit or #names > 0, "An init script cannot replace a mapped service: " .. path)
-				local source = Filesystem:ReadFile(path)
-				check(type(source) == "string", "Could not read " .. path)
+				local source = cachedScriptSource(path)
 				add(
 					records,
 					isInit and names or appendName(names, scriptName),
@@ -177,36 +207,188 @@ local function scanDisk(root, names, records, mappedPaths)
 	end
 end
 
-local function scanModel(root, names, records)
+-- An imported .kine scene may contain duplicate sibling script names, which
+-- Roblox permits but a Rojo directory mapping cannot represent. Cache that
+-- unresolvable mapping rather than rebuilding 22k-instance trees every second.
+local function clearModelConflict(mapping)
+	if mapping.conflictConnections then
+		for _, connection in ipairs(mapping.conflictConnections) do
+			connection:Disconnect()
+		end
+	end
+	mapping.conflictConnections = nil
+	mapping.invalidModel = nil
+	mapping.conflictRetryAt = nil
+	mapping.conflictMessage = nil
+	mapping.modelDirty = true
+end
+
+local function recordModelConflict(mapping, first, second, key)
+	if not mapping or mapping.invalidModel then
+		return
+	end
+	mapping.invalidModel = true
+	mapping.conflictMessage = "Multiple instances or files map to " .. key
+	mapping.conflictRetryAt = os.clock() + 60
+	mapping.conflictConnections = {}
+
+	-- Track just the two offending instances. No observers on the other
+	-- thousands of scene objects, and normal source sync remains enabled.
+	local function retry()
+		clearModelConflict(mapping)
+	end
+	for _, object in ipairs({ first, second }) do
+		if object then
+			for _, property in ipairs({ "Name", "Parent" }) do
+				local ok, connection = pcall(function()
+					return object:GetPropertyChangedSignal(property):Connect(retry)
+				end)
+				if ok and connection then
+					table.insert(mapping.conflictConnections, connection)
+				end
+			end
+			local ok, connection = pcall(function()
+				return object.Destroying:Connect(retry)
+			end)
+			if ok and connection then
+				table.insert(mapping.conflictConnections, connection)
+			end
+		end
+	end
+end
+
+-- Keep a cached snapshot of the in-memory scripts until a relevant
+-- hierarchy or property edit occurs. Disk polling continues independently.
+local function disposeModelObservers(mapping)
+	if mapping.modelRootConnections then
+		for _, connection in ipairs(mapping.modelRootConnections) do
+			connection:Disconnect()
+		end
+	end
+	if mapping.modelObjectConnections then
+		for _, connections in pairs(mapping.modelObjectConnections) do
+			for _, connection in ipairs(connections) do
+				connection:Disconnect()
+			end
+		end
+	end
+	mapping.modelRootConnections = nil
+	mapping.modelObjectConnections = nil
+	mapping.modelSnapshot = nil
+	mapping.modelDirty = true
+end
+
+local function installModelObservers(mapping)
+	if mapping.modelRootConnections then
+		return
+	end
+	local tracked = {}
+	mapping.modelObjectConnections = tracked
+	local function dirty()
+		mapping.modelDirty = true
+	end
+	local function relevant(instance)
+		return instance.ClassName == "Folder" or outputSuffix[instance.ClassName] ~= nil
+	end
+	local function unwatch(instance)
+		local connections = tracked[instance]
+		if not connections then
+			return
+		end
+		tracked[instance] = nil
+		for _, connection in ipairs(connections) do
+			connection:Disconnect()
+		end
+	end
+	local function watch(instance)
+		if not relevant(instance) or tracked[instance] then
+			return
+		end
+		local connections = {}
+		table.insert(connections, instance:GetPropertyChangedSignal("Name"):Connect(dirty))
+		table.insert(connections, instance:GetPropertyChangedSignal("Parent"):Connect(dirty))
+		if outputSuffix[instance.ClassName] then
+			table.insert(connections, instance:GetPropertyChangedSignal("Source"):Connect(dirty))
+		end
+		table.insert(connections, instance.Destroying:Connect(dirty))
+		tracked[instance] = connections
+	end
+	mapping.modelRootConnections = {
+		mapping.root.DescendantAdded:Connect(function(instance)
+			if relevant(instance) then
+				dirty()
+				watch(instance)
+			end
+		end),
+		mapping.root.DescendantRemoving:Connect(function(instance)
+			if relevant(instance) then
+				dirty()
+				unwatch(instance)
+			end
+		end),
+	}
+	for _, instance in ipairs(mapping.root:GetDescendants()) do
+		watch(instance)
+	end
+end
+
+local function scanModel(root, names, records, mapping)
 	for _, child in ipairs(root:GetChildren()) do
 		if validName(child.Name) and child.Name:sub(1, 1) ~= "." then
 			local childNames = appendName(names, child.Name)
 			if child.ClassName == "Folder" then
-				scanModel(child, childNames, records)
+				scanModel(child, childNames, records, mapping)
 			elseif outputSuffix[child.ClassName] then
 				check(child.Name ~= "init", "The name init is reserved for Rojo directory scripts")
 				local children = child:GetChildren()
+				local key = table.concat(childNames, "/"):lower()
+				if records[key] then
+					recordModelConflict(mapping, records[key].object, child, key)
+				end
 				add(records, childNames, {
 					object = child,
 					class = child.ClassName,
 					source = child.Source,
 					isInit = #children > 0,
 				})
-				scanModel(child, childNames, records)
+				scanModel(child, childNames, records, mapping)
 			end
 		end
 	end
 end
 
+-- The on-disk journal stores SHA-256 rather than full script contents.
+-- In-memory records still retain Source for conflict resolution and exports.
+local function sourceHash(record)
+	if not record then
+		return nil
+	end
+	if type(record.hash) == "string" then
+		return record.hash
+	end
+	if type(record.source) ~= "string" then
+		return nil
+	end
+	record.hash = Filesystem:HashSource(record.source)
+	check(type(record.hash) == "string" and #record.hash == 64, "Could not hash script source")
+	return record.hash
+end
+
 local function same(a, b)
-	return a == b
-		or (
-			a ~= nil
-			and b ~= nil
-			and a.class == b.class
-			and a.source == b.source
-			and table.concat(a.names, "/") == table.concat(b.names, "/")
-		)
+	if a == b then
+		return true
+	end
+	if not a or not b or a.class ~= b.class then
+		return false
+	end
+	if table.concat(a.names, "/") ~= table.concat(b.names, "/") then
+		return false
+	end
+	if type(a.source) == "string" and type(b.source) == "string" then
+		return a.source == b.source
+	end
+	local ah, bh = sourceHash(a), sourceHash(b)
+	return ah ~= nil and ah == bh
 end
 
 local function modelParent(root, names)
@@ -336,8 +518,17 @@ local function scanPair(mapping, mappedSources)
 		mapping.path = directory(mapping.projectPath, mapping.pieces, false)
 		scanDisk(mapping.path, {}, disk, mappedPaths)
 	end
-	scanModel(mapping.root, {}, model)
+	if mapping.modelSnapshot and not mapping.modelDirty and os.clock() < (mapping.modelRefreshAt or 0) then
+		model = mapping.modelSnapshot
+	else
+		scanModel(mapping.root, {}, model, mapping)
+		mapping.modelSnapshot = model
+		mapping.modelDirty = false
+		mapping.modelRefreshAt = os.clock() + 60
+		installModelObservers(mapping)
+	end
 	if not mapping.path then
+		model = table.clone(model) -- Never prune records from the cached snapshot.
 		-- A sourcemap-only project has no rule for emitting unmapped objects.
 		for key in pairs(model) do
 			if not disk[key] and not mapping.previous[key] then
@@ -352,7 +543,13 @@ local function remember(mapping, key, record)
 	if same(mapping.previous[key], record) then
 		return
 	end
-	mapping.previous[key] = record and { names = record.names, class = record.class, source = record.source }
+	mapping.previous[key] = record
+		and {
+			names = record.names,
+			class = record.class,
+			source = record.source,
+			hash = record.hash,
+		}
 	active.dirty = true
 end
 
@@ -385,9 +582,12 @@ local function reconcile(mapping, conflicts, mappedSources)
 				applyModel(mapping.root, file, object)
 			end
 			remember(mapping, key, file)
-		elseif mapping.opening and file and not object then
-			-- The snapshot can be older than the journal after a crash or restore.
-			applyModel(mapping.root, file, nil)
+		elseif mapping.opening and file and not same(file, object) then
+			-- On opening a disk-backed project, the serialized .kine snapshot can
+			-- be older than both the on-disk source and the sync journal. Always
+			-- import the on-disk source here instead of overwriting external edits
+			-- with a stale snapshot (including after a previous successful sync).
+			applyModel(mapping.root, file, object)
 			remember(mapping, key, file)
 		elseif same(file, object) then
 			if file and object.isInit and not file.isInit and not file.sourcemapped and not mapping.opening then
@@ -561,10 +761,18 @@ local function saveJournal()
 	if not active.dirty or not active.mappings then
 		return
 	end
-	local saved = { paused = active.paused, mappings = {} }
+	local saved = { formatVersion = 2, paused = active.paused, mappings = {} }
 	for _, mapping in ipairs(active.mappings) do
 		if mapping.initialized then
-			saved.mappings[mapping.id] = mapping.previous
+			local compact = {}
+			for key, record in pairs(mapping.previous) do
+				compact[key] = {
+					names = record.names,
+					class = record.class,
+					hash = sourceHash(record),
+				}
+			end
+			saved.mappings[mapping.id] = compact
 		end
 	end
 	check(Filesystem:WriteFileAtomic(journalPath(), HttpService:JSONEncode(saved)), "Could not save source sync state")
@@ -583,6 +791,10 @@ local function readJournal(mappings)
 		return
 	end
 	active.paused = saved.paused == true
+	-- Transparently upgrade v1 journals (which embed full script bodies).
+	if saved.formatVersion ~= 2 then
+		active.dirty = true
+	end
 	for _, mapping in ipairs(mappings) do
 		local previous = saved.mappings[mapping.id]
 		if type(previous) == "table" then
@@ -595,6 +807,12 @@ local function readJournal(mappings)
 end
 
 function Sync.stop()
+	if active and active.mappings then
+		for _, mapping in ipairs(active.mappings) do
+			clearModelConflict(mapping)
+			disposeModelObservers(mapping)
+		end
+	end
 	active = nil
 end
 
@@ -621,12 +839,34 @@ function Sync.step()
 		if active.paused then
 			return
 		end
+		active.seenFiles = {}
 		local mappedSources = scanSourcemap(active.project.Path, sourcemap)
 		local conflicts = {}
+		local blockingError
 		for _, mapping in ipairs(active.mappings) do
-			reconcile(mapping, conflicts, mappedSources)
+			if mapping.invalidModel and os.clock() >= mapping.conflictRetryAt then
+				-- Safety retry if an engine path changed without firing an event.
+				clearModelConflict(mapping)
+			end
+			if mapping.invalidModel then
+				blockingError = blockingError or mapping.conflictMessage
+				continue
+			end
+			local success, err = pcall(reconcile, mapping, conflicts, mappedSources)
+			if not success then
+				if not mapping.invalidModel then
+					error(err, 0)
+				end
+				blockingError = blockingError or mapping.conflictMessage
+			end
 		end
 		active.conflicts = conflicts
+		-- Drop deleted/renamed files so stale sources cannot leak across scans.
+		for path in pairs(active.fileCache) do
+			if not active.seenFiles[path] then
+				active.fileCache[path] = nil
+			end
+		end
 		if active.manifestPath then
 			check(
 				not Filesystem:PathExists(active.manifestPath),
@@ -639,6 +879,9 @@ function Sync.step()
 			active.manifestPath = nil
 		end
 		saveJournal()
+		if blockingError then
+			error(blockingError, 0)
+		end
 		check(#conflicts == 0, tostring(#conflicts) .. " source conflicts. Open File > Sync Conflicts to review.")
 	end)
 	if not ok and message ~= active.error then
@@ -717,17 +960,26 @@ function Sync.resolve(conflict, choice)
 	return ok, message
 end
 
-function Sync.start(project)
+function Sync.start(project, nextHeartbeat)
 	if not Sync.available then
 		return true
 	end
+	Sync.stop()
 	active = {
 		project = project,
 		paused = false,
 		conflicts = {},
 		recovering = not Filesystem:PathExists(project.Path .. "/autosave.kine"),
+		fileCache = {},
+		seenFiles = {},
 	}
-	elapsed = 0
+	-- Editor bootstrap can run before the .kine scene deserializes. Never
+	-- reconcile with an empty world: an older in-memory source could otherwise
+	-- overwrite changes made on disk before project startup.
+	elapsed = nextHeartbeat and 1 or 0
+	if nextHeartbeat then
+		return true
+	end
 	return Sync.step()
 end
 

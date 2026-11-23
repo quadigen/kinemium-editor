@@ -12,7 +12,7 @@ return {
 	buttons = {
 		{
 			name = "Find In Project",
-			icon = "Stop.svg",
+			icon = "Script.svg",
 			callback = function()
 				fip.Toggle()
 			end,
@@ -20,7 +20,7 @@ return {
 
 		{
 			name = "Profiler",
-			icon = "Stop.svg",
+			icon = "ProfilerService.svg",
 			callback = function()
 				profiler.Toggle()
 			end,
@@ -28,14 +28,14 @@ return {
 
 		{
 			name = "Debugger",
-			icon = "Stop.svg",
+			icon = "DebugOverlay.svg",
 			callback = function()
 				debugger.Toggle()
 			end,
 		},
 		{
 			name = "Dependencies",
-			icon = "Stop.svg",
+			icon = "ModuleScript.svg",
 			callback = function()
 				dep_explorer.Toggle()
 			end,

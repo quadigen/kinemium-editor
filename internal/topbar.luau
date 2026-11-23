@@ -369,6 +369,12 @@ flyout.Name = "CategoryDropdown"
 
 flyout.ClipsDescendants = true
 
+local function toolbarButtonWidth(definition)
+	local text = tostring(definition.name or "")
+	local captionWidth = math.ceil(#text * tokens.type.caption * 0.72 + tokens.space.sm * 4)
+	return math.max(definition.width or 52, captionWidth)
+end
+
 rebuildFlyout = function()
 	local page = toolbarTabs and toolbarTabs.pages[selectedCategory.name]
 
@@ -396,7 +402,7 @@ rebuildFlyout = function()
 	local function renderButton(parent, definition, height)
 		local item, _, controller = UI.TopbarButton(parent, definition, {
 			position = UDim2.new(),
-			size = UDim2.fromOffset(definition.width or 52, height or (FLYOUT_HEIGHT - 12)),
+			size = UDim2.fromOffset(toolbarButtonWidth(definition), height or (FLYOUT_HEIGHT - 12)),
 			colors = colors,
 			radius = buttonRadius(),
 			selected = definition.selected == true,
@@ -452,11 +458,10 @@ rebuildFlyout = function()
 				end
 			end
 
-			local buttonWidth = 52
 			local groupWidth = 8
 
 			for _, member in ipairs(members) do
-				groupWidth = groupWidth + (member.width or buttonWidth) + 3
+				groupWidth = groupWidth + toolbarButtonWidth(member) + 3
 			end
 
 			groupWidth = math.max(groupWidth, #definition.section * 6 + 10)

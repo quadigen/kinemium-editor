@@ -38,7 +38,7 @@ return function(ctx)
 		local typeConfigs = {
 			info = {
 				color = colors.accent,
-				icon = "builtin://global-icons/info.svg",
+				icon = "builtin://global-icons/Info.svg",
 			},
 
 			success = {
@@ -48,12 +48,12 @@ return function(ctx)
 
 			warning = {
 				color = colors.warning,
-				icon = "builtin://global-icons/warning.svg",
+				icon = "builtin://global-icons/Warning.svg",
 			},
 
 			error = {
 				color = colors.error,
-				icon = "builtin://global-icons/error",
+				icon = "builtin://global-icons/Error.svg",
 			},
 		}
 
@@ -71,13 +71,11 @@ return function(ctx)
 
 		local hasDetails = details ~= "" or options.buildDetails ~= nil
 
-		local width = options.width or 520
+		local width = options.width or 372
 
-		local headerHeight = options.headerHeight or 52
-		local summaryHeight = options.summaryHeight or 40
-		local progressHeight = options.progressHeight or 4
-
-		local collapsedHeight = options.height or (headerHeight + summaryHeight + progressHeight)
+		local headerHeight = options.headerHeight or 32
+		local summaryHeight = options.summaryHeight or 36
+		local collapsedHeight = options.height or (headerHeight + summaryHeight)
 
 		local expandedHeight = options.expandedHeight or (collapsedHeight + 120)
 
@@ -108,7 +106,7 @@ return function(ctx)
 
 			Size = UDim2.fromOffset(width, collapsedHeight),
 
-			BackgroundColor3 = options.backgroundColor or colors.panelRaised,
+			BackgroundColor3 = options.backgroundColor or colors.panelRaised:Lerp(accentColor, 0.08),
 			BackgroundTransparency = 1,
 
 			BorderSizePixel = 0,
@@ -119,9 +117,18 @@ return function(ctx)
 			ZIndex = zIndex,
 		}, root)
 
-		UI.corner(frame, options.radius or UI.tokens.radius.md, options.radius == nil and "md" or nil)
+		-- Soften the rectangular notification into the reference's squircle shape.
+		UI.create("UISquircle", {
+			Radius = UDim.new(0, options.radius or UI.tokens.radius.md * 3),
+			Exponent = options.squircleExponent or 4,
+		}, frame)
 
-		local border = UI.stroke(frame, options.borderColor or colors.borderStrong, options.borderThickness or 1, 1)
+		local border = UI.stroke(
+			frame,
+			options.borderColor or accentColor:Lerp(colors.borderStrong, 0.2),
+			options.borderThickness or 1,
+			1
+		)
 
 		local shadow = nil
 
@@ -147,12 +154,23 @@ return function(ctx)
 			}, frame)
 		end
 
+		local statusIcon = UI.image(
+			frame,
+			iconCharacter,
+			UDim2.fromOffset(16, math.floor((collapsedHeight - 18) / 2)),
+			UDim2.fromOffset(18, 18)
+		)
+		statusIcon.Name = "StatusIcon"
+		statusIcon.ImageColor3 = accentColor
+		statusIcon.ImageTransparency = 1
+		statusIcon.ZIndex = zIndex + 3
+
 		local titleLabel = UI.label(
 			frame,
 			title,
-			UDim2.fromOffset(20, 15),
-			UDim2.new(1, -155, 0, headerHeight),
-			options.titleSize or 15,
+			UDim2.fromOffset(44, 8),
+			UDim2.new(1, -114, 0, 22),
+			options.titleSize or UI.tokens.type.body,
 			options.titleColor or colors.text
 		)
 
@@ -168,9 +186,9 @@ return function(ctx)
 
 			Text = "",
 
-			Position = UDim2.fromOffset(0, headerHeight + 1),
+			Position = UDim2.fromOffset(0, headerHeight),
 
-			Size = UDim2.new(1, 0, 0, summaryHeight - 1),
+			Size = UDim2.new(1, 0, 0, summaryHeight),
 
 			BackgroundTransparency = 1,
 
@@ -188,9 +206,9 @@ return function(ctx)
 
 			Text = "",
 
-			Position = UDim2.fromOffset(20, 0),
+			Position = UDim2.fromOffset(44, -1),
 
-			Size = UDim2.new(1, -40, 1, 0),
+			Size = UDim2.new(1, -108, 1, 0),
 
 			BackgroundTransparency = 1,
 
@@ -205,6 +223,7 @@ return function(ctx)
 			TextWrapped = true,
 
 			TextXAlignment = Enum.TextXAlignment.Left,
+			TextYAlignment = Enum.TextYAlignment.Top,
 
 			ZIndex = zIndex + 3,
 		}, summaryButton)
@@ -212,7 +231,7 @@ return function(ctx)
 		local detailsFrame = UI.create("Frame", {
 			Name = "Details",
 
-			Position = UDim2.fromOffset(0, headerHeight + summaryHeight),
+			Position = UDim2.fromOffset(0, collapsedHeight),
 
 			Size = UDim2.new(1, 0, 0, expandedHeight - collapsedHeight),
 
@@ -278,15 +297,15 @@ return function(ctx)
 		local expandButton, _, expandIcon = UI.iconButton(
 			frame,
 			expandIconImage,
-			UDim2.new(1, -70, 0, 10),
-			UDim2.fromOffset(32, 32),
+			UDim2.new(1, -60, 0, math.floor((collapsedHeight - 22) / 2)),
+			UDim2.fromOffset(22, 22),
 			function() end,
 			{
 				color = colors.panelRaised,
 				bgTransparency = 1,
 				hoverColor = colors.hover,
 				pressedColor = colors.pressed,
-				iconSize = options.closeIconSize or 16,
+				iconSize = options.closeIconSize or 12,
 				border = false,
 			}
 		)
@@ -294,33 +313,39 @@ return function(ctx)
 		local closeButton, _, closeIcon = UI.iconButton(
 			frame,
 			options.closeIcon or "builtin://global-icons/x.svg",
-			UDim2.new(1, -46, 0, 10),
-			UDim2.fromOffset(32, 32),
+			UDim2.new(1, -34, 0, math.floor((collapsedHeight - 22) / 2)),
+			UDim2.fromOffset(22, 22),
 			function() end,
 			{
 				color = colors.panelRaised,
 				bgTransparency = 1,
 				hoverColor = colors.hover,
 				pressedColor = colors.pressed,
-				iconSize = options.closeIconSize or 16,
+				iconSize = options.closeIconSize or 12,
 				border = false,
 			}
 		)
 
-		local progressBackground = UI.frame(
-			frame,
-			UDim2.new(0, 0, 1, -progressHeight),
-			UDim2.new(1, 0, 0, progressHeight),
-			options.progressBackgroundColor or colors.input
-		)
+		expandButton.Visible = hasDetails
+		expandButton.Active = hasDetails
+		expandButton.InputSink = hasDetails
 
-		progressBackground.ZIndex = zIndex + 4
-		progressBackground.BackgroundTransparency = 1
+		-- The close timer remains functional, but no progress bar is rendered.
+		local function applyKindStyle()
+			local currentColors = UI.tokens.color
+			local colorKey = ({ info = "accent", success = "success", warning = "warning", error = "error" })[kind]
+				or "accent"
+			accentColor = options.accentColor or currentColors[colorKey]
+			statusIcon.Image = options.icon or (typeConfigs[kind] or typeConfigs.info).icon
+			statusIcon.ImageColor3 = accentColor
+			frame.BackgroundColor3 = options.backgroundColor or currentColors.panelRaised:Lerp(accentColor, 0.08)
+			border.Color = options.borderColor or accentColor:Lerp(currentColors.borderStrong, 0.2)
+			titleLabel.TextColor3 = options.titleColor or currentColors.text
+			summaryLabel.TextColor3 = options.textColor or currentColors.subtext
+		end
 
-		local progress = UI.frame(progressBackground, UDim2.fromOffset(0, 0), UDim2.fromScale(1, 1), accentColor)
-
-		progress.ZIndex = zIndex + 5
-		progress.BackgroundTransparency = 1
+		local themeListener = UI.onThemeChanged(applyKindStyle)
+		applyKindStyle()
 
 		local state = {
 			alpha = 0,
@@ -373,41 +398,10 @@ return function(ctx)
 		end
 
 		local function updateSummary()
-			if duration <= 0 then
-				if messagePrefix ~= "" then
-					summaryLabel.Text = messagePrefix
-				else
-					summaryLabel.Text = "Click  to close."
-				end
-
-				return
-			end
-
-			if state.timerStopped then
-				if messagePrefix ~= "" then
-					summaryLabel.Text = messagePrefix .. " Automatic closing stopped."
-				else
-					summaryLabel.Text = "Automatic closing stopped."
-				end
-
-				return
-			end
-
-			local remaining = math.max(duration - state.elapsed, 0)
-
-			local seconds = math.ceil(remaining)
-
-			local timerText = string.format(
-				"This message will close in %d second%s. Click to stop.",
-				seconds,
-				seconds == 1 and "" or "s"
-			)
-
-			if messagePrefix ~= "" then
-				summaryLabel.Text = messagePrefix .. " " .. timerText
-			else
-				summaryLabel.Text = timerText
-			end
+			-- Static supporting text: no visible timer or clutter under the title.
+			summaryLabel.Text = messagePrefix
+			titleLabel.Position =
+				UDim2.fromOffset(44, messagePrefix == "" and math.floor((collapsedHeight - 22) / 2) or 8)
 		end
 
 		local function setExpanded(expanded)
@@ -539,9 +533,7 @@ return function(ctx)
 			kind = newType
 			typeConfig = config
 
-			accentColor = config.color
-
-			progress.BackgroundColor3 = accentColor
+			applyKindStyle()
 
 			return true
 		end
@@ -571,6 +563,10 @@ return function(ctx)
 			end
 
 			removeToast()
+			if themeListener then
+				themeListener.Disconnect()
+				themeListener = nil
+			end
 
 			UI.forgetButtons(frame)
 
@@ -588,6 +584,8 @@ return function(ctx)
 		closeButton.MouseButton1Click:Connect(function()
 			controller:Close("close")
 		end)
+		UI.tooltip(closeButton, "Dismiss notification", { placement = "below" })
+		UI.tooltip(expandButton, "Show notification details", { placement = "below" })
 
 		if options.buildDetails then
 			options.buildDetails(detailsFrame, controller)
@@ -616,16 +614,6 @@ return function(ctx)
 				end
 			end
 
-			updateSummary()
-
-			local progressAlpha = 0
-
-			if duration > 0 then
-				progressAlpha = math.clamp((duration - state.elapsed) / duration, 0, 1)
-			end
-
-			progress.Size = UDim2.new(progressAlpha, 0, 1, 0)
-
 			local targetAlpha = state.closing and 0 or 1
 
 			state.alpha = tooltipSmoothTowards(state.alpha, targetAlpha, fadeSpeed, dt)
@@ -652,9 +640,7 @@ return function(ctx)
 
 			summaryLabel.TextTransparency = 1 - state.alpha
 
-			progressBackground.BackgroundTransparency = 1 - state.alpha
-
-			progress.BackgroundTransparency = 1 - state.alpha
+			statusIcon.ImageTransparency = 1 - state.alpha
 
 			if state.expanded then
 				detailsLabel.TextTransparency = 1 - state.alpha
@@ -679,6 +665,10 @@ return function(ctx)
 				state.destroyed = true
 
 				removeToast()
+				if themeListener then
+					themeListener.Disconnect()
+					themeListener = nil
+				end
 
 				UI.forgetButtons(frame)
 

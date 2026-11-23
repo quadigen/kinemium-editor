@@ -99,7 +99,7 @@ return function(page, windowControls, gui)
 	local function showProject(project)
 		Preferences.set("lastProject", project.Path)
 		Preferences.set("sessionProject", project.Path)
-		Sync.start(project)
+		Sync.start(project, true)
 		exporter.UseEditorOverlay()
 		Explorer.filesController.Refresh()
 		gui.Enabled = false

@@ -61,7 +61,8 @@ return function(ctx)
 		if definition.icon then
 			icon = UI.image(
 				item,
-				"builtin://icons/" .. definition.icon,
+				string.find(definition.icon, "://", 1, true) and definition.icon
+					or ("builtin://icons/" .. definition.icon),
 				UDim2.new(0.5, 0, 0, iconTop + math.floor(iconSize / 2)),
 				UDim2.fromOffset(iconSize, iconSize)
 			)
@@ -73,14 +74,15 @@ return function(ctx)
 		local label = UI.label(
 			item,
 			definition.name,
-			UDim2.fromOffset(4, 35),
-			UDim2.new(1, -8, 0, 16),
+			UDim2.fromOffset(4, 34),
+			UDim2.new(1, -8, 0, 18),
 			tokens.type.caption,
 			initial.subtext
 		)
 
 		label.TextXAlignment = Enum.TextXAlignment.Center
-		label.TextYAlignment = Enum.TextYAlignment.Top
+		label.TextYAlignment = Enum.TextYAlignment.Center
+		label.TextWrapped = false
 
 		-- accent indicator that grows in when the button is selected
 		local indicator = UI.frame(item, UDim2.new(0.5, 0, 1, -3), UDim2.new(0, 0, 0, 2), initial.accent, 1)
