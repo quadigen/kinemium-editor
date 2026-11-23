@@ -73,16 +73,19 @@ return function(page, windowControls, gui)
 
 	local marketplaceListY = marketplaceControlsY + MARKETPLACE_CONTROLS_TOTAL_HEIGHT + MARKETPLACE_GAP
 
-	local marketplaceList = UI.frame(
-		marketplacePage,
-		UDim2.new(0, MARKETPLACE_MARGIN, 0, marketplaceListY),
-		UDim2.new(1, -(MARKETPLACE_MARGIN * 2), 1, -(marketplaceListY + MARKETPLACE_MARGIN)),
-		tokens.color.surfaceAlt,
-		15
-	)
-
-	marketplaceList.ClipsDescendants = true
-	marketplaceList.Parent = marketplacePage
+	local marketplaceList = UI.create("ScrollingFrame", {
+		Name = "MarketplaceResults",
+		Position = UDim2.new(0, MARKETPLACE_MARGIN, 0, marketplaceListY),
+		Size = UDim2.new(1, -(MARKETPLACE_MARGIN * 2), 1, -(marketplaceListY + MARKETPLACE_MARGIN)),
+		BackgroundColor3 = tokens.color.surfaceAlt,
+		BorderSizePixel = 0,
+		ScrollBarThickness = 6,
+		ScrollBarImageColor3 = tokens.color.subtext,
+		CanvasSize = UDim2.fromOffset(0, 0),
+		ScrollingDirection = Enum.ScrollingDirection.Y,
+		ClipsDescendants = true,
+	}, marketplacePage)
+	local marketplaceCorner = UI.corner(marketplaceList, tokens.radius.md)
 
 	local marketplaceLayout = Instance.new("UIListLayout")
 	marketplaceLayout.FillDirection = Enum.FillDirection.Horizontal
@@ -98,6 +101,20 @@ return function(page, windowControls, gui)
 	marketplaceLayout.PaddingBottom = UDim.new(0, 10)
 	marketplaceLayout.SortOrder = Enum.SortOrder.LayoutOrder
 	marketplaceLayout.Parent = marketplaceList
+	local function syncMarketplaceCanvas()
+		local count = #marketplacePlugins
+		local expected
+		if marketplaceLayoutMode == "Grid" then
+			local columns = math.clamp(math.floor((math.max(0, marketplaceList.AbsoluteSize.X - 20) + 10) / 310), 1, 4)
+			expected = math.ceil(count / columns) * 246 + 20
+		else
+			expected = count * 132 + 20
+		end
+		local measured = marketplaceLayout.AbsoluteContentSize.Y + 20
+		marketplaceList.CanvasSize = UDim2.fromOffset(0, math.max(expected, measured))
+	end
+	marketplaceLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(syncMarketplaceCanvas)
+	marketplaceList:GetPropertyChangedSignal("AbsoluteSize"):Connect(syncMarketplaceCanvas)
 
 	local function updateMarketplaceLayout()
 		if marketplaceLayoutMode == "Grid" then
@@ -124,7 +141,10 @@ return function(page, windowControls, gui)
 	local marketplaceImageCache = {}
 
 	local function firstValue(...)
-		for _, value in ipairs({ ... }) do
+		-- `ipairs({...})` stops at the first nil; many marketplace API fields
+		-- use alternate names, so their fallbacks must still be inspected.
+		for index = 1, select("#", ...) do
+			local value = select(index, ...)
 			if value ~= nil and value ~= "" then
 				return value
 			end
@@ -348,116 +368,130 @@ return function(page, windowControls, gui)
 		end
 	end
 
-	local detailPage = UI.frame(marketplacePage, UDim2.fromOffset(0, 0), UDim2.new(1, 0, 1, 0), tokens.color.panel, 0)
+	-- Marketplace entries can be either Luau plugins or native extensions.
+	-- Detect explicit native metadata only; being a "plugin" is not enough.
+	local function isNativePackage(plugin, data, versionEntry)
+		local function hasNativeMarker(value)
+			if type(value) ~= "table" then
+				return false
+			end
+			if value.isNative == true or value.nativePlugin == true or value.native == true then
+				return true
+			end
+			if type(value.tags) == "table" then
+				for _, tag in ipairs(value.tags) do
+					if type(tag) == "string" and (string.lower(tag) == "native" or string.lower(tag) == "native-plugin") then
+						return true
+					end
+				end
+			end
+			for _, key in ipairs({ "runtime", "language", "kind", "type", "itemType" }) do
+				local category = value[key]
+				if type(category) == "string" then
+					category = string.lower(tostring(category)):gsub("_", "-")
+					if category == "native" or category == "native-plugin" or category == "native-extension" then
+						return true
+					end
+				end
+			end
+			local library = firstValue(value.library, value.Library, value.binary, value.Binary)
+			if type(library) == "string" then
+				local lower = string.lower(library)
+				if lower:match("%.so$") or lower:match("%.dll$") or lower:match("%.dylib$") then
+					return true
+				end
+			end
+			return false
+		end
 
-	detailPage.Name = "PackageDetails"
-	detailPage.Visible = false
-	detailPage.ClipsDescendants = true
+		local candidates = {}
+		local function addCandidate(value)
+			if type(value) == "table" then
+				table.insert(candidates, value)
+			end
+		end
+		addCandidate(plugin)
+		addCandidate(plugin.Manifest)
+		addCandidate(plugin.Raw)
+		addCandidate(data)
+		addCandidate(versionEntry)
+		if type(data) == "table" then
+			addCandidate(data.package)
+			addCandidate(data.manifest)
+			addCandidate(data.version)
+			addCandidate(data.latestVersion)
+			if type(data.versions) == "table" then
+				for _, entry in ipairs(data.versions) do
+					addCandidate(entry)
+					if type(entry) == "table" then
+						addCandidate(entry.manifest)
+					end
+				end
+			end
+		end
+		if type(versionEntry) == "table" then
+			addCandidate(versionEntry.manifest)
+		end
+		for _, candidate in ipairs(candidates) do
+			if hasNativeMarker(candidate) or (type(candidate) == "table" and hasNativeMarker(candidate.manifest)) then
+				return true
+			end
+		end
+		return false
+	end
 
-	local detailBack = UI.button(
-		detailPage,
-		"Back",
-		UDim2.new(0, MARKETPLACE_MARGIN, 0, 8),
-		UDim2.fromOffset(74, 28),
-		function() end,
-		{
-			color = tokens.color.surface,
-			hoverColor = tokens.color.surfaceAlt,
-			pressedColor = tokens.color.input,
-			textColor = tokens.color.text,
-		}
-	)
+	local downloadPending = false
+	local function downloadPackage(plugin, data, versionEntry)
+		if downloadPending then
+			return
+		end
+		data = type(data) == "table" and data or {}
+		local namespace = firstValue(data.namespace, data.Namespace, data.package and data.package.namespace, plugin.Namespace)
+		local name = firstValue(data.name, data.Name, data.package and data.package.name, plugin.Name)
+		local latest = firstValue(data.latestVersion, data.latest_version, data.version, plugin.Manifest.Version)
+		local version = firstValue(
+			versionEntry and versionEntry.version,
+			versionEntry and versionEntry.Version,
+			type(latest) == "table" and firstValue(latest.version, latest.Version) or latest
+		)
+		if type(namespace) ~= "string" or namespace == "" or type(name) ~= "string" or name == "" or type(version) ~= "string" or version == "" then
+			UI.toast("marketplace-download", { type = "error", title = "Cannot download package", message = "The package name or version is missing." })
+			return
+		end
 
-	local detailCrumb = UI.label(
-		detailPage,
-		"MARKETPLACE",
-		UDim2.new(0, MARKETPLACE_MARGIN + 84, 0, 8),
-		UDim2.new(1, -(MARKETPLACE_MARGIN * 2 + 84), 0, 28),
-		12,
-		tokens.color.subtext
-	)
-
-	local detailScroll = UI.create("ScrollingFrame", {
-		Name = "DetailScroll",
-		Position = UDim2.new(0, MARKETPLACE_MARGIN, 0, 46),
-		Size = UDim2.new(1, -(MARKETPLACE_MARGIN * 2), 1, -(46 + MARKETPLACE_MARGIN)),
-		BackgroundTransparency = 1,
-		BorderSizePixel = 0,
-		ScrollBarThickness = 6,
-		ScrollBarImageColor3 = tokens.color.subtext,
-		CanvasSize = UDim2.fromOffset(0, 0),
-		ScrollingDirection = Enum.ScrollingDirection.Y,
-		ClipsDescendants = true,
-	}, detailPage)
-
-	local function formatDetailDate(value)
-		if type(value) == "number" then
-			local seconds = value > 100000000000 and math.floor(value / 1000) or value
-			local ok, formatted = pcall(os.date, "%Y-%m-%d", seconds)
-
-			if ok and formatted then
-				return formatted
+		local function proceed()
+			local ok, success, result = pcall(function()
+				return Packages:DownloadPackage(namespace, name, version)
+			end)
+			downloadPending = false
+			if not ok or not success then
+				UI.toast("marketplace-download", { type = "error", title = "Download failed", message = tostring(ok and result or success) })
+			else
+				UI.toast("marketplace-download", { type = "success", title = "Package downloaded", message = name .. " v" .. version })
 			end
 		end
 
-		local text = tostring(value or "")
-
-		if text == "" then
-			return "unknown"
-		end
-
-		return string.sub(text, 1, 10)
-	end
-
-	local function formatDetailCount(value)
-		local number = tonumber(value)
-
-		if number ~= nil then
-			return tostring(number)
-		end
-
-		return tostring(value or 0)
-	end
-
-	local function detailTextHeight(text, charsPerLine, lineHeight)
-		local length = math.max(1, #tostring(text or ""))
-		return math.max(lineHeight, math.ceil(length / math.max(1, charsPerLine)) * lineHeight)
-	end
-
-	local function detailPill(parent, text, x, y, options)
-		options = options or {}
-
-		local label = tostring(text or "")
-
-		if label == "" then
-			return x
-		end
-
-		local width = math.max(options.minWidth or 50, #label * 7 + 20)
-		local pill = UI.frame(
-			parent,
-			UDim2.fromOffset(x, y),
-			UDim2.fromOffset(width, 22),
-			options.color or tokens.color.surfaceAlt,
-			7
-		)
-		local textLabel = UI.label(
-			pill,
-			label,
-			UDim2.fromOffset(0, 0),
-			UDim2.new(1, 0, 1, 0),
-			11,
-			options.textColor or tokens.color.text
-		)
-
-		textLabel.TextXAlignment = Enum.TextXAlignment.Center
-
-		return x + width + 6
-	end
-
-	local function clearPackageDetail()
-		for _, child in ipairs(detailScroll:GetChildren()) do
-			child:Destroy()
+		downloadPending = true
+		if isNativePackage(plugin, data, versionEntry) then
+			local _, _, warning = UI.prompt({
+				name = "NativeMarketplaceWarning",
+				title = "Native plugin warning",
+				description = "This plugin includes native code. Native libraries run outside the Luau sandbox and may access your files, network, and system processes or crash Kinemium. Only install plugins from publishers you trust.",
+				icon = "builtin://global-icons/Warning.svg",
+				size = UDim2.fromOffset(465, 245),
+				destroyOnClose = true,
+				modal = true,
+				dim = true,
+				closeOnBackdrop = false,
+				buttonAlignment = "right",
+				buttons = {
+					{ id = "cancel", text = "Cancel", role = "secondary", callback = function() downloadPending = false end },
+					{ id = "continue", text = "Install anyway", role = "danger", callback = proceed },
+				},
+			})
+			warning:Open()
+		else
+			proceed()
 		end
 	end
 
@@ -474,24 +508,17 @@ return function(page, windowControls, gui)
 			marketplaceControls.Visible = true
 			marketplaceList.Visible = true
 		end,
+		onInstall = function(plugin, data)
+			downloadPackage(plugin, data, nil)
+		end,
 		onDownload = function(plugin, data, item)
-			local success, result, meta = Packages:DownloadPackage(
-				data.namespace, -- Namespace
-				data.name, -- Package name
-				data.latestVersion -- Version
-			)
+			downloadPackage(plugin, data, item)
 		end,
 	})
 
 	local function openPackagePage(plugin)
 		details:Open(plugin)
 	end
-
-	detailBack.MouseButton1Click:Connect(function()
-		detailPage.Visible = false
-		marketplaceControls.Visible = true
-		marketplaceList.Visible = true
-	end)
 
 	local function marketplaceListCard(plugin)
 		local manifest = plugin.Manifest
@@ -747,8 +774,9 @@ return function(page, windowControls, gui)
 	end
 
 	local function clearMarketplace()
+		marketplaceList.CanvasPosition = Vector2.new(0, 0)
 		for _, child in pairs(marketplaceList:GetChildren()) do
-			if child ~= marketplaceLayout then
+			if child ~= marketplaceLayout and child ~= marketplaceCorner then
 				-- The cards own UI.button records; drop them before the
 				-- Instances are destroyed so no rebuild touches a dead Instance.
 				UI.forgetButtons(child)
@@ -763,13 +791,14 @@ return function(page, windowControls, gui)
 
 		updateMarketplaceLayout()
 
-		for _, plugin in pairs(marketplacePlugins) do
+		for _, plugin in ipairs(marketplacePlugins) do
 			if marketplaceLayoutMode == "Grid" then
 				marketplaceGridCard(plugin)
 			else
 				marketplaceListCard(plugin)
 			end
 		end
+		syncMarketplaceCanvas()
 	end
 
 	local loaded = false

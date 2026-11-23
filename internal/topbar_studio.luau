@@ -11,7 +11,7 @@ local user = require("@internal/user")
 local size = UDim2.new(0, 600, 0.6, 0)
 local position = UDim2.new(0.5, 0, 0.5, 0)
 
-local MarketplaceWindow, _, _, Marketplace_windowControls = UI.window("Marketplace", position, size, "Marketplace", {
+local MarketplaceWindow, _, _, Marketplace_windowControls = UI.window("Marketplace", position, UDim2.new(0.65, 0, 0.82, 0), "Marketplace", {
 	tabs = {
 		"Marketplace",
 	},

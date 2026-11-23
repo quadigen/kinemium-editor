@@ -6,7 +6,6 @@ local Preferences = require("@internal/preferences")
 local UI = require("@internal/editor_ui")
 local project_manager = require("@internal/projects")
 local plugin_marketplace = require("@internal/marketplace")
-local native_plugin_ui = require("@internal/native_plugins")
 local credits_page = require("@internal/credits")
 local user = require("@internal/user")
 local Studio = game:GetService("Studio")
@@ -90,12 +89,10 @@ DiscordRPC:SetPresence({
 })
 
 local ensureMarketplace
-local ensureNativePlugins
 local window, _, _, windowControls = UI.window("Projects", UDim2.new(0, 15, 0, 15), UDim2.new(1, -30, 1, -30), "Home", {
 	tabs = {
 		"Projects",
 		"Marketplace",
-		"Native Plugins",
 		"Settings",
 		"Credits",
 	},
@@ -103,8 +100,6 @@ local window, _, _, windowControls = UI.window("Projects", UDim2.new(0, 15, 0, 1
 	onTabChanged = function(tabName)
 		if tabName == "Marketplace" and ensureMarketplace then
 			ensureMarketplace()
-		elseif tabName == "Native Plugins" and ensureNativePlugins then
-			ensureNativePlugins()
 		end
 	end,
 })
@@ -117,14 +112,6 @@ UI.RootOverlay().Enabled = false
 
 local project_active = project_manager(windowControls.pages.Projects, windowControls, gui)
 ensureMarketplace = plugin_marketplace(windowControls.pages.Marketplace, windowControls, gui)
-ensureNativePlugins = function()
-	return native_plugin_ui.mount(windowControls.pages["Native Plugins"])
-end
-task.defer(function()
-	native_plugin_ui.notifyPending(function()
-		windowControls.selectTab("Native Plugins")
-	end)
-end)
 credits_page(windowControls.pages.Credits, windowControls, gui)
 user(windowControls.pages.Settings, false)
 

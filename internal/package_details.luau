@@ -35,9 +35,6 @@ local PILL_HEIGHT = 22
 local PILL_PADDING = 10
 local PILL_ICON_SPACE = 16
 
-local MAX_TAGS = 6
-local MAX_DEPENDENCIES = 12
-local MAX_VERSIONS = 8
 
 local ICONS = {
 	download = "builtin://global-icons/download.svg",
@@ -329,7 +326,7 @@ return function(parent, options)
 		total += math.max(count - 1, 0) * SECTION_GAP
 
 		content.Size = UDim2.new(1, -(PAGE_PADDING * 2 + SCROLLBAR_WIDTH), 0, total)
-		scroll.CanvasSize = UDim2.new(0, 0, 0, total + PAGE_PADDING * 2)
+		scroll.CanvasSize = UDim2.fromOffset(0, total + PAGE_PADDING * 2)
 	end
 
 	local function pill(pillParent, text, order, config)
@@ -541,10 +538,22 @@ return function(parent, options)
 	end
 
 	function controller:Render(plugin, data)
+		UI.forgetButtons(content)
 		UI.clear(content, keep)
 
 		if type(data) == "table" and type(data.package) == "table" then
-			data = data.package
+			-- Detail endpoints provide package info and versions as siblings.
+			-- Keep the entire response instead of losing versions and metadata.
+			local merged = {}
+			for key, value in pairs(data) do
+				if key ~= "package" then
+					merged[key] = value
+				end
+			end
+			for key, value in pairs(data.package) do
+				merged[key] = value
+			end
+			data = merged
 		end
 
 		data = type(data) == "table" and data or {}
@@ -594,7 +603,7 @@ return function(parent, options)
 		local iconUrl = firstValue(data.iconUrl, data.icon_url, assets.IconUrl)
 		local bannerUrl = firstValue(data.bannerUrl, data.banner_url, data.thumbnailUrl, assets.ThumbnailUrl)
 
-		local versions = tableList(data.versions)
+		local versions = tableList(data.versions or data.Versions)
 
 		local latest = nil
 
@@ -788,11 +797,7 @@ return function(parent, options)
 			addPill("DEPRECATED", { textColor = colors.warning, icon = "warning" })
 		end
 
-		for index, tag in ipairs(tags) do
-			if index > MAX_TAGS then
-				break
-			end
-
+		for _, tag in ipairs(tags) do
 			addPill(tag, { color = colors.surface, stroke = colors.border, textColor = colors.subtext, icon = "hash" })
 		end
 
@@ -1025,7 +1030,7 @@ return function(parent, options)
 			emptyNote(depsBody, "No dependencies.")
 			setBody(depsCard, 18)
 		else
-			local shown = math.min(#dependencies, MAX_DEPENDENCIES)
+			local shown = #dependencies
 			local constraintScale = 0.3
 
 			for index = 1, shown do
@@ -1068,7 +1073,7 @@ return function(parent, options)
 			emptyNote(versionsBody, "No published versions.")
 			setBody(versionsCard, 18)
 		else
-			local shown = math.min(#versions, MAX_VERSIONS)
+			local shown = #versions
 			local versionScale = 0.14
 			local yankedScale = 0.1
 			local metaScale = 0.3

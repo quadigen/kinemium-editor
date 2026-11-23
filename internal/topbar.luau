@@ -13,7 +13,6 @@ local modelCategory = require("@internal/topbar_model")
 local testCategory = require("@internal/topbar_test")
 local viewCategory = require("@internal/topbar_view")
 local scriptCategory = require("@internal/topbar_script")
-local pluginsCategory = require("@internal/topbar_plugins")
 local studioCategory = require("@internal/topbar_studio")
 local menuBarController
 local user = require("@internal/user")
@@ -80,7 +79,6 @@ local toolbarCategories = {
 	testCategory,
 	viewCategory,
 	UICategory,
-	pluginsCategory,
 	scriptCategory,
 }
 
