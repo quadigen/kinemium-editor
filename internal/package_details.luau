@@ -107,35 +107,36 @@ local function tableList(value)
 end
 
 local function formatDate(value)
-	if type(value) == "userdata" then
-		return DateTime.fromIsoDate(value) or "Unknown"
-	end
-
 	if type(value) == "string" then
-		if value == "" then
+		local text = tostring(value)
+		if text == "" then
 			return "Unknown"
 		end
 
-		if not value:match("^%d+$") then
-			return string.sub(value, 1, 10)
+		-- Marketplace API dates may be ISO strings or Unix timestamp strings.
+		if not text:match("^%d+$") then
+			return string.sub(text, 1, 10)
 		end
-
-		value = tonumber(value)
+		value = tonumber(text)
 	end
 
-	if type(value) ~= "number" then
-		return "Unknown"
-	end
-
-	local ok, dateTime = pcall(function()
-		if value > 100000000000 then
-			return DateTime.fromUnixTimestampMillis(value)
+	local ok, isoDate = pcall(function()
+		local dateTime = value
+		if type(value) == "number" then
+			if value > 100000000000 then
+				dateTime = DateTime.fromUnixTimestampMillis(value)
+			else
+				dateTime = DateTime.fromUnixTimestamp(value)
+			end
 		end
-
-		return DateTime.fromUnixTimestamp(value)
+		-- fromIsoDate parses a string; ToIsoDate formats a DateTime.
+		return dateTime:ToIsoDate()
 	end)
 
-	return ok and DateTime.fromIsoDate(dateTime) or "Unknown"
+	if ok and type(isoDate) == "string" and isoDate ~= "" then
+		return string.sub(isoDate, 1, 10)
+	end
+	return "Unknown"
 end
 
 local function pickDate(...)
@@ -1225,6 +1226,25 @@ return function(parent, options)
 		return state.open
 	end
 
+	-- A failed detail component must not leave the marketplace on an
+	-- unexplained, partially rendered hero. Keep the fetch/retry path alive.
+	local function renderSafely(plugin, data)
+		local ok, err = pcall(controller.Render, controller, plugin, data)
+		if not ok then
+			print("[Marketplace] Package detail render failed for", tostring(plugin.Slug), tostring(err))
+		end
+		return ok, err
+	end
+
+	local function reportRenderFailure(err)
+		UI.toast("marketplace-details-render", {
+			type = "error",
+			title = "Could not display package details",
+			message = tostring(err),
+			duration = 12,
+		})
+	end
+
 	function controller:Open(plugin)
 		state.open = true
 		state.plugin = plugin
@@ -1240,9 +1260,12 @@ return function(parent, options)
 
 		page.Visible = true
 
-		controller:Render(plugin, plugin.Raw)
+		local previewRendered, previewError = renderSafely(plugin, plugin.Raw)
 
 		if not options.fetch then
+			if not previewRendered then
+				reportRenderFailure(previewError)
+			end
 			return
 		end
 
@@ -1257,9 +1280,19 @@ return function(parent, options)
 		setCrumb(plugin)
 
 		if called and ok then
-			controller:Render(plugin, data)
+			local rendered, err = renderSafely(plugin, data)
+			if not rendered then
+				reportRenderFailure(err)
+			end
 		else
-			UI.toast("Could not load package details.", { type = "error" })
+			UI.toast("marketplace-details-fetch", {
+				type = "error",
+				title = "Could not load package details",
+				message = tostring(called and data or ok),
+			})
+			if not previewRendered then
+				reportRenderFailure(previewError)
+			end
 		end
 	end
 
