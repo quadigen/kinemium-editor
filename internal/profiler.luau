@@ -411,6 +411,14 @@ local selectedOffset = 1
 local lastSampleSource = "empty"
 local paused = false
 local activeTab = "Timeline"
+local scriptSnapshot
+local scriptBaseline
+local scriptFrameCount = 0
+local function resetScriptSampling()
+	scriptSnapshot = nil
+	scriptBaseline = nil
+	scriptFrameCount = 0
+end
 local dirtyGraph, dirtyDetail = true, true
 local drawGraph
 local drawDetail
@@ -531,6 +539,7 @@ local tabContainer, tabController =
 		inactiveTabColor = content.BackgroundColor3,
 		tabAccentColor = colors.accent,
 		onTabChanged = function(name, _, page)
+			if activeTab ~= name then resetScriptSampling() end
 			activeTab = name
 			if detailBody and page then
 				detailBody.Parent = page
@@ -814,6 +823,7 @@ setPaused = function(value)
 		refreshHistorical()
 		readSelection()
 	else
+		resetScriptSampling()
 		selectedOffset = 1
 		selectedFrame = nil
 		table.clear(samples)
@@ -1242,60 +1252,90 @@ local function drawThreads()
 	)
 end
 
+local function sampleScripts()
+	local now = os.clock()
+	if scriptSnapshot and (paused or (scriptBaseline and now - scriptBaseline.time < 0.5)) then
+		return scriptSnapshot
+	end
+
+	local scripts = safeCall("GetScripts") or {}
+	local previous = scriptBaseline
+	local elapsed = previous and now - previous.time or 0
+	local frames = previous and scriptFrameCount - previous.frames or 0
+	local current = {}
+
+	for _, item in ipairs(scripts) do
+		local name = item.Name or "Unknown"
+		local cpu = tonumber(item.CpuMs) or 0
+		local resumes = tonumber(item.Resumes) or 0
+		local alloc = tonumber(item.AllocatedBytes) or 0
+		local old = previous and previous.scripts[name]
+		if elapsed > 0 and frames > 0 and previous then
+			old = old or { cpu = 0, resumes = 0, alloc = 0 }
+			if cpu >= old.cpu and resumes >= old.resumes and alloc >= old.alloc then
+				item.CpuPerFrame = (cpu - old.cpu) / frames
+				item.ResumesPerSecond = (resumes - old.resumes) / elapsed
+				item.AllocPerSecond = (alloc - old.alloc) / elapsed
+			end
+		end
+		current[name] = { cpu = cpu, resumes = resumes, alloc = alloc }
+	end
+
+	scriptBaseline = { time = now, frames = scriptFrameCount, scripts = current }
+	scriptSnapshot = scripts
+	return scripts
+end
+
 local function drawScripts()
 	recycleDetails()
-	local scripts = safeCall("GetScripts") or {}
+	local scripts = sampleScripts()
 	table.sort(scripts, function(a, b)
+		local aLive, bLive = a.CpuPerFrame or 0, b.CpuPerFrame or 0
+		if aLive ~= bLive then return aLive > bLive end
 		return (a.CpuMs or 0) > (b.CpuMs or 0)
 	end)
 	local width = math.max(200, laneCanvas.AbsoluteSize.X)
-	local contentWidth = math.max(520, math.floor(width * zoom))
+	local contentWidth = math.max(810, math.floor(width * zoom))
 	local shown = math.min(#scripts, 100)
 	local maxValue = 0.001
-	for _, scriptStat in ipairs(scripts) do
-		maxValue = math.max(maxValue, tonumber(scriptStat.CpuMs) or 0)
+	for _, item in ipairs(scripts) do
+		maxValue = math.max(maxValue, item.CpuPerFrame or 0)
 	end
 
-	local widths = { 100, 100, 100, 90 }
+	local widths = { 84, 86, 92, 92, 98, 98, 72 }
 	local xs = columnPositions(widths, contentWidth)
 	local barMax = math.max(40, xs[1] - 28)
-	drawHeader("Script", "Cumulative CPU (exclusive)", { "CPU", "Total", "Resumes", "Alloc" }, widths, xs, contentWidth)
+	drawHeader("Script", "Recent CPU / frame", { "ms/frame", "Resumes/s", "Alloc/s", "Live RAM", "CPU total", "Alloc total", "Threads" }, widths, xs, contentWidth)
 
 	local first, last = visibleRows(shown, 0)
 	for i = first, last do
 		local item = scripts[i]
 		local y = i * ROW_H
 		rowStripe(i, y, contentWidth)
-		textRow(
-			laneNames,
-			item.Name or "Unknown",
-			UDim2.fromOffset(12, y),
-			UDim2.new(1, -18, 0, ROW_H),
-			11,
-			C.text,
-			nameObjects
-		)
-		tracked(laneCanvas, {
-			Position = UDim2.fromOffset(12, y + 5),
-			Size = UDim2.fromOffset(
-				math.max(2, math.floor((tonumber(item.CpuMs) or 0) / maxValue * barMax)),
-				ROW_H - 10
-			),
-			BackgroundColor3 = categories[categoryByKey.Scripts].color,
-			radius = tokens.radius.xs,
-			BorderSizePixel = 0,
-		}, laneObjects)
-		drawCell(string.format("%.2f ms", tonumber(item.CpuMs) or 0), xs[1], y, widths[1])
-		drawCell(string.format("%.2f ms", tonumber(item.TotalCpuMs) or 0), xs[2], y, widths[2])
-		drawCell(formatInt(item.Resumes), xs[3], y, widths[3])
-		drawCell(memoryText(item.AllocatedBytes), xs[4], y, widths[4])
+		textRow(laneNames, item.Name or "Unknown", UDim2.fromOffset(12, y), UDim2.new(1, -18, 0, ROW_H), 11, C.text, nameObjects)
+		if (item.CpuPerFrame or 0) > 0 then
+			tracked(laneCanvas, {
+				Position = UDim2.fromOffset(12, y + 5),
+				Size = UDim2.fromOffset(math.max(2, math.floor(item.CpuPerFrame / maxValue * barMax)), ROW_H - 10),
+				BackgroundColor3 = categories[categoryByKey.Scripts].color,
+				radius = tokens.radius.xs,
+				BorderSizePixel = 0,
+			}, laneObjects)
+		end
+		drawCell(item.CpuPerFrame and string.format("%.3f", item.CpuPerFrame) or "-", xs[1], y, widths[1])
+		drawCell(item.ResumesPerSecond and formatInt(math.floor(item.ResumesPerSecond + 0.5)) or "-", xs[2], y, widths[2])
+		drawCell(item.AllocPerSecond and memoryText(item.AllocPerSecond) or "-", xs[3], y, widths[3])
+		drawCell(memoryText(item.LiveBytes), xs[4], y, widths[4])
+		drawCell(string.format("%.2f ms", tonumber(item.CpuMs) or 0), xs[5], y, widths[5])
+		drawCell(memoryText(item.AllocatedBytes), xs[6], y, widths[6])
+		drawCell(formatInt(item.AliveThreads), xs[7], y, widths[7])
 	end
 	laneNames.CanvasSize = UDim2.fromOffset(0, (shown + 2) * ROW_H)
 	laneCanvas.CanvasSize = UDim2.fromOffset(contentWidth, (shown + 2) * ROW_H)
 	detailCaption.Text = shown < #scripts and string.format("%d/%d scripts", shown, #scripts)
 		or tostring(#scripts) .. " scripts"
-	statusLabel.Text =
-		"Script totals are cumulative for the current Luau VM; they are not per-frame historical snapshots."
+	statusLabel.Text = paused and "Script rates are frozen at the last sample; totals are lifetime VM counters."
+		or "Recent rates sampled over elapsed frames; CPU and allocation totals are cumulative for this VM."
 end
 
 drawDetail = function()
@@ -1324,6 +1364,7 @@ local function update()
 	if not visible then
 		if wasVisible then
 			wasVisible = false
+			resetScriptSampling()
 			-- Optional native API: release history capture when this inspector
 			-- closes, without switching off the separate F2 profiler overlay.
 			if not ProfilerService.Enabled then
@@ -1333,6 +1374,7 @@ local function update()
 		return
 	end
 
+	if activeTab == "Scripts" and not paused then scriptFrameCount += 1 end
 	local now = os.clock()
 	if not wasVisible then
 		wasVisible = true

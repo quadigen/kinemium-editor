@@ -385,8 +385,12 @@ return function(ctx)
 			return active ~= nil and active.controller == controller
 		end
 
+		local animation
 		local function wake()
-			anim.running = true
+			if not anim.destroyed then
+				anim.running = true
+				if animation then animation:Wake() end
+			end
 		end
 
 		local function choose(itemValue, itemText, item)
@@ -894,20 +898,23 @@ return function(ctx)
 			wake()
 		end)
 
+		local inputEnded
 		button.MouseButton1Down:Connect(function()
+			if anim.destroyed then return end
 			anim.pressed = true
+			if not inputEnded then
+				inputEnded = UserInputService.InputEnded:Connect(function(input)
+					if inputEnded and input.UserInputType == Enum.UserInputType.MouseButton1 then
+						inputEnded:Disconnect()
+						inputEnded = nil
+						anim.pressed = false
+						wake()
+					end
+				end)
+			end
 			wake()
 		end)
 
-		-- MouseButton1Up only fires over the button, so release is tracked globally
-		local inputEnded = UserInputService.InputEnded:Connect(function(input)
-			if input.UserInputType == Enum.UserInputType.MouseButton1 then
-				anim.pressed = false
-				wake()
-			end
-		end)
-
-		local heartbeat
 		local themeListener
 
 		local function cleanup()
@@ -916,18 +923,19 @@ return function(ctx)
 			end
 
 			anim.destroyed = true
+			if isOpen() then closeActiveDropdown(true) end
 
-			if heartbeat then
-				heartbeat:Disconnect()
-				heartbeat = nil
-			end
+			animation:Destroy()
 
 			if themeListener then
 				themeListener.Disconnect()
 				themeListener = nil
 			end
 
-			inputEnded:Disconnect()
+			if inputEnded then
+				inputEnded:Disconnect()
+				inputEnded = nil
+			end
 		end
 
 		-- repaint once after a theme change, even if the button is idle
@@ -937,7 +945,7 @@ return function(ctx)
 			end
 		end)
 
-		heartbeat = RunService.Heartbeat:Connect(function(dt)
+		animation = ctx.animations.newTask(function(dt)
 			if anim.destroyed then
 				return
 			end
@@ -952,13 +960,22 @@ return function(ctx)
 				return
 			end
 
+			local visible = ctx.isVisible(button)
+			if not visible then
+				anim.hovered = false
+				anim.pressed = false
+				if inputEnded then
+					inputEnded:Disconnect()
+					inputEnded = nil
+				end
+			end
 			local hoverTarget = (hoverEnabled and anim.hovered and not anim.pressed) and 1 or 0
 			local pressTarget = (hoverEnabled and anim.pressed) and 1 or 0
 			local openTarget = isOpen() and 1 or 0
 
 			local moving = false
 
-			if animate then
+			if animate and visible then
 				anim.hover = tooltipSmoothTowards(anim.hover, hoverTarget, speed, dt)
 				anim.press = tooltipSmoothTowards(anim.press, pressTarget, speed * 1.6, dt)
 				anim.open = tooltipSmoothTowards(anim.open, openTarget, speed * 0.8, dt)
@@ -987,6 +1004,11 @@ return function(ctx)
 			renderButton()
 
 			anim.running = moving
+			return moving
+		end)
+
+		button.MouseButton1Up:Connect(function()
+			if not anim.destroyed then wake() end
 		end)
 
 		button.Destroying:Connect(cleanup)

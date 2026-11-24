@@ -1,4 +1,3 @@
-local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 
 return function(ctx)
@@ -35,6 +34,7 @@ return function(ctx)
 			destroyed = false,
 		}
 
+		local wake
 		local function render()
 			local enabledColor = options.enabledColor or colors.accent
 			local disabledColor = options.disabledColor or colors.input
@@ -57,10 +57,7 @@ return function(ctx)
 		track, _, record = UI.button(parent, "", position, UDim2.fromOffset(width, height), function()
 			enabled = not enabled
 
-			if not animate then
-				state.alpha = enabled and 1 or 0
-				render()
-			end
+			wake()
 
 			if callback then
 				callback(enabled)
@@ -83,77 +80,101 @@ return function(ctx)
 			math.floor(knobSize / 2)
 		)
 
-		track.MouseEnter:Connect(function()
-			state.hovered = true
-		end)
+		local animation
+		local inputEnded
+		local themeListener
 
-		track.MouseLeave:Connect(function()
-			state.hovered = false
-		end)
-
-		track.MouseButton1Down:Connect(function()
-			state.pressed = true
-		end)
-
-		-- MouseButton1Up only fires over the button, so release is tracked globally
-		local inputEnded = UserInputService.InputEnded:Connect(function(input)
-			if input.UserInputType == Enum.UserInputType.MouseButton1 then
+		local function release()
+			if inputEnded then
+				inputEnded:Disconnect()
+				inputEnded = nil
+			end
+			if state.pressed then
 				state.pressed = false
+				wake()
 			end
-		end)
-
-		local heartbeat
-
-		local function cleanup()
-			if state.destroyed then
-				return
-			end
-
-			state.destroyed = true
-
-			if heartbeat then
-				heartbeat:Disconnect()
-				heartbeat = nil
-			end
-
-			inputEnded:Disconnect()
 		end
 
-		heartbeat = RunService.Heartbeat:Connect(function(dt)
-			if state.destroyed then
-				return
+		local function cleanup()
+			if state.destroyed then return end
+			state.destroyed = true
+			animation:Destroy()
+			if inputEnded then
+				inputEnded:Disconnect()
+				inputEnded = nil
 			end
+			if themeListener then
+				themeListener.Disconnect()
+			end
+		end
 
+		local function targets()
+			return enabled and 1 or 0, (state.hovered and not state.pressed) and 1 or 0, state.pressed and 1 or 0
+		end
+
+		local function step(dt)
+			if state.destroyed then return false end
 			if not UI.isAlive(track) then
 				cleanup()
-				return
+				return false
 			end
-
-			local alphaTarget = enabled and 1 or 0
-			local hoverTarget = (state.hovered and not state.pressed) and 1 or 0
-			local pressTarget = state.pressed and 1 or 0
-
-			if animate then
+			local alphaTarget, hoverTarget, pressTarget = targets()
+			if not ctx.isVisible(track) then
+				state.hovered = false
+				state.pressed = false
+				if inputEnded then
+					inputEnded:Disconnect()
+					inputEnded = nil
+				end
+				hoverTarget, pressTarget = 0, 0
+				state.alpha, state.hover, state.press = alphaTarget, hoverTarget, pressTarget
+			elseif animate then
 				state.alpha = tooltipSmoothTowards(state.alpha, alphaTarget, speed, dt)
 				state.hover = tooltipSmoothTowards(state.hover, hoverTarget, speed, dt)
 				state.press = tooltipSmoothTowards(state.press, pressTarget, speed * 1.6, dt)
-
-				if math.abs(state.alpha - alphaTarget) < 0.005 then
-					state.alpha = alphaTarget
-				end
-
-				if math.abs(state.hover - hoverTarget) < 0.005 then
-					state.hover = hoverTarget
-				end
-
-				if math.abs(state.press - pressTarget) < 0.005 then
-					state.press = pressTarget
-				end
+				if math.abs(state.alpha - alphaTarget) < 0.005 then state.alpha = alphaTarget end
+				if math.abs(state.hover - hoverTarget) < 0.005 then state.hover = hoverTarget end
+				if math.abs(state.press - pressTarget) < 0.005 then state.press = pressTarget end
 			else
 				state.alpha, state.hover, state.press = alphaTarget, hoverTarget, pressTarget
 			end
-
 			render()
+			return state.alpha ~= alphaTarget or state.hover ~= hoverTarget or state.press ~= pressTarget
+		end
+
+		animation = ctx.animations.newTask(step)
+		wake = function()
+			if state.destroyed then return end
+			if not animate or not ctx.isVisible(track) then
+				animation:Stop()
+				step(0)
+			else
+				animation:Wake()
+			end
+		end
+
+		track.MouseEnter:Connect(function()
+			state.hovered = true
+			wake()
+		end)
+		track.MouseLeave:Connect(function()
+			state.hovered = false
+			wake()
+		end)
+		track.MouseButton1Down:Connect(function()
+			if state.destroyed then return end
+			state.pressed = true
+			if not inputEnded then
+				inputEnded = UserInputService.InputEnded:Connect(function(input)
+					if input.UserInputType == Enum.UserInputType.MouseButton1 then release() end
+				end)
+			end
+			wake()
+		end)
+		themeListener = UI.onThemeChanged(wake)
+
+		track.MouseButton1Up:Connect(function()
+			if not state.destroyed then wake() end
 		end)
 
 		track.Destroying:Connect(cleanup)
@@ -165,11 +186,21 @@ return function(ctx)
 		end
 
 		function controller:SetValue(newValue, silent, instant)
+			if state.destroyed then return end
+			local changed = enabled ~= (newValue == true)
 			enabled = newValue == true
 
-			if instant or not animate then
+			if instant then
 				state.alpha = enabled and 1 or 0
 				render()
+				local _, hoverTarget, pressTarget = targets()
+				if state.hover == hoverTarget and state.press == pressTarget then
+					animation:Stop()
+				else
+					wake()
+				end
+			elseif changed then
+				wake()
 			end
 
 			if not silent and callback then

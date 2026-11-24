@@ -1799,6 +1799,20 @@ local components = {
 	UI = UI,
 	shared = shared,
 	tooltipSmoothTowards = tooltipSmoothTowards,
+	animations = require("./animation_scheduler")(RunService.Heartbeat),
+	isVisible = function(gui)
+		local current = gui
+		while current do
+			if current:IsA("GuiObject") and not current.Visible then
+				return false
+			end
+			if current:IsA("ScreenGui") then
+				return current.Enabled and current.Parent ~= nil
+			end
+			current = current.Parent
+		end
+		return false
+	end,
 }
 
 for _, install in ipairs(componentModules) do

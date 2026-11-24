@@ -1,5 +1,3 @@
-local RunService = game:GetService("RunService")
-
 return function(ctx)
 	local UI = ctx.UI
 	local shared = ctx.shared
@@ -17,22 +15,6 @@ return function(ctx)
 		if existing then
 			existing:SetText(text)
 			return existing
-		end
-
-		if not shared.tooltipJanitor then
-			shared.tooltipJanitor = RunService.Heartbeat:Connect(function()
-				local registry = shared.tooltips
-				if registry == nil then
-					return
-				end
-
-				for tooltipTarget, tooltipController in pairs(registry) do
-					if not UI.isAlive(tooltipTarget) then
-						tooltipController:Destroy()
-						registry[tooltipTarget] = nil
-					end
-				end
-			end)
 		end
 
 		local hoverDelay = options.hoverDelay or 0.4
@@ -134,6 +116,10 @@ return function(ctx)
 
 		local controller = {}
 
+		local lastWidth, lastHeight
+		local lastLabelWidth, lastLabelHeight
+		local lastX, lastY, lastAlpha
+
 		local function updateSize()
 			local bounds = label.TextBounds
 
@@ -148,18 +134,20 @@ return function(ctx)
 			if maxWidth then
 				contentWidth = math.min(contentWidth, maxWidth)
 
-				label.Size = UDim2.fromOffset(maxWidth, math.max(contentHeight, textSize))
-
 				contentWidth = maxWidth
-			else
+			end
+
+			if contentWidth ~= lastLabelWidth or contentHeight ~= lastLabelHeight then
 				label.Size = UDim2.fromOffset(contentWidth, contentHeight)
+				lastLabelWidth, lastLabelHeight = contentWidth, contentHeight
 			end
 
 			local width = contentWidth + padding * 2
-
 			local height = contentHeight + padding * 2
-
-			tooltip.Size = UDim2.fromOffset(width, height)
+			if width ~= lastWidth or height ~= lastHeight then
+				tooltip.Size = UDim2.fromOffset(width, height)
+				lastWidth, lastHeight = width, height
+			end
 
 			return width, height
 		end
@@ -225,6 +213,12 @@ return function(ctx)
 			label.TextTransparency = 1 - state.alpha * (1 - textTransparency)
 		end
 
+		local animation
+		local destroyConnection
+		local overlayDestroyConnection
+		local function wake()
+			if not state.destroyed then animation:Wake() end
+		end
 		local enterConnection = target.MouseEnter:Connect(function(x, y)
 			state.hovered = true
 
@@ -233,25 +227,42 @@ return function(ctx)
 			state.anchorMouse = Vector2.new(x, y)
 
 			state.mouse = state.anchorMouse
+			wake()
 		end)
 
 		local leaveConnection = target.MouseLeave:Connect(function()
 			state.hovered = false
 
 			state.hoverTime = 0
+			wake()
 		end)
 
-		local moveConnection = target.MouseMoved:Connect(function(x, y)
-			state.mouse = Vector2.new(x, y)
-		end)
+		local moveConnection
+		if options.followCursor then
+			moveConnection = target.MouseMoved:Connect(function(x, y)
+				state.mouse = Vector2.new(x, y)
+			end)
+		end
 
-		local heartbeatConnection = RunService.Heartbeat:Connect(function(dt)
+		animation = ctx.animations.newTask(function(dt)
 			if state.destroyed then
 				return
 			end
 
+			if not UI.isAlive(target) or not UI.isAlive(tooltip) then
+				controller:Destroy()
+				return false
+			end
+			if not ctx.isVisible(target) then
+				state.hovered = false
+				state.hoverTime = 0
+				state.alpha = 0
+				tooltip.Visible = false
+				return false
+			end
+
 			if state.hovered then
-				state.hoverTime += dt
+				state.hoverTime = math.min(hoverDelay, state.hoverTime + dt)
 			else
 				state.hoverTime = 0
 			end
@@ -265,20 +276,23 @@ return function(ctx)
 			end
 
 			if state.alpha <= 0.001 then
-				tooltip.Visible = false
-
-				return
+				if tooltip.Visible then tooltip.Visible = false end
+				return state.hovered
 			end
 
-			tooltip.Visible = true
+			if not tooltip.Visible then tooltip.Visible = true end
 
 			local width, height = updateSize()
-
 			local x, y = calculatePosition(width, height)
-
-			tooltip.Position = UDim2.fromOffset(x, y)
-
-			updateTransparency()
+			if x ~= lastX or y ~= lastY then
+				tooltip.Position = UDim2.fromOffset(x, y)
+				lastX, lastY = x, y
+			end
+			if state.alpha ~= lastAlpha then
+				updateTransparency()
+				lastAlpha = state.alpha
+			end
+			return true
 		end)
 
 		function controller:SetText(newText)
@@ -293,12 +307,14 @@ return function(ctx)
 			state.hovered = true
 
 			state.hoverTime = hoverDelay
+			wake()
 		end
 
 		function controller:Hide()
 			state.hovered = false
 
 			state.hoverTime = 0
+			wake()
 		end
 
 		function controller:Destroy()
@@ -316,17 +332,31 @@ return function(ctx)
 
 			leaveConnection:Disconnect()
 
-			moveConnection:Disconnect()
+			if moveConnection then moveConnection:Disconnect() end
 
-			heartbeatConnection:Disconnect()
+			animation:Destroy()
+			if destroyConnection then
+				destroyConnection:Disconnect()
+				destroyConnection = nil
+			end
 
-			tooltip:Destroy()
+			if overlayDestroyConnection then
+				overlayDestroyConnection:Disconnect()
+				overlayDestroyConnection = nil
+			end
+			if UI.isAlive(tooltip) then tooltip:Destroy() end
 		end
 
 		controller.frame = tooltip
 		controller.label = label
 		controller.target = target
 
+		destroyConnection = target.Destroying:Connect(function()
+			controller:Destroy()
+		end)
+		overlayDestroyConnection = tooltip.Destroying:Connect(function()
+			controller:Destroy()
+		end)
 		shared.tooltips[target] = controller
 
 		return controller

@@ -1,4 +1,3 @@
-local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 
 return function(ctx)
@@ -130,8 +129,12 @@ return function(ctx)
 			indicator.Size = UDim2.new(0.6 * state.select, 0, 0, 2)
 		end
 
+		local animation
 		local function wake()
-			state.running = true
+			if not state.destroyed then
+				state.running = true
+				if animation then animation:Wake() end
+			end
 		end
 
 		item.MouseEnter:Connect(function()
@@ -144,17 +147,21 @@ return function(ctx)
 			wake()
 		end)
 
+		local inputEnded
 		item.MouseButton1Down:Connect(function()
+			if state.destroyed then return end
 			state.pressed = true
-			wake()
-		end)
-
-		-- MouseButton1Up only fires over the button, so release is tracked globally
-		local inputEnded = UserInputService.InputEnded:Connect(function(input)
-			if input.UserInputType == Enum.UserInputType.MouseButton1 then
-				state.pressed = false
-				wake()
+			if not inputEnded then
+				inputEnded = UserInputService.InputEnded:Connect(function(input)
+					if inputEnded and input.UserInputType == Enum.UserInputType.MouseButton1 then
+						inputEnded:Disconnect()
+						inputEnded = nil
+						state.pressed = false
+						wake()
+					end
+				end)
 			end
+			wake()
 		end)
 
 		if onClick then
@@ -163,7 +170,6 @@ return function(ctx)
 			end)
 		end
 
-		local heartbeat
 		local themeListener
 
 		local function cleanup()
@@ -173,17 +179,17 @@ return function(ctx)
 
 			state.destroyed = true
 
-			if heartbeat then
-				heartbeat:Disconnect()
-				heartbeat = nil
-			end
+			animation:Destroy()
 
 			if themeListener then
 				themeListener.Disconnect()
 				themeListener = nil
 			end
 
-			inputEnded:Disconnect()
+			if inputEnded then
+				inputEnded:Disconnect()
+				inputEnded = nil
+			end
 		end
 
 		-- repaint once when the theme changes, even if the button is idle
@@ -193,7 +199,7 @@ return function(ctx)
 			end
 		end)
 
-		heartbeat = RunService.Heartbeat:Connect(function(dt)
+		animation = ctx.animations.newTask(function(dt)
 			if state.destroyed then
 				return
 			end
@@ -208,13 +214,22 @@ return function(ctx)
 				return
 			end
 
+			local visible = ctx.isVisible(item)
+			if not visible then
+				state.hovered = false
+				state.pressed = false
+				if inputEnded then
+					inputEnded:Disconnect()
+					inputEnded = nil
+				end
+			end
 			local hoverTarget = (hoverEnabled and state.hovered and not state.pressed) and 1 or 0
 			local pressTarget = (hoverEnabled and state.pressed) and 1 or 0
 			local selectTarget = state.selected and 1 or 0
 
 			local moving = false
 
-			if animate then
+			if animate and visible then
 				state.hover = tooltipSmoothTowards(state.hover, hoverTarget, speed, dt)
 				state.press = tooltipSmoothTowards(state.press, pressTarget, speed * 1.6, dt)
 				state.select = tooltipSmoothTowards(state.select, selectTarget, speed, dt)
@@ -243,6 +258,11 @@ return function(ctx)
 			render()
 
 			state.running = moving
+			return moving
+		end)
+
+		item.MouseButton1Up:Connect(function()
+			if not state.destroyed then wake() end
 		end)
 
 		item.Destroying:Connect(cleanup)

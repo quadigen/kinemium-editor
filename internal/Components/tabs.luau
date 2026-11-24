@@ -1,4 +1,3 @@
-local RunService = game:GetService("RunService")
 
 return function(ctx)
 	local UI = ctx.UI
@@ -153,16 +152,21 @@ return function(ctx)
 			return tostring(tab)
 		end
 
+		local animation
+		local destroyed = false
 		local function wake()
+			if destroyed then return end
 			anim.running = true
+			animation:Wake()
 		end
 
 		local function step(dt)
-			if not anim.running then
+			if destroyed or not anim.running then
 				return
 			end
 
 			local moving = false
+			local snap = anim.snap or not ctx.isVisible(bar)
 
 			for tabName, data in pairs(tabButtons) do
 				local active = tabName == selectedTab
@@ -170,7 +174,7 @@ return function(ctx)
 				local activeTarget = active and 1 or 0
 				local hoverTarget = (data.hovered and not active) and 1 or 0
 
-				if anim.snap then
+				if snap then
 					data.activeAlpha = activeTarget
 					data.hoverAlpha = hoverTarget
 				else
@@ -199,7 +203,7 @@ return function(ctx)
 			indicator.Visible = current ~= nil
 			if current then
 
-				if anim.snap then
+				if snap then
 					anim.x, anim.w = current.x, current.width
 				else
 					anim.x = tooltipSmoothTowards(anim.x, current.x, tabSpeed, dt)
@@ -218,15 +222,14 @@ return function(ctx)
 
 			anim.snap = false
 			anim.running = moving
+			return moving
 		end
 
-		local heartbeat = RunService.Heartbeat:Connect(step)
+		animation = ctx.animations.newTask(step)
 
 		function controller.destroy()
-			if heartbeat then
-				heartbeat:Disconnect()
-				heartbeat = nil
-			end
+			destroyed = true
+			animation:Destroy()
 		end
 
 		bar.Destroying:Connect(controller.destroy)
@@ -420,7 +423,7 @@ return function(ctx)
 
 		if #tabs > 0 then
 			controller.selectTab(options.selectedTab or getTabName(tabs[1]))
-			step(0)
+			if not step(0) then animation:Stop() end
 		end
 
 		controller.bar = bar
