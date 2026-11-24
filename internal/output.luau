@@ -15,6 +15,9 @@ local output = theme.OutputCoordinates
 panel.window.AnchorPoint = Vector2.new(0, 0)
 UI.applyWindowLayout(panel.window, output.Position, output.Size)
 panel.window.Parent = UI.root()
+panel.window:GetPropertyChangedSignal("Visible"):Connect(function()
+	StudioThemeService:SetDockWindowVisible("Output", panel.window.Visible)
+end)
 Preferences.observe("showOutput", function(value) panel.window.Visible = value end)
 panel.gui:Destroy()
 

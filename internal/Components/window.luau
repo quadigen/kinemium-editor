@@ -1,10 +1,52 @@
 local UserInputService = game:GetService("UserInputService")
 local Studio = game:GetService("Studio")
+local ThemeService = game:GetService("StudioThemeService")
+local HttpService = game:GetService("HttpService")
 
 return function(ctx)
 	local UI = ctx.UI
 	local shared = ctx.shared
 	local layouts = setmetatable({}, { __mode = "k" })
+	local dockResizeState = {}
+
+	function UI.restoreDockResizeState(enabled)
+		table.clear(dockResizeState)
+		if not enabled then return end
+
+		local encoded = Studio:GetSetting("dockResizeState", "")
+		local ok, saved = pcall(function()
+			return HttpService:JSONDecode(encoded)
+		end)
+		if ok and type(saved) == "table" then
+			dockResizeState = saved
+			ThemeService:SetDockResizeState(saved)
+		end
+	end
+
+	function UI.restoreDockWindowWeight(name)
+		local key = "window." .. name
+		local value = dockResizeState[key]
+		if value ~= nil then
+			ThemeService:SetDockResizeState({ [key] = value })
+		end
+	end
+
+	local function saveDockResizeState()
+		for key, value in pairs(ThemeService:GetDockResizeState()) do
+			dockResizeState[key] = value
+		end
+		Studio:SetSetting("dockResizeState", HttpService:JSONEncode(dockResizeState))
+	end
+
+	local function dockName(panel)
+		return panel.Name == "Console" and "Output" or panel.Name
+	end
+
+	local function dockCoordinates(panel)
+		local theme = ThemeService.SelectedTheme
+		local name = dockName(panel)
+		return theme[name .. "Coordinates"] or (theme.DockedWindows and theme.DockedWindows[name])
+	end
 
 	local function encode(position, size)
 		return string.format("%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g",
@@ -46,12 +88,7 @@ return function(ctx)
 			state.mode = mode
 			state.basePosition = position
 			state.baseSize = size
-			if state.resizing or panel:GetAttribute("Dragging") == true then return end
-			local saved = savedLayout(state, mode)
-			if saved then
-				position += saved.position
-				size += saved.size
-			end
+			if panel:GetAttribute("Dragging") == true then return end
 		end
 		if panel.Position ~= position then panel.Position = position end
 		if panel.Size ~= size then panel.Size = size end
@@ -126,25 +163,45 @@ return function(ctx)
 			}, panel)
 			controls.resizeDetector = detector
 
-			detector.ScaleStart:Connect(function()
+			detector.ScaleStart:Connect(function(pointer)
 				state.resizing = true
 				state.startPosition = panel.Position
 				state.startSize = panel.Size
+				state.dockChanged = false
+
+				local position, size = panel.AbsolutePosition, panel.AbsoluteSize
+				local x, y = pointer.X - position.X, pointer.Y - position.Y
+				local edge = detector.EdgeThickness
+				state.edges = (x <= edge and 1 or 0) + (size.X - x <= edge and 2 or 0)
+					+ (y <= edge and 4 or 0) + (size.Y - y <= edge and 8 or 0)
+			end)
+
+			detector.ScaleContinue:Connect(function()
+				if not state.resizing or state.mode == "floating" then return end
+
+				local position, size = panel.Position, panel.Size
+				local changed = ThemeService:ResizeDockWindow(
+					dockName(panel), position.X.Offset, position.Y.Offset, size.X.Offset, size.Y.Offset, state.edges
+				)
+				state.dockChanged = state.dockChanged or changed
+				local coordinates = dockCoordinates(panel)
+				if coordinates then
+					UI.applyWindowLayout(panel, coordinates.Position, coordinates.Size)
+				end
 			end)
 
 			detector.ScaleEnd:Connect(function()
 				state.resizing = false
+				if state.mode ~= "floating" then
+					if state.dockChanged then saveDockResizeState() end
+					return
+				end
 				if panel.Size == state.startSize and panel.Position == state.startPosition then return end
 
 				local position = UDim2.new()
-				local resizedSize = panel.Size
-				if state.mode ~= "floating" and state.basePosition and state.baseSize then
-					position = panel.Position - state.basePosition
-					resizedSize -= state.baseSize
-				end
-
-				state.saved[state.mode] = { position = position, size = resizedSize }
-				Studio:SetSetting(settingKey(state, state.mode), encode(position, resizedSize))
+				local size = panel.Size
+				state.saved.floating = { position = position, size = size }
+				Studio:SetSetting(settingKey(state, "floating"), encode(position, size))
 			end)
 
 			panel:GetPropertyChangedSignal("Visible"):Connect(function()

@@ -774,16 +774,8 @@ renderer.Pool.new("2d", function()
 
 	theme = StudioThemeService.SelectedTheme
 
-	local outputWindow = UI.getWindow("Console")
-	local outputHidden = outputWindow and not outputWindow.Visible
 	local coordinates = theme.ViewportCoordinates
-	local size = coordinates.Size
-
-	if outputHidden and theme.OutputCoordinates then
-		size += UDim2.new(0, 0, theme.OutputCoordinates.Size.Y.Scale, theme.OutputCoordinates.Size.Y.Offset)
-	end
-
-	UI.applyWindowLayout(panel, coordinates.Position, size)
+	UI.applyWindowLayout(panel, coordinates.Position, coordinates.Size)
 
 	local viewportPosition = getViewportPosition()
 	local viewportSize = getViewportSize()

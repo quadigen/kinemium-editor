@@ -102,6 +102,7 @@ local function dockTo(anchor: string, fullSpan: boolean)
 
 	local ok, err = pcall(function()
 		ThemeService:DockWindow(windowName, anchor, fullSpan)
+		UI.restoreDockWindowWeight(windowName)
 		local record = custom[windowName]
 		if record then
 			record.docked = true
@@ -352,6 +353,7 @@ local function restoreCustom(name, record)
 	if anchor then
 		local ok = pcall(function()
 			ThemeService:DockWindow(name, anchor, span == ":full")
+			UI.restoreDockWindowWeight(name)
 		end)
 		record.docked = ok
 		record.visible = ok

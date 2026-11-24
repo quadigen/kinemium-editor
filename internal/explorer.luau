@@ -34,6 +34,9 @@ local panel, tabContent, _, windowControls =
 		selectedTab = "Explorer",
 	})
 panel.Parent = gui
+panel:GetPropertyChangedSignal("Visible"):Connect(function()
+	StudioThemeService:SetDockWindowVisible("Explorer", panel.Visible)
+end)
 Preferences.observe("showExplorer", function(value)
 	panel.Visible = value
 end)
@@ -1835,7 +1838,8 @@ end)
 renderer.Pool.new("2d", function()
 	local dragging = docker.Update(panel, "Explorer")
 	if not dragging then
-		UI.applyWindowLayout(panel, theme.ExplorerCoordinates.Position, theme.ExplorerCoordinates.Size)
+		local coordinates = StudioThemeService.SelectedTheme.ExplorerCoordinates
+		UI.applyWindowLayout(panel, coordinates.Position, coordinates.Size)
 	end
 
 	if not gui.Enabled or not tabActive("Explorer") then

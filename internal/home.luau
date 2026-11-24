@@ -31,15 +31,19 @@ local Project = game:GetService("Project")
 
 local function restoreLayout(enabled)
 	ThemeService:ResetDocking()
-	if not enabled then
-		return
-	end
-	for _, name in ipairs({ "Viewport", "Explorer", "Inspector", "Output" }) do
-		local saved = Preferences.get("dock." .. name)
-		local anchor, fullSpan = string.match(saved, "^(%a+)(.*)$")
-		if anchor then
-			ThemeService:DockWindow(name, anchor, fullSpan == ":full")
+	if enabled then
+		for _, name in ipairs({ "Viewport", "Explorer", "Inspector", "Output" }) do
+			local saved = Preferences.get("dock." .. name)
+			local anchor, fullSpan = string.match(saved, "^(%a+)(.*)$")
+			if anchor then
+				ThemeService:DockWindow(name, anchor, fullSpan == ":full")
+			end
 		end
+	end
+	UI.restoreDockResizeState(enabled)
+	for name, windowName in pairs({ Explorer = "Explorer", Inspector = "Inspector", Output = "Console" }) do
+		local panel = UI.getWindow(windowName)
+		if panel then ThemeService:SetDockWindowVisible(name, panel.Visible) end
 	end
 end
 
