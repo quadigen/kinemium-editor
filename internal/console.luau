@@ -71,9 +71,10 @@ local function createConsole()
 	UI.trackRoot(gui)
 
 	local panel, content =
-		UI.window(WINDOW_NAME, UDim2.fromOffset(0, 0), UDim2.fromOffset(0, 0), "Console", { closable = true })
-	panel.Size = UDim2.new(0.4, 0, 0.7, 0)
-	panel.Position = UDim2.new(0.5, 0, 0.5, 0)
+		UI.window(WINDOW_NAME, UDim2.new(0.5, 0, 0.5, 0), UDim2.new(0.4, 0, 0.7, 0), "Console", {
+			closable = true,
+			managedLayout = true,
+		})
 	panel.AnchorPoint = Vector2.new(0.5, 0.5)
 	panel.Parent = gui
 

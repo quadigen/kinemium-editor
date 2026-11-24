@@ -9,7 +9,33 @@ local found, save = pcall(function()
 end)
 local Sync = { available = found and type(save) == "function" }
 local active
-local elapsed = 0
+local scheduled
+local bootstrapConnection
+local scheduleGeneration = 0
+
+local function stopPolling()
+	scheduleGeneration += 1
+	if scheduled then
+		task.cancel(scheduled)
+		scheduled = nil
+	end
+	if bootstrapConnection then
+		bootstrapConnection:Disconnect()
+		bootstrapConnection = nil
+	end
+end
+
+local function schedulePoll()
+	if not active or active.paused or scheduled then return end
+	local generation = scheduleGeneration
+	scheduled = task.delay(1, function()
+		if generation ~= scheduleGeneration then return end
+		scheduled = nil
+		if not active or active.paused then return end
+		Sync.step()
+		if generation == scheduleGeneration then schedulePoll() end
+	end)
+end
 local suffixes = {
 	{ ".server.luau", "Script" },
 	{ ".server.lua", "Script" },
@@ -807,6 +833,7 @@ local function readJournal(mappings)
 end
 
 function Sync.stop()
+	stopPolling()
 	if active and active.mappings then
 		for _, mapping in ipairs(active.mappings) do
 			clearModelConflict(mapping)
@@ -899,6 +926,7 @@ function Sync.setPaused(paused)
 		return false
 	end
 	active.paused = paused
+	stopPolling()
 	active.dirty = true
 	local ok, message = pcall(saveJournal)
 	if not ok then
@@ -909,6 +937,7 @@ function Sync.setPaused(paused)
 	end
 	if not paused then
 		Sync.step()
+		schedulePoll()
 	end
 	return ok
 end
@@ -976,22 +1005,20 @@ function Sync.start(project, nextHeartbeat)
 	-- Editor bootstrap can run before the .kine scene deserializes. Never
 	-- reconcile with an empty world: an older in-memory source could otherwise
 	-- overwrite changes made on disk before project startup.
-	elapsed = nextHeartbeat and 1 or 0
 	if nextHeartbeat then
+		bootstrapConnection = RunService.Heartbeat:Connect(function()
+			bootstrapConnection:Disconnect()
+			bootstrapConnection = nil
+			if active and not active.paused then
+				Sync.step()
+				schedulePoll()
+			end
+		end)
 		return true
 	end
-	return Sync.step()
+	local result = Sync.step()
+	schedulePoll()
+	return result
 end
-
-RunService.Heartbeat:Connect(function(dt)
-	if not active or active.paused then
-		return
-	end
-	elapsed += dt
-	if elapsed >= 1 then
-		elapsed = 0
-		Sync.step()
-	end
-end)
 
 return Sync

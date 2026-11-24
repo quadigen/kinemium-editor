@@ -1,5 +1,3 @@
-local RunService = game:GetService("RunService")
-
 return function(ctx)
 	local UI = ctx.UI
 	local colors = UI.tokens.color
@@ -16,7 +14,8 @@ return function(ctx)
 		local animationSpeed = options.animationSpeed or 18
 
 		local displayProgress = progress
-		local heartbeat = nil
+		local animation
+		local destroyed = false
 
 		local background = UI.frame(
 			parent,
@@ -37,10 +36,7 @@ return function(ctx)
 		)
 
 		local function stopAnimation()
-			if heartbeat then
-				heartbeat:Disconnect()
-				heartbeat = nil
-			end
+			animation:Stop()
 		end
 
 		local function redraw()
@@ -55,35 +51,32 @@ return function(ctx)
 			redraw()
 		end
 
-		local function wake()
-			if not animate then
-				snapVisual()
-
-				return
-			end
-
-			if heartbeat then
-				return
-			end
-
-			heartbeat = RunService.Heartbeat:Connect(function(dt)
-				displayProgress = tooltipSmoothTowards(displayProgress, progress, animationSpeed, dt)
-
-				local finished = math.abs(displayProgress - progress) < 0.0005
-
-				if finished then
-					displayProgress = progress
-				end
-
+		animation = ctx.animations.newTask(function(dt)
+			if destroyed then return false end
+			if not ctx.isVisible(background) then
+				displayProgress = progress
 				redraw()
+				return false
+			end
+			displayProgress = tooltipSmoothTowards(displayProgress, progress, animationSpeed, dt)
+			local finished = math.abs(displayProgress - progress) < 0.0005
+			if finished then displayProgress = progress end
+			redraw()
+			return not finished
+		end)
 
-				if finished then
-					stopAnimation()
-				end
-			end)
+		local function wake()
+			if not animate or not ctx.isVisible(background) then
+				snapVisual()
+			elseif displayProgress ~= progress then
+				animation:Wake()
+			end
 		end
 
-		background.Destroying:Connect(stopAnimation)
+		background.Destroying:Connect(function()
+			destroyed = true
+			animation:Destroy()
+		end)
 
 		local controller = {}
 
@@ -92,7 +85,10 @@ return function(ctx)
 		end
 
 		function controller:SetValue(newValue, instant)
-			progress = math.clamp(newValue, 0, 1)
+			if destroyed then return end
+			local nextValue = math.clamp(newValue, 0, 1)
+			if nextValue == progress and not instant then return end
+			progress = nextValue
 
 			if instant then
 				snapVisual()

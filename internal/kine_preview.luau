@@ -3,6 +3,8 @@ local Export = game:GetService("ExportService")
 local RunService = game:GetService("RunService")
 local Preview = {}
 local queue, worker, pending = {}, nil, nil
+local retryTask
+local wakeWorker
 local active, cache, failures = {}, {}, {}
 local storage = Instance.new("Folder")
 local generation = 0
@@ -89,6 +91,7 @@ function Preview.Release(root)
 		end
 	end
 	trimCache()
+	if #cache > 0 and wakeWorker then wakeWorker() end
 end
 
 function Preview.Invalidate()
@@ -239,6 +242,7 @@ local function step()
 		cleanup(pending)
 		pending = nil
 	end
+	local madeProgress = pending ~= nil
 	local ok, message = pcall(function()
 		if not pending then
 			for _ = 1, math.min(#queue, 12) do
@@ -248,6 +252,7 @@ local function step()
 						queue[#queue + 1] = job
 						continue
 					end
+					madeProgress = true
 					if not cached(job.path, job.parent, job.fallback) and (failures[job.path] or 0) <= os.clock() then
 						pending = job
 						if not start(job) then
@@ -274,17 +279,38 @@ local function step()
 		cleanup(pending)
 		pending = nil
 	end
-	if not pending and #queue == 0 and #cache == 0 then
+	if not pending and not madeProgress then
 		worker:Disconnect()
 		worker = nil
+		local delay
+		if #queue > 0 then
+			delay = 0.15
+		elseif #cache > 0 then
+			delay = math.huge
+			for _, record in ipairs(cache) do
+				delay = math.min(delay, record.expires - os.clock())
+			end
+			delay = math.max(0.05, delay)
+		end
+		if delay then
+			retryTask = task.delay(delay, function()
+				retryTask = nil
+				wakeWorker()
+			end)
+		end
 	end
+end
+
+wakeWorker = function()
+	if retryTask then
+		task.cancel(retryTask)
+		retryTask = nil
+	end
+	if not worker then worker = RunService.Heartbeat:Connect(step) end
 end
 
 function Preview.Attach(parent, path, fallback)
 	queue[#queue + 1] = { parent = parent, path = path, fallback = fallback }
-	-- Signals retain the editor's capabilities; task.defer currently drops them.
-	if not worker then
-		worker = RunService.Heartbeat:Connect(step)
-	end
+	wakeWorker()
 end
 return Preview

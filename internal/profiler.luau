@@ -472,7 +472,7 @@ local function graphSlot(index)
 	hit.BackgroundTransparency = 1
 	hit.ZIndex = 5
 
-	return { button = hit, pieces = columns, marker = marker }
+	return { button = hit, pieces = columns, marker = marker, geometry = {} }
 end
 
 for i = 1, GRAPH_POINTS do
@@ -868,6 +868,7 @@ iconButton(
 	end
 )
 
+local graphWidthCached, graphHeightCached
 local function drawGraphNow()
 	dirtyGraph = false
 	local graphWidth = chart.AbsoluteSize.X
@@ -877,6 +878,8 @@ local function drawGraphNow()
 		return
 	end
 
+	local layoutChanged = graphWidthCached ~= graphWidth or graphHeightCached ~= graphHeight
+	graphWidthCached, graphHeightCached = graphWidth, graphHeight
 	local maximum = 33.333
 	for _, rec in ipairs(samples) do
 		maximum = math.max(maximum, rec.frameMs)
@@ -893,24 +896,44 @@ local function drawGraphNow()
 		local w = math.max(1, nextX - x - 2)
 		local stack = 0
 		local selected = rec and paused and selectedFrame and rec.offset == selectedOffset
-		slot.marker.Visible = not not selected
-		slot.marker.BackgroundColor3 = C.selection
-		slot.marker.Size = UDim2.fromOffset(w + 2, graphHeight)
-		slot.marker.Position = UDim2.fromOffset(x - 1, 0)
-		slot.button.Position = UDim2.fromOffset(x, 0)
-		slot.button.Size = UDim2.fromOffset(w, graphHeight)
+		selected = not not selected
+		if slot.selected ~= selected then
+			slot.marker.Visible = selected
+			slot.selected = selected
+		end
+		if layoutChanged then
+			slot.marker.Size = UDim2.fromOffset(w + 2, graphHeight)
+			slot.marker.Position = UDim2.fromOffset(x - 1, 0)
+			slot.button.Position = UDim2.fromOffset(x, 0)
+			slot.button.Size = UDim2.fromOffset(w, graphHeight)
+		end
 		for _, cat in ipairs(categories) do
 			local segment = slot.pieces[cat.key]
 			local value = rec and (rec.bucket[cat.key] or 0) or 0
-			segment.BackgroundColor3 = cat.color
+			local geometry = slot.geometry[cat.key]
+			if not geometry then
+				geometry = { visible = false }
+				slot.geometry[cat.key] = geometry
+			end
 			if value > 0 and categoryEnabled[cat.key] then
 				local h = math.max(1, math.floor(graphHeight * (value / maximum)))
-				segment.Position = UDim2.fromOffset(x, graphHeight - stack - h)
-				segment.Size = UDim2.fromOffset(w, h)
-				segment.Visible = true
+				local y = graphHeight - stack - h
+				if geometry.x ~= x or geometry.y ~= y then
+					segment.Position = UDim2.fromOffset(x, y)
+					geometry.x, geometry.y = x, y
+				end
+				if geometry.w ~= w or geometry.h ~= h then
+					segment.Size = UDim2.fromOffset(w, h)
+					geometry.w, geometry.h = w, h
+				end
+				if not geometry.visible then
+					segment.Visible = true
+					geometry.visible = true
+				end
 				stack += h
-			else
+			elseif geometry.visible then
 				segment.Visible = false
+				geometry.visible = false
 			end
 		end
 	end
@@ -1356,7 +1379,7 @@ local lastScriptRefresh = 0
 local lastDetailRefresh = 0
 local wasVisible = false
 
-local function update()
+local function update(dt)
 	if destroyed then
 		return
 	end
@@ -1374,7 +1397,7 @@ local function update()
 		return
 	end
 
-	if activeTab == "Scripts" and not paused then scriptFrameCount += 1 end
+	if type(dt) == "number" and activeTab == "Scripts" and not paused then scriptFrameCount += 1 end
 	local now = os.clock()
 	if not wasVisible then
 		wasVisible = true
@@ -1417,8 +1440,10 @@ local function update()
 	local rec = getSelectedFrame()
 	local fps = paused and rec and rec.fps or tonumber(ProfilerService.FPS) or 0
 	local frameMs = paused and rec and rec.frameMs or tonumber(ProfilerService.FrameTime) or 0
-	readout.Text = string.format("FPS %.1f     Frame %.2f ms", fps or 0, frameMs or 0)
-	frameCounter.Text = paused and string.format("%d / %d", selectedOffset, getFrameCount()) or "LIVE"
+	local readoutText = string.format("FPS %.1f     Frame %.2f ms", fps or 0, frameMs or 0)
+	local counterText = paused and string.format("%d / %d", selectedOffset, getFrameCount()) or "LIVE"
+	if readout.Text ~= readoutText then readout.Text = readoutText end
+	if frameCounter.Text ~= counterText then frameCounter.Text = counterText end
 	if activeTab == "Scripts" and not paused and now - lastScriptRefresh >= 0.8 then
 		lastScriptRefresh = now
 		dirtyDetail = true
@@ -1442,6 +1467,12 @@ local function refreshTheme()
 	themeRepaint()
 	seamlessTabs()
 	updateLiveBadge()
+	for _, slot in ipairs(graphBars) do
+		slot.marker.BackgroundColor3 = C.selection
+		for _, cat in ipairs(categories) do
+			slot.pieces[cat.key].BackgroundColor3 = cat.color
+		end
+	end
 	for key, visual in pairs(legendVisuals) do
 		visual.caption.TextColor3 = categoryEnabled[key] and C.text or C.dim
 		visual.chip.BackgroundColor3 = categories[categoryByKey[key]].color
@@ -1449,7 +1480,24 @@ local function refreshTheme()
 	dirtyGraph, dirtyDetail = true, true
 end
 
-connect(RunService.Heartbeat, update)
+local updateConnection
+local function syncVisibility()
+	if destroyed then return end
+	if panel.Visible and gui.Enabled then
+		if not updateConnection then
+			updateConnection = RunService.Heartbeat:Connect(update)
+			update()
+		end
+	elseif updateConnection then
+		updateConnection:Disconnect()
+		updateConnection = nil
+		update()
+	end
+end
+
+connect(panel:GetPropertyChangedSignal("Visible"), syncVisibility)
+connect(gui:GetPropertyChangedSignal("Enabled"), syncVisibility)
+syncVisibility()
 local themeConnection = UI.onThemeChanged(refreshTheme)
 connect(content:GetPropertyChangedSignal("BackgroundColor3"), function()
 	if not destroyed then
@@ -1467,6 +1515,10 @@ connect(panel.Destroying, function()
 		return
 	end
 	destroyed = true
+	if updateConnection then
+		updateConnection:Disconnect()
+		updateConnection = nil
+	end
 	if wasVisible and not ProfilerService.Enabled then
 		safeCall("SetCollectionEnabled", false)
 	end

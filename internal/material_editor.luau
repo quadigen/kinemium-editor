@@ -92,8 +92,9 @@ boundsFrame.Parent = overlay
 local function fitWindow()
 	local bounds = boundsFrame.AbsoluteSize
 	if bounds.X <= 0 or bounds.Y <= 0 then return end
-	local width = math.min(WINDOW_WIDTH, math.max(1, bounds.X - 16))
-	local height = math.min(WINDOW_HEIGHT, math.max(1, bounds.Y - 16))
+	local size = panel.Size
+	local width = math.min(size.X.Scale * bounds.X + size.X.Offset, math.max(1, bounds.X - 16))
+	local height = math.min(size.Y.Scale * bounds.Y + size.Y.Offset, math.max(1, bounds.Y - 16))
 	panel.Size = UDim2.fromOffset(width, height)
 	local position = panel.Position
 	panel.Position = UDim2.fromOffset(

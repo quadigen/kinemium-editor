@@ -25,6 +25,7 @@ local tokens = UI.tokens
 local gui = UI.widgetOverlay()
 local panel, tabContent, _, windowControls =
 	UI.window("Explorer", theme.ExplorerCoordinates.Position, theme.ExplorerCoordinates.Size, "Explorer", {
+		managedLayout = true,
 		tabs = {
 			"Explorer",
 			"Files",
@@ -1834,8 +1835,7 @@ end)
 renderer.Pool.new("2d", function()
 	local dragging = docker.Update(panel, "Explorer")
 	if not dragging then
-		panel.Size = theme.ExplorerCoordinates.Size
-		panel.Position = theme.ExplorerCoordinates.Position
+		UI.applyWindowLayout(panel, theme.ExplorerCoordinates.Position, theme.ExplorerCoordinates.Size)
 	end
 
 	if not gui.Enabled or not tabActive("Explorer") then

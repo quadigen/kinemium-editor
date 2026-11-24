@@ -2403,8 +2403,6 @@ function CodeEditor:syncTheme()
 		self.themeSnapshot = snapshotColors()
 		self:applyTheme()
 		self:rebuildThemedContent()
-	else
-		self:applyTheme()
 	end
 end
 
@@ -2814,6 +2812,9 @@ function CodeEditor.new(parent)
 
 	self:buildFindButtons()
 	self:wireEditor()
+	self.themeConnection = UI.onThemeChanged(function()
+		if not self.destroyed then self:syncTheme() end
+	end)
 	self:registerRenderStep()
 
 	return self
@@ -2825,6 +2826,14 @@ function CodeEditor:Destroy()
 	end
 
 	self.destroyed = true
+	if self.themeConnection then
+		self.themeConnection.Disconnect()
+		self.themeConnection = nil
+	end
+	if self.renderConnection then
+		self.renderConnection:Disconnect()
+		self.renderConnection = nil
+	end
 
 	for _, document in ipairs(self.documents) do
 		if document == self.activeDocument and UI.isAlive(self.TextBox) then
@@ -2856,8 +2865,14 @@ function CodeEditor:connect(signal, callback)
 end
 
 function CodeEditor:registerRenderStep()
-	self:connect(RunService.Heartbeat, function(dt)
+	if self.destroyed or self.renderConnection then return end
+	if #self.documents == 0 and not self.toastExpires then return end
+	self.renderConnection = RunService.Heartbeat:Connect(function(dt)
 		self:update(dt or 1 / 60)
+		if self.renderConnection and #self.documents == 0 and not self.toastExpires then
+			self.renderConnection:Disconnect()
+			self.renderConnection = nil
+		end
 	end)
 end
 
@@ -2870,8 +2885,19 @@ function CodeEditor:update(delta)
 		delta = 1 / 60
 	end
 
-	self:syncTheme()
+	if self.toastExpires ~= nil and os.clock() >= self.toastExpires then
+		self.toastExpires = nil
+		self.StatusMessage.Text = ""
+	end
+	if #self.documents == 0 then return end
 
+	self.pollTimer += delta
+	if self.pollTimer >= 1 then
+		self.pollTimer %= 1
+		self:pollDocuments()
+	end
+
+	if not self.activeDocument or not self.TextBox.Visible then return end
 	self:updateAutomaticDiagnostic()
 	if self.diagnosticShown ~= nil then
 		if self.diagnosticPinned and self.TextBox.CursorPosition ~= self.pinnedCursor then
@@ -2883,18 +2909,6 @@ function CodeEditor:update(delta)
 
 	if self.findVisible or self.goToVisible then
 		self:placeFindWidget()
-	end
-
-	self.pollTimer += delta
-
-	if self.pollTimer >= 1 then
-		self.pollTimer = 0
-		self:pollDocuments()
-	end
-
-	if self.toastExpires ~= nil and os.clock() >= self.toastExpires then
-		self.toastExpires = nil
-		self.StatusMessage.Text = ""
 	end
 
 	self:updateStatus()
@@ -3016,6 +3030,7 @@ function CodeEditor:notify(text, seconds)
 
 	self.StatusMessage.Text = text
 	self.toastExpires = os.clock() + (seconds or 1.8)
+	self:registerRenderStep()
 end
 
 function CodeEditor:getSelection()
@@ -3573,6 +3588,7 @@ function CodeEditor:GetSource()
 end
 
 function CodeEditor:updateVisibility()
+	self:registerRenderStep()
 	local has = self:hasDocument()
 
 	self.TextBox.Visible = has
@@ -3735,6 +3751,7 @@ function CodeEditor:updateStatus()
 	end
 
 	self.StatusInfo.Text = info
+	self.StatusInfo.TextColor3 = self.diagnosticActive and C("error") or C("subtext")
 end
 
 -- Intellisense (editor side) ------------------------------------------------------

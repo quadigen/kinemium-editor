@@ -422,6 +422,7 @@ function Editor.new(options)
 
 	self.box.MouseEnter:Connect(function()
 		self.hoverObj = nil
+		self:wakeTick()
 	end)
 
 	self.hit.MouseButton1Down:Connect(function(x, y)
@@ -434,12 +435,17 @@ function Editor.new(options)
 
 	self.hit.MouseMoved:Connect(function(x, y)
 		if not self.drag then
-			self.hoverObj = self:findAt(Vector2.new(x, y))
+			local hovered = self:findAt(Vector2.new(x, y))
+			if self.hoverObj ~= hovered then
+				self.hoverObj = hovered
+				self:wakeTick()
+			end
 		end
 	end)
 
 	self.hit.MouseLeave:Connect(function()
 		self.hoverObj = nil
+		self:wakeTick()
 	end)
 
 	table.insert(
@@ -471,13 +477,6 @@ function Editor.new(options)
 		self.connections,
 		Selection.SelectionChanged:Connect(function()
 			self:refresh()
-		end)
-	)
-
-	table.insert(
-		self.connections,
-		RunService.Heartbeat:Connect(function(dt)
-			self:tick(dt)
 		end)
 	)
 
@@ -567,6 +566,7 @@ function Editor:refresh()
 	end
 
 	self.target = newTarget
+	self:wakeTick()
 end
 
 function Editor:SetEnabled(value)
@@ -578,6 +578,7 @@ function Editor:SetEnabled(value)
 	end
 
 	self.enabled = value
+	self:wakeTick()
 end
 
 function Editor:IsDragging()
@@ -1988,6 +1989,24 @@ function Editor:openMenu(items, point)
 	self.catcher.Visible = true
 end
 
+function Editor:hasTickWork()
+	return self.drag ~= nil or next(self.goals) ~= nil
+		or (self.enabled and (self.target ~= nil or self.hoverObj ~= nil))
+		or self.view.alpha ~= 0 or self.hv.alpha ~= 0
+		or self.hadExtras or self.hadGuides
+end
+
+function Editor:wakeTick()
+	if self.destroyed or self.tickConnection or not self:hasTickWork() then return end
+	self.tickConnection = RunService.Heartbeat:Connect(function(dt)
+		self:tick(dt)
+		if self.tickConnection and not self:hasTickWork() then
+			self.tickConnection:Disconnect()
+			self.tickConnection = nil
+		end
+	end)
+end
+
 function Editor:tick(dt)
 	dt = math.min(dt, 0.1)
 
@@ -2089,7 +2108,8 @@ function Editor:tickBox(dt)
 	end
 
 	if v.alpha <= 0.01 and not show then
-		self.box.Visible = false
+		if self.box.Visible then self.box.Visible = false end
+		if self.readout.Visible then self.readout.Visible = false end
 		v.ready = false
 		return
 	end
@@ -2228,14 +2248,19 @@ function Editor:tickExtras()
 	end
 
 	for i = used + 1, #self.extraFrames do
-		self.extraFrames[i].Visible = false
+		if self.extraFrames[i].Visible then self.extraFrames[i].Visible = false end
 	end
+	self.hadExtras = used > 0
 end
 
 function Editor:tickHover(dt)
 	local obj = self.hoverObj
+	if obj and not UI.isAlive(obj) then
+		self.hoverObj = nil
+		obj = nil
+	end
 
-	if self.showSelectionOutline == false or (obj and (not UI.isAlive(obj) or obj == self.target or self.drag or not self.enabled or self:isMenuOpen())) then
+	if self.showSelectionOutline == false or (obj and (obj == self.target or self.drag or not self.enabled or self:isMenuOpen())) then
 		obj = nil
 	end
 
@@ -2257,7 +2282,7 @@ function Editor:tickHover(dt)
 	end
 
 	if not obj and hv.alpha <= 0.01 then
-		self.hover.Visible = false
+		if self.hover.Visible then self.hover.Visible = false end
 		hv.ready = false
 		return
 	end
@@ -2270,10 +2295,11 @@ function Editor:tickHover(dt)
 end
 
 function Editor:tickGuides()
-	local origin = self.overlay.AbsolutePosition
+	if not (self.drag and self.drag.active) and not self.hadGuides then return end
 	local used = 0
 
 	if self.drag and self.drag.active then
+		local origin = self.overlay.AbsolutePosition
 		for _, guide in ipairs(self.guideList) do
 			used += 1
 
@@ -2305,11 +2331,18 @@ function Editor:tickGuides()
 	end
 
 	for i = used + 1, #self.guideFrames do
-		self.guideFrames[i].Visible = false
+		if self.guideFrames[i].Visible then self.guideFrames[i].Visible = false end
 	end
+	self.hadGuides = used > 0
 end
 
 function Editor:Destroy()
+	if self.destroyed then return end
+	self.destroyed = true
+	if self.tickConnection then
+		self.tickConnection:Disconnect()
+		self.tickConnection = nil
+	end
 	for _, connection in ipairs(self.connections) do
 		connection:Disconnect()
 	end

@@ -22,9 +22,7 @@ local SECTION_INSET = LIST_PAD * 2 + SCROLLBAR
 local ANIM_SPEED = 14
 local CHEVRON = "builtin://global-icons/chevron-down.svg"
 
-local function smooth(current, target, speed, dt)
-	return current + (target - current) * (1 - math.exp(-speed * dt))
-end
+
 
 local function sleep(seconds)
 	local elapsed = 0
@@ -98,7 +96,7 @@ local exporting = false
 
 local statusLabel, exportSelectedLabel, exportAllLabel
 local progress
-local progressTarget, progressShown = 0, 0
+local progressTarget = 0
 local setAllEnabled
 
 local panel, content, _, windowControls =
@@ -990,12 +988,7 @@ end
 local function setProgress(value, instant)
 	progressTarget = value
 
-	if instant then
-		progressShown = value
-		if progress then
-			progress:SetValue(value)
-		end
-	end
+	if progress then progress:SetValue(value, instant) end
 end
 
 local exportSelectedRecord, exportAllRecord
@@ -1177,7 +1170,7 @@ statusLabel.TextXAlignment = Enum.TextXAlignment.Left
 statusLabel.TextYAlignment = Enum.TextYAlignment.Center
 
 local _, progressController =
-	UI.progressBar(footer, UDim2.fromOffset(LIST_PAD, 28), UDim2.new(1, -LIST_PAD * 2, 0, 4), 0)
+	UI.progressBar(footer, UDim2.fromOffset(LIST_PAD, 28), UDim2.new(1, -LIST_PAD * 2, 0, 4), progressTarget, { animationSpeed = 10 })
 progress = progressController
 
 local _, selectedLabel, selectedRecord
@@ -1212,21 +1205,6 @@ exportAllLabel, exportAllRecord = allLabel, allRecord
 
 updateStatus()
 
-local heartbeat = RunService.Heartbeat:Connect(function(dt)
-	if progress then
-		progressShown = smooth(progressShown, progressTarget, 10, dt)
-
-		if math.abs(progressShown - progressTarget) < 0.002 then
-			progressShown = progressTarget
-		end
-
-		progress:SetValue(progressShown)
-	end
-end)
-
-panel.Destroying:Connect(function()
-	heartbeat:Disconnect()
-end)
 
 return {
 	Enable = function()

@@ -214,10 +214,37 @@ return function(ctx)
 		end
 
 		local animation
+		local visibilityConnections = {}
+		local function clearVisibilityConnections()
+			for _, connection in ipairs(visibilityConnections) do
+				connection:Disconnect()
+			end
+			table.clear(visibilityConnections)
+		end
 		local destroyConnection
 		local overlayDestroyConnection
 		local function wake()
 			if not state.destroyed then animation:Wake() end
+		end
+		local function watchVisibility()
+			clearVisibilityConnections()
+			local current = target
+			while current do
+				if current:IsA("GuiObject") then
+					table.insert(visibilityConnections, current:GetPropertyChangedSignal("Visible"):Connect(wake))
+				elseif current:IsA("ScreenGui") then
+					table.insert(visibilityConnections, current:GetPropertyChangedSignal("Enabled"):Connect(wake))
+				end
+				table.insert(visibilityConnections, current.AncestryChanged:Connect(function()
+					clearVisibilityConnections()
+					wake()
+				end))
+				current = current.Parent
+			end
+			table.insert(visibilityConnections, target:GetPropertyChangedSignal("AbsolutePosition"):Connect(wake))
+			table.insert(visibilityConnections, target:GetPropertyChangedSignal("AbsoluteSize"):Connect(wake))
+			table.insert(visibilityConnections, root:GetPropertyChangedSignal("AbsoluteSize"):Connect(wake))
+			table.insert(visibilityConnections, label:GetPropertyChangedSignal("TextBounds"):Connect(wake))
 		end
 		local enterConnection = target.MouseEnter:Connect(function(x, y)
 			state.hovered = true
@@ -241,6 +268,7 @@ return function(ctx)
 		if options.followCursor then
 			moveConnection = target.MouseMoved:Connect(function(x, y)
 				state.mouse = Vector2.new(x, y)
+				if state.hovered then wake() end
 			end)
 		end
 
@@ -257,6 +285,7 @@ return function(ctx)
 				state.hovered = false
 				state.hoverTime = 0
 				state.alpha = 0
+				clearVisibilityConnections()
 				tooltip.Visible = false
 				return false
 			end
@@ -277,6 +306,7 @@ return function(ctx)
 
 			if state.alpha <= 0.001 then
 				if tooltip.Visible then tooltip.Visible = false end
+				if not state.hovered then clearVisibilityConnections() end
 				return state.hovered
 			end
 
@@ -292,15 +322,24 @@ return function(ctx)
 				updateTransparency()
 				lastAlpha = state.alpha
 			end
+			if state.hovered and state.alpha == 1 then
+				if #visibilityConnections == 0 then watchVisibility() end
+				return false
+			end
 			return true
 		end)
 
 		function controller:SetText(newText)
-			label.Text = tostring(newText or "")
+			local value = tostring(newText or "")
+			if label.Text ~= value then
+				label.Text = value
+				if state.hovered or state.alpha > 0 then wake() end
+			end
 		end
 
 		function controller:SetPlacement(newPlacement)
 			placement = newPlacement or "cursor"
+			if state.hovered or state.alpha > 0 then wake() end
 		end
 
 		function controller:Show()
@@ -335,6 +374,7 @@ return function(ctx)
 			if moveConnection then moveConnection:Disconnect() end
 
 			animation:Destroy()
+			clearVisibilityConnections()
 			if destroyConnection then
 				destroyConnection:Disconnect()
 				destroyConnection = nil

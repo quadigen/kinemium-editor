@@ -16,6 +16,8 @@ local treeVersion = nil
 local selectionGeneration = 0
 local clock = 0
 local lastStatus = 0
+local worker
+local wakePolling
 Tree.changed = Signal.new()
 local values = {}
 local function notify(message)
@@ -58,6 +60,7 @@ function Tree.setRole(role)
 	nextTree = 0
 	Selection:Set({})
 	Tree.changed:Fire()
+	if wakePolling then wakePolling() end
 	return true
 end
 function Tree.cycle()
@@ -295,5 +298,19 @@ function Tree.setProperty(node, key, value)
 	return true
 end
 
-game:GetService("RunService").Heartbeat:Connect(poll)
+local RunService = game:GetService("RunService")
+local function hasWork()
+	return Tree.role ~= nil or next(pending) ~= nil or copyQueued ~= nil or #edits > 0
+end
+
+wakePolling = function()
+	if worker or not hasWork() then return end
+	worker = RunService.Heartbeat:Connect(function(dt)
+		poll(dt)
+		if not hasWork() then
+			worker:Disconnect()
+			worker = nil
+		end
+	end)
+end
 return Tree

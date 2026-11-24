@@ -25,7 +25,7 @@ local tokens = UI.tokens
 local iconRoot = "builtin://icons/"
 
 local panel, content, header =
-	UI.window("Viewport", theme.ViewportCoordinates.Position, theme.ViewportCoordinates.Size, "Viewport")
+	UI.window("Viewport", theme.ViewportCoordinates.Position, theme.ViewportCoordinates.Size, "Viewport", { managedLayout = true })
 
 panel.BackgroundTransparency = 1
 content.BackgroundTransparency = 1
@@ -53,19 +53,19 @@ scriptRoot.Visible = false
 
 local function getViewportPosition()
 	return UDim2.new(
-		theme.ViewportCoordinates.Position.X.Scale,
-		theme.ViewportCoordinates.Position.X.Offset,
-		theme.ViewportCoordinates.Position.Y.Scale,
-		theme.ViewportCoordinates.Position.Y.Offset + chromeHeight
+		panel.Position.X.Scale,
+		panel.Position.X.Offset,
+		panel.Position.Y.Scale,
+		panel.Position.Y.Offset + chromeHeight
 	)
 end
 
 local function getViewportSize()
 	return UDim2.new(
-		theme.ViewportCoordinates.Size.X.Scale,
-		theme.ViewportCoordinates.Size.X.Offset,
-		theme.ViewportCoordinates.Size.Y.Scale,
-		theme.ViewportCoordinates.Size.Y.Offset - chromeHeight
+		panel.Size.X.Scale,
+		panel.Size.X.Offset,
+		panel.Size.Y.Scale,
+		panel.Size.Y.Offset - chromeHeight
 	)
 end
 
@@ -774,44 +774,26 @@ renderer.Pool.new("2d", function()
 
 	theme = StudioThemeService.SelectedTheme
 
-	local outputWindow = UI.getWindow("Output")
+	local outputWindow = UI.getWindow("Console")
 	local outputHidden = outputWindow and not outputWindow.Visible
+	local coordinates = theme.ViewportCoordinates
+	local size = coordinates.Size
 
-	local viewportSize = getViewportSize()
+	if outputHidden and theme.OutputCoordinates then
+		size += UDim2.new(0, 0, theme.OutputCoordinates.Size.Y.Scale, theme.OutputCoordinates.Size.Y.Offset)
+	end
+
+	UI.applyWindowLayout(panel, coordinates.Position, size)
 
 	local viewportPosition = getViewportPosition()
+	local viewportSize = getViewportSize()
 
 	viewportRoot.Position = viewportPosition
 	viewportRoot.Size = viewportSize
-
 	viewportOverlay.Position = viewportPosition
 	viewportOverlay.Size = viewportSize
-
-	if outputHidden and theme.OutputCoordinates then
-		viewportSize = UDim2.new(
-			viewportSize.X.Scale,
-			viewportSize.X.Offset,
-			viewportSize.Y.Scale,
-			viewportSize.Y.Offset + theme.OutputCoordinates.Size.Y.Offset
-		)
-	end
-
-	viewportRoot.Position = getViewportPosition()
-	viewportRoot.Size = viewportSize
-
-	viewportOverlay.Position = getViewportPosition()
-	viewportOverlay.Size = viewportSize
-
-	scriptRoot.Position = getViewportPosition()
+	scriptRoot.Position = viewportPosition
 	scriptRoot.Size = viewportSize
-
-	panel.Position = theme.ViewportCoordinates.Position
-	panel.Size = UDim2.new(
-		theme.ViewportCoordinates.Size.X.Scale,
-		theme.ViewportCoordinates.Size.X.Offset,
-		theme.ViewportCoordinates.Size.Y.Scale,
-		theme.ViewportCoordinates.Size.Y.Offset + (outputHidden and theme.OutputCoordinates.Size.Y.Offset or 0)
-	)
 
 	local selected = Selection:Get()
 	local object = selected and selected[1]
@@ -1111,7 +1093,7 @@ local function updateGrid()
 end
 
 renderer.Pool.new("2da", function()
-	local dragging = docker.Update(panel, "Viewport")
+	docker.Update(panel, "Viewport")
 
 	updateAxisGizmo()
 	local camera = workspace.CurrentCamera
@@ -1119,11 +1101,6 @@ renderer.Pool.new("2da", function()
 		camera.InputEnabled = viewportSettings.viewportCameraControls
 	end
 	updateGrid()
-
-	if not dragging then
-		panel.Position = theme.ViewportCoordinates.Position
-		panel.Size = theme.ViewportCoordinates.Size
-	end
 
 	frame.Position =
 		UDim2.fromOffset(settingsBtn.AbsolutePosition.X, settingsBtn.AbsolutePosition.Y + settingsBtn.AbsoluteSize.Y)

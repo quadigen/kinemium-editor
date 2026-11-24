@@ -45,7 +45,7 @@ container.Visible = false
 
 local Dock = {}
 local pendingWindow: string? = nil
-local builtIn = { Topbar = true, Viewport = true, CodeEditor = true, Explorer = true, Inspector = true, Output = true }
+local builtIn = { Topbar = true, Viewport = true, CodeEditor = true, Explorer = true, Inspector = true, Output = true, Console = true }
 local custom = {}
 local dragMode = false
 local dragOrigin = nil
@@ -308,7 +308,7 @@ function Dock.EndDrag()
 			record.docked = false
 			Preferences.set("dock." .. name, "")
 			record.panel.AnchorPoint = Vector2.new(0, 0)
-			record.panel.Size = record.floatingSize
+			UI.restoreFloatingWindow(record.panel, record.floatingSize)
 		end
 		Dock.Hide()
 	end
@@ -411,15 +411,11 @@ renderer.Pool.new("2d", function()
 			local slot = coordinates and coordinates[name]
 			if slot then
 				panel.AnchorPoint = Vector2.new(0, 0)
-				if panel.Position ~= slot.Position then
-					panel.Position = slot.Position
-				end
-				if panel.Size ~= slot.Size then
-					panel.Size = slot.Size
-				end
+				UI.applyWindowLayout(panel, slot.Position, slot.Size, "docked")
 			elseif record.visible then
 				record.docked = false
 				record.initialized = false
+				UI.restoreFloatingWindow(panel, record.floatingSize)
 			end
 		end
 	end

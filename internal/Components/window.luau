@@ -1,8 +1,76 @@
 local UserInputService = game:GetService("UserInputService")
+local Studio = game:GetService("Studio")
 
 return function(ctx)
 	local UI = ctx.UI
 	local shared = ctx.shared
+	local layouts = setmetatable({}, { __mode = "k" })
+
+	local function encode(position, size)
+		return string.format("%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g",
+			position.X.Scale, position.X.Offset, position.Y.Scale, position.Y.Offset,
+			size.X.Scale, size.X.Offset, size.Y.Scale, size.Y.Offset)
+	end
+
+	local function decode(value)
+		if type(value) ~= "string" then return nil end
+		local numbers = {}
+		for field in string.gmatch(value, "[^,]+") do
+			local number = tonumber(field)
+			if not number or number ~= number or math.abs(number) > 1000000 then return nil end
+			table.insert(numbers, number)
+		end
+		if #numbers ~= 8 then return nil end
+		return {
+			position = UDim2.new(numbers[1], numbers[2], numbers[3], numbers[4]),
+			size = UDim2.new(numbers[5], numbers[6], numbers[7], numbers[8]),
+		}
+	end
+
+	local function settingKey(state, mode)
+		return "windowLayout." .. state.key .. "." .. mode
+	end
+
+	local function savedLayout(state, mode)
+		if state.saved[mode] == nil then
+			local saved = Studio:GetSetting("restoreLayout", true) and decode(Studio:GetSetting(settingKey(state, mode), "")) or nil
+			state.saved[mode] = saved or false
+		end
+		return state.saved[mode]
+	end
+
+	function UI.applyWindowLayout(panel, position, size, mode)
+		local state = layouts[panel]
+		if state then
+			mode = mode or "docked"
+			state.mode = mode
+			state.basePosition = position
+			state.baseSize = size
+			if state.resizing or panel:GetAttribute("Dragging") == true then return end
+			local saved = savedLayout(state, mode)
+			if saved then
+				position += saved.position
+				size += saved.size
+			end
+		end
+		if panel.Position ~= position then panel.Position = position end
+		if panel.Size ~= size then panel.Size = size end
+	end
+
+	function UI.restoreFloatingWindow(panel, fallbackSize)
+		local state = layouts[panel]
+		if state then
+			state.mode = "floating"
+			state.basePosition = nil
+			state.baseSize = nil
+			local saved = savedLayout(state, "floating")
+			if saved then
+				panel.Size = saved.size
+				return
+			end
+		end
+		if fallbackSize then panel.Size = fallbackSize end
+	end
 
 	function UI.window(name, position, size, title, options)
 		options = options or {}
@@ -37,6 +105,52 @@ return function(ctx)
 
 		local windowKey = string.lower(name)
 		local controls = {}
+
+		if options.resizable ~= false then
+			local state = {
+				key = windowKey,
+				mode = "floating",
+				saved = {},
+				resizing = false,
+			}
+			layouts[panel] = state
+
+			if not options.managedLayout then
+				UI.restoreFloatingWindow(panel)
+			end
+
+			local detector = UI.create("UIScaleDetector", {
+				EdgeThickness = options.resizeEdgeThickness or 6,
+				MinSize = options.minSize or Vector2.new(160, headerHeight + 64),
+				MaxSize = options.maxSize or Vector2.new(0, 0),
+			}, panel)
+			controls.resizeDetector = detector
+
+			detector.ScaleStart:Connect(function()
+				state.resizing = true
+				state.startPosition = panel.Position
+				state.startSize = panel.Size
+			end)
+
+			detector.ScaleEnd:Connect(function()
+				state.resizing = false
+				if panel.Size == state.startSize and panel.Position == state.startPosition then return end
+
+				local position = UDim2.new()
+				local resizedSize = panel.Size
+				if state.mode ~= "floating" and state.basePosition and state.baseSize then
+					position = panel.Position - state.basePosition
+					resizedSize -= state.baseSize
+				end
+
+				state.saved[state.mode] = { position = position, size = resizedSize }
+				Studio:SetSetting(settingKey(state, state.mode), encode(position, resizedSize))
+			end)
+
+			panel:GetPropertyChangedSignal("Visible"):Connect(function()
+				if not panel.Visible then state.resizing = false end
+			end)
+		end
 
 		if options.backdrop == true then
 			UI.create("UIBackdrop", {

@@ -303,7 +303,10 @@ local function updateReadout(info)
 	readout.frame.Visible = positionReadout(info.position, info.radius)
 end
 
+local hoveredPart
 local function setHover(part: BasePart?)
+	if hoveredPart == part then return end
+	hoveredPart = part
 	if part then
 		highlight.Adornee = part
 		highlight.Enabled = true
@@ -326,9 +329,13 @@ local function gizmoCapturesMouse()
 end
 
 local mouseOverGui = false
+local hoverDirty = true
+local hoverElapsed = 0
+local lastReferenceMode = false
 UserInputService.InputChanged:Connect(function(input, processed)
 	if input.UserInputType == Enum.UserInputType.MouseMovement then
 		mouseOverGui = processed == true
+		hoverDirty = true
 	end
 end)
 
@@ -371,8 +378,8 @@ local function overlayContainsPointer(root: Instance, point: Vector2, ignored: I
 	return false
 end
 
-local function canUseViewport(): boolean
-	local point = UserInputService:GetMouseLocation()
+local function canUseViewport(point: Vector2?): boolean
+	point = point or UserInputService:GetMouseLocation()
 	if not viewport.ContainsPoint(point) then
 		return false
 	end
@@ -422,20 +429,20 @@ local raycastParams = RaycastParams.new()
 raycastParams.FilterType = Enum.RaycastFilterType.Exclude
 raycastParams.RespectCanCollide = false
 
-local function getMouseRay(): Ray?
+local function getMouseRay(point: Vector2?): Ray?
 	local camera = workspace.CurrentCamera
 	if not camera then
 		return nil
 	end
-	local pos = viewport.ScreenToViewportPoint(UserInputService:GetMouseLocation())
+	local pos = viewport.ScreenToViewportPoint(point or UserInputService:GetMouseLocation())
 	if not pos then
 		return nil
 	end
 	return camera:ViewportPointToRay(pos.X, pos.Y)
 end
 
-local function pickPart(forReference: boolean?): (BasePart?, RaycastResult?)
-	local ray = getMouseRay()
+local function pickPart(forReference: boolean?, point: Vector2?): (BasePart?, RaycastResult?)
+	local ray = getMouseRay(point)
 	if not ray then
 		return nil, nil
 	end
@@ -792,7 +799,7 @@ local function setMoveMode(enabled: boolean)
 	updateHud()
 end
 
-RunService.RenderStepped:Connect(function()
+RunService.RenderStepped:Connect(function(dt)
 	if drag.active then
 		if
 			not editor_ui.isAlive(drag.grabbed)
@@ -813,7 +820,7 @@ RunService.RenderStepped:Connect(function()
 		return
 	end
 
-	if gizmoDragging() then
+	if (gizmo.active or UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1)) and gizmoDragging() then
 		if not gizmo.active then
 			beginGizmoTracking()
 		end
@@ -826,25 +833,40 @@ RunService.RenderStepped:Connect(function()
 		endGizmoTracking()
 	end
 
-	if picker.isActive() then
+	local referenceMode = picker.isActive()
+	if referenceMode ~= lastReferenceMode then
+		lastReferenceMode = referenceMode
+		hoverDirty = true
+	end
+
+	if mouseOverGui or (not referenceMode and viewport.GetSelectionTool() ~= nil) then
 		setHover(nil)
-		picker.setViewportTarget(not mouseOverGui and canUseViewport() and pickPart(true) or nil)
+		if referenceMode then picker.setViewportTarget(nil) end
+		hoverDirty = true
 		return
 	end
 
-	if
-		mouseOverGui
-		or viewport.GetSelectionTool() ~= nil
-		or not canUseViewport()
+	hoverElapsed += math.max(dt or 0, 0)
+	if not hoverDirty and hoverElapsed < 1 / 30 then return end
+	hoverDirty = false
+	hoverElapsed = 0
+
+	local point = UserInputService:GetMouseLocation()
+	if referenceMode then
+		setHover(nil)
+		picker.setViewportTarget(canUseViewport(point) and pickPart(true, point) or nil)
+		return
+	end
+
+	if UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton2)
+		or not canUseViewport(point)
 		or gizmoCapturesMouse()
-		or UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton2)
 	then
 		setHover(nil)
 		return
 	end
 
-	local target = pickPart()
-	setHover(target)
+	setHover(pickPart(false, point))
 end)
 
 local function handleClick(target: BasePart?)
@@ -888,6 +910,7 @@ local function handleClick(target: BasePart?)
 end
 
 UserInputService.InputBegan:Connect(function(input, processed)
+	hoverDirty = true
 	if processed then
 		return
 	end
@@ -975,6 +998,7 @@ local function focusOn(target: Instance)
 end
 
 UserInputService.InputEnded:Connect(function(input, processed)
+	hoverDirty = true
 	if input.UserInputType == Enum.UserInputType.MouseButton1 then
 		if drag.active then
 			endDrag(true)

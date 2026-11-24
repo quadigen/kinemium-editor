@@ -132,7 +132,7 @@ local readonlyProperties = {
 }
 
 local panel, content =
-	UI.window("Inspector", theme.InspectorCoordinates.Position, theme.InspectorCoordinates.Size, "Inspector")
+	UI.window("Inspector", theme.InspectorCoordinates.Position, theme.InspectorCoordinates.Size, "Inspector", { managedLayout = true })
 Preferences.observe("showProperties", function(value)
 	panel.Visible = value
 end)
@@ -2087,8 +2087,7 @@ renderer.Pool.new("2d", function()
 	local dragging = docker.Update(panel, "Inspector")
 
 	if not dragging then
-		panel.Position = theme.InspectorCoordinates.Position
-		panel.Size = theme.InspectorCoordinates.Size
+		UI.applyWindowLayout(panel, theme.InspectorCoordinates.Position, theme.InspectorCoordinates.Size)
 	end
 
 	if lastRuntimeRole ~= PlaytestTree.role then
