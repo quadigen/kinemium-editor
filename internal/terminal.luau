@@ -248,6 +248,7 @@ local function tabs()
 	if not tabStrip then
 		return
 	end
+	tabStrip.Visible = #sessions > 1
 	local width = math.clamp(
 		math.floor((tabStrip.AbsoluteSize.X - tokens.space.sm) / math.max(1, #sessions)) - tokens.space.xs,
 		48,
@@ -264,7 +265,7 @@ local function tabs()
 		tabContainer = nil
 		tabController = nil
 	end
-	if #sessions == 0 then
+	if #sessions <= 1 then
 		return
 	end
 	local definitions = {}
@@ -431,6 +432,8 @@ local function build(parent)
 		UDim2.new(1, -(INSET * 3 + BUTTON_HEIGHT * 2 + tokens.space.sm), 0, TAB_HEIGHT),
 		colors.panel
 	)
+	tabStrip.Name = "ShellTabs"
+	tabStrip.Visible = false
 	tabStrip.BackgroundTransparency = 1
 	tabStrip.ClipsDescendants = true
 	local options = { iconSize = 14, color = colors.panel, border = false }

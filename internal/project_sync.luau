@@ -211,12 +211,18 @@ local function scanSourcemap(projectPath, tree)
 	return sources
 end
 
-local function scanDisk(root, names, records, mappedPaths)
+local function scanDisk(root, names, records, mappedPaths, excluded)
 	for _, entry in pairs(entries(root)) do
 		local name = entry.Name
 		local path = root .. "/" .. name
+		if #names == 0 and excluded then
+			local scriptName = entry.Type == "File" and scriptFile(name)
+			local reserved = entry.Type == "Directory" and excluded[name:lower()]
+				or scriptName and excluded[scriptName:lower()]
+			check(not reserved, "Explicit mapping collides with source path " .. path)
+		end
 		if entry.Type == "Directory" and validName(name) and name:sub(1, 1) ~= "." then
-			scanDisk(path, appendName(names, name), records, mappedPaths)
+			scanDisk(path, appendName(names, name), records, mappedPaths, excluded)
 		elseif entry.Type == "File" and not mappedPaths[path:lower()] then
 			local scriptName, class = scriptFile(name)
 			if scriptName and validName(scriptName) then
@@ -360,6 +366,9 @@ end
 
 local function scanModel(root, names, records, mapping)
 	for _, child in ipairs(root:GetChildren()) do
+		if #names == 0 and mapping and mapping.excluded and mapping.excluded[child.Name:lower()] then
+			continue
+		end
 		if validName(child.Name) and child.Name:sub(1, 1) ~= "." then
 			local childNames = appendName(names, child.Name)
 			if child.ClassName == "Folder" then
@@ -368,7 +377,7 @@ local function scanModel(root, names, records, mapping)
 				check(child.Name ~= "init", "The name init is reserved for Rojo directory scripts")
 				local children = child:GetChildren()
 				local key = table.concat(childNames, "/"):lower()
-				if records[key] then
+				if records[key] and not (mapping and mapping.validating) then
 					recordModelConflict(mapping, records[key].object, child, key)
 				end
 				add(records, childNames, {
@@ -535,6 +544,9 @@ local function scanPair(mapping, mappedSources)
 				break
 			end
 		end
+		if underMapping and mapping.excluded and mapping.excluded[source.names[#prefix + 1]:lower()] then
+			underMapping = false
+		end
 		if underMapping then
 			local relative = table.move(source.names, #prefix + 1, #source.names, 1, {})
 			add(disk, relative, table.clone(source))
@@ -542,7 +554,7 @@ local function scanPair(mapping, mappedSources)
 	end
 	if mapping.pieces then
 		mapping.path = directory(mapping.projectPath, mapping.pieces, false)
-		scanDisk(mapping.path, {}, disk, mappedPaths)
+		scanDisk(mapping.path, {}, disk, mappedPaths, mapping.excluded)
 	end
 	if mapping.modelSnapshot and not mapping.modelDirty and os.clock() < (mapping.modelRefreshAt or 0) then
 		model = mapping.modelSnapshot
@@ -691,15 +703,17 @@ local function configureSourcemap(project, sourcemap)
 	return mappings
 end
 
-local function configure(project, sourcemap)
+local function configure(project, sourcemap, override, created)
 	local manifestPath = project.Path .. "/default.project.json"
 	local manifestEntry = entries(project.Path)["default.project.json"]
-	local generated = manifestEntry == nil
+	local generated = manifestEntry == nil and override == nil
 	local manifest
 	if generated and sourcemap then
 		return configureSourcemap(project, sourcemap)
 	end
-	if generated then
+	if override then
+		manifest = override
+	elseif generated then
 		manifest = {
 			name = project.Name,
 			tree = {
@@ -740,9 +754,16 @@ local function configure(project, sourcemap)
 					"Overlapping source paths"
 				)
 			end
+			local excluded = {}
+			for name in pairs(node) do
+				if name:sub(1, 1) ~= "$" then
+					excluded[name:lower()] = true
+				end
+			end
 			table.insert(mappings, {
 				root = root,
 				path = path,
+				excluded = excluded,
 				projectPath = project.Path,
 				pieces = pieces,
 				names = names,
@@ -753,7 +774,6 @@ local function configure(project, sourcemap)
 		end
 		for name, child in pairs(node) do
 			if name:sub(1, 1) ~= "$" then
-				check(not relative, "Explicit children inside mapped source directories are unsupported")
 				check(type(child) == "table", "Invalid project node " .. name)
 				local target = root:FindFirstChild(name)
 				if root == game then
@@ -766,6 +786,9 @@ local function configure(project, sourcemap)
 					target = Instance.new("Folder")
 					target.Name = name
 					target.Parent = root
+					if created then
+						table.insert(created, target)
+					end
 				end
 				check(target, "Source mapping target does not exist: " .. name)
 				visit(child, target, appendName(names, name))
@@ -777,6 +800,71 @@ local function configure(project, sourcemap)
 		return configureSourcemap(project, sourcemap)
 	end
 	return mappings, generated and manifestPath or nil, manifest
+end
+
+local function manifestFor(project)
+	local entry = entries(project.Path)["default.project.json"]
+	check(entry and entry.Type == "File", "Source mappings require a directory-based default.project.json")
+	local path = project.Path .. "/" .. entry.Name
+	local original = Filesystem:ReadFile(path)
+	check(type(original) == "string", "Could not read default.project.json")
+	local manifest = HttpService:JSONDecode(original)
+	check(type(manifest) == "table" and type(manifest.tree) == "table", "Invalid project tree")
+	return manifest, path, original
+end
+
+local function pathContains(parent, child)
+	parent, child = parent:gsub("\\", "/"):lower(), child:gsub("\\", "/"):lower()
+	return parent == child or child:sub(1, #parent + 1) == parent .. "/"
+end
+
+local function folderPieces(project, path)
+	local root = project.Path:gsub("\\", "/"):gsub("/+$", "")
+	path = path:gsub("\\", "/"):gsub("/+$", "")
+	check(path:sub(1, #root + 1):lower() == root:lower() .. "/", "Select a folder inside the current project")
+	local pieces = string.split(path:sub(#root + 2), "/")
+	for _, piece in ipairs(pieces) do
+		check(validName(piece) and piece:sub(1, 1) ~= ".", "Invalid source folder " .. piece)
+	end
+	return pieces, directory(project.Path, pieces, false)
+end
+
+Sync.services = {
+	"Workspace", "ReplicatedStorage", "ReplicatedFirst", "ServerScriptService",
+	"ServerStorage", "StarterGui", "StarterPack", "StarterPlayer", "Lighting",
+	"SoundService", "Teams",
+}
+
+function Sync.servicePath(serviceName)
+	if not active then
+		return nil
+	end
+	local ok, manifest = pcall(manifestFor, active.project)
+	local node = ok and manifest.tree[serviceName]
+	return type(node) == "table" and node["$path"] or nil
+end
+
+local function validateNewMapping(mapping)
+	local disk, model = {}, {}
+	scanDisk(mapping.path, {}, disk, {}, mapping.excluded)
+	scanModel(mapping.root, {}, model, { excluded = mapping.excluded, validating = true })
+	for key, file in pairs(disk) do
+		local existing = model[key]
+		check(not existing or same(file, existing), "Source conflict at " .. table.concat(mapping.names, ".") .. "." .. table.concat(file.names, ".") .. "; resolve the differing sources first")
+		local parent = mapping.root
+		for index, name in ipairs(file.names) do
+			local child = parent:FindFirstChild(name)
+			if not child then
+				break
+			end
+			if index == #file.names then
+				check(existing or (file.isInit and child.ClassName == "Folder"), "Source collides with existing instance " .. name)
+			else
+				check(child.ClassName == "Folder" or outputSuffix[child.ClassName], "Source folder collides with existing instance " .. name)
+			end
+			parent = child
+		end
+	end
 end
 
 local function journalPath()
@@ -920,6 +1008,213 @@ function Sync.step()
 	active.error = not ok and message or nil
 	return ok
 end
+
+local function commitMappings(state, manifest, manifestPath, original, created, committed)
+	local mappings = configure(state.project, nil, manifest, created)
+	check(#mappings > 0 or not readSourcemap(state.project.Path), "Remove or regenerate sourcemap.json before removing the last directory mapping")
+	local oldById = {}
+	for _, mapping in ipairs(state.mappings) do
+		oldById[mapping.id] = mapping
+	end
+	for _, mapping in ipairs(mappings) do
+		local oldMapping = oldById[mapping.id]
+		if not oldMapping then
+			validateNewMapping(mapping)
+		elseif mapping.excluded then
+			for name in pairs(mapping.excluded) do
+				if not (oldMapping.excluded and oldMapping.excluded[name]) then
+					scanDisk(mapping.path, {}, {}, {}, mapping.excluded)
+					break
+				end
+			end
+		end
+	end
+
+	check(active == state and Filesystem:ReadFile(manifestPath) == original, "Project mapping changed while editing")
+	check(Filesystem:WriteFileAtomic(manifestPath, HttpService:JSONEncode(manifest)), "Could not save default.project.json")
+	committed.value = true
+	for index, mapping in ipairs(mappings) do
+		local oldMapping = oldById[mapping.id]
+		if oldMapping and oldMapping.root == mapping.root then
+			oldById[mapping.id] = nil
+			oldMapping.excluded = mapping.excluded
+			clearModelConflict(oldMapping)
+			for key in pairs(oldMapping.previous) do
+				if mapping.excluded and mapping.excluded[key:match("^[^/]+")] then
+					oldMapping.previous[key] = nil
+				end
+			end
+			mappings[index] = oldMapping
+		end
+	end
+	for _, mapping in pairs(oldById) do
+		clearModelConflict(mapping)
+		disposeModelObservers(mapping)
+	end
+	state.mappings = mappings
+	state.manifest = manifest
+	state.manifestPath = nil
+	local retained = {}
+	for _, conflict in ipairs(state.conflicts) do
+		if table.find(mappings, conflict.mapping) then
+			table.insert(retained, conflict)
+		end
+	end
+	state.conflicts = retained
+	state.dirty = true
+end
+
+local function changeMappings(callback)
+	if not active or not active.mappings then
+		return false, "Open a project and wait for source sync to initialize."
+	end
+	local state = active
+	local created, committed = {}, { value = false }
+	local ok, message = pcall(function()
+		callback(state, created, committed)
+	end)
+	if not ok then
+		if not committed.value then
+			for index = #created, 1, -1 do
+				created[index]:Destroy()
+			end
+		end
+		return false, tostring(message)
+	end
+	if state.paused then
+		local saved, err = pcall(saveJournal)
+		return true, saved and "Mapping saved; resume source sync to apply it." or ("Mapping saved, but the sync journal could not be updated: " .. tostring(err))
+	end
+	local synced = Sync.step()
+	return true, synced and "Folder mappings saved and synced." or "Mapping saved; review source sync conflicts or errors."
+end
+
+function Sync.mapFolder(path, serviceName, asChild, expectedPrevious)
+	return changeMappings(function(state, created, committed)
+		check(table.find(Sync.services, serviceName), "Unsupported source mapping service")
+		local service = game:GetService(serviceName)
+		check(service ~= nil, "Service unavailable: " .. serviceName)
+		local pieces, realPath = folderPieces(state.project, path)
+		local relative = table.concat(pieces, "/")
+		local manifest, manifestPath, original = manifestFor(state.project)
+		local serviceNode = manifest.tree[serviceName]
+		check(serviceNode == nil or type(serviceNode) == "table", "Invalid service node")
+		serviceNode = serviceNode or {}
+		manifest.tree[serviceName] = serviceNode
+		local node = serviceNode
+		local names = {serviceName}
+		if asChild then
+			local name = pieces[#pieces]
+			check(name:sub(1, 1) ~= "$", "Folder name cannot begin with a Rojo metadata prefix")
+			local existing = service:FindFirstChild(name)
+			check(not existing or existing.ClassName == "Folder", "Destination is not a Folder: " .. name)
+			node = serviceNode[name] or {["$className"] = "Folder"}
+			check(type(node) == "table" and (node["$className"] == nil or node["$className"] == "Folder"), "Destination node is not a Folder")
+			serviceNode[name] = node
+			table.insert(names, name)
+		end
+		local old = node["$path"]
+		if old == relative then
+			return
+		end
+		if old ~= nil then
+			check(not asChild and old == expectedPrevious, "Destination already maps to " .. tostring(old) .. ". Confirm replacement or choose a named folder.")
+		end
+		node["$path"] = relative
+		local sourcemap = readSourcemap(state.project.Path)
+		if sourcemap then
+			local priorPath = old and directory(state.project.Path, string.split(old:gsub("\\", "/"), "/"), false)
+			for _, source in pairs(scanSourcemap(state.project.Path, sourcemap)) do
+				check(not (priorPath and pathContains(priorPath, source.path)) and not pathContains(realPath, source.path),
+					"Regenerate or remove sourcemap.json before remapping a directory already represented in it.")
+			end
+		end
+		commitMappings(state, manifest, manifestPath, original, created, committed)
+	end)
+end
+
+function Sync.status()
+	return {
+		active = active ~= nil,
+		ready = active ~= nil and active.mappings ~= nil,
+		paused = active ~= nil and active.paused,
+		error = active and active.error,
+		conflicts = active and #active.conflicts or 0,
+		projectPath = active and active.project.Path,
+	}
+end
+
+function Sync.getMappings()
+	if not active then
+		return {}, "No active project."
+	end
+	local ok, result = pcall(function()
+		local manifest = manifestFor(active.project)
+		local mappings = {}
+		local function visit(node, names)
+			if type(node) ~= "table" then return end
+			if type(node["$path"]) == "string" then
+				table.insert(mappings, { names = names, path = node["$path"], projectPath = active.project.Path })
+			end
+			for name, child in pairs(node) do
+				if type(name) == "string" and name:sub(1, 1) ~= "$" then
+					visit(child, appendName(names, name))
+				end
+			end
+		end
+		visit(manifest.tree, {})
+		table.sort(mappings, function(a, b)
+			return table.concat(a.names, ".") < table.concat(b.names, ".")
+		end)
+		return mappings
+	end)
+	if not ok then
+		return {}, tostring(result)
+	end
+	return result
+end
+
+function Sync.editMapping(entry, newPath)
+	return changeMappings(function(state, created, committed)
+		check(entry.projectPath == state.project.Path, "This project is no longer open.")
+		local manifest, manifestPath, original = manifestFor(state.project)
+		local node = manifest.tree
+		for _, name in ipairs(entry.names) do
+			node = node[name]
+			check(type(node) == "table", "Mapping no longer exists.")
+		end
+		check(node["$path"] == entry.path, "Mapping changed. Refresh the mapping list.")
+		local oldPath = state.project.Path .. "/" .. entry.path
+		local relative, realPath
+		if newPath ~= nil then
+			local pieces
+			pieces, realPath = folderPieces(state.project, state.project.Path .. "/" .. newPath)
+			relative = table.concat(pieces, "/")
+			if relative == entry.path then return end
+		end
+		local sourcemap = readSourcemap(state.project.Path)
+		if sourcemap then
+			for _, source in pairs(scanSourcemap(state.project.Path, sourcemap)) do
+				check(not pathContains(oldPath, source.path) and not (realPath and pathContains(realPath, source.path)),
+					"Regenerate or remove sourcemap.json before changing this mapping.")
+			end
+		end
+		node["$path"] = relative
+		commitMappings(state, manifest, manifestPath, original, created, committed)
+	end)
+end
+
+function Sync.syncNow()
+	if not active then
+		return false, "No active project."
+	end
+	if active.paused then
+		return false, "Source sync is paused. Resume it first."
+	end
+	local ok = Sync.step()
+	return ok, ok and "Source sync completed." or tostring(active.error or "Source sync failed.")
+end
+
 
 function Sync.setPaused(paused)
 	if not active then

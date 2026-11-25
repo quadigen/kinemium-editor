@@ -8,6 +8,8 @@ local viewport = require("@internal/viewport")
 local Preferences = require("@internal/preferences")
 local Project = game:GetService("Project")
 local Assets = require("@internal/project_assets")
+local Sync = require("@internal/project_sync")
+local SyncTools = require("@internal/project_tools")
 local dialog = game:GetService("DialogService")
 local export_service = game:GetService("ExportService")
 local filesystem = game:GetService("Filesystem")
@@ -562,7 +564,7 @@ return function(content, windowControls)
 	end
 
 	local searchField =
-		UI.input(content, "Search Files...", UDim2.fromOffset(inset, 6), UDim2.new(1, -42, 0, UI.metrics.inputHeight))
+		UI.input(content, "Search Files...", UDim2.fromOffset(inset, 6), UDim2.new(1, Sync.available and -102 or -42, 0, UI.metrics.inputHeight))
 
 	local list = createList(content, UDim2.fromOffset(inset, 36), UDim2.new(1, -inset * 2, 1, -42), false)
 
@@ -2342,6 +2344,37 @@ return function(content, windowControls)
 		end
 	end
 
+	local function resolveFolder(path, serviceName, asChild)
+		local previous = not asChild and Sync.servicePath(serviceName) or nil
+		local projectRoot = rootPath
+		local function apply()
+			if rootPath ~= projectRoot then
+				return
+			end
+			local ok, message = Sync.mapFolder(path, serviceName, asChild, previous)
+			local destination = serviceName .. (asChild and "." .. nameOf(path) or "")
+			toastMessage(ok and "success" or "error", ok and ("Mapped to " .. destination) or "Could not resolve folder", tostring(message))
+			if ok then
+				lastHash = ""
+				rebuild()
+			end
+		end
+		if previous then
+			local normalized = path:gsub("\\", "/")
+			local root = rootPath:gsub("\\", "/"):gsub("/+$", "")
+			local relative = normalized:sub(#root + 2)
+			if relative:lower() ~= previous:gsub("\\", "/"):lower() then
+				UI.confirm(
+					"Replace source mapping?",
+					serviceName .. " currently maps to " .. previous .. ". Its old files will remain on disk. Existing service scripts may be exported into " .. relative .. ".",
+					apply
+				)
+				return
+			end
+		end
+		apply()
+	end
+
 	local contextMenu
 	local contextMenuOptions
 	local contextTarget = nil
@@ -2381,6 +2414,17 @@ return function(content, windowControls)
 							reportHandlerError(custom.context.Entry, err)
 						end
 
+						return
+					end
+
+					if action == "sync_mappings" then
+						SyncTools.mappings()
+						return
+					end
+
+					local mode, serviceName = tostring(action):match("^resolve:(%a+):(%a+)$")
+					if mode and serviceName then
+						resolveFolder(path, serviceName, mode == "child")
 						return
 					end
 
@@ -2441,6 +2485,28 @@ return function(content, windowControls)
 			{ label = "Import File..", value = "import", icon = "builtin://global-icons/folder.svg" },
 			{ label = "Import Package..", value = "import_package", icon = "builtin://global-icons/package.svg" },
 		}
+
+		if Sync.available and entryIsDirectory(entry) and entry.Path ~= rootPath then
+			local serviceItems = {}
+			local serviceIcons = {
+				Workspace = "Workspace", ReplicatedStorage = "ReplicatedStorage",
+				ServerScriptService = "ServerScriptService", ServerStorage = "ServerStorage",
+				StarterGui = "StarterGui", StarterPlayer = "StarterPlayer",
+				Lighting = "Lighting", SoundService = "SoundService",
+			}
+			for _, serviceName in ipairs(Sync.services) do
+				table.insert(serviceItems, {
+					label = serviceName,
+					icon = "builtin://icons/" .. (serviceIcons[serviceName] or "Folder") .. ".svg",
+					children = {
+						{ label = "Service root", value = "resolve:root:" .. serviceName },
+						{ label = "As named folder", value = "resolve:child:" .. serviceName, icon = "builtin://icons/Folder.svg" },
+					},
+				})
+			end
+			table.insert(items, 3, { label = "Resolve to Service", icon = "builtin://icons/ReplicatedStorage.svg", children = serviceItems })
+			table.insert(items, 4, { label = "Manage Sync Mappings", value = "sync_mappings", icon = "builtin://global-icons/settings.png" })
+		end
 
 		contextCustom = {}
 
@@ -2512,6 +2578,60 @@ return function(content, windowControls)
 				createEntry(value)
 			end,
 		})
+
+	if Sync.available then
+		local syncButton = UI.iconButton(
+			content, "builtin://global-icons/refresh.svg", UDim2.new(1, -92, 0, 6),
+			UDim2.fromOffset(26, UI.metrics.inputHeight), SyncTools.syncNow
+		)
+		syncButton.Name = "SyncNow"
+		UI.tooltip(syncButton, "Sync Now")
+		local syncMenu
+		local settings = UI.iconButton(
+			content, "builtin://global-icons/settings.png", UDim2.new(1, -62, 0, 6),
+			UDim2.fromOffset(26, UI.metrics.inputHeight), function()
+				local state = Sync.status()
+				syncMenu:SetItems({
+					{ label = state.paused and "Source sync paused" or state.error and "Source sync needs attention" or state.active and "Source sync active" or "No active project", enabled = false },
+					{ separator = true },
+					{ label = "Sync Now", value = "sync", icon = "builtin://global-icons/refresh.svg", enabled = state.active and not state.paused },
+					{ label = state.paused and "Resume Sync" or "Pause Sync", value = "pause", enabled = state.ready },
+					{ label = "Manage Mappings", value = "mappings", icon = "builtin://global-icons/settings.png", enabled = state.active },
+					{ label = "Sync Conflicts (" .. state.conflicts .. ")", value = "conflicts", icon = "builtin://global-icons/Warning.svg", enabled = state.active },
+					{ label = "Open Project Config", value = "config", icon = "builtin://global-icons/file.svg", enabled = state.active },
+				})
+				local point = UserInputService:GetMouseLocation()
+				syncMenu:Open(UDim2.fromOffset(point.X, point.Y))
+			end
+		)
+		settings.Name = "SyncSettings"
+		UI.tooltip(settings, "Source Sync Settings")
+		syncMenu = UI.contextMenu(content, "", UDim2.fromOffset(-400, -400), UDim2.fromOffset(1, 1), nil, {
+			items = {},
+			menuWidth = 208,
+			onChanged = function(action)
+				if action == "sync" then
+					SyncTools.syncNow()
+				elseif action == "pause" then
+					SyncTools.toggleSync()
+				elseif action == "mappings" then
+					SyncTools.mappings()
+				elseif action == "conflicts" then
+					SyncTools.conflicts(1, true)
+				elseif action == "config" and rootPath then
+					local path = joinPath(rootPath, "default.project.json")
+					if filesystem:PathExists(path) then
+						openPath(path)
+					else
+						toastMessage("warning", "Source sync", "No default.project.json exists for this project.")
+					end
+				end
+			end,
+		})
+		content.Destroying:Connect(function()
+			syncMenu:Destroy()
+		end)
+	end
 
 	searchField.TextChanged:Connect(function()
 		filter = string.lower(searchField.Text or "")

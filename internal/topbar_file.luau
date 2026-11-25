@@ -145,6 +145,8 @@ local menu = {
 
 if Sync.available then
 	local tools = {
+		{ name = "Sync Now", callback = Tools.syncNow },
+		{ name = "Manage Sync Mappings", callback = Tools.mappings },
 		{ name = "Pause / Resume Source Sync", callback = Tools.toggleSync },
 		{ name = "Sync Conflicts", callback = function() Tools.conflicts(1, true) end },
 	}

@@ -25,6 +25,138 @@ function Tools.toggleSync()
 	end
 end
 
+function Tools.syncNow()
+	local ok, message = Sync.syncNow()
+	notify(ok and "success" or "warning", ok and "Source sync completed" or "Source sync", message)
+end
+
+local manager
+
+function Tools.mappings()
+	if manager and manager.open then
+		return
+	end
+	local state = Sync.status()
+	if not state.active then
+		notify("warning", "Source mappings", "Open a project first.")
+		return
+	end
+	local tokens = UI.tokens
+	local colors = tokens.color
+	local inset = UI.metrics.panelInset
+	local rowHeight = UI.metrics.inputHeight + tokens.space.md * 2
+	local selected, pathInput, scroll, summary, controller
+	local function destination(entry)
+		return table.concat(entry.names, ".")
+	end
+	local function select(entry)
+		selected = entry
+		pathInput.Text = entry and entry.path or ""
+		pathInput.TextEditable = entry ~= nil
+		controller:SetButtonEnabled("apply", entry ~= nil)
+		controller:SetButtonEnabled("remove", entry ~= nil)
+	end
+	local function refresh()
+		local mappings, message = Sync.getMappings()
+		local current = Sync.status()
+		UI.forgetButtons(scroll)
+		UI.clear(scroll)
+		summary.Text = message or ((current.paused and "Paused" or current.error and "Needs attention" or "Active") .. "  /  " .. #mappings .. " mappings  /  " .. current.conflicts .. " conflicts")
+		local records = {}
+		local chosen
+		for index, entry in ipairs(mappings) do
+			local target = destination(entry)
+			local row, label, record = UI.button(scroll, target, UDim2.fromOffset(0, (index - 1) * rowHeight), UDim2.new(1, -6, 0, rowHeight - tokens.space.xs), function()
+				select(entry)
+				for item, button in pairs(records) do
+					UI.setButtonState(button, item == entry and "selected" or nil)
+				end
+			end, { icon = "builtin://icons/Folder.svg", textSize = tokens.type.small })
+			label.TextTruncate = Enum.TextTruncate.AtEnd
+			label.TextYAlignment = Enum.TextYAlignment.Top
+			label.Position = UDim2.fromOffset(28, 3)
+			label.Size = UDim2.new(1, -36, 0, tokens.type.small + 4)
+			local source = UI.label(row, entry.path, UDim2.fromOffset(28, tokens.type.small + 7), UDim2.new(1, -36, 0, tokens.type.caption + 4), tokens.type.caption, colors.muted)
+			source.TextTruncate = Enum.TextTruncate.AtEnd
+			records[entry] = record
+			if selected and target == destination(selected) then
+				chosen = entry
+			end
+		end
+		scroll.CanvasSize = UDim2.fromOffset(0, #mappings * rowHeight)
+		select(chosen)
+		if chosen then
+			UI.setButtonState(records[chosen], "selected")
+		end
+	end
+	local function apply(entry, value)
+		if Sync.status().projectPath ~= state.projectPath then
+			notify("warning", "Source mappings", "The active project changed.")
+			return
+		end
+		local ok, message = Sync.editMapping(entry, value)
+		notify(ok and "success" or "error", ok and "Mapping updated" or "Could not edit mapping", message)
+		if ok then
+			refresh()
+		end
+	end
+	local _, _, created = UI.prompt({
+		name = "SourceMappingManager",
+		title = "Source Sync",
+		description = "Manage directory mappings. Changes are saved to default.project.json.",
+		size = UDim2.fromOffset(560, 440),
+		destroyOnClose = true,
+		buttonLayout = "horizontal",
+		buttons = {
+			{ id = "close", text = "Close", role = "secondary" },
+			{ id = "remove", text = "Remove", role = "danger", callback = function()
+				local entry = selected
+				if entry then
+					UI.confirm("Remove mapping?", destination(entry) .. " will stop syncing. Existing files and instances will be kept.", function()
+						apply(entry, nil)
+					end)
+				end
+				return false
+			end },
+			{ id = "apply", text = "Apply", role = "primary", callback = function()
+				local entry = selected
+				local path = pathInput.Text:match("^%s*(.-)%s*$")
+				if entry and path ~= "" and path ~= entry.path then
+					UI.confirm("Change source directory?", destination(entry) .. " will sync with " .. path .. ". Existing files remain on disk; unmapped scripts may be exported to the new directory.", function()
+						apply(entry, path)
+					end)
+				elseif path == "" then
+					notify("warning", "Source directory", "Enter an existing project-relative folder.")
+				end
+				return false
+			end },
+		},
+		build = function(content, control)
+			controller = control
+			summary = UI.label(content, "", UDim2.fromOffset(0, 0), UDim2.new(1, -36, 0, 24), tokens.type.small, colors.muted)
+			local reload = UI.iconButton(content, "builtin://global-icons/refresh.svg", UDim2.new(1, -28, 0, 0), UDim2.fromOffset(28, 24), refresh)
+			UI.tooltip(reload, "Refresh mappings")
+			scroll = UI.create("ScrollingFrame", {
+				Position = UDim2.fromOffset(0, 32),
+				Size = UDim2.new(1, 0, 1, -100),
+				BackgroundTransparency = 1,
+				BorderSizePixel = 0,
+				CanvasSize = UDim2.fromOffset(0, 0),
+				ScrollBarThickness = 5,
+				ClipsDescendants = true,
+				Active = true,
+			}, content)
+			UI.label(content, "Source directory (relative to project)", UDim2.new(0, 0, 1, -62), UDim2.new(1, 0, 0, 20), tokens.type.caption, colors.muted)
+			pathInput = UI.input(content, "Select a mapping", UDim2.new(0, 0, 1, -36), UDim2.new(1, 0, 0, 30))
+			refresh()
+		end,
+		onClose = function()
+			manager = nil
+		end,
+	})
+	manager = created
+end
+
 local function sourcePane(parent, title, record, x)
 	local text = record and record.source or "(deleted)"
 	if text == "" then
