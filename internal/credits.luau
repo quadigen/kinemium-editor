@@ -83,7 +83,7 @@ return function(page, windowControls, gui)
 
 	creditsScroll.Size = UDim2.new(1, -(CREDITS_MARGIN * 2), 1, -(CREDITS_MARGIN * 2))
 
-	creditsScroll.BackgroundColor3 = tokens.color.surfaceAlt
+	creditsScroll.BackgroundTransparency = 1
 	creditsScroll.BorderSizePixel = 0
 	creditsScroll.ClipsDescendants = true
 

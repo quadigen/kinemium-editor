@@ -782,6 +782,10 @@ SignalPipe:Connect(function(signal, value)
 				value.Object.Parent = page
 				value.Object.Position = UDim2.new()
 				value.Object.Size = UDim2.new(1, 0, 1, 0)
+				-- The engine creates dock widget roots with an opaque white fill.
+				if value.Object.BackgroundTransparency == 0 and value.Object.BackgroundColor3 == Color3.new(1, 1, 1) then
+					value.Object.BackgroundTransparency = 1
+				end
 				value.Object.ClipsDescendants = true
 			end
 

@@ -30,7 +30,6 @@ local panel, tabContent, _, windowControls =
 			"Explorer",
 			"Files",
 		},
-		backgroundImage = "builtin://global-icons/giphy.gif",
 		selectedTab = "Explorer",
 	})
 panel.Parent = gui
@@ -162,8 +161,7 @@ local requestModelRefresh
 local list = UI.create("ScrollingFrame", {
 	Position = UDim2.fromOffset(inset, 36),
 	Size = UDim2.new(1, -inset * 2, 1, -42),
-	BackgroundColor3 = tokens.color.surface,
-	BackgroundTransparency = 0.5,
+	BackgroundTransparency = 1,
 	BorderSizePixel = 0,
 	CanvasPosition = Vector2.new(0, 0),
 	CanvasSize = UDim2.new(1, 0, 0, 0),

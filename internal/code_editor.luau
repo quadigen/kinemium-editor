@@ -2956,6 +2956,41 @@ function CodeEditor.new(parent)
 	return self
 end
 
+function CodeEditor:bindWindowBackground(parent, content, source)
+	-- The code editor is drawn above the scene, in a separate GUI layer from the Viewport window.
+	local background = UI.frame(parent, UDim2.fromOffset(0, 0), UDim2.fromScale(1, 1), C("canvas"))
+	background.Name = "CodeEditorBackground"
+	background.ZIndex = -1
+	self.Background = background
+
+	local image = UI.image(background, "", UDim2.fromOffset(0, 0), UDim2.fromScale(1, 1))
+	local tint = UI.frame(background, UDim2.fromOffset(0, 0), UDim2.fromScale(1, 1))
+	local backdrop = self.TextBox:FindFirstChildOfClass("UIBackdrop")
+
+	local function syncBackground()
+		local visible = source.Visible
+		background.Visible = visible
+		image.Image = source.Image
+		image.ImageColor3 = source.ImageColor3
+		image.ScaleType = source.ScaleType
+		image.ImageTransparency = source.ImageTransparency
+		tint.BackgroundColor3 = content.BackgroundColor3
+		tint.BackgroundTransparency = content.BackgroundTransparency
+		self.TabStrip.BackgroundTransparency = visible and 1 or 0
+		self.StatusBar.BackgroundTransparency = visible and 1 or 0
+		self.TextBox.BackgroundTransparency = visible and 1 or 0.3
+		backdrop.Enabled = not visible
+	end
+
+	for _, property in ipairs({ "Visible", "Image", "ImageColor3", "ScaleType", "ImageTransparency" }) do
+		self:connect(source:GetPropertyChangedSignal(property), syncBackground)
+	end
+	for _, property in ipairs({ "BackgroundColor3", "BackgroundTransparency" }) do
+		self:connect(content:GetPropertyChangedSignal(property), syncBackground)
+	end
+	syncBackground()
+end
+
 function CodeEditor:Destroy()
 	if self.destroyed then
 		return
@@ -2985,7 +3020,7 @@ function CodeEditor:Destroy()
 
 	self.connections = {}
 
-	for _, instance in ipairs({ self.SuggestionLayer, self.TabStrip, self.TextBox, self.StatusBar }) do
+	for _, instance in ipairs({ self.SuggestionLayer, self.TabStrip, self.TextBox, self.StatusBar, self.Background }) do
 		if UI.isAlive(instance) then
 			instance:Destroy()
 		end

@@ -114,11 +114,11 @@ local function createWindow(title, onGone)
 			tabs = { "Viewer" },
 			selectedTab = "Viewer",
 			closable = true,
+			panelTransparency = 0.5,
+			contentTransparencyWithoutImage = 1,
 		}
 	)
 
-	pageContent.BackgroundTransparency = 1
-	window.BackgroundTransparency = 0.5
 	window.ClipsDescendants = true
 	window.Parent = gui
 

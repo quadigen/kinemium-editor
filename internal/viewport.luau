@@ -24,11 +24,12 @@ local tokens = UI.tokens
 
 local iconRoot = "builtin://icons/"
 
-local panel, content, header =
-	UI.window("Viewport", theme.ViewportCoordinates.Position, theme.ViewportCoordinates.Size, "Viewport", { managedLayout = true })
-
-panel.BackgroundTransparency = 1
-content.BackgroundTransparency = 1
+local panel, content, header, controls =
+	UI.window("Viewport", theme.ViewportCoordinates.Position, theme.ViewportCoordinates.Size, "Viewport", {
+		managedLayout = true,
+		panelTransparency = 1,
+		contentTransparencyWithoutImage = 1,
+	})
 
 local chromeHeight = UI.metrics.windowHeader + 1
 
@@ -536,6 +537,7 @@ RunService.RenderStepped:Connect(function(dt: number)
 end)
 
 local editor = CodeEditor.new(scriptRoot)
+editor:bindWindowBackground(scriptRoot, content, controls.backgroundImage)
 
 local GIZMO_SIZE = 110
 local GIZMO_DISTANCE = 8

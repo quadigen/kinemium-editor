@@ -78,7 +78,7 @@ return function(page, windowControls, gui)
 		Name = "MarketplaceResults",
 		Position = UDim2.new(0, MARKETPLACE_MARGIN, 0, marketplaceListY),
 		Size = UDim2.new(1, -(MARKETPLACE_MARGIN * 2), 1, -(marketplaceListY + MARKETPLACE_MARGIN)),
-		BackgroundColor3 = tokens.color.surfaceAlt,
+		BackgroundTransparency = 1,
 		BorderSizePixel = 0,
 		ScrollBarThickness = 6,
 		ScrollBarImageColor3 = tokens.color.subtext,

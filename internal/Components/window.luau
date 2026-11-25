@@ -109,6 +109,24 @@ return function(ctx)
 		if fallbackSize then panel.Size = fallbackSize end
 	end
 
+	function UI.applyWindowBackground(label, source, transparency, scaleType, color)
+		local theme = UI.tokens.window
+		source = source or theme.backgroundImage
+		transparency = transparency or theme.backgroundImageTransparency
+		scaleType = scaleType or theme.backgroundImageScaleType
+		if type(scaleType) == "string" then
+			scaleType = Enum.ScaleType[scaleType]
+		end
+
+		local visible = type(source) == "string" and source ~= "" and transparency < 1
+		label.Image = visible and source or ""
+		label.ImageTransparency = transparency
+		label.ImageColor3 = color or Color3.new(1, 1, 1)
+		label.ScaleType = scaleType or Enum.ScaleType.Crop
+		label.Visible = visible
+		return visible
+	end
+
 	function UI.window(name, position, size, title, options)
 		options = options or {}
 
@@ -220,58 +238,13 @@ return function(ctx)
 			panel.BackgroundTransparency = options.panelTransparency or 0.08
 		end
 
-		local backgroundImageLabel = nil
-		local backgroundImageCorner = nil
-
-		local function resolveScaleType(value)
-			local scaleType = value or Enum.ScaleType.Crop
-
-			if type(scaleType) == "string" then
-				scaleType = Enum.ScaleType[scaleType] or Enum.ScaleType.Crop
-			end
-
-			return scaleType
-		end
-
-		local function createBackgroundImage(source, transparency, color, scaleType)
-			local label = UI.create("ImageLabel", {
-				Name = "BackgroundImage",
-				Position = UDim2.fromScale(0, 0),
-				Size = UDim2.fromScale(1, 1),
-				BackgroundTransparency = 1,
-				Image = source or "",
-				ImageTransparency = transparency or 0,
-				ImageColor3 = color or Color3.new(1, 1, 1),
-				ScaleType = resolveScaleType(scaleType),
-				ZIndex = panel.ZIndex,
-				Active = false,
-				Selectable = false,
-			}, panel)
-
-			backgroundImageCorner = UI.create("UICorner", {
-				CornerRadius = UDim.new(0, radius),
-			}, label)
-
-			return label
-		end
-
-		local defaultWindow = UI.tokens.window
-		local initialImage = options.backgroundImage
-		if initialImage == nil then initialImage = defaultWindow.backgroundImage end
-		local initialTransparency = options.backgroundImageTransparency
-		if initialTransparency == nil then initialTransparency = defaultWindow.backgroundImageTransparency end
-		local initialScaleType = options.backgroundImageScaleType or defaultWindow.backgroundImageScaleType
-
-		backgroundImageLabel = createBackgroundImage(
-			initialImage,
-			initialTransparency,
-			options.backgroundImageColor,
-			initialScaleType
-		)
-
-		local hasBackgroundImage = type(initialImage) == "string" and initialImage ~= ""
-
-		backgroundImageLabel.Visible = hasBackgroundImage
+		local backgroundImageLabel = UI.image(panel, "", UDim2.fromOffset(0, 0), UDim2.fromScale(1, 1))
+		backgroundImageLabel.Name = "BackgroundImage"
+		backgroundImageLabel.ZIndex = panel.ZIndex
+		backgroundImageLabel.Active = false
+		backgroundImageLabel.Selectable = false
+		backgroundImageLabel.Visible = false
+		local backgroundImageCorner = UI.corner(backgroundImageLabel, radius)
 
 		local border = UI.stroke(
 			panel,
@@ -285,13 +258,7 @@ return function(ctx)
 		header.Name = "Header"
 		header.ClipsDescendants = true
 
-		local headerBottomFill = UI.frame(header, UDim2.new(0, 0, 1, -radius), UDim2.new(1, 0, 0, radius), headerColor)
 		UI.frame(header, UDim2.new(0, 8, 1, -1), UDim2.new(1, -16, 0, 1), colors.border)
-
-		if options.headerTransparency ~= nil then
-			header.BackgroundTransparency = options.headerTransparency
-			headerBottomFill.BackgroundTransparency = options.headerTransparency
-		end
 
 		local tabHeight = headerHeight - tabTop
 		local titleTab = nil
@@ -476,12 +443,6 @@ return function(ctx)
 		content.Name = "Content"
 		content.ClipsDescendants = true
 
-		if options.contentTransparency ~= nil then
-			content.BackgroundTransparency = options.contentTransparency
-		elseif hasBackgroundImage then
-			content.BackgroundTransparency = defaultWindow.contentTransparency
-		end
-
 		local tabsController = nil
 
 		if hasTabs then
@@ -566,21 +527,18 @@ return function(ctx)
 			local nextRadius = styleValue(props, "radius") or UI.tokens.radius.md
 			local nextHeaderColor = styleValue(props, "headerColor") or options.headerColor or tokens.panelRaised
 			local nextContentColor = styleValue(props, "contentColor") or options.contentColor or tokens.panel
-			local image = styleValue(props, "backgroundImage")
-			local imageVisible = type(image) == "string" and image ~= ""
-
-			if imageVisible then
-				if backgroundImageLabel.Image ~= image then
-					backgroundImageLabel.Image = image
-				end
-				backgroundImageLabel.ImageTransparency = styleValue(props, "backgroundImageTransparency") or 0
-				backgroundImageLabel.ImageColor3 = styleValue(props, "backgroundImageColor") or Color3.new(1, 1, 1)
-				backgroundImageLabel.ScaleType = resolveScaleType(styleValue(props, "backgroundImageScaleType"))
-			end
-
-			backgroundImageLabel.Visible = imageVisible
-
-			controls.backgroundImage = backgroundImageLabel
+			local nextActiveTabColor = styleValue(props, "activeTabColor") or nextContentColor
+			local imageVisible = UI.applyWindowBackground(
+				backgroundImageLabel,
+				styleValue(props, "backgroundImage"),
+				styleValue(props, "backgroundImageTransparency"),
+				styleValue(props, "backgroundImageScaleType"),
+				styleValue(props, "backgroundImageColor")
+			)
+			local themeTint = UI.tokens.window.contentTransparency
+			local contentTransparency = props.contentTransparency or options.contentTransparency
+				or (imageVisible and themeTint or options.contentTransparencyWithoutImage or 0)
+			local headerTransparency = styleValue(props, "headerTransparency") or (imageVisible and themeTint or 0)
 
 			panel.BackgroundColor3 = styleValue(props, "panelColor") or tokens.panel
 
@@ -594,23 +552,10 @@ return function(ctx)
 				panel.BackgroundTransparency = panelTransparency
 			end
 
-			local headerTransparency = styleValue(props, "headerTransparency") or 0
-
 			header.BackgroundColor3 = nextHeaderColor
-			headerBottomFill.BackgroundColor3 = nextHeaderColor
 			header.BackgroundTransparency = headerTransparency
-			headerBottomFill.BackgroundTransparency = headerTransparency
 
 			content.BackgroundColor3 = nextContentColor
-
-			local contentTransparency = props.contentTransparency
-			if contentTransparency == nil then
-				contentTransparency = options.contentTransparency
-			end
-			if contentTransparency == nil then
-				contentTransparency = imageVisible and UI.tokens.window.contentTransparency or 0
-			end
-
 			content.BackgroundTransparency = contentTransparency
 
 			border.Color = styleValue(props, "borderColor") or tokens.borderStrong
@@ -628,22 +573,30 @@ return function(ctx)
 			end
 
 			if titleTab then
-				local activeColor = styleValue(props, "activeTabColor") or nextContentColor
 				local fill = titleTab:FindFirstChild("BottomFill")
 
-				titleTab.BackgroundColor3 = activeColor
+				titleTab.BackgroundColor3 = nextActiveTabColor
 
 				if fill then
-					fill.BackgroundColor3 = activeColor
+					fill.BackgroundColor3 = nextActiveTabColor
 				end
+			elseif tabsController then
+				tabsController.setColors({
+					bar = nextHeaderColor,
+					content = nextContentColor,
+					activeTab = nextActiveTabColor,
+					inactiveTab = styleValue(props, "inactiveTabColor") or nextHeaderColor,
+					hover = styleValue(props, "tabHoverColor") or tokens.hover,
+					pressed = styleValue(props, "tabPressedColor") or tokens.pressed,
+					activeText = styleValue(props, "activeTabTextColor") or tokens.text,
+					inactiveText = styleValue(props, "inactiveTabTextColor") or tokens.muted,
+				})
 			end
 
 			updateCorner(panel, nextRadius)
 			updateCorner(clip, nextRadius)
 
-			if backgroundImageCorner then
-				backgroundImageCorner.CornerRadius = UDim.new(0, nextRadius)
-			end
+			backgroundImageCorner.CornerRadius = UDim.new(0, nextRadius)
 		end
 
 		controls.title = titleLabel
@@ -691,18 +644,18 @@ return function(ctx)
 
 		shared.windowBindings[windowKey] = applyWindowComponent
 
+		local function refreshStyle()
+			applyWindowComponent(UI.getComponentProps(componentKey))
+		end
+
 		controls.refreshBindings = {
-			UI.onComponentRefresh("window", applyOverrides),
+			UI.onComponentRefresh("window", refreshStyle),
 			UI.onComponentRefresh(componentKey, applyWindowComponent),
-			UI.onThemeChanged(function()
-				-- Refresh the current theme's background while retaining any
-				-- window-specific component overrides.
-				applyWindowComponent(UI.getComponentProps(componentKey))
-			end),
+			UI.onThemeChanged(refreshStyle),
 		}
 
 		-- Restores component styling for windows created after a theme switch.
-		applyWindowComponent(UI.getComponentProps(componentKey))
+		refreshStyle()
 
 		panel.Destroying:Connect(function()
 			shared.windowBindings[windowKey] = nil

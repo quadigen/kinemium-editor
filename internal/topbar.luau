@@ -36,6 +36,7 @@ local lastTheme = theme
 
 local topbar
 local topbarStroke
+local backgroundImage
 local headerSurface
 local headerBottomFill
 local logoPlate
@@ -309,6 +310,14 @@ local function applyTheme()
 	applyTabColors()
 end
 
+local function applyBackground()
+	local visible = UI.applyWindowBackground(backgroundImage)
+	local transparency = visible and tokens.window.contentTransparency or 0
+	headerSurface.BackgroundTransparency = transparency
+	headerBottomFill.BackgroundTransparency = visible and 1 or 0
+	flyout.BackgroundTransparency = transparency
+end
+
 setExpanded = function(value)
 	expanded = value == true
 
@@ -328,6 +337,12 @@ topbar =
 topbar.Name = "Topbar"
 topbar.ClipsDescendants = true
 topbar.ZIndex = 100
+
+backgroundImage = UI.image(topbar, "", UDim2.fromOffset(0, 0), UDim2.fromScale(1, 1))
+backgroundImage.Name = "BackgroundImage"
+backgroundImage.ZIndex = -1
+backgroundImage.Visible = false
+UI.corner(backgroundImage, windowRadius(), "md")
 
 topbarStroke = UI.stroke(topbar, initialColors.border, 1, 0.45)
 
@@ -738,6 +753,12 @@ end
 rebuildFlyout()
 setExpanded(true)
 applyTheme()
+applyBackground()
+
+local backgroundConnection = UI.onThemeChanged(applyBackground)
+topbar.Destroying:Connect(function()
+	backgroundConnection:Disconnect()
+end)
 
 renderer.Pool.new("2d", function()
 	refreshTheme()

@@ -231,6 +231,7 @@ return function(readEntries, iconFor, openFile)
 		popup.Position = UDim2.new(0.5, 0, 0.5, 0)
 		popup.Name = "QuickOpen"
 		popup.AnchorPoint = Vector2.new(0.5, 0.5)
+		popup.BackgroundTransparency = 0.5
 		popup.Active = true
 		popup.InputSink = true
 		UI.create("UISizeConstraint", { MaxSize = Vector2.new(640, height) }, popup)

@@ -517,13 +517,12 @@ return function(content, windowControls)
 		return windowControls.getSelectedTab() == "Files"
 	end
 
-	local function createList(parent, position, size, fadeIn)
+	local function createList(parent, position, size)
 		local l = UI.create("ScrollingFrame", {
 			Position = position,
 			Size = size,
 
-			BackgroundColor3 = tokens.color.surface,
-			BackgroundTransparency = 0.5,
+			BackgroundTransparency = 1,
 			BorderSizePixel = 0,
 
 			CanvasPosition = Vector2.new(0, 0),
@@ -554,19 +553,13 @@ return function(content, windowControls)
 
 		UI.corner(l, tokens.radius.md)
 
-		if fadeIn then
-			l.BackgroundTransparency = 1
-
-			tween(l, { BackgroundTransparency = 0.5 }, 0.22)
-		end
-
 		return l
 	end
 
 	local searchField =
 		UI.input(content, "Search Files...", UDim2.fromOffset(inset, 6), UDim2.new(1, Sync.available and -102 or -42, 0, UI.metrics.inputHeight))
 
-	local list = createList(content, UDim2.fromOffset(inset, 36), UDim2.new(1, -inset * 2, 1, -42), false)
+	local list = createList(content, UDim2.fromOffset(inset, 36), UDim2.new(1, -inset * 2, 1, -42))
 
 	local emptyLabel = UI.label(
 		content,
@@ -3132,13 +3125,12 @@ return function(content, windowControls)
 					list:Destroy()
 				end
 
-				leftList = createList(content, UDim2.fromOffset(inset, 36), UDim2.new(0, LEFT_WIDTH, 1, -42), true)
+				leftList = createList(content, UDim2.fromOffset(inset, 36), UDim2.new(0, LEFT_WIDTH, 1, -42))
 
 				rightList = createList(
 					content,
 					UDim2.fromOffset(inset + LEFT_WIDTH + 4, 36),
-					UDim2.new(1, -(inset * 2 + LEFT_WIDTH + 4), 1, -42),
-					true
+					UDim2.new(1, -(inset * 2 + LEFT_WIDTH + 4), 1, -42)
 				)
 			else
 				if leftList and UI.isAlive(leftList) then
@@ -3154,7 +3146,7 @@ return function(content, windowControls)
 				leftList = nil
 				rightList = nil
 
-				list = createList(content, UDim2.fromOffset(inset, 36), UDim2.new(1, -inset * 2, 1, -42), true)
+				list = createList(content, UDim2.fromOffset(inset, 36), UDim2.new(1, -inset * 2, 1, -42))
 			end
 
 			expanded = {}

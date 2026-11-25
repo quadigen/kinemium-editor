@@ -115,11 +115,11 @@ local gui = UI.widgetOverlay()
 local panel, content =
 	UI.window("Lucide", UDim2.fromOffset(120, 120), UDim2.fromOffset(380, 540), "Icon Library (Lucide)", {
 		closable = true,
+		panelTransparency = 0.5,
+		contentTransparencyWithoutImage = 1,
 	})
 
-content.BackgroundTransparency = 1
 panel.Visible = false
-panel.BackgroundTransparency = 0.5
 panel.ClipsDescendants = true
 panel.Parent = gui
 

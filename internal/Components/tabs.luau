@@ -354,6 +354,7 @@ return function(ctx)
 			local page = UI.frame(content, UDim2.fromOffset(0, 0), UDim2.new(1, 0, 1, 0), contentColor)
 
 			page.Name = tabName
+			page.BackgroundTransparency = 1
 			page.Visible = false
 			page.ClipsDescendants = true
 

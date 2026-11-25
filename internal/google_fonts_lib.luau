@@ -115,11 +115,11 @@ local gui = UI.widgetOverlay()
 local panel, content =
 	UI.window("Fonts", UDim2.fromOffset(120, 120), UDim2.fromOffset(320, 480), "Fonts Library (Google)", {
 		closable = true,
+		panelTransparency = 0.5,
+		contentTransparencyWithoutImage = 1,
 	})
 
-content.BackgroundTransparency = 1
 panel.Visible = false
-panel.BackgroundTransparency = 0.5
 panel.ClipsDescendants = true
 panel.Parent = gui
 

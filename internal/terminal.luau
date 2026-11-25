@@ -38,14 +38,6 @@ local panel, body, input, prompt, scroll, status, tabStrip, tabContainer, tabCon
 local historyView, copyMenu
 local fitting = false
 local promptStrip, pathBadge, pathLabel, pathIcon, timeBadge, timeLabel, timeIcon, promptArrow
-local function terminalColor()
-	local canvas = colors.canvas
-	if canvas.R + canvas.G + canvas.B < 1.5 then
-		return canvas:Lerp(Color3.new(0, 0, 0), 0.28)
-	end
-	return canvas
-end
-
 local function badgeInk(fill)
 	if fill.R * 0.2126 + fill.G * 0.7152 + fill.B * 0.0722 > 0.52 then
 		return Color3.fromRGB(20, 20, 20)
@@ -276,6 +268,7 @@ local function tabs()
 		)
 	end
 	local selected = sessions[active]
+	local fill = panel.Parent.BackgroundColor3
 	local rebuilding = true
 	tabContainer, tabController = UI.tabs(tabStrip, UDim2.fromOffset(0, 0), UDim2.fromScale(1, 1), {
 		tabs = definitions,
@@ -284,10 +277,10 @@ local function tabs()
 		barHeight = TAB_HEIGHT,
 		tabTop = tokens.space.xs,
 		tabGap = tokens.space.xs,
-		barColor = body.BackgroundColor3,
-		contentColor = body.BackgroundColor3,
-		activeTabColor = body.BackgroundColor3,
-		inactiveTabColor = body.BackgroundColor3,
+		barColor = fill,
+		contentColor = fill,
+		activeTabColor = fill,
+		inactiveTabColor = fill,
 		tabAccentColor = colors.accent,
 		tabPaddingX = tokens.space.xs,
 		onTabChanged = function(name)
@@ -423,8 +416,9 @@ end
 
 local function build(parent)
 	panel = parent
-	body = UI.frame(panel, UDim2.fromOffset(0, 0), UDim2.fromScale(1, 1), terminalColor())
+	body = UI.frame(panel, UDim2.fromOffset(0, 0), UDim2.fromScale(1, 1))
 	body.Name = "TerminalBody"
+	body.BackgroundTransparency = 1
 	body.ClipsDescendants = true
 	tabStrip = UI.frame(
 		body,
@@ -605,10 +599,9 @@ local function build(parent)
 		input.FontFace = mono
 		prompt.TextSize = tokens.type.body
 		input.TextSize = tokens.type.body
-		body.BackgroundColor3 = terminalColor()
 		refreshPromptStyle()
 		if tabController then
-			local fill = body.BackgroundColor3
+			local fill = panel.Parent.BackgroundColor3
 			tabController.setColors({
 				bar = fill,
 				content = fill,

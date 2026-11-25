@@ -71,10 +71,10 @@ local spinAngle = 0
 local panel, content =
 	UI.window("MaterialMaker", UDim2.fromOffset(120, 64), UDim2.fromOffset(WINDOW_WIDTH, WINDOW_HEIGHT), "Material Maker", {
 		closable = true,
+		panelTransparency = 0.5,
+		contentTransparencyWithoutImage = 1,
 	})
-content.BackgroundTransparency = 1
 panel.Visible = false
-panel.BackgroundTransparency = 0.5
 panel.ClipsDescendants = true
 local overlay = UI.widgetOverlay()
 panel.Parent = overlay
@@ -134,11 +134,13 @@ end
 
 local previewBottom = VIEWPORT_HEIGHT + 8
 local previewPane = makeScroller(content, UDim2.fromOffset(0, previewBottom), UDim2.new(0.36, -4, 1, -previewBottom))
-local _, tabs = UI.tabs(content, UDim2.new(0.36, 4, 0, 8), UDim2.new(0.64, -12, 1, -16), {
+local tabContainer, tabs = UI.tabs(content, UDim2.new(0.36, 4, 0, 8), UDim2.new(0.64, -12, 1, -16), {
 	tabs = { "Surface", "Textures", "Height", "Shader" },
 	selectedTab = "Surface",
 	tabPaddingX = 8,
 })
+tabContainer.BackgroundTransparency = 1
+tabs.content.BackgroundTransparency = 1
 local sections = {}
 for name, page in pairs(tabs.pages) do
 	sections[name] = makeScroller(page, UDim2.fromOffset(0, 0), UDim2.fromScale(1, 1))
