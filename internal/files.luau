@@ -618,13 +618,16 @@ return function(content, windowControls)
 		return string.sub(path, 1, #prefix) == prefix
 	end
 
-	local function readEntries(directory)
+	local function readEntries(directory, unsorted)
 		local ok, entries = pcall(function()
 			return Project:GetProjectEntries(directory)
 		end)
 
 		if not ok or type(entries) ~= "table" then
 			return nil
+		end
+		if unsorted then
+			return entries
 		end
 
 		table.sort(entries, function(a, b)
@@ -830,6 +833,10 @@ return function(content, windowControls)
 
 		viewport.OpenFile(entry.Path, entry.Name)
 	end
+
+	local quickOpen, closeQuickOpen = require("@internal/quick_open")(function(directory)
+		return readEntries(directory, true)
+	end, iconFor, openFile)
 
 	local function openPath(path)
 		openFile({ Path = path, Name = nameOf(path), Type = "File" })
@@ -2863,12 +2870,17 @@ return function(content, windowControls)
 		animateDrop(hadTarget)
 	end)
 
-	UserInputService.InputBegan:Connect(function(input: InputObject, gameProcessed: boolean)
+	local keyboardConnection = UserInputService.InputBegan:Connect(function(input: InputObject, gameProcessed: boolean)
+		local blocked = viewerBlocksInput()
+		if not blocked and quickOpen(input, Preferences.get("enableKeyboardShortcuts")) then
+			return
+		end
+
 		if gameProcessed then
 			return
 		end
 
-		if viewerBlocksInput() then
+		if blocked then
 			return
 		end
 
@@ -3074,6 +3086,10 @@ return function(content, windowControls)
 
 			return
 		end
+	end)
+	content.Destroying:Connect(function()
+		keyboardConnection:Disconnect()
+		closeQuickOpen(false)
 	end)
 
 	local function loadRoot()

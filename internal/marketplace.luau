@@ -9,10 +9,11 @@ local HttpService = game:GetService("HttpService")
 local tokens = UI.tokens
 local marketplaceLayoutMode = "List"
 local PackageDetails = require("@internal/package_details")
+local Publisher = require("@internal/marketplace_publisher")
 
 return function(page, windowControls, gui)
 	local BUTTON_SIZE = 28
-	local CONTROL_GAP = 6
+	local CONTROL_GAP = tokens.space.sm
 	local marketplacePlugins = {}
 	local marketplacePage = windowControls.pages.Marketplace
 
@@ -38,7 +39,7 @@ return function(page, windowControls, gui)
 		marketplaceControls,
 		"Search packages...",
 		UDim2.new(0, 0, 0, 0),
-		UDim2.new(1, -(BUTTON_SIZE * 2 + CONTROL_GAP * 2), 0, BUTTON_SIZE),
+		UDim2.new(1, -(BUTTON_SIZE * 3 + CONTROL_GAP * 3), 0, BUTTON_SIZE),
 		{
 			text = "",
 			maxLength = 64,
@@ -50,8 +51,8 @@ return function(page, windowControls, gui)
 	local refreshMarketplace = UI.iconButton(
 		marketplaceControls,
 		"builtin://global-icons/refresh.svg",
-		UDim2.new(1, -30, 0, 0),
-		UDim2.fromOffset(30, 30),
+		UDim2.new(1, -BUTTON_SIZE, 0, 0),
+		UDim2.fromOffset(BUTTON_SIZE, BUTTON_SIZE),
 		function() end,
 		{
 			bgTransparency = 0,
@@ -831,6 +832,20 @@ return function(page, windowControls, gui)
 	end
 
 	local layoutButton
+	local settingsButton = UI.iconButton(
+		marketplaceControls,
+		"builtin://icons/Settings.svg",
+		UDim2.new(1, -(BUTTON_SIZE * 3 + CONTROL_GAP * 2), 0, 0),
+		UDim2.fromOffset(BUTTON_SIZE, BUTTON_SIZE),
+		function()
+			Publisher.open(function()
+				if UI.isAlive(marketplacePage) then
+					loadMarketplace()
+				end
+			end)
+		end
+	)
+	UI.tooltip(settingsButton, "Marketplace settings and published plugins", { placement = "below" })
 
 	layoutButton = UI.iconButton(
 		marketplaceControls,

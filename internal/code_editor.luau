@@ -1273,6 +1273,100 @@ end
 
 local classListCache = nil
 local classParents = {}
+local apiCache
+local function apiDefinitions()
+	if apiCache then
+		return apiCache
+	end
+	local data = { classes = {}, globals = {}, types = {} }
+	apiCache = data
+	local ok, definitions = pcall(function()
+		return LuauService:GetApiDefinitions()
+	end)
+	if not ok or type(definitions) ~= "string" then
+		return data
+	end
+	local current
+	local global
+	for line in definitions:gmatch("[^\n]+") do
+		local name, parent = line:match("^declare extern type ([%w_]+) extends ([%w_]+) with")
+		if not name then
+			name = line:match("^declare extern type ([%w_]+) with")
+		end
+		if name then
+			current = { parent = parent, members = {} }
+			data.classes[name] = current
+			data.types[name] = true
+			if line:match("with end$") then current = nil end
+			global = nil
+		elseif line == "end" or line == "}" then
+			current, global = nil, nil
+		elseif current then
+			local method, args, returns = line:match("^%s+function ([%w_]+)%((.*)%): (.+)$")
+			if method then
+				local params = {}
+				args = args:gsub("^self,?%s*", "")
+				local start, depth = 1, 0
+				for i = 1, #args do
+					local c = args:sub(i, i)
+					if c == "(" or c == "{" or c == "[" or c == "<" then depth += 1 end
+					if c == ")" or c == "}" or c == "]" or c == ">" then depth -= 1 end
+					if c == "," and depth == 0 then
+						table.insert(params, args:sub(start, i - 1):match("^%s*(.-)%s*$"))
+						start = i + 1
+					end
+				end
+				if start <= #args then table.insert(params, args:sub(start):match("^%s*(.-)%s*$")) end
+				current.members[method] = { name = method, kind = "Method", params = params, returns = returns, detail = "-> " .. returns }
+			else
+				local field, fieldType = line:match("^%s+([%w_]+): (.+)$")
+				if field then
+					current.members[field] = { name = field, kind = fieldType:find("ScriptSignal", 1, true) and "Event" or "Property", detail = fieldType }
+				end
+			end
+		else
+			local alias = line:match("^export type ([%w_]+)") or line:match("^type ([%w_]+)")
+			if alias then data.types[alias] = true end
+			local static = line:match("^declare ([%w_]+): {%s*$")
+			if static then
+				global = {}
+				data.globals[static] = global
+			elseif global then
+				local field, fieldType = line:match("^%s+([%w_]+): (.+),$")
+				if field then
+					local ret = fieldType:match("%-%>%s*([%w_]+)%s*$")
+					global[field] = { name = field, kind = ret and "Function" or "Property", detail = fieldType, returns = ret }
+				end
+			end
+		end
+	end
+	return data
+end
+
+local function typeNameOf(annotation)
+	if type(annotation) ~= "string" then return nil end
+	local name = annotation:match("^%s*([%w_]+)%??%s*$")
+	if not name or name == "any" or name == "unknown" or name == "nil" then return nil end
+	return name
+end
+
+local function allTypeCandidates()
+	local out, seen = {}, {}
+	local function add(name, detail)
+		if not seen[name] then
+			seen[name] = true
+			table.insert(out, { name = name, kind = "Type", detail = detail })
+		end
+	end
+	for _, name in ipairs({"any", "unknown", "never", "nil", "boolean", "number", "string", "thread", "buffer", "vector"}) do
+		add(name, "Luau type")
+	end
+	for name in pairs(apiDefinitions().types) do
+		if not name:match("_INTERNAL$") then add(name, "Kinemium API") end
+	end
+	for name in pairs(DATATYPES) do add(name, "Datatype") end
+	return out, seen
+end
 
 local function loadClasses()
 	if classListCache ~= nil then
@@ -1390,11 +1484,7 @@ local function classMembers(className)
 	classMemberCache[className] = result
 
 	local service = reflectionService()
-
-	if service == nil then
-		return result
-	end
-
+	local api = apiDefinitions()
 	loadClasses()
 
 	local chain = {}
@@ -1402,22 +1492,37 @@ local function classMembers(className)
 
 	while current ~= nil and #chain < 32 do
 		table.insert(chain, current)
-		current = classParents[current]
+		current = classParents[current] or (api.classes[current] and api.classes[current].parent)
 	end
 
 	for _, name in ipairs(chain) do
+		local generated = api.classes[name]
 		for _, spec in ipairs(MEMBER_LISTS) do
-			local members = callReflection(service, spec.methods, name)
+			local members = service and callReflection(service, spec.methods, name)
 
 			if members ~= nil then
 				for key, member in next, members do
 					local entry = buildMember(spec.kind, member, key)
 
 					if entry ~= nil and result.map[entry.name] == nil then
+						local owner = type(member) == "table" and api.classes[member.Owner] or generated
+						local typed = owner and owner.members[entry.name]
+						if typed then
+							entry.detail = typed.detail
+							entry.params = typed.params or entry.params
+							entry.returns = typed.returns or entry.returns
+						end
 						result.map[entry.name] = entry
-
 						table.insert(result.list, entry)
 					end
+				end
+			end
+		end
+		if generated then
+			for member, entry in pairs(generated.members) do
+				if not result.map[member] then
+					result.map[member] = entry
+					table.insert(result.list, entry)
 				end
 			end
 		end
@@ -1865,8 +1970,16 @@ local function step(value, segment)
 	local name = segment.name
 
 	if segment.args ~= nil then
+		local className = isVirtual(value) and value.typeName or (typeof(value) == "Instance" and instanceClassName(value))
+		local argument = firstStringArgument(segment.args)
 		if isVirtual(value) then
-			return name == "Clone" and value or nil
+			if name == "Clone" then return value end
+			if argument and (name == "GetService" or name:find("OfClass", 1, true) or name:find("WhichIsA", 1, true)) then
+				return virtualOf(argument)
+			end
+			local entry = classMembers(value.typeName).map[name]
+			local returned = entry and typeNameOf(entry.returns)
+			return returned and virtualOf(returned) or nil
 		end
 
 		if typeof(value) ~= "Instance" then
@@ -1883,7 +1996,9 @@ local function step(value, segment)
 		local argument = firstStringArgument(segment.args)
 
 		if method == nil or argument == nil then
-			return nil
+			local entry = className and classMembers(className).map[name]
+			local returned = entry and typeNameOf(entry.returns)
+			return returned and virtualOf(returned) or nil
 		end
 
 		local ok, result = pcall(function()
@@ -1894,14 +2009,19 @@ local function step(value, segment)
 			return result
 		end
 
-		return nil
+		if argument and (name == "GetService" or name:find("OfClass", 1, true) or name:find("WhichIsA", 1, true)) then
+			return virtualOf(argument)
+		end
+		local entry = className and classMembers(className).map[name]
+		local returned = entry and typeNameOf(entry.returns)
+		return returned and virtualOf(returned) or nil
 	end
 
 	if isVirtual(value) then
 		local entry = classMembers(value.typeName).map[name]
-
-		if entry ~= nil and entry.kind == "Property" and entry.detail ~= nil then
-			return virtualOf(entry.detail)
+		local propertyType = entry and typeNameOf(entry.detail)
+		if entry and (entry.kind == "Property" or entry.kind == "Event") and propertyType then
+			return virtualOf(propertyType)
 		end
 
 		return nil
@@ -1951,11 +2071,13 @@ local function step(value, segment)
 		return value[name]
 	end)
 
-	if ok then
+	if ok and result ~= nil then
 		return result
 	end
-
-	return nil
+	local className = valueType == "Instance" and instanceClassName(value) or valueType
+	local entry = className and classMembers(className).map[name]
+	local propertyType = entry and typeNameOf(entry.detail)
+	return propertyType and virtualOf(propertyType) or nil
 end
 
 local function evalChain(segments, count, aliases, document, depth)
@@ -1988,10 +2110,10 @@ local function evalChain(segments, count, aliases, document, depth)
 			return nil
 		end
 
-		value = virtualOf(className)
+		value = virtualOf(className == "Animated" and "AnimatedImageInstance" or className)
 		startIndex = 3
 	elseif
-		DATATYPES[first.name]
+		(DATATYPES[first.name] or apiDefinitions().globals[first.name])
 		and count >= 2
 		and second.args ~= nil
 		and (aliases == nil or aliases[first.name] == nil)
@@ -2003,8 +2125,11 @@ local function evalChain(segments, count, aliases, document, depth)
 
 		if value == nil and aliases ~= nil and aliases[first.name] ~= nil then
 			local alias = aliases[first.name]
-
-			value = evalChain(alias, #alias, aliases, document, depth + 1)
+			if alias.typeName then
+				value = virtualOf(alias.typeName)
+			else
+				value = evalChain(alias, #alias, aliases, document, depth + 1)
+			end
 		end
 
 		if value == nil then
@@ -2054,6 +2179,17 @@ local function collectAliases(source)
 		end
 	end
 
+	for name, typeName in code:gmatch("%f[%w_]local%s+([%a_][%w_]*)%s*:%s*([%a_][%w_]*)") do
+		aliases[name] = { typeName = typeName }
+	end
+	for parameters in code:gmatch("%f[%w_]function%f[^%w_][^%(]*%(([^%)]*)%)") do
+		for name, typeName in parameters:gmatch("([%a_][%w_]*)%s*:%s*([%a_][%w_]*)") do
+			if not aliases[name] then aliases[name] = { typeName = typeName } end
+		end
+	end
+	for name, typeName in code:gmatch("%f[%w_]local%s+([%a_][%w_]*)%s*=[^\n]-::%s*([%a_][%w_]*)") do
+		aliases[name] = { typeName = typeName }
+	end
 	return aliases
 end
 
@@ -3997,6 +4133,12 @@ function CodeEditor:collectCandidates(chain)
 				return enum
 			end
 
+			local static = apiDefinitions().globals[table.concat(names, ".")]
+			if static and next(static) then
+				local candidates = {}
+				for _, entry in pairs(static) do table.insert(candidates, entry) end
+				return methodsOnly and filterMethods(candidates) or candidates
+			end
 			local builtin = collectBuiltinMembers(table.concat(names, "."))
 
 			if builtin ~= nil then
@@ -4018,6 +4160,22 @@ function CodeEditor:collectCandidates(chain)
 	end
 
 	local candidates = {}
+	if chain.typePosition then
+		local types, seen = allTypeCandidates()
+		for _, entry in ipairs(loadClasses()) do
+			if not seen[entry.name] then
+				seen[entry.name] = true
+				table.insert(types, entry)
+			end
+		end
+		for name in self.TextBox.Text:gmatch("%f[%w_]type%s+([%a_][%w_]*)") do
+			if not seen[name] then
+				seen[name] = true
+				table.insert(types, { name = name, kind = "Type", detail = "Local type" })
+			end
+		end
+		return types
+	end
 
 	for _, list in ipairs({ KEYWORDS, GLOBALS, SNIPPET_CANDIDATES }) do
 		for _, entry in ipairs(list) do
