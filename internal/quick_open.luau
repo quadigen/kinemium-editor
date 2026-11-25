@@ -226,19 +226,16 @@ return function(readEntries, iconFor, openFile)
 
 		local overlay = UI.widgetOverlay()
 		local height = headerHeight + visibleRows * rowHeight + rowHeight + inset
-		popup = UI.frame(
-			overlay,
-			UDim2.new(0.5, 0, 0, UI.metrics.windowHeader + tokens.space.lg),
-			UDim2.new(0.8, 0, 0, height),
-			colors.panel,
-			tokens.radius.md
-		)
+		popup =
+			UI.frame(overlay, UDim2.new(0.5, 0, 0.5, 0), UDim2.new(0.8, 0, 0, height), colors.panel, tokens.radius.md)
+		popup.Position = UDim2.new(0.5, 0, 0.5, 0)
 		popup.Name = "QuickOpen"
-		popup.AnchorPoint = Vector2.new(0.5, 0)
+		popup.AnchorPoint = Vector2.new(0.5, 0.5)
 		popup.Active = true
 		popup.InputSink = true
 		UI.create("UISizeConstraint", { MaxSize = Vector2.new(640, height) }, popup)
 		UI.stroke(popup, colors.borderStrong, 1, 0)
+		UI.backdrop(popup, 15, Color3.new(0, 0, 0))
 
 		field = UI.input(
 			popup,
