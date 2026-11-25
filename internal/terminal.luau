@@ -5,6 +5,7 @@ end
 local UI = require("@internal/editor_ui")
 local RunService = game:GetService("RunService")
 local TextService = game:GetService("TextService")
+local ThemeService = game:GetService("StudioThemeService")
 local UserInputService = game:GetService("UserInputService")
 local available, service = pcall(function()
 	return game:GetService("TerminalService")
@@ -36,6 +37,53 @@ local progress = 0
 local elapsed = 0
 local panel, body, input, output, prompt, scroll, status, tabStrip, tabContainer, tabController
 local fitting = false
+local promptStrip, pathBadge, pathLabel, pathIcon, timeBadge, timeLabel, timeIcon, promptArrow
+local windowOptions
+local floatingPosition
+local wasDocked = false
+local function docked()
+	local slots = ThemeService.SelectedTheme.DockedWindows
+	return slots and slots.Terminal ~= nil
+end
+
+local function terminalColor()
+	local canvas = colors.canvas
+	if canvas.R + canvas.G + canvas.B < 1.5 then
+		return canvas:Lerp(Color3.new(0, 0, 0), 0.28)
+	end
+	return canvas
+end
+
+local function badgeInk(fill)
+	if fill.R * 0.2126 + fill.G * 0.7152 + fill.B * 0.0722 > 0.52 then
+		return Color3.fromRGB(20, 20, 20)
+	end
+	return Color3.fromRGB(245, 245, 245)
+end
+
+local function shortPath(path, home)
+	if home and home ~= "" and (path == home or path:sub(1, #home + 1) == home .. "/") then
+		return "~" .. path:sub(#home + 1)
+	end
+	return path
+end
+
+local PROMPT_PATTERN = "__KINE_PROMPT__(%d+):([^\n]-)__KINE_HOME__([^\n]-)__KINE_END__ %$ "
+local function plainHistory(text)
+	return (text:gsub(PROMPT_PATTERN, function(_, path, home)
+		return shortPath(path, home) .. " $ "
+	end))
+end
+
+local function refreshPromptStyle()
+	local success, warning = colors.success, colors.warning
+	pathBadge.BackgroundColor3 = success
+	pathLabel.TextColor3 = badgeInk(success)
+	pathIcon.ImageColor3 = badgeInk(success)
+	timeBadge.BackgroundColor3 = warning
+	timeLabel.TextColor3 = badgeInk(warning)
+	timeIcon.ImageColor3 = badgeInk(warning)
+end
 local measuredPrompt, measuredPromptSize, measuredPromptWidth
 local lastHistoryBounds, lastPromptBounds
 local tabsDirty = true
@@ -106,21 +154,33 @@ local function repaint()
 	local session = sessions[active]
 	local text = session and session.text or "No terminal session. Use New Terminal to start a shell."
 	local lastLine = text:match("([^\n]*)$") or ""
+	local code, path, home = lastLine:match("^" .. PROMPT_PATTERN .. "$")
+	if not path and session and session.shell == "cmd" then
+		path = lastLine:match("^([%a]:[^\n]*)>%s*$")
+	end
+	local styled = session ~= nil and session.running and path ~= nil
+	promptStrip.Visible = styled
+	promptArrow.Visible = styled
+	if styled then
+		pathLabel.Text = shortPath(path, home)
+		timeLabel.Text = string.format("%.1fs", session.duration or 0)
+		promptArrow.ImageColor3 = code and tonumber(code) ~= 0 and colors.error or colors.accent
+	end
 	if session and session.running then
 		local history = text:sub(1, #text - #lastLine)
 		output:SetAttribute("HasHistory", #history > 0)
-		output.Text = history:sub(1, -2)
-		prompt.Text = lastLine
+		output.Text = plainHistory(history:sub(1, -2))
+		prompt.Text = styled and "" or plainHistory(lastLine)
 	else
 		output:SetAttribute("HasHistory", #text > 0)
-		output.Text = text
+		output.Text = plainHistory(text)
 		prompt.Text = ""
 	end
 	input.Visible = session ~= nil and session.running
 	input.TextEditable = input.Visible
-	prompt.Visible = input.Visible
+	prompt.Visible = input.Visible and not styled
 	if session then
-		setStatus(session.running and "Local shell running" or "Local shell exited")
+		setStatus(session.running and "Local " .. session.shell .. " running" or "Local " .. session.shell .. " exited")
 	else
 		setStatus("Terminal")
 	end
@@ -147,7 +207,21 @@ local function fitOutput(follow)
 	end
 	local promptWidth = measuredPromptWidth
 	local available = width - promptWidth
-	if input.Visible and available < lineHeight * 3 then
+	if promptStrip.Visible then
+		local badgeHeight = lineHeight
+		local iconSize = tokens.type.caption
+		local padding = tokens.space.sm
+		local timeWidth = math.ceil(TextService:GetTextWidth(timeLabel.Text, tokens.type.caption, FONT)) + iconSize + padding * 3
+		local pathWidth = math.min(math.max(1, width - timeWidth - padding), math.ceil(TextService:GetTextWidth(pathLabel.Text, tokens.type.caption, FONT)) + iconSize + padding * 3)
+		promptStrip.Position = UDim2.fromOffset(INSET, y)
+		promptStrip.Size = UDim2.fromOffset(width, badgeHeight)
+		timeBadge.Size = UDim2.fromOffset(timeWidth, badgeHeight)
+		pathBadge.Position = UDim2.fromOffset(timeWidth + padding, 0)
+		pathBadge.Size = UDim2.fromOffset(pathWidth, badgeHeight)
+		y += badgeHeight + tokens.space.xs
+		promptArrow.Position = UDim2.fromOffset(INSET, y + math.floor((lineHeight - iconSize) / 2))
+		promptWidth = iconSize + padding
+	elseif input.Visible and available < lineHeight * 3 then
 		prompt.TextWrapped = true
 		if prompt.Size.X.Offset ~= width then
 			prompt.Size = UDim2.fromOffset(width, lineHeight)
@@ -189,7 +263,7 @@ local function tabs()
 	if #sessions == 0 then return end
 	local definitions = {}
 	for _, session in sessions do
-		table.insert(definitions, { name = tostring(session.id), text = "Shell " .. tostring(session.id), width = width })
+		table.insert(definitions, { name = tostring(session.id), text = session.shell .. " " .. tostring(session.id), width = width })
 	end
 	local selected = sessions[active]
 	local rebuilding = true
@@ -200,10 +274,10 @@ local function tabs()
 		barHeight = TAB_HEIGHT,
 		tabTop = tokens.space.xs,
 		tabGap = tokens.space.xs,
-		barColor = colors.panel,
-		contentColor = colors.panel,
-		activeTabColor = colors.panel,
-		inactiveTabColor = colors.panel,
+		barColor = body.BackgroundColor3,
+		contentColor = body.BackgroundColor3,
+		activeTabColor = body.BackgroundColor3,
+		inactiveTabColor = body.BackgroundColor3,
 		tabAccentColor = colors.accent,
 		tabPaddingX = tokens.space.xs,
 		onTabChanged = function(name)
@@ -256,13 +330,14 @@ newSession = function()
 		end
 	end)
 	local ok, id = pcall(function()
-		return service:CreateTerminal(directory)
+		return service:CreateTerminal(directory, true)
 	end)
 	if not ok then
 		setStatus(tostring(id), true)
 		return
 	end
-	table.insert(sessions, { id = id, text = "", running = true, historyIndex = nil, draft = "" })
+	local shell = service:GetShellName(id)
+	table.insert(sessions, { id = id, shell = shell, text = "", running = true, historyIndex = nil, draft = "", duration = 0 })
 	tabsDirty = true
 	selectSession(#sessions)
 end
@@ -302,6 +377,7 @@ local function submit()
 		setStatus(ok and "Input queue is busy; retry" or tostring(accepted), true)
 		return
 	end
+	session.commandStarted = os.clock()
 	input.Text = ""
 	session.historyIndex = nil
 	session.draft = ""
@@ -324,17 +400,24 @@ local function historyMove(session, delta)
 end
 
 local function build()
-	panel, body = UI.window("Terminal", UDim2.new(0.5, 0, 1, 32), UDim2.new(0.82, 0, 0.49, 0), "Terminal", {
+	floatingPosition = UDim2.new(0.09, 0, 0.50, -20)
+	windowOptions = {
 		closable = true,
 		closeIcon = "builtin://global-icons/x.svg",
-		draggable = false,
-		dockable = false,
-		resizable = false,
+		draggable = true,
+		dockable = true,
+		resizable = true,
+		minSize = Vector2.new(280, 160),
+		contentColor = terminalColor(),
+		activeTabColor = terminalColor(),
 		backgroundImage = "",
 		onClose = function() setOpen(false) end,
-	})
-	panel.AnchorPoint = Vector2.new(0.5, 1)
+	}
+	local header, controls
+	panel, body, header, controls = UI.window("Terminal", floatingPosition, UDim2.new(0.82, 0, 0.49, 0), "Terminal", windowOptions)
+	panel.AnchorPoint = Vector2.new(0, 0)
 	panel.Parent = UI.widgetOverlay()
+	UI.tooltip(controls.closeButton, "Hide Terminal")
 	panel.Visible = false
 	tabStrip = UI.frame(body, UDim2.fromOffset(INSET, tokens.space.xs), UDim2.new(1, -(INSET * 3 + BUTTON_HEIGHT * 2 + tokens.space.sm), 0, TAB_HEIGHT), colors.panel)
 	tabStrip.BackgroundTransparency = 1
@@ -380,10 +463,35 @@ local function build()
 	prompt.FontFace = mono
 	prompt.RichText = false
 	prompt.TextYAlignment = Enum.TextYAlignment.Center
+	promptStrip = UI.frame(scroll, UDim2.fromOffset(INSET, INSET), UDim2.new(1, -INSET * 2, 0, rowHeight()), colors.panel)
+	promptStrip.Name = "TerminalPromptStrip"
+	promptStrip.BackgroundTransparency = 1
+	promptStrip.Visible = false
+	local iconSize = tokens.type.caption
+	local pad = tokens.space.sm
+	local function segment(name, icon, fill)
+		local badge, label = UI.badge(promptStrip, "", UDim2.fromOffset(0, 0), {
+			height = rowHeight(), color = fill, textColor = badgeInk(fill), textSize = tokens.type.caption,
+		})
+		badge.Name = name
+		label.FontFace = mono
+		label.Position = UDim2.fromOffset(iconSize + pad * 2, 0)
+		label.Size = UDim2.new(1, -(iconSize + pad * 3), 1, 0)
+		label.TextTruncate = Enum.TextTruncate.AtEnd
+		local image = UI.image(badge, icon, UDim2.fromOffset(pad, math.floor((rowHeight() - iconSize) / 2)), UDim2.fromOffset(iconSize, iconSize))
+		image.ImageColor3 = badgeInk(fill)
+		return badge, label, image
+	end
+	timeBadge, timeLabel, timeIcon = segment("CommandDuration", "builtin://global-icons/clock.svg", colors.warning)
+	pathBadge, pathLabel, pathIcon = segment("WorkingDirectory", "builtin://icons/Folder.svg", colors.success)
+	promptArrow = UI.image(scroll, "builtin://icons/ArrowRight.svg", UDim2.fromOffset(INSET, INSET), UDim2.fromOffset(iconSize, iconSize))
+	promptArrow.Name = "TerminalPromptArrow"
+	promptArrow.ImageColor3 = colors.accent
+	promptArrow.Visible = false
 	input = UI.input(scroll, "", UDim2.fromOffset(INSET, INSET), UDim2.new(1, -INSET * 2, 0, rowHeight()), {
 		textSize = tokens.type.body,
 		textColor = colors.text,
-		caretColor = colors.accent,
+		caretColor = colors.text,
 		selectionColor = colors.selection,
 		strokeTransparency = 1,
 		focusTransparency = 1,
@@ -397,7 +505,7 @@ local function build()
 	input.TextYAlignment = Enum.TextYAlignment.Center
 	input.MultiLine = false
 	input.TextPadding = 0
-	input.BlockCaret = true
+	input.BlockCaret = false
 	input.SmoothCaret = not UI.shared().reduceMotion
 	input.FocusIndicatorVisible = false
 	status = UI.label(body, "Terminal", UDim2.new(0, INSET, 1, -STATUS_HEIGHT), UDim2.new(1, -INSET * 2, 0, STATUS_HEIGHT), tokens.type.caption, colors.muted)
@@ -433,10 +541,15 @@ local function build()
 		output.TextSize = tokens.type.body
 		prompt.TextSize = tokens.type.body
 		input.TextSize = tokens.type.body
+		windowOptions.contentColor = terminalColor()
+		windowOptions.activeTabColor = windowOptions.contentColor
+		UI.refreshWindow("Terminal")
+		refreshPromptStyle()
 		if tabController then
+			local fill = body.BackgroundColor3
 			tabController.setColors({
-				bar = colors.panel, content = colors.panel, activeTab = colors.panel,
-				inactiveTab = colors.panel, hover = colors.hover, pressed = colors.pressed,
+				bar = fill, content = fill, activeTab = fill,
+				inactiveTab = fill, hover = colors.hover, pressed = colors.pressed,
 				activeText = colors.text, inactiveText = colors.muted, accent = colors.accent,
 			})
 		end
@@ -495,17 +608,27 @@ local function build()
 			if scroll.SmoothScrollingEnabled ~= smooth then scroll.SmoothScrollingEnabled = smooth end
 		end
 		local target = opened and 1 or 0
-		if progress ~= target then
+		local inLayout = docked()
+		if inLayout then wasDocked = true end
+		if panel:GetAttribute("Dragging") == true or inLayout then
+			progress = target
+			if not opened then panel.Visible = false end
+		elseif progress ~= target then
 			if UI.shared().reduceMotion then
 				progress = target
 			else
 				progress = math.clamp(progress + (opened and 1 or -1) * dt * 7, 0, 1)
 			end
 			local eased = 1 - (1 - progress) ^ 3
-			panel.Position = UDim2.new(0.5, 0, 1, -20 + (1 - eased) * (panel.AbsoluteSize.Y + 32))
+			local position = floatingPosition
+			panel.Position = UDim2.new(position.X.Scale, position.X.Offset, position.Y.Scale, position.Y.Offset + (1 - eased) * 30)
 			if progress == 0 and not opened then
 				panel.Visible = false
+				panel.Position = position
 			end
+		elseif opened and not inLayout then
+			floatingPosition = panel.Position
+			wasDocked = false
 		end
 		elapsed += dt
 		if elapsed < 0.05 then
@@ -520,6 +643,10 @@ local function build()
 				if ok then
 					if chunk ~= "" then
 						appendOutput(session, chunk)
+						if session.commandStarted and (session.text:match(PROMPT_PATTERN .. "$") or (session.shell == "cmd" and session.text:match("[%a]:[^\n]*>%s*$"))) then
+							session.duration = math.max(0, os.clock() - session.commandStarted)
+							session.commandStarted = nil
+						end
 					end
 					local changed = session.running ~= running
 					session.running = running
@@ -564,19 +691,22 @@ local function build()
 		panel = nil
 		opened = false
 		progress = 0
+		wasDocked = false
 		active = 0
 	end)
 	repaint()
 end
 
 setOpen = function(value)
-	if not panel then
-		build()
-	end
+	if not panel then build() end
+	local inLayout = docked() or wasDocked
 	opened = value
 	if value then
-		local eased = 1 - (1 - progress) ^ 3
-		panel.Position = UDim2.new(0.5, 0, 1, -20 + (1 - eased) * (panel.AbsoluteSize.Y + 32))
+		if inLayout then
+			progress = 1
+		elseif progress == 0 then
+			panel.Position = floatingPosition
+		end
 		panel.Visible = true
 		if #sessions == 0 then
 			newSession()
@@ -587,6 +717,12 @@ setOpen = function(value)
 		end
 	else
 		input:ReleaseFocus()
+		if inLayout or panel:GetAttribute("Dragging") == true or UI.shared().reduceMotion then
+			progress = 0
+			panel.Visible = false
+		elseif progress == 1 then
+			floatingPosition = panel.Position
+		end
 	end
 end
 
