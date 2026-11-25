@@ -189,7 +189,7 @@ end
 local function fitOutput(follow)
 	if fitting or not scroll then return end
 	fitting = true
-	local previousEnd = math.max(0, scroll.CanvasSize.Y.Offset - scroll.AbsoluteSize.Y)
+	local previousEnd = math.max(0, scroll.AbsoluteCanvasSize.Y - scroll.AbsoluteWindowSize.Y)
 	local atBottom = scroll.CanvasPosition.Y >= previousEnd - rowHeight() * 3
 	local width = math.max(1, scroll.AbsoluteSize.X - INSET * 2 - scroll.ScrollBarThickness)
 	local lineHeight = rowHeight()
@@ -241,7 +241,7 @@ local function fitOutput(follow)
 	local height = math.max(scroll.AbsoluteSize.Y, y + (input.Visible and lineHeight or 0) + INSET)
 	scroll.CanvasSize = UDim2.new(1, 0, 0, height)
 	if follow or atBottom then
-		scroll.CanvasPosition = Vector2.new(0, math.max(0, height - scroll.AbsoluteSize.Y))
+		scroll.CanvasPosition = Vector2.new(0, math.max(0, scroll.AbsoluteCanvasSize.Y - scroll.AbsoluteWindowSize.Y))
 	end
 	lastHistoryBounds = output.TextBounds
 	lastPromptBounds = prompt.TextBounds
@@ -299,7 +299,6 @@ end
 local function focusTerminal()
 	if not panel or not opened or not input.TextEditable then return end
 	if not input:IsFocused() then input:CaptureFocus() end
-	fitOutput(true)
 end
 
 selectSession = function(index, fromTabs)
@@ -378,6 +377,7 @@ local function submit()
 		return
 	end
 	session.commandStarted = os.clock()
+	fitOutput(true)
 	input.Text = ""
 	session.historyIndex = nil
 	session.draft = ""
@@ -512,6 +512,11 @@ local function build()
 	status.Name = "TerminalStatus"
 	UI.separator(body, UDim2.new(0, INSET, 1, -STATUS_HEIGHT), UDim2.new(1, -INSET * 2, 0, 1), colors.border)
 
+	connect(input.TextChanged, function()
+		if opened and input:IsFocused() then
+			fitOutput(true)
+		end
+	end)
 	connect(input.FocusLost, function(enterPressed)
 		if not enterPressed then
 			return
@@ -667,6 +672,7 @@ local function build()
 					appendOutput(session, "\n" .. tostring(chunk))
 					if opened and index == active then
 						repaint()
+						fitOutput(false)
 					end
 				end
 			end
@@ -708,13 +714,10 @@ setOpen = function(value)
 			panel.Position = floatingPosition
 		end
 		panel.Visible = true
-		if #sessions == 0 then
-			newSession()
-		else
-			repaint()
-			fitOutput(true)
-			focusTerminal()
-		end
+		repaint()
+		fitOutput(true)
+		focusTerminal()
+		newSession()
 	else
 		input:ReleaseFocus()
 		if inLayout or panel:GetAttribute("Dragging") == true or UI.shared().reduceMotion then
