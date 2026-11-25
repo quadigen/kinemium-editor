@@ -186,7 +186,6 @@ local list = UI.create("ScrollingFrame", {
 }, content)
 
 local collapsed = {}
-local activeEditors = {}
 
 local renderedControllers = {}
 
@@ -512,29 +511,15 @@ local function buildStructure(object, searchQuery)
 end
 
 local function watchEditor(field, commit)
-	table.insert(activeEditors, {
-		field = field,
-		commit = commit,
-		wasFocused = false,
-	})
-end
-
-local function updateEditors()
-	for _, editor in ipairs(activeEditors) do
-		local ok, focused = pcall(function()
-			return editor.field:IsFocused()
-		end)
-
+	field.FocusLost:Connect(function()
+		if rebuilding or not UI.isAlive(field) then
+			return
+		end
+		local ok, err = pcall(commit)
 		if not ok then
-			continue
+			warn("Failed to commit property: " .. tostring(err))
 		end
-
-		if editor.wasFocused and not focused then
-			pcall(editor.commit)
-		end
-
-		editor.wasFocused = focused
-	end
+	end)
 end
 
 local function setProperty(object, propertyName, value)
@@ -1988,7 +1973,6 @@ local function rebuild(object, visible)
 	end
 
 	animations = {}
-	activeEditors = {}
 	renderedControllers = {}
 	pendingRows = {}
 	nextPendingRow = 1
@@ -2096,13 +2080,11 @@ renderer.Pool.new("2d", function()
 
 	if lastRuntimeRole ~= PlaytestTree.role then
 		lastRuntimeRole = PlaytestTree.role
-		activeEditors = {}
 		closeInspectorColorPicker()
 		objectPreview.clear()
 		lastStructure = ""
 		signatureClock = SIGNATURE_INTERVAL
 	end
-	updateEditors()
 	objectPreview.update(
 		list,
 		panel.Visible and not PlaytestTree.role and not dragging and not picker.isActive() and not inspectorColorPopup
