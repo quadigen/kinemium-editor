@@ -4,28 +4,42 @@ end
 
 local UI = require("@internal/editor_ui")
 local RunService = game:GetService("RunService")
+local TextService = game:GetService("TextService")
 local UserInputService = game:GetService("UserInputService")
 local available, service = pcall(function()
 	return game:GetService("TerminalService")
 end)
 
 local Terminal = {}
-local C = {
-	bg = Color3.fromRGB(17, 19, 25),
-	bar = Color3.fromRGB(30, 33, 42),
-	text = Color3.fromRGB(220, 225, 237),
-	dim = Color3.fromRGB(143, 153, 174),
-	accent = Color3.fromRGB(148, 226, 190),
-	error = Color3.fromRGB(243, 139, 168),
-}
-local mono = Font.new("builtin://fonts/RobotoMono-Regular.ttf", Enum.FontWeight.Regular, Enum.FontStyle.Normal)
+local tokens = UI.tokens
+local colors = tokens.color
+local metrics = UI.metrics
+local FONT = "builtin://fonts/RobotoMono-Regular.ttf"
+local mono = Font.new(FONT, Enum.FontWeight.Regular, Enum.FontStyle.Normal)
+local INSET = metrics.panelInset
+local TAB_HEIGHT = metrics.tabHeight
+local BUTTON_HEIGHT = metrics.buttonHeight
+local STATUS_HEIGHT = metrics.propertyRow
+local measuredSize, measuredHeight
+local function rowHeight()
+	if measuredSize ~= tokens.type.body then
+		measuredSize = tokens.type.body
+		measuredHeight = math.ceil(TextService:GetLineHeight(measuredSize, FONT))
+	end
+	return math.max(measuredSize + tokens.space.sm, measuredHeight)
+end
 local MAX_OUTPUT = 48000
 local sessions = {}
 local active = 0
 local opened = false
 local progress = 0
 local elapsed = 0
-local panel, body, input, output, scroll, status, tabStrip
+local panel, body, input, output, prompt, scroll, status, tabStrip, tabContainer, tabController
+local fitting = false
+local measuredPrompt, measuredPromptSize, measuredPromptWidth
+local lastHistoryBounds, lastPromptBounds
+local tabsDirty = true
+local tabWidth = 0
 local setOpen, selectSession, newSession, closeSession
 local connections = {}
 
@@ -33,32 +47,6 @@ local function connect(signal, callback)
 	local connection = signal:Connect(callback)
 	table.insert(connections, connection)
 	return connection
-end
-
-local function textProps(text, position, size)
-	return {
-		Text = text,
-		Position = position,
-		Size = size,
-		BackgroundTransparency = 1,
-		TextSize = 13,
-		TextColor3 = C.text,
-		TextXAlignment = Enum.TextXAlignment.Left,
-		TextYAlignment = Enum.TextYAlignment.Center,
-		RichText = false,
-		BorderSizePixel = 0,
-		FontFace = mono,
-	}
-end
-
-local function button(parent, text, position, size, callback)
-	local props = textProps(text, position, size)
-	props.BackgroundTransparency = 0
-	props.BackgroundColor3 = C.bar
-	props.TextXAlignment = Enum.TextXAlignment.Center
-	local item = UI.create("TextButton", props, parent)
-	item.MouseButton1Click:Connect(callback)
-	return item
 end
 
 local function appendOutput(session, chunk)
@@ -110,66 +98,149 @@ local function appendOutput(session, chunk)
 end
 
 local function setStatus(message, failed)
-	status.Text = "  " .. message
-	status.TextColor3 = failed and C.error or C.dim
+	status.Text = message
+	status.TextColor3 = failed and colors.error or colors.muted
 end
 
 local function repaint()
 	local session = sessions[active]
-	output.Text = session and session.text or "No terminal session. Select + to create one."
-	input.TextEditable = session ~= nil and session.running
-	if session then
-		setStatus(session.running and "LOCAL SHELL  ·  RUNNING" or "LOCAL SHELL  ·  EXITED")
+	local text = session and session.text or "No terminal session. Use New Terminal to start a shell."
+	local lastLine = text:match("([^\n]*)$") or ""
+	if session and session.running then
+		local history = text:sub(1, #text - #lastLine)
+		output:SetAttribute("HasHistory", #history > 0)
+		output.Text = history:sub(1, -2)
+		prompt.Text = lastLine
 	else
-		setStatus("TERMINAL")
+		output:SetAttribute("HasHistory", #text > 0)
+		output.Text = text
+		prompt.Text = ""
+	end
+	input.Visible = session ~= nil and session.running
+	input.TextEditable = input.Visible
+	prompt.Visible = input.Visible
+	if session then
+		setStatus(session.running and "Local shell running" or "Local shell exited")
+	else
+		setStatus("Terminal")
 	end
 end
 
 local function fitOutput(follow)
+	if fitting or not scroll then return end
+	fitting = true
 	local previousEnd = math.max(0, scroll.CanvasSize.Y.Offset - scroll.AbsoluteSize.Y)
-	local atBottom = scroll.CanvasPosition.Y >= previousEnd - 24
-	local height = math.max(scroll.AbsoluteSize.Y, output.TextBounds.Y + 16)
-	local size = UDim2.new(1, -18, 0, height)
-	if output.Size ~= size then
-		output.Size = size
+	local atBottom = scroll.CanvasPosition.Y >= previousEnd - rowHeight() * 3
+	local width = math.max(1, scroll.AbsoluteSize.X - INSET * 2 - scroll.ScrollBarThickness)
+	local lineHeight = rowHeight()
+	local historyHeight = 0
+	if output:GetAttribute("HasHistory") then
+		historyHeight = math.max(lineHeight, math.ceil(output.TextBounds.Y))
 	end
+	local nextSize = UDim2.fromOffset(width, math.max(lineHeight, historyHeight))
+	if output.Size ~= nextSize then output.Size = nextSize end
+	local y = INSET + historyHeight
+	if measuredPrompt ~= prompt.Text or measuredPromptSize ~= tokens.type.body then
+		measuredPrompt = prompt.Text
+		measuredPromptSize = tokens.type.body
+		measuredPromptWidth = TextService:GetTextWidth(measuredPrompt, measuredPromptSize, FONT)
+	end
+	local promptWidth = measuredPromptWidth
+	local available = width - promptWidth
+	if input.Visible and available < lineHeight * 3 then
+		prompt.TextWrapped = true
+		if prompt.Size.X.Offset ~= width then
+			prompt.Size = UDim2.fromOffset(width, lineHeight)
+		end
+		local height = math.max(lineHeight, math.ceil(prompt.TextBounds.Y))
+		prompt.Size = UDim2.fromOffset(width, height)
+		prompt.Position = UDim2.fromOffset(INSET, y)
+		y += height
+		promptWidth = 0
+	else
+		prompt.TextWrapped = false
+		prompt.Position = UDim2.fromOffset(INSET, y)
+		prompt.Size = UDim2.fromOffset(math.max(1, promptWidth), lineHeight)
+	end
+	input.Position = UDim2.fromOffset(INSET + promptWidth, y)
+	input.Size = UDim2.fromOffset(math.max(1, width - promptWidth), lineHeight)
+	local height = math.max(scroll.AbsoluteSize.Y, y + (input.Visible and lineHeight or 0) + INSET)
 	scroll.CanvasSize = UDim2.new(1, 0, 0, height)
 	if follow or atBottom then
 		scroll.CanvasPosition = Vector2.new(0, math.max(0, height - scroll.AbsoluteSize.Y))
 	end
+	lastHistoryBounds = output.TextBounds
+	lastPromptBounds = prompt.TextBounds
+	fitting = false
 end
 
 local function tabs()
-	for _, child in tabStrip:GetChildren() do
-		child:Destroy()
+	if not tabStrip then return end
+	local width = math.clamp(math.floor((tabStrip.AbsoluteSize.X - tokens.space.sm) / math.max(1, #sessions)) - tokens.space.xs, 48, 116)
+	if not tabsDirty and width == tabWidth then return end
+	tabWidth = width
+	tabsDirty = false
+	if tabContainer then
+		UI.forgetButtons(tabContainer)
+		tabContainer:Destroy()
+		tabContainer = nil
+		tabController = nil
 	end
-	local width = math.clamp(math.floor((tabStrip.AbsoluteSize.X - 4) / math.max(1, #sessions)), 44, 100)
-	for index, session in sessions do
-		local i = index
-		local tab = button(
-			tabStrip,
-			"shell " .. tostring(session.id),
-			UDim2.fromOffset((index - 1) * width, 0),
-			UDim2.fromOffset(width - 2, 26),
-			function()
-				selectSession(i)
+	if #sessions == 0 then return end
+	local definitions = {}
+	for _, session in sessions do
+		table.insert(definitions, { name = tostring(session.id), text = "Shell " .. tostring(session.id), width = width })
+	end
+	local selected = sessions[active]
+	local rebuilding = true
+	tabContainer, tabController = UI.tabs(tabStrip, UDim2.fromOffset(0, 0), UDim2.fromScale(1, 1), {
+		tabs = definitions,
+		selectedTab = selected and tostring(selected.id) or nil,
+		startX = tokens.space.xs,
+		barHeight = TAB_HEIGHT,
+		tabTop = tokens.space.xs,
+		tabGap = tokens.space.xs,
+		barColor = colors.panel,
+		contentColor = colors.panel,
+		activeTabColor = colors.panel,
+		inactiveTabColor = colors.panel,
+		tabAccentColor = colors.accent,
+		tabPaddingX = tokens.space.xs,
+		onTabChanged = function(name)
+			if rebuilding then return end
+			for index, session in sessions do
+				if tostring(session.id) == name then
+					selectSession(index, true)
+					break
+				end
 			end
-		)
-		tab.TextColor3 = index == active and C.accent or C.dim
-	end
+		end,
+	})
+	tabContainer.BackgroundTransparency = 1
+	tabController.bar.BackgroundTransparency = 1
+	tabController.content.Visible = false
+	rebuilding = false
 end
 
-selectSession = function(index)
+local function focusTerminal()
+	if not panel or not opened or not input.TextEditable then return end
+	if not input:IsFocused() then input:CaptureFocus() end
+	fitOutput(true)
+end
+
+selectSession = function(index, fromTabs)
 	local previous = sessions[active]
-	if previous then
-		previous.draft = input.Text
-	end
+	if previous then previous.draft = input.Text end
 	active = index
 	local session = sessions[active]
 	input.Text = session and session.draft or ""
 	tabs()
+	if not fromTabs and tabController and session then
+		tabController.selectTab(tostring(session.id))
+	end
 	repaint()
 	fitOutput(true)
+	focusTerminal()
 end
 
 newSession = function()
@@ -177,16 +248,23 @@ newSession = function()
 		setStatus("TerminalService is unavailable in this engine build", true)
 		return
 	end
+	local directory
+	pcall(function()
+		local project = game:GetService("Project"):GetActiveProject()
+		if project then
+			directory = project.Path
+		end
+	end)
 	local ok, id = pcall(function()
-		return service:CreateTerminal()
+		return service:CreateTerminal(directory)
 	end)
 	if not ok then
 		setStatus(tostring(id), true)
 		return
 	end
 	table.insert(sessions, { id = id, text = "", running = true, historyIndex = nil, draft = "" })
+	tabsDirty = true
 	selectSession(#sessions)
-	input:CaptureFocus()
 end
 
 closeSession = function()
@@ -202,6 +280,7 @@ closeSession = function()
 		return
 	end
 	table.remove(sessions, active)
+	tabsDirty = true
 	local nextIndex = math.min(active, #sessions)
 	active = 0
 	selectSession(nextIndex)
@@ -210,10 +289,13 @@ end
 local function submit()
 	local session = sessions[active]
 	local command = input.Text
-	if not session or not session.running or command == "" then
+	if not session or not session.running then
 		return
 	end
 	local ok, accepted = pcall(function()
+		if command == "" then
+			return service:WriteInput(session.id, string.char(13))
+		end
 		return service:Execute(session.id, command)
 	end)
 	if not ok or not accepted then
@@ -238,67 +320,89 @@ local function historyMove(session, delta)
 	end
 	session.historyIndex = math.clamp(session.historyIndex + delta, 1, #history + 1)
 	input.Text = history[session.historyIndex] or session.draft
-	input.CursorPosition = #input.Text + 1
+	input.CursorPosition = (utf8.len(input.Text) or #input.Text) + 1
 end
 
 local function build()
 	panel, body = UI.window("Terminal", UDim2.new(0.5, 0, 1, 32), UDim2.new(0.82, 0, 0.49, 0), "Terminal", {
 		closable = true,
+		closeIcon = "builtin://global-icons/x.svg",
 		draggable = false,
 		dockable = false,
 		resizable = false,
-		headerColor = C.bar,
-		contentColor = C.bg,
-		activeTabColor = C.bg,
-		titleColor = C.accent,
 		backgroundImage = "",
-		onClose = function()
-			setOpen(false)
-		end,
+		onClose = function() setOpen(false) end,
 	})
 	panel.AnchorPoint = Vector2.new(0.5, 1)
+	panel.Parent = UI.widgetOverlay()
 	panel.Visible = false
-	panel.ZIndex = 50
-	body.BackgroundColor3 = C.bg
-	tabStrip = UI.create("Frame", {
-		Position = UDim2.fromOffset(8, 3),
-		Size = UDim2.new(1, -100, 0, 26),
-		BackgroundTransparency = 1,
-		ClipsDescendants = true,
-	}, body)
-	button(body, "+", UDim2.new(1, -82, 0, 3), UDim2.fromOffset(34, 26), newSession)
-	button(body, "×", UDim2.new(1, -44, 0, 3), UDim2.fromOffset(34, 26), closeSession)
+	tabStrip = UI.frame(body, UDim2.fromOffset(INSET, tokens.space.xs), UDim2.new(1, -(INSET * 3 + BUTTON_HEIGHT * 2 + tokens.space.sm), 0, TAB_HEIGHT), colors.panel)
+	tabStrip.BackgroundTransparency = 1
+	tabStrip.ClipsDescendants = true
+	local options = { iconSize = 14, color = colors.panel, border = false }
+	local add = UI.iconButton(body, "builtin://global-icons/plus.svg", UDim2.new(1, -(INSET + BUTTON_HEIGHT * 2 + tokens.space.xs), 0, tokens.space.xs), UDim2.fromOffset(BUTTON_HEIGHT, BUTTON_HEIGHT), newSession, options)
+	UI.tooltip(add, "New Terminal", { placement = "below" })
+	local close = UI.iconButton(body, "builtin://global-icons/x.svg", UDim2.new(1, -(INSET + BUTTON_HEIGHT), 0, tokens.space.xs), UDim2.fromOffset(BUTTON_HEIGHT, BUTTON_HEIGHT), closeSession, options)
+	UI.tooltip(close, "Close current terminal", { placement = "below" })
+	local top = TAB_HEIGHT + tokens.space.sm
+	UI.separator(body, UDim2.fromOffset(INSET, top), UDim2.new(1, -INSET * 2, 0, 1), colors.border)
 	scroll = UI.create("ScrollingFrame", {
-		Position = UDim2.fromOffset(8, 34),
-		Size = UDim2.new(1, -16, 1, -92),
+		Name = "TerminalViewport",
+		Position = UDim2.fromOffset(INSET, top + tokens.space.xs),
+		Size = UDim2.new(1, -INSET * 2, 1, -(top + tokens.space.xs + STATUS_HEIGHT + INSET)),
 		BackgroundTransparency = 1,
 		BorderSizePixel = 0,
-		CanvasSize = UDim2.fromOffset(0, 0),
-		ScrollBarThickness = 4,
+		CanvasPosition = Vector2.new(0, 0),
+		CanvasSize = UDim2.new(1, 0, 0, 0),
 		ScrollingEnabled = true,
+		ScrollSpeed = 38,
+		SmoothScrollingEnabled = not UI.shared().reduceMotion,
+		ScrollSmoothness = 18,
+		ScrollBarThickness = 5,
+		ScrollBarImageColor3 = colors.subtext,
+		ScrollBarImageTransparency = 0.4,
+		ScrollBarAutoHide = true,
+		ScrollBarFadeDelay = 0.45,
+		ScrollBarFadeSpeed = 12,
+		ScrollBarMinimumHandleSize = 24,
+		ClipsDescendants = true,
+		Active = true,
+		InputSink = true,
 	}, body)
-	local props = textProps("", UDim2.fromOffset(6, 4), UDim2.new(1, -18, 0, 32))
-	props.TextWrapped = true
-	props.TextYAlignment = Enum.TextYAlignment.Top
-	output = UI.create("TextLabel", props, scroll)
+	output = UI.label(scroll, "", UDim2.fromOffset(INSET, INSET), UDim2.new(1, -INSET * 2, 0, rowHeight()), tokens.type.body, colors.text)
 	output.Name = "TerminalOutput"
-	local prompt = textProps("❯", UDim2.new(0, 12, 1, -54), UDim2.fromOffset(20, 32))
-	prompt.TextColor3 = C.accent
-	UI.create("TextLabel", prompt, body)
-	props = textProps("", UDim2.new(0, 34, 1, -54), UDim2.new(1, -46, 0, 32))
-	props.PlaceholderText = "Enter a command"
-	props.PlaceholderColor3 = C.dim
-	props.ClearTextOnFocus = false
-	props.MultiLine = false
-	input = UI.create("TextBox", props, body)
+	output.FontFace = mono
+	output.RichText = false
+	output.TextWrapped = true
+	output.TextYAlignment = Enum.TextYAlignment.Top
+	prompt = UI.label(scroll, "", UDim2.fromOffset(INSET, INSET), UDim2.fromOffset(1, rowHeight()), tokens.type.body, colors.text)
+	prompt.Name = "TerminalPrompt"
+	prompt.FontFace = mono
+	prompt.RichText = false
+	prompt.TextYAlignment = Enum.TextYAlignment.Center
+	input = UI.input(scroll, "", UDim2.fromOffset(INSET, INSET), UDim2.new(1, -INSET * 2, 0, rowHeight()), {
+		textSize = tokens.type.body,
+		textColor = colors.text,
+		caretColor = colors.accent,
+		selectionColor = colors.selection,
+		strokeTransparency = 1,
+		focusTransparency = 1,
+		animate = false,
+		maxLength = 8190,
+	})
 	input.Name = "TerminalInput"
-	local footer = textProps("  TERMINAL", UDim2.new(0, 0, 1, -22), UDim2.new(1, 0, 0, 22))
-	footer.BackgroundTransparency = 0
-	footer.BackgroundColor3 = C.bar
-	footer.TextColor3 = C.dim
-	footer.TextSize = 11
-	status = UI.create("TextLabel", footer, body)
+	input.FontFace = mono
+	input.BackgroundTransparency = 1
+	input.TextXAlignment = Enum.TextXAlignment.Left
+	input.TextYAlignment = Enum.TextYAlignment.Center
+	input.MultiLine = false
+	input.TextPadding = 0
+	input.BlockCaret = true
+	input.SmoothCaret = not UI.shared().reduceMotion
+	input.FocusIndicatorVisible = false
+	status = UI.label(body, "Terminal", UDim2.new(0, INSET, 1, -STATUS_HEIGHT), UDim2.new(1, -INSET * 2, 0, STATUS_HEIGHT), tokens.type.caption, colors.muted)
 	status.Name = "TerminalStatus"
+	UI.separator(body, UDim2.new(0, INSET, 1, -STATUS_HEIGHT), UDim2.new(1, -INSET * 2, 0, 1), colors.border)
 
 	connect(input.FocusLost, function(enterPressed)
 		if not enterPressed then
@@ -314,11 +418,41 @@ local function build()
 	connect(output:GetPropertyChangedSignal("TextBounds"), function()
 		fitOutput(false)
 	end)
+	connect(prompt:GetPropertyChangedSignal("TextBounds"), function()
+		fitOutput(false)
+	end)
 	connect(scroll:GetPropertyChangedSignal("AbsoluteSize"), function()
 		fitOutput(false)
 	end)
 	connect(tabStrip:GetPropertyChangedSignal("AbsoluteSize"), tabs)
+	local themeConnection = UI.onThemeChanged(function()
+		if not panel then return end
+		output.FontFace = mono
+		prompt.FontFace = mono
+		input.FontFace = mono
+		output.TextSize = tokens.type.body
+		prompt.TextSize = tokens.type.body
+		input.TextSize = tokens.type.body
+		if tabController then
+			tabController.setColors({
+				bar = colors.panel, content = colors.panel, activeTab = colors.panel,
+				inactiveTab = colors.panel, hover = colors.hover, pressed = colors.pressed,
+				activeText = colors.text, inactiveText = colors.muted, accent = colors.accent,
+			})
+		end
+		fitOutput(false)
+	end)
+	table.insert(connections, themeConnection)
 	connect(UserInputService.InputBegan, function(event)
+		if opened and event.UserInputType == Enum.UserInputType.MouseButton1 then
+			local point = UserInputService:GetMouseLocation()
+			if UI.pointInside(scroll, point) and not UI.pointInside(input, point)
+				and point.X < scroll.AbsolutePosition.X + scroll.AbsoluteSize.X - scroll.ScrollBarThickness then
+				task.defer(focusTerminal)
+			end
+		end
+	end)
+	connect(input.KeyDown, function(event)
 		if not opened or not input:IsFocused() then
 			return
 		end
@@ -326,17 +460,47 @@ local function build()
 		if not session or not session.running then
 			return
 		end
-		if event.KeyCode == Enum.KeyCode.Up then
+		local ctrl = UserInputService:IsKeyDown(Enum.KeyCode.LeftControl)
+			or UserInputService:IsKeyDown(Enum.KeyCode.RightControl)
+		if ctrl and event.KeyCode == Enum.KeyCode.C and input.SelectionStart == input.SelectionEnd then
+			input.KeyHandled = true
+			local ok, accepted = pcall(function()
+				return service:WriteInput(session.id, string.char(3))
+			end)
+			if ok and accepted then
+				input.Text = ""
+				session.historyIndex = nil
+				session.draft = ""
+			end
+		elseif ctrl and event.KeyCode == Enum.KeyCode.D and input.Text == "" then
+			input.KeyHandled = true
+			pcall(function()
+				service:WriteInput(session.id, string.char(4))
+			end)
+		elseif event.KeyCode == Enum.KeyCode.Up then
+			input.KeyHandled = true
 			historyMove(session, -1)
 		elseif event.KeyCode == Enum.KeyCode.Down then
+			input.KeyHandled = true
 			historyMove(session, 1)
 		end
 	end)
 	connect(RunService.Heartbeat, function(dt)
+		if panel.Visible then
+			if output.TextBounds ~= lastHistoryBounds or prompt.TextBounds ~= lastPromptBounds then
+				fitOutput(false)
+			end
+			local smooth = not UI.shared().reduceMotion
+			if input.SmoothCaret ~= smooth then input.SmoothCaret = smooth end
+			if scroll.SmoothScrollingEnabled ~= smooth then scroll.SmoothScrollingEnabled = smooth end
+		end
 		local target = opened and 1 or 0
 		if progress ~= target then
-			local speed = UI.shared().reduceMotion and 1000 or 7
-			progress = math.clamp(progress + (opened and 1 or -1) * dt * speed, 0, 1)
+			if UI.shared().reduceMotion then
+				progress = target
+			else
+				progress = math.clamp(progress + (opened and 1 or -1) * dt * 7, 0, 1)
+			end
 			local eased = 1 - (1 - progress) ^ 3
 			panel.Position = UDim2.new(0.5, 0, 1, -20 + (1 - eased) * (panel.AbsoluteSize.Y + 32))
 			if progress == 0 and not opened then
@@ -366,7 +530,7 @@ local function build()
 						end)
 						appendOutput(session, "\n[Shell exited: " .. (codeOK and tostring(code) or "?") .. "]\n")
 					end
-					if index == active and (chunk ~= "" or changed or session.drained) then
+					if opened and index == active and (chunk ~= "" or changed or session.drained) then
 						repaint()
 						fitOutput(false)
 					end
@@ -374,7 +538,7 @@ local function build()
 					session.running = false
 					session.drained = true
 					appendOutput(session, "\n" .. tostring(chunk))
-					if index == active then
+					if opened and index == active then
 						repaint()
 					end
 				end
@@ -388,6 +552,11 @@ local function build()
 			end)
 		end
 		table.clear(sessions)
+		UI.forgetButtons(body)
+		tabContainer = nil
+		tabController = nil
+		tabsDirty = true
+		lastHistoryBounds, lastPromptBounds = nil, nil
 		for _, connection in connections do
 			connection:Disconnect()
 		end
@@ -406,12 +575,15 @@ setOpen = function(value)
 	end
 	opened = value
 	if value then
-		panel.Position = UDim2.new(0.5, 0, 1, -20 + (1 - progress) * (panel.AbsoluteSize.Y + 32))
+		local eased = 1 - (1 - progress) ^ 3
+		panel.Position = UDim2.new(0.5, 0, 1, -20 + (1 - eased) * (panel.AbsoluteSize.Y + 32))
 		panel.Visible = true
 		if #sessions == 0 then
 			newSession()
 		else
-			input:CaptureFocus()
+			repaint()
+			fitOutput(true)
+			focusTerminal()
 		end
 	else
 		input:ReleaseFocus()
