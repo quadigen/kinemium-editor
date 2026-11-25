@@ -3,6 +3,7 @@ if IsServer or IsClient or IsPlaytest then
 end
 
 local UI = require("@internal/editor_ui")
+local History = require("@internal/terminal_history")
 local RunService = game:GetService("RunService")
 local TextService = game:GetService("TextService")
 local ThemeService = game:GetService("StudioThemeService")
@@ -35,7 +36,8 @@ local active = 0
 local opened = false
 local progress = 0
 local elapsed = 0
-local panel, body, input, output, prompt, scroll, status, tabStrip, tabContainer, tabController
+local panel, body, input, prompt, scroll, status, tabStrip, tabContainer, tabController
+local historyView, copyMenu
 local fitting = false
 local promptStrip, pathBadge, pathLabel, pathIcon, timeBadge, timeLabel, timeIcon, promptArrow
 local windowOptions
@@ -85,7 +87,7 @@ local function refreshPromptStyle()
 	timeIcon.ImageColor3 = badgeInk(warning)
 end
 local measuredPrompt, measuredPromptSize, measuredPromptWidth
-local lastHistoryBounds, lastPromptBounds
+local lastPromptBounds
 local tabsDirty = true
 local tabWidth = 0
 local setOpen, selectSession, newSession, closeSession
@@ -140,6 +142,10 @@ local function appendOutput(session, chunk)
 		while start <= #raw and raw:byte(start) >= 128 and raw:byte(start) < 192 do
 			start += 1
 		end
+		session.offset = (session.offset or 0) + start - 1
+		for key in session.promptTimes do
+			if key <= session.offset then session.promptTimes[key] = nil end
+		end
 		raw = raw:sub(start)
 	end
 	session.text = raw
@@ -168,12 +174,10 @@ local function repaint()
 	end
 	if session and session.running then
 		local history = text:sub(1, #text - #lastLine)
-		output:SetAttribute("HasHistory", #history > 0)
-		output.Text = plainHistory(history:sub(1, -2))
+		historyView:setText(history:sub(1, -2), session.promptTimes, session.offset, session.shell)
 		prompt.Text = styled and "" or plainHistory(lastLine)
 	else
-		output:SetAttribute("HasHistory", #text > 0)
-		output.Text = plainHistory(text)
+		historyView:setText(text, session and session.promptTimes, session and session.offset, session and session.shell)
 		prompt.Text = ""
 	end
 	input.Visible = session ~= nil and session.running
@@ -187,18 +191,15 @@ local function repaint()
 end
 
 local function fitOutput(follow)
-	if fitting or not scroll then return end
+	if fitting or not scroll then
+		return
+	end
 	fitting = true
 	local previousEnd = math.max(0, scroll.AbsoluteCanvasSize.Y - scroll.AbsoluteWindowSize.Y)
 	local atBottom = scroll.CanvasPosition.Y >= previousEnd - rowHeight() * 3
 	local width = math.max(1, scroll.AbsoluteSize.X - INSET * 2 - scroll.ScrollBarThickness)
 	local lineHeight = rowHeight()
-	local historyHeight = 0
-	if output:GetAttribute("HasHistory") then
-		historyHeight = math.max(lineHeight, math.ceil(output.TextBounds.Y))
-	end
-	local nextSize = UDim2.fromOffset(width, math.max(lineHeight, historyHeight))
-	if output.Size ~= nextSize then output.Size = nextSize end
+	local historyHeight = historyView:layout(width, lineHeight)
 	local y = INSET + historyHeight
 	if measuredPrompt ~= prompt.Text or measuredPromptSize ~= tokens.type.body then
 		measuredPrompt = prompt.Text
@@ -211,8 +212,13 @@ local function fitOutput(follow)
 		local badgeHeight = lineHeight
 		local iconSize = tokens.type.caption
 		local padding = tokens.space.sm
-		local timeWidth = math.ceil(TextService:GetTextWidth(timeLabel.Text, tokens.type.caption, FONT)) + iconSize + padding * 3
-		local pathWidth = math.min(math.max(1, width - timeWidth - padding), math.ceil(TextService:GetTextWidth(pathLabel.Text, tokens.type.caption, FONT)) + iconSize + padding * 3)
+		local timeWidth = math.ceil(TextService:GetTextWidth(timeLabel.Text, tokens.type.caption, FONT))
+			+ iconSize
+			+ padding * 3
+		local pathWidth = math.min(
+			math.max(1, width - timeWidth - padding),
+			math.ceil(TextService:GetTextWidth(pathLabel.Text, tokens.type.caption, FONT)) + iconSize + padding * 3
+		)
 		promptStrip.Position = UDim2.fromOffset(INSET, y)
 		promptStrip.Size = UDim2.fromOffset(width, badgeHeight)
 		timeBadge.Size = UDim2.fromOffset(timeWidth, badgeHeight)
@@ -240,18 +246,26 @@ local function fitOutput(follow)
 	input.Size = UDim2.fromOffset(math.max(1, width - promptWidth), lineHeight)
 	local height = math.max(scroll.AbsoluteSize.Y, y + (input.Visible and lineHeight or 0) + INSET)
 	scroll.CanvasSize = UDim2.new(1, 0, 0, height)
-	if follow or atBottom then
+	if follow or (atBottom and not historyView.dragging and not historyView:hasSelection()) then
 		scroll.CanvasPosition = Vector2.new(0, math.max(0, scroll.AbsoluteCanvasSize.Y - scroll.AbsoluteWindowSize.Y))
 	end
-	lastHistoryBounds = output.TextBounds
+	historyView:render()
 	lastPromptBounds = prompt.TextBounds
 	fitting = false
 end
 
 local function tabs()
-	if not tabStrip then return end
-	local width = math.clamp(math.floor((tabStrip.AbsoluteSize.X - tokens.space.sm) / math.max(1, #sessions)) - tokens.space.xs, 48, 116)
-	if not tabsDirty and width == tabWidth then return end
+	if not tabStrip then
+		return
+	end
+	local width = math.clamp(
+		math.floor((tabStrip.AbsoluteSize.X - tokens.space.sm) / math.max(1, #sessions)) - tokens.space.xs,
+		48,
+		116
+	)
+	if not tabsDirty and width == tabWidth then
+		return
+	end
 	tabWidth = width
 	tabsDirty = false
 	if tabContainer then
@@ -260,10 +274,15 @@ local function tabs()
 		tabContainer = nil
 		tabController = nil
 	end
-	if #sessions == 0 then return end
+	if #sessions == 0 then
+		return
+	end
 	local definitions = {}
 	for _, session in sessions do
-		table.insert(definitions, { name = tostring(session.id), text = session.shell .. " " .. tostring(session.id), width = width })
+		table.insert(
+			definitions,
+			{ name = tostring(session.id), text = session.shell .. " " .. tostring(session.id), width = width }
+		)
 	end
 	local selected = sessions[active]
 	local rebuilding = true
@@ -281,7 +300,9 @@ local function tabs()
 		tabAccentColor = colors.accent,
 		tabPaddingX = tokens.space.xs,
 		onTabChanged = function(name)
-			if rebuilding then return end
+			if rebuilding then
+				return
+			end
 			for index, session in sessions do
 				if tostring(session.id) == name then
 					selectSession(index, true)
@@ -297,13 +318,20 @@ local function tabs()
 end
 
 local function focusTerminal()
-	if not panel or not opened or not input.TextEditable then return end
-	if not input:IsFocused() then input:CaptureFocus() end
+	if not panel or not opened or not input.TextEditable then
+		return
+	end
+	if not input:IsFocused() then
+		input:CaptureFocus()
+	end
 end
 
 selectSession = function(index, fromTabs)
+	historyView:clearSelection()
 	local previous = sessions[active]
-	if previous then previous.draft = input.Text end
+	if previous then
+		previous.draft = input.Text
+	end
 	active = index
 	local session = sessions[active]
 	input.Text = session and session.draft or ""
@@ -336,7 +364,10 @@ newSession = function()
 		return
 	end
 	local shell = service:GetShellName(id)
-	table.insert(sessions, { id = id, shell = shell, text = "", running = true, historyIndex = nil, draft = "", duration = 0 })
+	table.insert(
+		sessions,
+		{ id = id, shell = shell, text = "", running = true, historyIndex = nil, draft = "", duration = 0, promptTimes = {}, offset = 0 }
+	)
 	tabsDirty = true
 	selectSession(#sessions)
 end
@@ -411,21 +442,43 @@ local function build()
 		contentColor = terminalColor(),
 		activeTabColor = terminalColor(),
 		backgroundImage = "",
-		onClose = function() setOpen(false) end,
+		onClose = function()
+			setOpen(false)
+		end,
 	}
 	local header, controls
-	panel, body, header, controls = UI.window("Terminal", floatingPosition, UDim2.new(0.82, 0, 0.49, 0), "Terminal", windowOptions)
+	panel, body, header, controls =
+		UI.window("Terminal", floatingPosition, UDim2.new(0.82, 0, 0.49, 0), "Terminal", windowOptions)
 	panel.AnchorPoint = Vector2.new(0, 0)
 	panel.Parent = UI.widgetOverlay()
 	UI.tooltip(controls.closeButton, "Hide Terminal")
 	panel.Visible = false
-	tabStrip = UI.frame(body, UDim2.fromOffset(INSET, tokens.space.xs), UDim2.new(1, -(INSET * 3 + BUTTON_HEIGHT * 2 + tokens.space.sm), 0, TAB_HEIGHT), colors.panel)
+	tabStrip = UI.frame(
+		body,
+		UDim2.fromOffset(INSET, tokens.space.xs),
+		UDim2.new(1, -(INSET * 3 + BUTTON_HEIGHT * 2 + tokens.space.sm), 0, TAB_HEIGHT),
+		colors.panel
+	)
 	tabStrip.BackgroundTransparency = 1
 	tabStrip.ClipsDescendants = true
 	local options = { iconSize = 14, color = colors.panel, border = false }
-	local add = UI.iconButton(body, "builtin://global-icons/plus.svg", UDim2.new(1, -(INSET + BUTTON_HEIGHT * 2 + tokens.space.xs), 0, tokens.space.xs), UDim2.fromOffset(BUTTON_HEIGHT, BUTTON_HEIGHT), newSession, options)
+	local add = UI.iconButton(
+		body,
+		"builtin://global-icons/plus.svg",
+		UDim2.new(1, -(INSET + BUTTON_HEIGHT * 2 + tokens.space.xs), 0, tokens.space.xs),
+		UDim2.fromOffset(BUTTON_HEIGHT, BUTTON_HEIGHT),
+		newSession,
+		options
+	)
 	UI.tooltip(add, "New Terminal", { placement = "below" })
-	local close = UI.iconButton(body, "builtin://global-icons/x.svg", UDim2.new(1, -(INSET + BUTTON_HEIGHT), 0, tokens.space.xs), UDim2.fromOffset(BUTTON_HEIGHT, BUTTON_HEIGHT), closeSession, options)
+	local close = UI.iconButton(
+		body,
+		"builtin://global-icons/x.svg",
+		UDim2.new(1, -(INSET + BUTTON_HEIGHT), 0, tokens.space.xs),
+		UDim2.fromOffset(BUTTON_HEIGHT, BUTTON_HEIGHT),
+		closeSession,
+		options
+	)
 	UI.tooltip(close, "Close current terminal", { placement = "below" })
 	local top = TAB_HEIGHT + tokens.space.sm
 	UI.separator(body, UDim2.fromOffset(INSET, top), UDim2.new(1, -INSET * 2, 0, 1), colors.border)
@@ -452,18 +505,30 @@ local function build()
 		Active = true,
 		InputSink = true,
 	}, body)
-	output = UI.label(scroll, "", UDim2.fromOffset(INSET, INSET), UDim2.new(1, -INSET * 2, 0, rowHeight()), tokens.type.body, colors.text)
-	output.Name = "TerminalOutput"
-	output.FontFace = mono
-	output.RichText = false
-	output.TextWrapped = true
-	output.TextYAlignment = Enum.TextYAlignment.Top
-	prompt = UI.label(scroll, "", UDim2.fromOffset(INSET, INSET), UDim2.fromOffset(1, rowHeight()), tokens.type.body, colors.text)
+	historyView = History.new(scroll, INSET)
+	copyMenu = UI.contextMenu(UI.contextMenuOverlay(), "", UDim2.fromOffset(-400, -400), UDim2.fromOffset(1, 1), nil, {
+		items = {
+			{label = "Copy", value = "copy", shortcut = "Ctrl+C", icon = "builtin://global-icons/copy.svg"},
+		},
+		menuWidth = 160,
+		onChanged = function(action)
+			if action == "copy" then historyView:copy() end
+		end,
+	})
+	prompt = UI.label(
+		scroll,
+		"",
+		UDim2.fromOffset(INSET, INSET),
+		UDim2.fromOffset(1, rowHeight()),
+		tokens.type.body,
+		colors.text
+	)
 	prompt.Name = "TerminalPrompt"
 	prompt.FontFace = mono
 	prompt.RichText = false
 	prompt.TextYAlignment = Enum.TextYAlignment.Center
-	promptStrip = UI.frame(scroll, UDim2.fromOffset(INSET, INSET), UDim2.new(1, -INSET * 2, 0, rowHeight()), colors.panel)
+	promptStrip =
+		UI.frame(scroll, UDim2.fromOffset(INSET, INSET), UDim2.new(1, -INSET * 2, 0, rowHeight()), colors.panel)
 	promptStrip.Name = "TerminalPromptStrip"
 	promptStrip.BackgroundTransparency = 1
 	promptStrip.Visible = false
@@ -471,20 +536,33 @@ local function build()
 	local pad = tokens.space.sm
 	local function segment(name, icon, fill)
 		local badge, label = UI.badge(promptStrip, "", UDim2.fromOffset(0, 0), {
-			height = rowHeight(), color = fill, textColor = badgeInk(fill), textSize = tokens.type.caption,
+			height = rowHeight(),
+			color = fill,
+			textColor = badgeInk(fill),
+			textSize = tokens.type.caption,
 		})
 		badge.Name = name
 		label.FontFace = mono
 		label.Position = UDim2.fromOffset(iconSize + pad * 2, 0)
 		label.Size = UDim2.new(1, -(iconSize + pad * 3), 1, 0)
 		label.TextTruncate = Enum.TextTruncate.AtEnd
-		local image = UI.image(badge, icon, UDim2.fromOffset(pad, math.floor((rowHeight() - iconSize) / 2)), UDim2.fromOffset(iconSize, iconSize))
+		local image = UI.image(
+			badge,
+			icon,
+			UDim2.fromOffset(pad, math.floor((rowHeight() - iconSize) / 2)),
+			UDim2.fromOffset(iconSize, iconSize)
+		)
 		image.ImageColor3 = badgeInk(fill)
 		return badge, label, image
 	end
 	timeBadge, timeLabel, timeIcon = segment("CommandDuration", "builtin://global-icons/clock.svg", colors.warning)
 	pathBadge, pathLabel, pathIcon = segment("WorkingDirectory", "builtin://icons/Folder.svg", colors.success)
-	promptArrow = UI.image(scroll, "builtin://icons/ArrowRight.svg", UDim2.fromOffset(INSET, INSET), UDim2.fromOffset(iconSize, iconSize))
+	promptArrow = UI.image(
+		scroll,
+		"builtin://icons/ArrowRight.svg",
+		UDim2.fromOffset(INSET, INSET),
+		UDim2.fromOffset(iconSize, iconSize)
+	)
 	promptArrow.Name = "TerminalPromptArrow"
 	promptArrow.ImageColor3 = colors.accent
 	promptArrow.Visible = false
@@ -508,12 +586,20 @@ local function build()
 	input.BlockCaret = false
 	input.SmoothCaret = not UI.shared().reduceMotion
 	input.FocusIndicatorVisible = false
-	status = UI.label(body, "Terminal", UDim2.new(0, INSET, 1, -STATUS_HEIGHT), UDim2.new(1, -INSET * 2, 0, STATUS_HEIGHT), tokens.type.caption, colors.muted)
+	status = UI.label(
+		body,
+		"Terminal",
+		UDim2.new(0, INSET, 1, -STATUS_HEIGHT),
+		UDim2.new(1, -INSET * 2, 0, STATUS_HEIGHT),
+		tokens.type.caption,
+		colors.muted
+	)
 	status.Name = "TerminalStatus"
 	UI.separator(body, UDim2.new(0, INSET, 1, -STATUS_HEIGHT), UDim2.new(1, -INSET * 2, 0, 1), colors.border)
 
 	connect(input.TextChanged, function()
 		if opened and input:IsFocused() then
+			historyView:clearSelection()
 			fitOutput(true)
 		end
 	end)
@@ -528,9 +614,6 @@ local function build()
 			end
 		end)
 	end)
-	connect(output:GetPropertyChangedSignal("TextBounds"), function()
-		fitOutput(false)
-	end)
 	connect(prompt:GetPropertyChangedSignal("TextBounds"), function()
 		fitOutput(false)
 	end)
@@ -539,11 +622,12 @@ local function build()
 	end)
 	connect(tabStrip:GetPropertyChangedSignal("AbsoluteSize"), tabs)
 	local themeConnection = UI.onThemeChanged(function()
-		if not panel then return end
-		output.FontFace = mono
+		if not panel then
+			return
+		end
+		historyView:themeChanged()
 		prompt.FontFace = mono
 		input.FontFace = mono
-		output.TextSize = tokens.type.body
 		prompt.TextSize = tokens.type.body
 		input.TextSize = tokens.type.body
 		windowOptions.contentColor = terminalColor()
@@ -553,21 +637,60 @@ local function build()
 		if tabController then
 			local fill = body.BackgroundColor3
 			tabController.setColors({
-				bar = fill, content = fill, activeTab = fill,
-				inactiveTab = fill, hover = colors.hover, pressed = colors.pressed,
-				activeText = colors.text, inactiveText = colors.muted, accent = colors.accent,
+				bar = fill,
+				content = fill,
+				activeTab = fill,
+				inactiveTab = fill,
+				hover = colors.hover,
+				pressed = colors.pressed,
+				activeText = colors.text,
+				inactiveText = colors.muted,
+				accent = colors.accent,
 			})
 		end
 		fitOutput(false)
 	end)
 	table.insert(connections, themeConnection)
 	connect(UserInputService.InputBegan, function(event)
-		if opened and event.UserInputType == Enum.UserInputType.MouseButton1 then
-			local point = UserInputService:GetMouseLocation()
-			if UI.pointInside(scroll, point) and not UI.pointInside(input, point)
-				and point.X < scroll.AbsolutePosition.X + scroll.AbsoluteSize.X - scroll.ScrollBarThickness then
-				task.defer(focusTerminal)
+		if not opened or not panel.Visible then return end
+		local kind = event.UserInputType
+		local point = UserInputService:GetMouseLocation()
+		if kind == Enum.UserInputType.MouseButton1 then
+			if copyMenu:IsOpen() then return end
+			if UI.pointInside(scroll, point) and point.X < scroll.AbsolutePosition.X + scroll.AbsoluteSize.X - scroll.ScrollBarThickness then
+				if historyView:contains(point) then
+					input:ReleaseFocus()
+					historyView:begin(point)
+					historyView:render()
+				else
+					historyView:clearSelection()
+					if not UI.pointInside(input, point) then task.defer(focusTerminal) end
+				end
+			else
+				historyView:clearSelection()
 			end
+		elseif kind == Enum.UserInputType.MouseButton2 and historyView:contains(point) and historyView:hasSelection() then
+			copyMenu:Open(UDim2.fromOffset(point.X, point.Y))
+		elseif kind == Enum.UserInputType.Keyboard and historyView:hasSelection() then
+			local ctrl = UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) or UserInputService:IsKeyDown(Enum.KeyCode.RightControl)
+			if ctrl and event.KeyCode == Enum.KeyCode.C then
+				local focused = UserInputService:GetFocusedTextBox()
+				if not focused then historyView:copy() end
+			end
+		end
+	end)
+	connect(UserInputService.InputChanged, function(event)
+		if opened and event.UserInputType == Enum.UserInputType.MouseMovement and historyView.dragging then
+			historyView:move(UserInputService:GetMouseLocation())
+			historyView:render()
+		end
+	end)
+	connect(UserInputService.InputEnded, function(event)
+		if event.UserInputType == Enum.UserInputType.MouseButton1 and historyView.dragging then
+			historyView:move(UserInputService:GetMouseLocation())
+			historyView.dragging = false
+			if not historyView:hasSelection() then task.defer(focusTerminal) end
+			historyView:render()
 		end
 	end)
 	connect(input.KeyDown, function(event)
@@ -605,19 +728,38 @@ local function build()
 	end)
 	connect(RunService.Heartbeat, function(dt)
 		if panel.Visible then
-			if output.TextBounds ~= lastHistoryBounds or prompt.TextBounds ~= lastPromptBounds then
+			if prompt.TextBounds ~= lastPromptBounds then
 				fitOutput(false)
 			end
+			if historyView.dragging then
+				local point = UserInputService:GetMouseLocation()
+				local top = scroll.AbsolutePosition.Y
+				local bottom = top + scroll.AbsoluteWindowSize.Y
+				local delta = point.Y < top and point.Y - top or (point.Y > bottom and point.Y - bottom or 0)
+				if delta ~= 0 then
+					scroll.CanvasPosition = Vector2.new(0, scroll.CanvasPosition.Y + math.clamp(delta * 9, -900, 900) * dt)
+					historyView:move(point)
+				end
+			end
+			historyView:render()
 			local smooth = not UI.shared().reduceMotion
-			if input.SmoothCaret ~= smooth then input.SmoothCaret = smooth end
-			if scroll.SmoothScrollingEnabled ~= smooth then scroll.SmoothScrollingEnabled = smooth end
+			if input.SmoothCaret ~= smooth then
+				input.SmoothCaret = smooth
+			end
+			if scroll.SmoothScrollingEnabled ~= smooth then
+				scroll.SmoothScrollingEnabled = smooth
+			end
 		end
 		local target = opened and 1 or 0
 		local inLayout = docked()
-		if inLayout then wasDocked = true end
+		if inLayout then
+			wasDocked = true
+		end
 		if panel:GetAttribute("Dragging") == true or inLayout then
 			progress = target
-			if not opened then panel.Visible = false end
+			if not opened then
+				panel.Visible = false
+			end
 		elseif progress ~= target then
 			if UI.shared().reduceMotion then
 				progress = target
@@ -626,7 +768,8 @@ local function build()
 			end
 			local eased = 1 - (1 - progress) ^ 3
 			local position = floatingPosition
-			panel.Position = UDim2.new(position.X.Scale, position.X.Offset, position.Y.Scale, position.Y.Offset + (1 - eased) * 30)
+			panel.Position =
+				UDim2.new(position.X.Scale, position.X.Offset, position.Y.Scale, position.Y.Offset + (1 - eased) * 30)
 			if progress == 0 and not opened then
 				panel.Visible = false
 				panel.Position = position
@@ -648,9 +791,20 @@ local function build()
 				if ok then
 					if chunk ~= "" then
 						appendOutput(session, chunk)
-						if session.commandStarted and (session.text:match(PROMPT_PATTERN .. "$") or (session.shell == "cmd" and session.text:match("[%a]:[^\n]*>%s*$"))) then
+						if
+							session.commandStarted
+							and (
+								session.text:match(PROMPT_PATTERN .. "$")
+								or (session.shell == "cmd" and session.text:match("[%a]:[^\n]*>%s*$"))
+							)
+						then
 							session.duration = math.max(0, os.clock() - session.commandStarted)
 							session.commandStarted = nil
+						end
+						local lastLine = session.text:match("([^\n]*)$") or ""
+						if lastLine:match("^" .. PROMPT_PATTERN .. "$") then
+							local key = session.offset + #session.text - #lastLine + 1
+							session.promptTimes[key] = session.duration
 						end
 					end
 					local changed = session.running ~= running
@@ -689,7 +843,9 @@ local function build()
 		tabContainer = nil
 		tabController = nil
 		tabsDirty = true
-		lastHistoryBounds, lastPromptBounds = nil, nil
+		lastPromptBounds = nil
+		copyMenu:Destroy()
+		historyView, copyMenu = nil, nil
 		for _, connection in connections do
 			connection:Disconnect()
 		end
@@ -704,7 +860,9 @@ local function build()
 end
 
 setOpen = function(value)
-	if not panel then build() end
+	if not panel then
+		build()
+	end
 	local inLayout = docked() or wasDocked
 	opened = value
 	if value then
@@ -720,6 +878,8 @@ setOpen = function(value)
 		newSession()
 	else
 		input:ReleaseFocus()
+		historyView:clearSelection()
+		copyMenu:Close()
 		if inLayout or panel:GetAttribute("Dragging") == true or UI.shared().reduceMotion then
 			progress = 0
 			panel.Visible = false
