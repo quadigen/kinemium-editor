@@ -6,7 +6,7 @@ local fip = require("@internal/fip")
 local profiler = require("@internal/profiler")
 local debugger = require("@internal/debugger")
 local dep_explorer = require("@internal/dependency_explorer")
-local terminal = require("@internal/terminal")
+local console = require("@internal/console")
 
 return {
 	name = "Script",
@@ -15,7 +15,7 @@ return {
 			name = "Terminal",
 			icon = "Script.svg",
 			callback = function()
-				terminal.Toggle()
+				console.ShowTerminal()
 			end,
 		},
 		{

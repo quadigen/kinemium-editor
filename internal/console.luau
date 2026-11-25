@@ -1,5 +1,6 @@
 local Preferences = require("@internal/preferences")
 local UI = require("@internal/editor_ui")
+local Terminal = require("@internal/terminal")
 
 local ScriptContext = game:GetService("ScriptContext")
 local LogService = game:GetService("LogService")
@@ -8,7 +9,12 @@ local RunService = game:GetService("RunService")
 local colors = UI.tokens.color
 local tokens = UI.tokens
 
+local currentConsole
+
 local function createConsole()
+	if currentConsole and UI.isAlive(currentConsole.window) then
+		return currentConsole
+	end
 	local WINDOW_NAME = "Console"
 	local MAX_ENTRIES = 1600
 	local MAX_COMMAND_HISTORY = 50
@@ -70,13 +76,24 @@ local function createConsole()
 	gui.Parent = game.StarterGui
 	UI.trackRoot(gui)
 
-	local panel, content =
+	local panel, _, _, controls =
 		UI.window(WINDOW_NAME, UDim2.new(0.5, 0, 0.5, 0), UDim2.new(0.4, 0, 0.7, 0), "Console", {
 			closable = true,
 			managedLayout = true,
+			tabs = Terminal and {
+				{ name = "Console", text = "Console" },
+				{ name = "Terminal", text = "Terminal" },
+			} or { { name = "Console", text = "Console" } },
+			selectedTab = "Console",
 		})
+	local content = controls.pages.Console
 	panel.AnchorPoint = Vector2.new(0.5, 0.5)
 	panel.Parent = gui
+	local terminalPage = controls.pages.Terminal
+	local wasVisible = panel.Visible
+	if terminalPage then
+		Terminal.Mount(terminalPage)
+	end
 
 	local BUTTON_WIDTH, PAD = 52, 6
 	local FILTER_SIZE = UI.metrics.buttonHeight
@@ -608,9 +625,10 @@ local function createConsole()
 	local renderVersion = 0
 	local boundVersion = -1
 	local rendering = false
+	local pendingRebuild = false
 
 	renderViewport = function(force)
-		if rendering then
+		if rendering or not panel.Visible or not content.Visible then
 			return
 		end
 		local size = scroll.AbsoluteSize
@@ -665,6 +683,11 @@ local function createConsole()
 	end
 
 	rebuild = function(stickToBottom, resetPosition)
+		if not panel.Visible or not content.Visible then
+			pendingRebuild = true
+			return
+		end
+		pendingRebuild = false
 		local oldY = resetPosition and 0 or scroll.CanvasPosition.Y
 		local height = rebuildModel()
 		renderVersion += 1
@@ -761,6 +784,9 @@ local function createConsole()
 	end
 
 	local function submitCommand()
+		if not panel.Visible or not content.Visible then
+			return
+		end
 		local source = command.Text
 		source = string.match(source, "^%s*(.-)%s*$") or ""
 		command.Text = ""
@@ -794,7 +820,7 @@ local function createConsole()
 		searchCountdown = SEARCH_DELAY
 	end)
 
-	RunService.Heartbeat:Connect(function(dt)
+	local heartbeat = RunService.Heartbeat:Connect(function(dt)
 		if not panel.Visible then
 			return
 		end
@@ -822,17 +848,43 @@ local function createConsole()
 		end
 		rebuild(false)
 	end)
+	local function syncTabs()
+		if not panel.Visible or not content.Visible then
+			closeFilterMenu()
+			search:ReleaseFocus()
+			command:ReleaseFocus()
+		elseif pendingRebuild then
+			rebuild(isNearBottom())
+		end
+		if terminalPage then
+			Terminal.SetActive(panel.Visible and terminalPage.Visible, panel.Visible and not wasVisible)
+		end
+		wasVisible = panel.Visible
+	end
+	panel:GetPropertyChangedSignal("Visible"):Connect(syncTabs)
+	content:GetPropertyChangedSignal("Visible"):Connect(syncTabs)
+	if terminalPage then
+		terminalPage:GetPropertyChangedSignal("Visible"):Connect(syncTabs)
+	end
 	panel.Destroying:Connect(function()
 		connection:Disconnect()
+		heartbeat:Disconnect()
+		closeFilterMenu()
+		if currentConsole and currentConsole.window == panel then
+			currentConsole = nil
+		end
 	end)
 	poll()
-	return {
+	currentConsole = {
 		window = panel,
 		gui = gui,
+		selectTab = controls.selectTab,
+		getSelectedTab = controls.getSelectedTab,
 		toggle = function()
 			UI.toggleWindow(WINDOW_NAME)
 		end,
 	}
+	return currentConsole
 end
 
 if IsPlaytest then
@@ -841,6 +893,19 @@ end
 
 return {
 	createConsole = createConsole,
+	ShowTerminal = function()
+		if not Terminal then
+			return
+		end
+		if not currentConsole or not UI.isAlive(currentConsole.window) then
+			require("@internal/output")
+		end
+		if not currentConsole then
+			return
+		end
+		currentConsole.selectTab("Terminal")
+		currentConsole.window.Visible = true
+	end,
 	Refresh = function()
 		UI.refreshWindow("Console")
 	end,

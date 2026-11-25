@@ -6,7 +6,6 @@ local UI = require("@internal/editor_ui")
 local History = require("@internal/terminal_history")
 local RunService = game:GetService("RunService")
 local TextService = game:GetService("TextService")
-local ThemeService = game:GetService("StudioThemeService")
 local UserInputService = game:GetService("UserInputService")
 local available, service = pcall(function()
 	return game:GetService("TerminalService")
@@ -34,20 +33,11 @@ local MAX_OUTPUT = 48000
 local sessions = {}
 local active = 0
 local opened = false
-local progress = 0
 local elapsed = 0
 local panel, body, input, prompt, scroll, status, tabStrip, tabContainer, tabController
 local historyView, copyMenu
 local fitting = false
 local promptStrip, pathBadge, pathLabel, pathIcon, timeBadge, timeLabel, timeIcon, promptArrow
-local windowOptions
-local floatingPosition
-local wasDocked = false
-local function docked()
-	local slots = ThemeService.SelectedTheme.DockedWindows
-	return slots and slots.Terminal ~= nil
-end
-
 local function terminalColor()
 	local canvas = colors.canvas
 	if canvas.R + canvas.G + canvas.B < 1.5 then
@@ -90,7 +80,7 @@ local measuredPrompt, measuredPromptSize, measuredPromptWidth
 local lastPromptBounds
 local tabsDirty = true
 local tabWidth = 0
-local setOpen, selectSession, newSession, closeSession
+local selectSession, newSession, closeSession
 local connections = {}
 
 local function connect(signal, callback)
@@ -430,29 +420,11 @@ local function historyMove(session, delta)
 	input.CursorPosition = (utf8.len(input.Text) or #input.Text) + 1
 end
 
-local function build()
-	floatingPosition = UDim2.new(0.09, 0, 0.50, -20)
-	windowOptions = {
-		closable = true,
-		closeIcon = "builtin://global-icons/x.svg",
-		draggable = true,
-		dockable = true,
-		resizable = true,
-		minSize = Vector2.new(280, 160),
-		contentColor = terminalColor(),
-		activeTabColor = terminalColor(),
-		backgroundImage = "",
-		onClose = function()
-			setOpen(false)
-		end,
-	}
-	local header, controls
-	panel, body, header, controls =
-		UI.window("Terminal", floatingPosition, UDim2.new(0.82, 0, 0.49, 0), "Terminal", windowOptions)
-	panel.AnchorPoint = Vector2.new(0, 0)
-	panel.Parent = UI.widgetOverlay()
-	UI.tooltip(controls.closeButton, "Hide Terminal")
-	panel.Visible = false
+local function build(parent)
+	panel = parent
+	body = UI.frame(panel, UDim2.fromOffset(0, 0), UDim2.fromScale(1, 1), terminalColor())
+	body.Name = "TerminalBody"
+	body.ClipsDescendants = true
 	tabStrip = UI.frame(
 		body,
 		UDim2.fromOffset(INSET, tokens.space.xs),
@@ -630,9 +602,7 @@ local function build()
 		input.FontFace = mono
 		prompt.TextSize = tokens.type.body
 		input.TextSize = tokens.type.body
-		windowOptions.contentColor = terminalColor()
-		windowOptions.activeTabColor = windowOptions.contentColor
-		UI.refreshWindow("Terminal")
+		body.BackgroundColor3 = terminalColor()
 		refreshPromptStyle()
 		if tabController then
 			local fill = body.BackgroundColor3
@@ -727,7 +697,7 @@ local function build()
 		end
 	end)
 	connect(RunService.Heartbeat, function(dt)
-		if panel.Visible then
+		if opened and panel.Visible then
 			if prompt.TextBounds ~= lastPromptBounds then
 				fitOutput(false)
 			end
@@ -749,34 +719,6 @@ local function build()
 			if scroll.SmoothScrollingEnabled ~= smooth then
 				scroll.SmoothScrollingEnabled = smooth
 			end
-		end
-		local target = opened and 1 or 0
-		local inLayout = docked()
-		if inLayout then
-			wasDocked = true
-		end
-		if panel:GetAttribute("Dragging") == true or inLayout then
-			progress = target
-			if not opened then
-				panel.Visible = false
-			end
-		elseif progress ~= target then
-			if UI.shared().reduceMotion then
-				progress = target
-			else
-				progress = math.clamp(progress + (opened and 1 or -1) * dt * 7, 0, 1)
-			end
-			local eased = 1 - (1 - progress) ^ 3
-			local position = floatingPosition
-			panel.Position =
-				UDim2.new(position.X.Scale, position.X.Offset, position.Y.Scale, position.Y.Offset + (1 - eased) * 30)
-			if progress == 0 and not opened then
-				panel.Visible = false
-				panel.Position = position
-			end
-		elseif opened and not inLayout then
-			floatingPosition = panel.Position
-			wasDocked = false
 		end
 		elapsed += dt
 		if elapsed < 0.05 then
@@ -850,47 +792,39 @@ local function build()
 			connection:Disconnect()
 		end
 		table.clear(connections)
-		panel = nil
+		panel, body, scroll, input = nil, nil, nil, nil
 		opened = false
-		progress = 0
-		wasDocked = false
 		active = 0
 	end)
 	repaint()
 end
 
-setOpen = function(value)
-	if not panel then
-		build()
+function Terminal.Mount(parent)
+	if panel == parent then
+		return
 	end
-	local inLayout = docked() or wasDocked
+	assert(not panel, "Terminal is already mounted")
+	build(parent)
+end
+
+function Terminal.SetActive(value, fresh)
+	if not panel or opened == value then
+		return
+	end
 	opened = value
 	if value then
-		if inLayout then
-			progress = 1
-		elseif progress == 0 then
-			panel.Position = floatingPosition
-		end
-		panel.Visible = true
 		repaint()
 		fitOutput(true)
-		focusTerminal()
-		newSession()
+		if fresh or #sessions == 0 then
+			newSession()
+		else
+			focusTerminal()
+		end
 	else
 		input:ReleaseFocus()
 		historyView:clearSelection()
 		copyMenu:Close()
-		if inLayout or panel:GetAttribute("Dragging") == true or UI.shared().reduceMotion then
-			progress = 0
-			panel.Visible = false
-		elseif progress == 1 then
-			floatingPosition = panel.Position
-		end
 	end
-end
-
-function Terminal.Toggle()
-	setOpen(not opened)
 end
 
 return Terminal
