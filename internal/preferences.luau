@@ -2,6 +2,7 @@ local Studio = game:GetService("Studio")
 
 local defaults = {
 	theme = "Dark",
+	language = "en-us",
 	appearanceFont = "Theme Default",
 	appearanceCorners = "Theme Default",
 	appearanceDensity = "Theme Default",

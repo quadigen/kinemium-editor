@@ -78,6 +78,14 @@ local function buildCategories()
 					rows = {
 						{
 							kind = "dropdown",
+							key = "language",
+							title = "Interface Language",
+							description = "Choose the language used throughout Studio.",
+							items = UI.getLanguages(),
+							width = 152,
+						},
+						{
+							kind = "dropdown",
 							key = "theme",
 							title = "Theme",
 							description = "Theme used throughout the interface.",
@@ -864,6 +872,7 @@ return function(parent, createProfileButton)
 
 			if row.kind == "dropdown" then
 				if row.key == "theme" then row.items = UI.getThemes() end
+				if row.key == "language" then row.items = UI.getLanguages() end
 				local enabled = row.disabledKey == nil or not Preferences.get(row.disabledKey)
 
 				local dropdown
@@ -1028,7 +1037,7 @@ return function(parent, createProfileButton)
 			local groupVisible = {}
 
 			for _, nav in ipairs(navItems) do
-				local matches = query == "" or string.find(string.lower(nav.category.name), query, 1, true) ~= nil
+				local matches = query == "" or (string.find(string.lower(nav.category.name), query, 1, true) ~= nil or string.find(string.lower(UI.translate(nav.category.name)), query, 1, true) ~= nil)
 
 				nav.button.Visible = matches
 

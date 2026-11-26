@@ -1,5 +1,7 @@
 local UI = {}
 
+local Preferences = require("@internal/preferences")
+local LocalizationService = game:GetService("LocalizationService")
 local StudioThemeService = game:GetService("StudioThemeService")
 local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
@@ -34,6 +36,30 @@ local shared = {
 	componentBindings = {},
 	windowBindings = {},
 }
+function UI.getLanguages()
+	local locales = LocalizationService:GetAvailableLocales()
+	table.sort(locales)
+	return locales
+end
+
+function UI.setLanguage(locale)
+	return LocalizationService:SetStudioLocale(locale)
+end
+
+function UI.getLanguage()
+	return LocalizationService.StudioLocaleId
+end
+
+function UI.translate(text)
+	return LocalizationService:TranslateStudio(text)
+end
+
+Preferences.observe("language", function(locale)
+	if not UI.setLanguage(locale) then
+		UI.setLanguage("en-us")
+	end
+end)
+
 local THEME_ANIMATION_DURATION = 0.24
 local EMPTY_MAP = {}
 
