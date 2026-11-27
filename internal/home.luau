@@ -29,8 +29,6 @@ local picker = require("@internal/picker")
 local docker = require("@internal/docker")
 local Project = game:GetService("Project")
 
-error("Test")
-
 local function restoreLayout(enabled)
 	ThemeService:ResetDocking()
 	if enabled then
