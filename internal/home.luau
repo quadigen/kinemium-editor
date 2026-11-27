@@ -29,6 +29,8 @@ local picker = require("@internal/picker")
 local docker = require("@internal/docker")
 local Project = game:GetService("Project")
 
+error("Test")
+
 local function restoreLayout(enabled)
 	ThemeService:ResetDocking()
 	if enabled then
@@ -43,7 +45,9 @@ local function restoreLayout(enabled)
 	UI.restoreDockResizeState(enabled)
 	for name, windowName in pairs({ Explorer = "Explorer", Inspector = "Inspector", Output = "Console" }) do
 		local panel = UI.getWindow(windowName)
-		if panel then ThemeService:SetDockWindowVisible(name, panel.Visible) end
+		if panel then
+			ThemeService:SetDockWindowVisible(name, panel.Visible)
+		end
 	end
 end
 
@@ -783,7 +787,10 @@ SignalPipe:Connect(function(signal, value)
 				value.Object.Position = UDim2.new()
 				value.Object.Size = UDim2.new(1, 0, 1, 0)
 				-- The engine creates dock widget roots with an opaque white fill.
-				if value.Object.BackgroundTransparency == 0 and value.Object.BackgroundColor3 == Color3.new(1, 1, 1) then
+				if
+					value.Object.BackgroundTransparency == 0
+					and value.Object.BackgroundColor3 == Color3.new(1, 1, 1)
+				then
 					value.Object.BackgroundTransparency = 1
 				end
 				value.Object.ClipsDescendants = true
