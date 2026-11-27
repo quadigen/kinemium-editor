@@ -119,8 +119,9 @@ local categoryOrder = {
 	Behavior = 5,
 	Sound = 6,
 	Uncategorized = 7,
-	Attributes = 8,
-	Tags = 9,
+	Uniforms = 8,
+	Attributes = 9,
+	Tags = 10,
 }
 
 local readonlyProperties = {
@@ -354,6 +355,70 @@ local function propertyMatchesSearch(propertyName, value, query)
 		or string.find(datatype, query, 1, true) ~= nil
 end
 
+local uniformCounts = {
+	float = 1,
+	float2 = 2,
+	float3 = 3,
+	float4 = 4,
+	float3x3 = 9,
+	float4x4 = 16,
+	mat3 = 9,
+	mat4 = 16,
+}
+
+local uniformReserved = {
+	inputTexture = true,
+	sceneTexture = true,
+	depthTexture = true,
+	time = true,
+	deltaTime = true,
+	resolution = true,
+	texelSize = true,
+	focal = true,
+	nearPlane = true,
+	farPlane = true,
+	cameraPosition = true,
+	cameraRight = true,
+	cameraUp = true,
+	cameraForward = true,
+	sunDirection = true,
+	sunIntensity = true,
+	sunLightIntensity = true,
+	sunColor = true,
+	skyColor = true,
+	viewMatrix = true,
+	projectionMatrix = true,
+	inverseViewMatrix = true,
+	inverseProjectionMatrix = true,
+	viewProjectionMatrix = true,
+	inverseViewProjectionMatrix = true,
+	viewportOrigin = true,
+	size = true,
+	backgroundColor = true,
+	guiTransform = true,
+}
+
+local function shaderUniformDefinitions(object)
+	local source = object.Source or ""
+	local definitions = {}
+	for typeName, name in string.gmatch(source, "type%s*:%s*(%w+)%s*,%s*name%s*:%s*(%w+)") do
+		if uniformCounts[typeName] and not uniformReserved[name] then
+			definitions[name] = uniformCounts[typeName]
+		end
+	end
+	for name, typeName in string.gmatch(source, "name%s*:%s*(%w+)%s*,%s*type%s*:%s*(%w+)") do
+		if uniformCounts[typeName] and not uniformReserved[name] then
+			definitions[name] = uniformCounts[typeName]
+		end
+	end
+	for typeName, name in string.gmatch(source, "uniform%s+(%w+)%s+(%w+)%s*;") do
+		if uniformCounts[typeName] and not uniformReserved[name] then
+			definitions[name] = uniformCounts[typeName]
+		end
+	end
+	return definitions
+end
+
 local function buildStructure(object, searchQuery)
 	if not object then
 		return nil, "none|search=" .. searchQuery
@@ -418,6 +483,56 @@ local function buildStructure(object, searchQuery)
 			})
 
 			table.insert(pieces, name .. ":" .. datatype)
+		end
+	end
+
+	if object:IsA("PostProcess") or object:IsA("UIShader") or object:IsA("MaterialVariant") then
+		local configured = {}
+		local ok, uniforms = pcall(function()
+			return object:GetUniforms()
+		end)
+		if ok and type(uniforms) == "table" then
+			configured = uniforms
+		end
+		local definitions = shaderUniformDefinitions(object)
+		local names = {}
+		for name in pairs(configured) do
+			if not uniformReserved[name] then
+				definitions[name] = definitions[name] or (type(configured[name]) == "table" and #configured[name] or 1)
+			end
+		end
+		for name in pairs(definitions) do
+			table.insert(names, name)
+		end
+		table.sort(names)
+		for _, name in ipairs(names) do
+			local value = configured[name]
+			if propertyMatchesSearch(name, value, searchQuery) then
+				local propertyName = "uniform:" .. name
+				table.insert(visible, {
+					name = propertyName,
+					label = name,
+					sortName = name,
+					value = value,
+					uniformCount = definitions[name],
+					uniform = true,
+					datatype = "__uniform",
+					category = "Uniforms",
+					removable = value ~= nil and not (object:IsA("MaterialVariant") and (name == "baseColor" or name == "roughness" or name == "metallic")),
+				})
+				table.insert(pieces, propertyName .. ":" .. tostring(definitions[name]) .. ":" .. tostring(value ~= nil))
+			end
+		end
+		if searchQuery == "" then
+			table.insert(visible, {
+				name = "add:uniform",
+				label = "Add Uniform",
+				sortName = "~",
+				datatype = "__addUniform",
+				category = "Uniforms",
+				isAdd = true,
+			})
+			table.insert(pieces, "add:uniform")
 		end
 	end
 
@@ -778,6 +893,125 @@ local function smallButtonOptions()
 		border = false,
 	}
 end
+
+local function uniformText(value)
+	if type(value) == "table" then
+		local values = {}
+		for _, component in ipairs(value) do
+			table.insert(values, formatNumber(component))
+		end
+		return table.concat(values, ", ")
+	end
+	return type(value) == "number" and formatNumber(value) or ""
+end
+
+local function parseUniformText(text, componentCount)
+	local values = {}
+	for part in string.gmatch(text, "[^,%s]+") do
+		local value = tonumber(part)
+		if value == nil or value ~= value or value == math.huge or value == -math.huge then
+			return nil
+		end
+		table.insert(values, value)
+	end
+	local count = #values
+	if (count < 1 or count > 4) and count ~= 9 and count ~= 16 then
+		return nil
+	end
+	if componentCount and count ~= componentCount then
+		return nil
+	end
+	return count == 1 and values[1] or values
+end
+
+local function recordUniformChange(object, name, before, after)
+	if UI.history.isReplaying() or uniformText(before) == uniformText(after) then
+		return
+	end
+	local function restore(value)
+		if value == nil then
+			object:RemoveUniform(name)
+		else
+			object:SetUniform(name, value)
+		end
+	end
+	UI.history.record("Edit uniform " .. name, function()
+		restore(before)
+	end, function()
+		restore(after)
+	end)
+end
+
+registerAdapter("__uniform", {
+	height = PROPERTY_HEIGHT,
+
+	render = function(row, object, property)
+		local name = property.label
+		local field = valueField(row, uniformText(property.value), {
+			placeholder = property.uniformCount and tostring(property.uniformCount) .. " component(s)" or "1, 0.5, 1",
+			size = UDim2.new(0.55, -12, 0, 18),
+			textColor = tokens.color.text,
+		})
+
+		watchEditor(field, function()
+			local value = parseUniformText(field.Text, property.uniformCount)
+			if value == nil then
+				warn("Invalid uniform value for " .. name)
+				return
+			end
+			local before = object:GetUniform(name)
+			object:SetUniform(name, value)
+			recordUniformChange(object, name, before, value)
+		end)
+
+		return textFieldController(field, uniformText)
+	end,
+})
+
+registerAdapter("__addUniform", {
+	height = PROPERTY_HEIGHT * 2,
+
+	render = function(row, object)
+		local nameField = valueField(row, "", {
+			placeholder = "Uniform name",
+			textColor = tokens.color.text,
+		})
+		local valueInput = valueField(row, "", {
+			placeholder = "0.5 or 1, 0, 0",
+			position = UDim2.new(0.45, 6, 0, 2 + PROPERTY_HEIGHT),
+			size = UDim2.new(0.55, -12 - 46, 0, 18),
+			textColor = tokens.color.text,
+		})
+		local function submit()
+			local name = trim(nameField.Text)
+			local value = parseUniformText(valueInput.Text)
+			if name == "" or value == nil then
+				return
+			end
+			local before = object:GetUniform(name)
+			local ok, err = pcall(function()
+				object:SetUniform(name, value)
+			end)
+			if not ok then
+				warn("Failed to set uniform: " .. tostring(err))
+				return
+			end
+			recordUniformChange(object, name, before, value)
+			nameField.Text = ""
+			valueInput.Text = ""
+		end
+		watchEditor(nameField, submit)
+		watchEditor(valueInput, submit)
+		UI.button(
+			row,
+			"Add",
+			UDim2.new(1, -46, 0, 2 + PROPERTY_HEIGHT),
+			UDim2.fromOffset(40, 18),
+			submit,
+			smallButtonOptions()
+		)
+	end,
+})
 
 registerAdapter("__tag", {
 	height = PROPERTY_HEIGHT,
@@ -1787,7 +2021,7 @@ local function createPropertyRow(bubble, object, property, index)
 		row,
 		property.label or property.name,
 		UDim2.fromOffset(7, 3),
-		UDim2.new(0.45, -8 - (property.attribute and 20 or 0), 0, 17),
+		UDim2.new(0.45, -8 - ((property.attribute or property.removable) and 20 or 0), 0, 17),
 		tokens.type.caption,
 		colors.subtext
 	)
@@ -1797,6 +2031,24 @@ local function createPropertyRow(bubble, object, property, index)
 			pcall(function()
 				object:SetAttribute(property.label, nil)
 			end)
+		end, smallButtonOptions())
+	end
+
+	if property.uniform and property.removable then
+		UI.button(row, "X", UDim2.new(0.45, -22, 0, 3), UDim2.fromOffset(16, 16), function()
+			local previous = object:GetUniform(property.label)
+			local ok, removed = pcall(function()
+				return object:RemoveUniform(property.label)
+			end)
+			if not ok then
+				warn("Failed to remove uniform: " .. tostring(removed))
+			elseif removed and not UI.history.isReplaying() then
+				UI.history.record("Remove uniform " .. property.label, function()
+					object:SetUniform(property.label, previous)
+				end, function()
+					object:RemoveUniform(property.label)
+				end)
+			end
 		end, smallButtonOptions())
 	end
 
