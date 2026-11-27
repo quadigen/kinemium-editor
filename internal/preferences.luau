@@ -59,6 +59,7 @@ local defaults = {
 	playtestClearOutput = false,
 	enableKeyboardShortcuts = true,
 	vimMode = false,
+	telemetryEnabled = false,
 	developerMode = false,
 	debugLabels = false,
 	verboseLogging = false,

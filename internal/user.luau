@@ -195,6 +195,17 @@ local function buildCategories()
 					},
 				},
 				{
+					title = "Privacy & Diagnostics",
+					rows = {
+						{
+							kind = "switch",
+							key = "telemetryEnabled",
+							title = "Share Engine Diagnostics",
+							description = "Share sanitized native engine logs and crash codes. Luau prints, hardware specifications, paths, and likely secrets are excluded. Log privacy filters cannot guarantee removal of every sensitive value.",
+						},
+					},
+				},
+				{
 					title = "Date & Time",
 					rows = {
 						{
