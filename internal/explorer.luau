@@ -323,6 +323,28 @@ for _, item in ipairs(classItems) do
 		end
 	end
 end
+local newInstanceParent
+local newInstancePoint
+local function createInstance(className, parent)
+	if PlaytestTree.role then
+		return
+	end
+	parent = parent or selectedObject() or workspace
+	local ok, object = pcall(Instance.new, className)
+	if not ok or not object then
+		return
+	end
+	object.Name = className
+	object.Parent = parent
+	UI.history.recordParents("Create " .. className, {
+		{ object = object, before = nil, after = parent },
+	}, requestModelRefresh)
+	expanded[parent] = true
+	selectObject({ object })
+	if requestModelRefresh then
+		requestModelRefresh()
+	end
+end
 local dropdown, label, ctrl =
 	UI.dropdown(content, "", UDim2.new(1, -32, 0, 6), UDim2.fromOffset(26, UI.metrics.inputHeight), nil, {
 		items = classItems,
@@ -339,6 +361,9 @@ local dropdown, label, ctrl =
 		itemBgTransparency = 1,
 		BackgroundTransparency = 0.5,
 		menuPosition = function()
+			if newInstancePoint then
+				return UDim2.fromOffset(newInstancePoint.X, newInstancePoint.Y)
+			end
 			local coordinates = theme.ExplorerCoordinates
 			return UDim2.new(
 				coordinates.Position.X.Scale,
@@ -350,30 +375,18 @@ local dropdown, label, ctrl =
 		maxVisibleItems = 10,
 		itemHeight = UI.metrics.inputHeight,
 		onChanged = function(className)
-			if PlaytestTree.role then
-				return
-			end
-			local parent = selectedObject() or workspace
-			local ok, object = pcall(Instance.new, className)
-			if not ok or not object then
-				return
-			end
-			object.Name = className
-			object.Parent = parent
-			UI.history.recordParents("Create " .. className, {
-				{ object = object, before = nil, after = parent },
-			}, requestModelRefresh)
-			expanded[parent] = true
-			selectObject({
-				object,
-			})
-			if requestModelRefresh then
-				requestModelRefresh()
-			end
+			local parent = newInstanceParent
+			newInstanceParent = nil
+			newInstancePoint = nil
+			createInstance(className, parent)
 		end,
 	})
 dropdown.MouseButton1Click:Connect(function()
-	ctrl.SearchBox:CaptureFocus()
+	newInstanceParent = nil
+	newInstancePoint = nil
+	if ctrl.SearchBox then
+		ctrl.SearchBox:CaptureFocus()
+	end
 end)
 local serviceOrder = {
 	Workspace = 1,
@@ -1299,7 +1312,7 @@ openContextMenu = function(instance, screenPoint)
 			items = {},
 			menuWidth = 168,
 			itemHeight = UI.metrics.inputHeight,
-			maxVisibleItems = 6,
+			maxVisibleItems = 7,
 			itemBgTransparency = 1,
 			showSearch = false,
 			closeOnOutsideClick = false,
@@ -1321,7 +1334,14 @@ openContextMenu = function(instance, screenPoint)
 				if PlaytestTree.role then
 					return
 				end
-				if action == "rename" then
+				if action == "new_instance" then
+					newInstanceParent = target
+					newInstancePoint = UserInputService:GetMouseLocation()
+					ctrl:Open()
+					if ctrl.SearchBox then
+						ctrl.SearchBox:CaptureFocus()
+					end
+				elseif action == "rename" then
 					local entry = rowRegistry[target]
 					if entry ~= nil then
 						beginRename(target, entry.row)
@@ -1399,14 +1419,20 @@ openContextMenu = function(instance, screenPoint)
 	contextMenu:SetItems(remote and {
 		{ label = "Copy to Editor", value = "copy", icon = "builtin://global-icons/copy.svg" },
 	} or {
+		{ label = "New Instance...", value = "new_instance", icon = "builtin://global-icons/plus.svg" },
 		{ label = "Rename", value = "rename", icon = "builtin://global-icons/pencil.svg" },
 		{ label = "Duplicate", value = "duplicate", icon = "builtin://global-icons/plus.svg" },
 		{ label = "Delete", value = "delete", icon = "builtin://global-icons/x.svg" },
 		{ label = "Copy", value = "copy" },
-		{ label = "Import Object..", value = "import" },
-		{ label = "Export Object..", value = "export" },
-		{ label = "Upload as Package..", value = "upload_package" },
 		{ label = "Paste", value = "paste" },
+		{
+			label = "More...",
+			submenu = {
+				{ label = "Import Object...", value = "import" },
+				{ label = "Export Object...", value = "export" },
+				{ label = "Upload as Package...", value = "upload_package" },
+			},
+		},
 	})
 	contextMenuOptions.menuPosition = function()
 		return UDim2.fromOffset(screenPoint.X, screenPoint.Y)

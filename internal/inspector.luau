@@ -1606,6 +1606,10 @@ registerAdapter("UDim2", {
 	end,
 })
 
+local function rgbChannel(value)
+	return math.floor(math.clamp(value * 255, 0, 255) + 0.5)
+end
+
 registerAdapter("Color3", {
 	height = PROPERTY_HEIGHT,
 
@@ -1617,12 +1621,12 @@ registerAdapter("Color3", {
 		UI.stroke(swatch, tokens.color.borderStrong, 1, 0)
 
 		if readonlyProperties[property.name] then
-			local field = readonlyField(row, string.format("%.3f, %.3f, %.3f", value.R, value.G, value.B))
+			local field = readonlyField(row, string.format("%d, %d, %d", rgbChannel(value.R), rgbChannel(value.G), rgbChannel(value.B)))
 
 			return {
 				refresh = function(newValue)
 					if not field:IsFocused() then
-						field.Text = string.format("%.3f, %.3f, %.3f", newValue.R, newValue.G, newValue.B)
+						field.Text = string.format("%d, %d, %d", rgbChannel(newValue.R), rgbChannel(newValue.G), rgbChannel(newValue.B))
 					end
 
 					swatch.BackgroundColor3 = newValue
@@ -1649,11 +1653,11 @@ registerAdapter("Color3", {
 			end)
 		end)
 
-		local rField = componentField(row, "R", value.R, 1, 3)
+		local rField = componentField(row, "R", rgbChannel(value.R), 1, 3)
 
-		local gField = componentField(row, "G", value.G, 2, 3)
+		local gField = componentField(row, "G", rgbChannel(value.G), 2, 3)
 
-		local bField = componentField(row, "B", value.B, 3, 3)
+		local bField = componentField(row, "B", rgbChannel(value.B), 3, 3)
 
 		watchComponentFields(
 			{
@@ -1674,12 +1678,12 @@ registerAdapter("Color3", {
 					return nil
 				end
 
-				return Color3.new(math.clamp(r, 0, 1), math.clamp(g, 0, 1), math.clamp(b, 0, 1))
+				return Color3.fromRGB(math.clamp(r, 0, 255), math.clamp(g, 0, 255), math.clamp(b, 0, 255))
 			end
 		)
 
 		local refreshFields = componentController({ rField, gField, bField }, function(newValue)
-			return { formatNumber(newValue.R), formatNumber(newValue.G), formatNumber(newValue.B) }
+			return { formatNumber(rgbChannel(newValue.R)), formatNumber(rgbChannel(newValue.G)), formatNumber(rgbChannel(newValue.B)) }
 		end).refresh
 
 		return {

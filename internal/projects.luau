@@ -21,7 +21,7 @@ local QUALITY_ITEMS = {
 	{ value = "Low", text = "Low" },
 	{ value = "Medium", text = "Medium" },
 	{ value = "High", text = "High" },
-	{ value = "Performance", text = "Performance" },
+	{ value = "Ultra", text = "Ultra" },
 }
 
 local DIMENSION_ITEMS = {
@@ -37,8 +37,18 @@ local DEFAULT_GIT = true
 
 local CHEVRON_ICON = "builtin://icons/ArrowDown.svg"
 
-local function applyQuality(project, quality)
-	-- e.g. Project:SetProjectQuality(quality)
+local QUALITY_PRESETS = {
+	Low = Enum.QualityPreset.Low,
+	Medium = Enum.QualityPreset.Medium,
+	High = Enum.QualityPreset.High,
+	Ultra = Enum.QualityPreset.Ultra,
+}
+
+local function applyQuality(quality)
+	local preset = QUALITY_PRESETS[quality]
+	if preset then
+		game:GetService("Lighting").QualityPreset = preset
+	end
 end
 
 local function callProject(methodNames, ...)
@@ -294,7 +304,7 @@ return function(page, windowControls, gui)
 
 				local folderInput = UI.input(
 					folderRow,
-					"C:/Users/devco/Documents/Kinemium Projects/New Project",
+					"Choose a project folder...",
 					UDim2.fromOffset(0, 0),
 					UDim2.new(1, -(BROWSE_BUTTON_SIZE + BROWSE_GAP), 0, INPUT_HEIGHT),
 					{
@@ -312,7 +322,7 @@ return function(page, windowControls, gui)
 					UDim2.new(1, -BROWSE_BUTTON_SIZE, 0, 0),
 					UDim2.fromOffset(BROWSE_BUTTON_SIZE, BROWSE_BUTTON_SIZE),
 					function()
-						local path = Dialog:PickFolder("C:\\")
+						local path = Dialog:PickFolder(folderInput.Text)
 						if path then
 							folderInput.Text = string.gsub(path, [[\]], "/")
 						end
@@ -591,7 +601,7 @@ return function(page, windowControls, gui)
 
 			local created = Project:GetActiveProject()
 
-			applyQuality(created, props.Quality)
+			applyQuality(props.Quality)
 
 			showProject(created)
 			refreshList()
