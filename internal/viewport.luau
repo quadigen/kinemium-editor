@@ -139,19 +139,24 @@ local function selectedTransformTarget(allowAttachment)
 	return nil
 end
 
-local selectionOutline = Instance.new("Highlight")
-selectionOutline.Name = "EditorSelectionOutline"
-selectionOutline.FillTransparency = 1
-selectionOutline.OutlineColor = tokens.color.accent
-UI.keepSceneHelper(selectionOutline)
-selectionOutline.Parent = workspace
+local SELECTION_BLUE = Color3.fromRGB(0, 170, 255)
+
+local selectionBox = Instance.new("SelectionBox")
+selectionBox.Name = "EditorSelectionBox"
+selectionBox.Color3 = SELECTION_BLUE
+selectionBox.Transparency = 0
+selectionBox.SurfaceTransparency = 1
+selectionBox.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+selectionBox.Enabled = false
+UI.keepSceneHelper(selectionBox)
+selectionBox.Parent = workspace
 
 -- A temporary editor-only pivot lets native Handles manipulate several parts.
 local multiProxy
 local multiProxyBaseCFrame
 local multiProxyBaseSize
 local multiSelectionActive = false
-local multiSelectionHighlights = {}
+local multiSelectionBoxes = {}
 if renderer.Dimension == "3D" then
 	multiProxy = Instance.new("Part")
 	multiProxy.Name = "EditorMultiTransformProxy"
@@ -178,31 +183,27 @@ local function refreshMultiProxy(parts)
 	end
 end
 
-local function updateMultiSelectionOutlines(selected, enabled)
+local function updateMultiSelectionBoxes(selected, enabled)
 	local count = enabled and math.min(#selected, 32) or 0
 	for i = 1, count do
-		if not multiSelectionHighlights[i] then
-			local outline = Instance.new("Highlight")
-			outline.Name = "EditorMultiSelectionOutline"
-			outline.FillTransparency = 1
-			outline.OutlineColor = tokens.color.accent
-			UI.keepSceneHelper(outline)
-			outline.Parent = workspace
-			multiSelectionHighlights[i] = outline
+		if not multiSelectionBoxes[i] then
+			local box = Instance.new("SelectionBox")
+			box.Name = "EditorMultiSelectionBox"
+			box.Color3 = SELECTION_BLUE
+			box.Transparency = 0
+			box.SurfaceTransparency = 1
+			box.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+			box.Enabled = false
+			UI.keepSceneHelper(box)
+			box.Parent = workspace
+			multiSelectionBoxes[i] = box
 		end
 	end
-	for i, outline in ipairs(multiSelectionHighlights) do
-		outline.Adornee = i <= count and selected[i] or nil
-		outline.Enabled = i <= count and UI.isAlive(selected[i])
+	for i, box in ipairs(multiSelectionBoxes) do
+		box.Adornee = i <= count and selected[i] or nil
+		box.Enabled = i <= count and UI.isAlive(selected[i])
 	end
 end
-
-UI.onThemeChanged(function()
-	selectionOutline.OutlineColor = UI.tokens.color.accent
-	for _, outline in ipairs(multiSelectionHighlights) do
-		outline.OutlineColor = UI.tokens.color.accent
-	end
-end)
 
 local function updateGizmos()
 	local moving = activeTool == "Move"
@@ -219,10 +220,10 @@ local function updateGizmos()
 	if enabled then
 		adornee = if multiSelectionActive then multiProxy else selectedTransformTarget(moving)
 	end
-	selectionOutline.Adornee = if multiSelectionActive then nil else adornee
-	selectionOutline.Enabled = enabled and not multiSelectionActive and adornee ~= nil
+	selectionBox.Adornee = if multiSelectionActive then nil else adornee
+	selectionBox.Enabled = enabled and not multiSelectionActive and adornee ~= nil
 		and viewportSettings.viewportSelectionOutline
-	updateMultiSelectionOutlines(selected, multiSelectionActive and viewportSettings.viewportSelectionOutline)
+	updateMultiSelectionBoxes(selected, multiSelectionActive and viewportSettings.viewportSelectionOutline)
 
 	handles.Adornee = adornee
 	arcHandles.Adornee = if rotating then adornee else nil

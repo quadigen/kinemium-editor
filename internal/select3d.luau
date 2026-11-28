@@ -50,16 +50,16 @@ local drag = {
 	lastMode = nil :: string?,
 }
 
-local highlight = Instance.new("BoxHandleAdornment")
-highlight.Name = "SelectionHighlight"
-highlight.Color3 = tokens.color.accent
+local SELECTION_BLUE = Color3.fromRGB(0, 170, 255)
+local highlight = Instance.new("SelectionBox")
+highlight.Name = "EditorHoverSelectionBox"
+highlight.Color3 = SELECTION_BLUE
+highlight.Transparency = 0
+highlight.SurfaceTransparency = 1
+highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
 highlight.Enabled = false
 editor_ui.keepSceneHelper(highlight)
 highlight.Parent = workspace
-
-editor_ui.onThemeChanged(function()
-	highlight.OutlineColor = tokens.color.accent
-end)
 
 local hud = nil
 
@@ -510,10 +510,12 @@ local function collectMovableParts(): { BasePart }
 	return MultiTransform.collect(Selection:Get())
 end
 
-local snapHighlight = Instance.new("Highlight")
+local snapHighlight = Instance.new("SelectionBox")
 snapHighlight.Name = "PartSnapTarget"
-snapHighlight.FillTransparency = 1
-snapHighlight.OutlineColor = Color3.fromRGB(85, 215, 175)
+snapHighlight.SurfaceTransparency = 1
+snapHighlight.Color3 = Color3.fromRGB(85, 215, 175)
+snapHighlight.Transparency = 0
+snapHighlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
 snapHighlight.Enabled = false
 editor_ui.keepSceneHelper(snapHighlight)
 snapHighlight.Parent = workspace
@@ -880,9 +882,8 @@ local function beginDrag()
 	drag.lastPoint = nil
 	drag.lastMode = nil
 
-	highlight.FillColor = DRAG_COLOR
-	highlight.OutlineColor = DRAG_COLOR
-	highlight.FillTransparency = 1
+	highlight.Color3 = DRAG_COLOR
+	highlight.SurfaceTransparency = 1
 	setHover(drag.grabbed)
 end
 
@@ -985,8 +986,8 @@ local function endDrag(commit: boolean)
 	drag.lastPoint = nil
 	drag.lastMode = nil
 
-	highlight.FillTransparency = 0.94
-	highlight.OutlineColor = tokens.color.accent
+	highlight.SurfaceTransparency = 1
+	highlight.Color3 = SELECTION_BLUE
 	setHover(nil)
 	hideReadout()
 end
@@ -999,7 +1000,7 @@ local function setMoveMode(enabled: boolean)
 		endDrag(true)
 	end
 	state.moveMode = enabled
-	highlight.FillTransparency = 0.94
+	highlight.SurfaceTransparency = 1
 	updateHud()
 end
 
