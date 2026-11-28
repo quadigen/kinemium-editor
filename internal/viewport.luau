@@ -97,7 +97,7 @@ local selectionTool
 
 local handles = Instance.new("Handles")
 handles.Name = "ViewportHandles"
-handles.Snap = 1
+handles.Snap = 0 -- Sub-stud precision by default; grid snapping is opt-in
 UI.keepSceneHelper(handles)
 handles.Parent = workspace
 
@@ -147,6 +147,7 @@ selectionOutline.Parent = workspace
 
 local function updateGizmos()
 	local moving = activeTool == "Move"
+	handles.Snap = moving and (Preferences.get("moveGridSnap") and tonumber(Preferences.get("moveGridSize")) or 0) or 1
 	local resizing = activeTool == "Size"
 	local rotating = activeTool == "Rotate"
 	local adornee = if selectionTool then nil else selectedTransformTarget(moving)
@@ -323,6 +324,20 @@ local toolItems = {
 	{ name = "Rotate", icon = iconRoot .. "Rotate.svg", tooltip = "Rotate", key = Enum.KeyCode.Four },
 }
 
+if renderer.Dimension == "3D" then
+	table.insert(toolItems, { separator = true })
+	table.insert(toolItems, {
+		name = "Magnet", icon = iconRoot .. "Snap.svg",
+		tooltip = "Part snapping (B) | Hold Alt to bypass | Hold C to match centers",
+		toggle = true, active = Preferences.get("moveMagnetSnap"),
+	})
+	table.insert(toolItems, {
+		name = "MoveGrid", icon = iconRoot .. "UIGridLayout.svg",
+		tooltip = "Move grid snapping (N) | G changes grid step",
+		toggle = true, active = Preferences.get("moveGridSnap"),
+	})
+end
+
 if renderer.Dimension == "2D" then
 	table.insert(toolItems, { separator = true })
 	table.insert(toolItems, {
@@ -371,6 +386,13 @@ local function closeMenus()
 end
 
 toolControls.Changed:Connect(function(name, value)
+	if name == "Magnet" then
+		Preferences.set("moveMagnetSnap", value)
+		return
+	elseif name == "MoveGrid" then
+		Preferences.set("moveGridSnap", value)
+		return
+	end
 	if name == "Snap" then
 		snapEnabled = value
 		return
@@ -380,6 +402,19 @@ toolControls.Changed:Connect(function(name, value)
 	closeMenus()
 	updateGizmos()
 end)
+
+if renderer.Dimension == "3D" then
+	Preferences.observe("moveMagnetSnap", function(value)
+		toolControls:SetActive("Magnet", value, true)
+	end)
+	Preferences.observe("moveGridSnap", function(value)
+		toolControls:SetActive("MoveGrid", value, true)
+		updateGizmos()
+	end)
+	Preferences.observe("moveGridSize", function()
+		updateGizmos()
+	end)
+end
 
 local MENU_GAP = 8
 

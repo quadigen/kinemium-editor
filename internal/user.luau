@@ -405,6 +405,29 @@ local function buildCategories()
 						},
 						{
 							kind = "switch",
+							key = "moveMagnetSnap",
+							title = "Magnetic Part Snapping",
+							description = "Align part faces while moving with the 3D gizmo.",
+						},
+						{
+							kind = "dropdown",
+							key = "moveMagnetDistance",
+							title = "Magnetic Snap Distance",
+							items = dropdownItems({ "0.1", "0.25", "0.5", "1", "2" }),
+						},
+						{
+							kind = "switch",
+							key = "moveGridSnap",
+							title = "Move Grid Snapping",
+						},
+						{
+							kind = "dropdown",
+							key = "moveGridSize",
+							title = "Move Grid Step (studs)",
+							items = dropdownItems({ "0.001", "0.01", "0.05", "0.1", "0.25", "0.5", "1", "2", "4", "8" }),
+						},
+						{
+							kind = "switch",
 							key = "viewportSelectionOutline",
 							title = "Selection Outline",
 						},

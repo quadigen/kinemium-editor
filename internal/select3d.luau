@@ -3,6 +3,7 @@ if (IsServer or IsClient) or IsPlaytest then
 end
 
 local Preferences = require("@internal/preferences")
+local PartSnap = require("@internal/part_snap")
 local RunService = game:GetService("RunService")
 local Selection = game:GetService("Selection")
 local UserInputService = game:GetService("UserInputService")
@@ -23,6 +24,7 @@ local DRAG_COLOR = Color3.fromRGB(255, 180, 60)
 local KEY_MOVE_MODE = Enum.KeyCode.M
 local KEY_CYCLE_GRID = Enum.KeyCode.G
 local KEY_TOGGLE_SNAP = Enum.KeyCode.N
+local KEY_TOGGLE_MAGNET = Enum.KeyCode.B
 local KEY_ROTATE = Enum.KeyCode.R
 local KEY_CANCEL = Enum.KeyCode.Escape
 
@@ -67,7 +69,7 @@ local HUD_Z = 5900
 
 local HUD_HINTS = {
 	{ key = "vertical", text = "Shift: vertical" },
-	{ key = "snapToggle", text = "Ctrl: toggle snap" },
+	{ key = "snapToggle", text = "Ctrl: invert grid" },
 	{ key = "rotate", text = "R: rotate 90" },
 	{ key = "cancel", text = "Esc: cancel" },
 }
@@ -106,9 +108,14 @@ local function createHud()
 		PaddingRight = UDim.new(0, 12),
 	}, bar)
 
-	local parts = { bar = bar }
+	local snapLabel = editor_ui.label(bar, "", UDim2.fromOffset(0, 0), UDim2.fromOffset(160, HUD_HEIGHT),
+		tokens.type.caption, colors.text)
+	snapLabel.LayoutOrder = 1
+	local hintsLabel = editor_ui.label(bar, "Shift: height  |  Ctrl: invert grid  |  R: rotate  |  Esc: cancel",
+		UDim2.fromOffset(0, 0), UDim2.fromOffset(400, HUD_HEIGHT), tokens.type.caption, colors.subtext)
+	hintsLabel.LayoutOrder = 2
 
-	return parts
+	return { bar = bar, snap = snapLabel }
 end
 
 local function updateHud()
@@ -126,7 +133,7 @@ local function updateHud()
 	end
 
 	local grid = GRID_SIZES[state.gridIndex]
-	hud.snap.Text = state.snapEnabled and ("Snap: " .. grid .. " studs") or "Snap: off"
+	hud.snap.Text = state.snapEnabled and ("Grid: " .. grid .. " studs") or "Grid: off"
 	hud.bar.Visible = true
 end
 
@@ -510,8 +517,27 @@ local function collectMovableParts(): { BasePart }
 	return list
 end
 
+local snapHighlight = Instance.new("Highlight")
+snapHighlight.Name = "PartSnapTarget"
+snapHighlight.FillTransparency = 1
+snapHighlight.OutlineColor = Color3.fromRGB(85, 215, 175)
+snapHighlight.Enabled = false
+editor_ui.keepSceneHelper(snapHighlight)
+snapHighlight.Parent = workspace
+
 local gizmo = {
 	active = false,
+	cancelled = false,
+	correction = Vector3.zero,
+	snapPart = nil :: BasePart?,
+	snapKind = nil :: string?,
+	candidates = {} :: { BasePart },
+	lastQuery = 0,
+	lastQueryPosition = Vector3.zero,
+	axes = {} :: { Vector3 },
+	nativeFirst = nil :: BasePart?,
+	nativeParts = {} :: { [BasePart]: boolean },
+	excluded = {} :: { [BasePart]: boolean },
 	parts = {} :: { BasePart },
 	startCFrames = {} :: { [BasePart]: CFrame },
 	startSizes = {} :: { [BasePart]: Vector3 },
@@ -577,7 +603,21 @@ local function recordTransform(label, parts, startCFrames, startSizes)
 end
 
 local function beginGizmoTracking()
-	local parts = collectMovableParts()
+	local selected = Selection:Get()[1]
+	if not selected then
+		return
+	end
+
+	-- The native gizmo transforms its Adornee, not every independent selection.
+	-- Keep the magnetic correction limited to that same part or model.
+	local parts = {}
+	local excluded = {}
+	for _, part in ipairs(collectMovableParts()) do
+		if part == selected or part:IsDescendantOf(selected) then
+			table.insert(parts, part)
+		end
+		excluded[part] = true
+	end
 	if #parts == 0 then
 		return
 	end
@@ -585,16 +625,105 @@ local function beginGizmoTracking()
 	gizmo.active = true
 	gizmo.parts = parts
 	gizmo.first = parts[1]
+	gizmo.excluded = excluded
 	gizmo.startCFrames = {}
 	gizmo.startSizes = {}
+	gizmo.correction = Vector3.zero
+	gizmo.candidates = {}
+	gizmo.lastQuery = math.huge
+	gizmo.lastQueryPosition = Vector3.zero
+	gizmo.snapPart = nil
+	gizmo.snapKind = nil
 	for _, part in ipairs(parts) do
 		gizmo.startCFrames[part] = part.CFrame
 		gizmo.startSizes[part] = part.Size
 	end
 	gizmo.startCenter = centroidOf(parts)
+	local firstCF = parts[1].CFrame
+	if selected:IsA("Model") then
+		gizmo.axes = { Vector3.xAxis, Vector3.yAxis, Vector3.zAxis }
+	else
+		gizmo.axes = { firstCF.RightVector, firstCF.UpVector, -firstCF.LookVector }
+	end
 end
 
-local function updateGizmoTracking()
+local function updateMagnetSnap(dt: number?)
+	if not gizmo.active or not gizmo.first or not editor_ui.isAlive(gizmo.first) then
+		return
+	end
+
+	local handles = workspace:FindFirstChild("ViewportHandles")
+	local moving = handles and handles.Visible and handles.Dragging
+		and handles.Style == Enum.HandlesStyle.Movement
+	local enabled = moving and Preferences.get("moveMagnetSnap")
+		and not UserInputService:IsKeyDown(Enum.KeyCode.LeftAlt)
+		and not UserInputService:IsKeyDown(Enum.KeyCode.RightAlt)
+	local tolerance = tonumber(Preferences.get("moveMagnetDistance")) or 0.5
+	if not enabled or tolerance <= 0 then
+		if gizmo.correction.Magnitude > 0 then
+			for _, part in ipairs(gizmo.parts) do
+				if editor_ui.isAlive(part) and part.Parent then
+					part.CFrame += -gizmo.correction
+				end
+			end
+			gizmo.correction = Vector3.zero
+		end
+		gizmo.snapPart = nil
+		gizmo.snapKind = nil
+		snapHighlight.Enabled = false
+		return
+	end
+
+	local center = centroidOf(gizmo.parts)
+	gizmo.lastQuery += math.max(0, dt or 0)
+	if gizmo.lastQuery >= 0.12 or (center - gizmo.lastQueryPosition).Magnitude >= 0.75 then
+		gizmo.lastQuery = 0
+		gizmo.lastQueryPosition = center
+		local radius = 0
+		for _, part in ipairs(gizmo.parts) do
+			if editor_ui.isAlive(part) and part.Parent then
+				radius = math.max(radius, (part.Position - center).Magnitude + part.Size.Magnitude * 0.5)
+			end
+		end
+		local ok, candidates = pcall(function()
+			return workspace:GetPartBoundsInRadius(center, math.max(2, radius + tolerance + 1))
+		end)
+		gizmo.candidates = {}
+		if ok and type(candidates) == "table" then
+			for _, part in ipairs(candidates) do
+				if part:IsA("BasePart") and not part:IsA("Terrain") and not gizmo.excluded[part] then
+					table.insert(gizmo.candidates, part)
+				end
+			end
+		end
+	end
+
+	-- Remove the previous correction to recover the native mouse movement.
+	-- Always resolve against the original transforms, never an accumulated snap.
+	local rawDelta = centroidOf(gizmo.parts) - gizmo.startCenter - gizmo.correction
+	local centersOnly = UserInputService:IsKeyDown(Enum.KeyCode.C)
+	local correction, target, kind = PartSnap.find(
+		gizmo.parts, gizmo.startCFrames, gizmo.candidates, gizmo.excluded,
+		rawDelta, gizmo.axes, tolerance, centersOnly
+	)
+	local nextCorrection = correction or Vector3.zero
+	local change = nextCorrection - gizmo.correction
+	if change.Magnitude > 0 then
+		for _, part in ipairs(gizmo.parts) do
+			if editor_ui.isAlive(part) and part.Parent then
+				part.CFrame += change
+			end
+		end
+	end
+	gizmo.correction = nextCorrection
+	gizmo.snapPart = target
+	gizmo.snapKind = kind
+	snapHighlight.Adornee = target
+	snapHighlight.Enabled = target ~= nil
+end
+
+local function updateGizmoTracking(dt: number?)
+	updateMagnetSnap(dt)
 	local first = gizmo.first
 	if not editor_ui.isAlive(first) or not first.Parent then
 		return
@@ -636,7 +765,15 @@ local function endGizmoTracking()
 	gizmo.parts = {}
 	gizmo.startCFrames = {}
 	gizmo.startSizes = {}
+	gizmo.candidates = {}
+	gizmo.excluded = {}
+	gizmo.axes = {}
+	gizmo.correction = Vector3.zero
+	gizmo.snapPart = nil
+	gizmo.snapKind = nil
 	gizmo.first = nil
+	snapHighlight.Adornee = nil
+	snapHighlight.Enabled = false
 	hideReadout()
 end
 
@@ -825,7 +962,7 @@ RunService.RenderStepped:Connect(function(dt)
 			beginGizmoTracking()
 		end
 		if gizmo.active then
-			updateGizmoTracking()
+			updateGizmoTracking(dt)
 		end
 		setHover(nil)
 		return
@@ -954,10 +1091,19 @@ UserInputService.InputBegan:Connect(function(input, processed)
 		setMoveMode(not state.moveMode)
 	elseif key == KEY_CYCLE_GRID then
 		state.gridIndex = state.gridIndex % #GRID_SIZES + 1
+		if not state.moveMode then
+			Preferences.set("moveGridSize", tostring(GRID_SIZES[state.gridIndex]))
+		end
 		updateHud()
 	elseif key == KEY_TOGGLE_SNAP then
-		state.snapEnabled = not state.snapEnabled
-		updateHud()
+		if state.moveMode then
+			state.snapEnabled = not state.snapEnabled
+			updateHud()
+		else
+			Preferences.set("moveGridSnap", not Preferences.get("moveGridSnap"))
+		end
+	elseif key == KEY_TOGGLE_MAGNET then
+		Preferences.set("moveMagnetSnap", not Preferences.get("moveMagnetSnap"))
 	elseif key == KEY_ROTATE and drag.active
 		and not UserInputService:IsKeyDown(Enum.KeyCode.LeftControl)
 		and not UserInputService:IsKeyDown(Enum.KeyCode.RightControl)
