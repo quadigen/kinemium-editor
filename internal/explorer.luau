@@ -154,7 +154,7 @@ panel.Position =
 local inset = UI.metrics.panelInset
 local events = {}
 local searchField =
-	UI.input(content, "Search Explorer...", UDim2.fromOffset(inset, 6), UDim2.new(1, -42, 0, UI.metrics.inputHeight))
+	UI.input(content, "Search Explorer...", UDim2.fromOffset(inset, 6), UDim2.new(1, -82, 0, UI.metrics.inputHeight))
 local expanded = {}
 local filter = ""
 local requestModelRefresh
@@ -388,6 +388,9 @@ dropdown.MouseButton1Click:Connect(function()
 		ctrl.SearchBox:CaptureFocus()
 	end
 end)
+-- Keep the scene and script-facing containers visible. Engine internals and
+-- utility services stay accessible through the "All" toggle, not Explorer's
+-- default tree. Filtering is presentation-only; no services are removed.
 local serviceOrder = {
 	Workspace = 1,
 	Players = 2,
@@ -401,9 +404,32 @@ local serviceOrder = {
 	StarterPlayer = 10,
 	Teams = 11,
 	SoundService = 12,
+	MaterialService = 13,
+	TextChatService = 14,
 }
+local showAllServices = Preferences.get("showAllExplorerServices")
 local function sortedChildren(parent)
 	local children = parent:GetChildren()
+	-- Keep the ordinary DataModel objects intact. Hide only extra top-level
+	-- services, including when Explorer builds its search index.
+	if parent == game and not showAllServices and not PlaytestTree.role then
+		local visible = {}
+		for _, child in ipairs(children) do
+			if not child:IsA("Service") or serviceOrder[child.ClassName] then
+				table.insert(visible, child)
+			end
+		end
+		children = visible
+	elseif parent == workspace then
+		-- Editor helpers are never shown, even when "All" is enabled.
+		local visible = {}
+		for _, child in ipairs(children) do
+			if not UI.isEditorSceneObject(child) then
+				table.insert(visible, child)
+			end
+		end
+		children = visible
+	end
 	table.sort(children, function(a, b)
 		local ao = serviceOrder[a.Name] or math.huge
 		local bo = serviceOrder[b.Name] or math.huge
@@ -455,6 +481,32 @@ local function invalidateTree()
 end
 requestModelRefresh = invalidateTree
 
+-- Quick reversible filter: "All" reveals engine services, "Core" restores
+-- the focused game-authoring tree. Persist the choice in Studio settings.
+local serviceButton, serviceLabel = UI.button(
+	content,
+	showAllServices and "Core" or "All",
+	UDim2.new(1, -72, 0, 6),
+	UDim2.fromOffset(34, UI.metrics.inputHeight),
+	function()
+		Preferences.set("showAllExplorerServices", not showAllServices)
+	end,
+	{
+		color = tokens.color.input,
+		hoverColor = tokens.color.hover,
+		textSize = tokens.type.caption,
+		paddingX = 2,
+		border = false,
+	}
+)
+UI.tooltip(serviceButton, "Toggle essential / all Explorer services", { placement = "below" })
+Preferences.observe("showAllExplorerServices", function(value)
+	if showAllServices == value then return end
+	showAllServices = value
+	serviceLabel.Text = value and "Core" or "All"
+	invalidateTree()
+end)
+
 local fallbackIcons = {
 	Chat = "ChatService",
 	TestService = "StudioService",
@@ -498,7 +550,7 @@ local function isProtected(instance)
 	if instance == nil then
 		return true
 	end
-	return isRoot(instance) or instance:IsA("Service")
+	return isRoot(instance) or instance:IsA("Service") or UI.isEditorSceneObject(instance)
 end
 local function canReparent(instance, newParent)
 	if instance == nil or newParent == nil then
@@ -1721,7 +1773,7 @@ UserInputService.InputBegan:Connect(function(input: InputObject, gameProcessed: 
 		return
 	end
 	if input.KeyCode == Enum.KeyCode.Right then
-		if selected ~= nil and not expanded[selected] and #selected:GetChildren() > 0 then
+		if selected ~= nil and not expanded[selected] and #sortedChildren(selected) > 0 then
 			expanded[selected] = true
 			invalidateLayout()
 		end
@@ -1794,15 +1846,15 @@ UserInputService.InputBegan:Connect(function(input: InputObject, gameProcessed: 
 end)
 local function watchModelSignals()
 	pcall(function()
-		game.DescendantAdded:Connect(function()
-			if not PlaytestTree.role then
+		game.DescendantAdded:Connect(function(descendant)
+			if not PlaytestTree.role and not UI.isEditorSceneObject(descendant) then
 				invalidateTree()
 			end
 		end)
 	end)
 	pcall(function()
-		game.DescendantRemoving:Connect(function()
-			if not PlaytestTree.role then
+		game.DescendantRemoving:Connect(function(descendant)
+			if not PlaytestTree.role and not UI.isEditorSceneObject(descendant) then
 				invalidateTree()
 			end
 		end)
@@ -1819,7 +1871,7 @@ if filter == "" then
 		local index = #visibleRows + 1
 		visibleRows[index] = instance
 		visibleDepths[index] = 0
-		visibleChildCounts[index] = #instance:GetChildren()
+		visibleChildCounts[index] = #sortedChildren(instance)
 		visibleIndex[instance] = index
 	end
 	list.CanvasSize = UDim2.new(1, 0, 0, #visibleRows * UI.metrics.treeRow + 5)

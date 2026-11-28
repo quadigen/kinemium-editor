@@ -55,8 +55,7 @@ local highlight = Instance.new("BoxHandleAdornment")
 highlight.Name = "EditorHoverSelectionBox"
 highlight.Color3 = SELECTION_BLUE
 highlight.Enabled = false
-editor_ui.keepSceneHelper(highlight)
-highlight.Parent = workspace
+editor_ui.mountSceneHelper(highlight)
 
 local hud = nil
 
@@ -458,7 +457,9 @@ local function pickPart(forReference: boolean?, point: Vector2?): (BasePart?, Ra
 		return nil, nil
 	end
 
-	local excluded = { highlight }
+	-- Exclude all editor-owned helpers (including invisible transform proxies)
+	-- from picking, not just the hover adornment.
+	local excluded = { editor_ui.editorSceneFolder() }
 	for _ = 1, MAX_RAY_SKIPS do
 		raycastParams.FilterDescendantsInstances = excluded
 		local result = workspace:Raycast(ray.Origin, ray.Direction * MAX_RAY_DISTANCE, raycastParams)
@@ -511,8 +512,7 @@ local snapHighlight = Instance.new("BoxHandleAdornment")
 snapHighlight.Name = "PartSnapTarget"
 snapHighlight.Color3 = Color3.fromRGB(85, 215, 175)
 snapHighlight.Enabled = false
-editor_ui.keepSceneHelper(snapHighlight)
-snapHighlight.Parent = workspace
+editor_ui.mountSceneHelper(snapHighlight)
 
 local gizmo = {
 	active = false,
@@ -617,8 +617,8 @@ local function beginGizmoTracking()
 		return
 	end
 
-	local handles = workspace:FindFirstChild("ViewportHandles")
-	local rotating = workspace:FindFirstChild("ViewportArcHandles")
+	local handles = editor_ui.findSceneHelper("ViewportHandles")
+	local rotating = editor_ui.findSceneHelper("ViewportArcHandles")
 	local mode = if rotating and rotating.Dragging
 		then "Rotate"
 		else if handles and handles.Style == Enum.HandlesStyle.Resize then "Size" else "Move"
@@ -687,7 +687,7 @@ local function updateMagnetSnap(dt: number?)
 		return
 	end
 
-	local handles = workspace:FindFirstChild("ViewportHandles")
+	local handles = editor_ui.findSceneHelper("ViewportHandles")
 	local moving = handles and handles.Visible and handles.Dragging and handles.Style == Enum.HandlesStyle.Movement
 	local enabled = moving
 		and Preferences.get("moveMagnetSnap")
@@ -728,7 +728,8 @@ local function updateMagnetSnap(dt: number?)
 		gizmo.candidates = {}
 		if ok and type(candidates) == "table" then
 			for _, part in ipairs(candidates) do
-				if part:IsA("BasePart") and not part:IsA("Terrain") and not gizmo.excluded[part] then
+				if part:IsA("BasePart") and not part:IsA("Terrain") and not gizmo.excluded[part]
+					and not editor_ui.isEditorSceneObject(part) then
 					table.insert(gizmo.candidates, part)
 				end
 			end

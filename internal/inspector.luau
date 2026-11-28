@@ -473,7 +473,9 @@ local function buildStructure(object, searchQuery)
 		local value = propertyValue(object, name)
 
 		if propertyMatchesSearch(name, value, searchQuery) then
-			local datatype = typeof(value)
+			-- Nil-valued reference fields still need their Instance picker.
+			-- Preserve the same adapter before and after assigning an object.
+			local datatype = resolveDatatype(object, name, value)
 
 			table.insert(visible, {
 				name = name,
@@ -637,7 +639,7 @@ local function watchEditor(field, commit)
 	end)
 end
 
-local function setProperty(object, propertyName, value)
+local function setProperty(object, propertyName, value, suppressHistory)
 	if type(object) == "table" and object.Id then
 		return PlaytestTree.setProperty(object, propertyName, value)
 	end
@@ -653,7 +655,7 @@ local function setProperty(object, propertyName, value)
 			object[propertyName] = value
 		end
 	end)
-	if success and not UI.history.isReplaying() then
+	if success and not suppressHistory and not UI.history.isReplaying() then
 		local after = propertyValue(object, propertyName)
 		UI.history.recordProperty(object, propertyName, before, after, tostring(object) .. "|" .. propertyName)
 	end
@@ -782,21 +784,180 @@ local function readonlyField(row, value, options)
 	return valueField(row, displayValue(value), options)
 end
 
+-- One shared pointer-scrub session for every editable compound numeric field.
+-- Keeping the session at Inspector scope allows scrubbing beyond the original
+-- label, including across the window edges.
+local scrubInput = game:GetService("UserInputService")
+local scrubRunService = game:GetService("RunService")
+local scrubBindings = setmetatable({}, { __mode = "k" })
+local activeComponentScrub
+
+local function componentScrubStep(label, datatype)
+	if label == "S" or label == "XS" or label == "YS" then return 0.01, false end
+	if label == "O" or label == "XO" or label == "YO" then return 1, true end
+	if label == "R" or label == "G" or label == "B" then return 1, true end
+	if label == "RX" or label == "RY" or label == "RZ" then return 0.5, false end
+	if datatype == "Vector2int16" or datatype == "Vector3int16" then return 1, true end
+	return 0.1, false
+end
+
+local function finishComponentScrub(cancel)
+	local scrub = activeComponentScrub
+	if not scrub then return end
+	activeComponentScrub = nil
+	pcall(function() scrubInput:SetMouseCursor("Default") end)
+
+	local binding = scrub.binding
+	binding.suppressClick = scrub.dragged
+	if cancel then
+		if scrub.dragged then
+			setProperty(binding.object, binding.propertyName, scrub.before, true)
+		end
+	elseif scrub.dragged then
+		local after = propertyValue(binding.object, binding.propertyName)
+		if not UI.history.isReplaying() and after ~= scrub.before then
+			UI.history.recordProperty(binding.object, binding.propertyName, scrub.before, after)
+		end
+	end
+	-- A failed builder or cancelled scrub must not leave stale text behind.
+	if UI.isAlive(binding.field) then
+		if cancel or not scrub.dragged then
+			binding.field.Text = formatNumber(scrub.initialNumber)
+		end
+	end
+end
+
+local function startComponentScrub(binding)
+	if activeComponentScrub then finishComponentScrub(false) end
+	if not binding.builder or not UI.isAlive(binding.field) then return end
+	local initial = tonumber(binding.field.Text)
+	if initial == nil then return end
+	local before = propertyValue(binding.object, binding.propertyName)
+	if before == nil then return end
+	local step, integer = componentScrubStep(binding.label, typeof(before))
+	binding.suppressClick = false
+	activeComponentScrub = {
+		binding = binding,
+		before = before,
+		initialNumber = initial,
+		unrounded = initial,
+		step = step,
+		integer = integer,
+		lastX = scrubInput:GetMouseLocation().X,
+		pendingWarpX = nil,
+		dragged = false,
+	}
+	pcall(function() scrubInput:SetMouseCursor("ResizeEW") end)
+end
+
+local function componentScrubMove(x, y, screenWidth)
+	local scrub = activeComponentScrub
+	if not scrub then return end
+	if scrub.pendingWarpX then
+		local warped = math.abs(x - scrub.pendingWarpX) <= 3
+		scrub.pendingWarpX = nil
+		if warped then
+			scrub.lastX = x
+			return
+		end
+	end
+	local dx = x - scrub.lastX
+	scrub.lastX = x
+	-- Warp-generated events can arrive late; never interpret an entire screen
+	-- jump as user movement.
+	if screenWidth > 0 and math.abs(dx) > screenWidth * 0.5 then return end
+	if math.abs(dx) > 0 then
+		local factor = 1
+		if scrubInput:IsKeyDown(Enum.KeyCode.LeftShift) or scrubInput:IsKeyDown(Enum.KeyCode.RightShift) then
+			factor = 0.1
+		elseif scrubInput:IsKeyDown(Enum.KeyCode.LeftControl) or scrubInput:IsKeyDown(Enum.KeyCode.RightControl) then
+			factor = 10
+		end
+		scrub.unrounded += dx * scrub.step * factor
+		if scrub.binding.label == "R" or scrub.binding.label == "G" or scrub.binding.label == "B" then
+			scrub.unrounded = math.clamp(scrub.unrounded, 0, 255)
+		elseif typeof(scrub.before) == "Vector2int16" or typeof(scrub.before) == "Vector3int16" then
+			scrub.unrounded = math.clamp(scrub.unrounded, -32768, 32767)
+		end
+		local result = scrub.integer and math.round(scrub.unrounded) or scrub.unrounded
+		scrub.binding.field.Text = formatNumber(result)
+		local ok, value = pcall(scrub.binding.builder)
+		if ok and value ~= nil then
+			setProperty(scrub.binding.object, scrub.binding.propertyName, value, true)
+		end
+		scrub.dragged = true
+	end
+
+	if screenWidth > 32 then
+		local nextX
+		if dx > 0 and x >= screenWidth - 6 then
+			nextX = 8
+		elseif dx < 0 and x <= 5 then
+			nextX = screenWidth - 9
+		end
+		if nextX then
+			local didWarp, worked = pcall(function()
+				return scrubInput:SetMouseLocation(Vector2.new(nextX, y))
+			end)
+			if didWarp and worked then
+				scrub.lastX = nextX
+				scrub.pendingWarpX = nextX
+			end
+		end
+	end
+end
+
+scrubInput.InputChanged:Connect(function(input)
+	if activeComponentScrub and input.UserInputType == Enum.UserInputType.MouseMovement then
+		local bounds = workspace:GetWindowDimensions()
+		componentScrubMove(input.Position.X, input.Position.Y, bounds.X)
+	end
+end)
+scrubInput.InputEnded:Connect(function(input)
+	if activeComponentScrub and input.UserInputType == Enum.UserInputType.MouseButton1 then
+		finishComponentScrub(false)
+	end
+end)
+scrubInput.InputBegan:Connect(function(input)
+	if activeComponentScrub and input.KeyCode == Enum.KeyCode.Escape then
+		finishComponentScrub(true)
+	end
+end)
+scrubRunService.RenderStepped:Connect(function()
+	if activeComponentScrub and (not UI.isAlive(activeComponentScrub.binding.field)
+		or not scrubInput:IsMouseButtonPressed(Enum.UserInputType.MouseButton1)) then
+		finishComponentScrub(not UI.isAlive(activeComponentScrub.binding.field))
+	end
+end)
+
 local function componentField(row, label, value, index, count, line)
 	line = line or 0
-
-	local totalScale = 0.55
-	local slotScale = totalScale / count
+	local slotScale = 0.55 / count
 	local xScale = 0.45 + slotScale * (index - 1)
-
 	local y = 2 + line * PROPERTY_HEIGHT
 
-	local field = UI.prefixedInput(row, label, UDim2.new(xScale, 6, 0, y), UDim2.new(slotScale, -8, 0, 18), {
+	local field
+	local binding = { label = label, suppressClick = false }
+	local cell, strip
+	field, cell, strip = UI.prefixedInput(row, label, UDim2.new(xScale, 6, 0, y), UDim2.new(slotScale, -8, 0, 18), {
 		text = formatNumber(value),
 		textSize = tokens.type.caption,
 		textColor = tokens.color.subtext,
 		selectAllOnFocus = true,
+		scrub = true,
+		onPrefixClick = function()
+			local suppress = binding.suppressClick
+			binding.suppressClick = false
+			return suppress
+		end,
 	})
+	binding.field = field
+	scrubBindings[field] = binding
+	strip.InputBegan:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 then
+			startComponentScrub(binding)
+		end
+	end)
 	return field
 end
 
@@ -859,6 +1020,12 @@ end
 
 local function watchComponentFields(fields, object, propertyName, builder)
 	for _, field in ipairs(fields) do
+		local binding = scrubBindings[field]
+		if binding then
+			binding.object = object
+			binding.propertyName = propertyName
+			binding.builder = builder
+		end
 		watchEditor(field, function()
 			local ok, value = pcall(builder)
 
@@ -1413,6 +1580,7 @@ registerAdapter("Instance", {
 })
 
 Selection.SelectionChanged:Connect(function()
+	finishComponentScrub(true)
 	closeInspectorColorPicker()
 	objectPreview.clear()
 	lastStructure = ""
@@ -1827,6 +1995,28 @@ registerAdapter("CFrame", {
 	end,
 })
 
+registerAdapter("Vector2int16", {
+	height = PROPERTY_HEIGHT,
+	render = function(row, object, property)
+		if readonlyProperties[property.name] then
+			return textFieldController(readonlyField(row, property.value), displayValue)
+		end
+		local value = property.value
+		local x = componentField(row, "X", value.X, 1, 2)
+		local y = componentField(row, "Y", value.Y, 2, 2)
+		watchComponentFields({ x, y }, object, property.name, function()
+			local xv, yv = parseInteger(x.Text), parseInteger(y.Text)
+			if xv == nil or yv == nil or xv < -32768 or xv > 32767 or yv < -32768 or yv > 32767 then
+				return nil
+			end
+			return Vector2int16.new(xv, yv)
+		end)
+		return componentController({ x, y }, function(newValue)
+			return { formatNumber(newValue.X), formatNumber(newValue.Y) }
+		end)
+	end,
+})
+
 registerAdapter("Vector3int16", {
 	height = PROPERTY_HEIGHT,
 
@@ -1902,8 +2092,15 @@ registerAdapter("NumberRange", {
 
 				local maximum = parseComponent(maxField.Text)
 
-				if minimum == nil or maximum == nil or minimum > maximum then
-					return nil
+				if minimum == nil or maximum == nil then return nil end
+				if minimum > maximum then
+					if activeComponentScrub and activeComponentScrub.binding.field == minField then
+						minimum = maximum
+					elseif activeComponentScrub and activeComponentScrub.binding.field == maxField then
+						maximum = minimum
+					else
+						return nil
+					end
 				end
 
 				return NumberRange.new(minimum, maximum)
@@ -1936,7 +2133,34 @@ registerAdapter("PhysicalProperties", readonlyAdapter())
 
 registerAdapter("Ray", readonlyAdapter())
 
-registerAdapter("Rect", readonlyAdapter())
+registerAdapter("Rect", {
+	height = PROPERTY_HEIGHT * 2,
+	render = function(row, object, property)
+		if readonlyProperties[property.name] then
+			return textFieldController(readonlyField(row, property.value), displayValue)
+		end
+		local value = property.value
+		local minX = componentField(row, "MinX", value.Min.X, 1, 2, 0)
+		local minY = componentField(row, "MinY", value.Min.Y, 2, 2, 0)
+		local maxX = componentField(row, "MaxX", value.Max.X, 1, 2, 1)
+		local maxY = componentField(row, "MaxY", value.Max.Y, 2, 2, 1)
+		local fields = { minX, minY, maxX, maxY }
+		watchComponentFields(fields, object, property.name, function()
+			local a, b = tonumber(minX.Text), tonumber(minY.Text)
+			local c, d = tonumber(maxX.Text), tonumber(maxY.Text)
+			if not a or not b or not c or not d then return nil end
+			return Rect.new(a, b, c, d)
+		end)
+		return componentController(fields, function(nextValue)
+			return {
+				formatNumber(nextValue.Min.X),
+				formatNumber(nextValue.Min.Y),
+				formatNumber(nextValue.Max.X),
+				formatNumber(nextValue.Max.Y),
+			}
+		end)
+	end,
+})
 
 registerAdapter("Axes", readonlyAdapter())
 

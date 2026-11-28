@@ -99,14 +99,12 @@ local selectionTool
 local handles = Instance.new("Handles")
 handles.Name = "ViewportHandles"
 handles.Snap = 0 -- Sub-stud precision by default; grid snapping is opt-in
-UI.keepSceneHelper(handles)
-handles.Parent = workspace
+UI.mountSceneHelper(handles)
 
 local arcHandles = Instance.new("ArcHandles")
 arcHandles.Name = "ViewportArcHandles"
 arcHandles.Snap = 30
-UI.keepSceneHelper(arcHandles)
-arcHandles.Parent = workspace
+UI.mountSceneHelper(arcHandles)
 
 local viewportSettings = {}
 for _, key in ipairs({
@@ -162,8 +160,7 @@ if renderer.Dimension == "3D" then
 	multiProxy.CanTouch = false
 	multiProxy.CanQuery = false
 	multiProxy.CastShadow = false
-	UI.keepSceneHelper(multiProxy)
-	multiProxy.Parent = workspace
+	UI.mountSceneHelper(multiProxy)
 end
 
 local function refreshMultiProxy(parts)
@@ -207,8 +204,7 @@ local function updateSelectionBoxes(selected, enabled)
 			box.Name = "EditorSelectionBox"
 			box.Color3 = SELECTION_BLUE
 			box.Enabled = false
-			UI.keepSceneHelper(box)
-			box.Parent = workspace
+			UI.mountSceneHelper(box)
 			selectionBoxes[i] = box
 		end
 	end

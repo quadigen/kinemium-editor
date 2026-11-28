@@ -58,8 +58,18 @@ return function(ctx)
 			TextSize = options.textSize or UI.tokens.type.caption,
 			TextColor3 = Color3.fromRGB(27, 31, 38),
 		}, cell)
-		strip.MouseButton1Click:Connect(function() box:CaptureFocus() end)
-		return box, cell
+		-- Numeric component labels can scrub horizontally without stealing focus.
+		-- Clicking without dragging still opens the editable text field.
+		if options.scrub then
+			strip.MouseCursor = "ResizeEW"
+		end
+		strip.MouseButton1Click:Connect(function()
+			if options.onPrefixClick and options.onPrefixClick() then
+				return
+			end
+			box:CaptureFocus()
+		end)
+		return box, cell, strip
 	end
 
 	function UI.input(parent, placeholder, position, size, options)

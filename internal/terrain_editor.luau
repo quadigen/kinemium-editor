@@ -555,8 +555,7 @@ refreshRows()
 
 local previewFolder = Instance.new("Folder")
 previewFolder.Name = "TerrainBrushPreview"
-UI.keepSceneHelper(previewFolder)
-previewFolder.Parent = workspace
+UI.mountSceneHelper(previewFolder)
 
 mouse.TargetFilter = previewFolder
 

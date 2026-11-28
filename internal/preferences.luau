@@ -39,6 +39,7 @@ local defaults = {
 	showStatusBar = true,
 	showToolbar = true,
 	showExplorer = true,
+	showAllExplorerServices = false,
 	showProperties = true,
 	showOutput = true,
 	viewportGrid = true,

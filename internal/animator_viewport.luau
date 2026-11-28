@@ -11,8 +11,7 @@ local selectedColor = Color3.fromRGB(255, 192, 93)
 local function sceneHelper(className, name, props)
 	local instance = UI.create(className, props)
 	instance.Name = name
-	UI.keepSceneHelper(instance)
-	instance.Parent = workspace
+	UI.mountSceneHelper(instance)
 	return instance
 end
 

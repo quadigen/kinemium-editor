@@ -1558,6 +1558,36 @@ function UI.keepSceneHelper(instance)
 	instance.CanReplicate = false
 end
 
+-- Editor-owned 3D helpers live together in Workspace, but never appear in
+-- Explorer or in saved/replicated game content. Keep the exact instance as the
+-- identity: user-created folders with the same name are ordinary game objects.
+local editorSceneFolder
+
+function UI.editorSceneFolder()
+	if not editorSceneFolder or editorSceneFolder.Parent ~= workspace then
+		editorSceneFolder = Instance.new("Folder")
+		editorSceneFolder.Name = "__KinemiumEditorHelpers"
+		UI.keepSceneHelper(editorSceneFolder)
+		editorSceneFolder.Parent = workspace
+	end
+	return editorSceneFolder
+end
+
+function UI.isEditorSceneObject(instance)
+	return instance ~= nil and editorSceneFolder ~= nil
+		and (instance == editorSceneFolder or instance:IsDescendantOf(editorSceneFolder))
+end
+
+function UI.mountSceneHelper(instance)
+	UI.keepSceneHelper(instance)
+	instance.Parent = UI.editorSceneFolder()
+	return instance
+end
+
+function UI.findSceneHelper(name)
+	return UI.editorSceneFolder():FindFirstChild(name)
+end
+
 function UI.isAlive(gui)
 	return isAlive(gui)
 end
