@@ -52,7 +52,6 @@ local drag = {
 
 local highlight = Instance.new("BoxHandleAdornment")
 highlight.Name = "SelectionHighlight"
-highlight.FillTransparency = 1
 highlight.Color3 = tokens.color.accent
 highlight.Enabled = false
 editor_ui.keepSceneHelper(highlight)
