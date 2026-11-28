@@ -8,6 +8,7 @@ local Playtest = require("@internal/playtest")
 local CodeEditor = require("@internal/code_editor")
 local docker = require("@internal/docker")
 local UIEditor = require("@internal/ui_editor")
+local MultiTransform = require("@internal/multi_transform")
 local picker = require("@internal/picker")
 
 local StudioThemeService = game:GetService("StudioThemeService")
@@ -145,15 +146,83 @@ selectionOutline.OutlineColor = tokens.color.accent
 UI.keepSceneHelper(selectionOutline)
 selectionOutline.Parent = workspace
 
+-- A temporary editor-only pivot lets native Handles manipulate several parts.
+local multiProxy
+local multiProxyBaseCFrame
+local multiProxyBaseSize
+local multiSelectionActive = false
+local multiSelectionHighlights = {}
+if renderer.Dimension == "3D" then
+	multiProxy = Instance.new("Part")
+	multiProxy.Name = "EditorMultiTransformProxy"
+	multiProxy.Size = Vector3.new(0.05, 0.05, 0.05)
+	multiProxy.Anchored = true
+	multiProxy.Locked = true
+	multiProxy.Transparency = 1
+	multiProxy.CanCollide = false
+	multiProxy.CanTouch = false
+	multiProxy.CanQuery = false
+	multiProxy.CastShadow = false
+	UI.keepSceneHelper(multiProxy)
+	multiProxy.Parent = workspace
+end
+
+local function refreshMultiProxy(parts)
+	if not multiProxy or handles.Dragging or arcHandles.Dragging then return end
+	local center, size = MultiTransform.bounds(parts)
+	if center then
+		multiProxy.CFrame = CFrame.new(center)
+		multiProxy.Size = size
+		multiProxyBaseCFrame = multiProxy.CFrame
+		multiProxyBaseSize = size
+	end
+end
+
+local function updateMultiSelectionOutlines(selected, enabled)
+	local count = enabled and math.min(#selected, 32) or 0
+	for i = 1, count do
+		if not multiSelectionHighlights[i] then
+			local outline = Instance.new("Highlight")
+			outline.Name = "EditorMultiSelectionOutline"
+			outline.FillTransparency = 1
+			outline.OutlineColor = tokens.color.accent
+			UI.keepSceneHelper(outline)
+			outline.Parent = workspace
+			multiSelectionHighlights[i] = outline
+		end
+	end
+	for i, outline in ipairs(multiSelectionHighlights) do
+		outline.Adornee = i <= count and selected[i] or nil
+		outline.Enabled = i <= count and UI.isAlive(selected[i])
+	end
+end
+
+UI.onThemeChanged(function()
+	selectionOutline.OutlineColor = UI.tokens.color.accent
+	for _, outline in ipairs(multiSelectionHighlights) do
+		outline.OutlineColor = UI.tokens.color.accent
+	end
+end)
+
 local function updateGizmos()
 	local moving = activeTool == "Move"
 	handles.Snap = moving and (Preferences.get("moveGridSnap") and tonumber(Preferences.get("moveGridSize")) or 0) or 1
 	local resizing = activeTool == "Size"
 	local rotating = activeTool == "Rotate"
-	local adornee = if selectionTool then nil else selectedTransformTarget(moving)
+	local selected = Selection:Get() or {}
 	local is3D = renderer.Dimension == "3D" and not picker.isActive()
-	selectionOutline.Adornee = adornee
-	selectionOutline.Enabled = is3D and adornee ~= nil and viewportSettings.viewportSelectionOutline
+	local enabled = is3D and selectionTool == nil
+	local multiParts = if enabled and #selected > 1 then MultiTransform.collect(selected) else {}
+	multiSelectionActive = enabled and #selected > 1 and #multiParts > 1
+	if multiSelectionActive then refreshMultiProxy(multiParts) end
+	local adornee
+	if enabled then
+		adornee = if multiSelectionActive then multiProxy else selectedTransformTarget(moving)
+	end
+	selectionOutline.Adornee = if multiSelectionActive then nil else adornee
+	selectionOutline.Enabled = enabled and not multiSelectionActive and adornee ~= nil
+		and viewportSettings.viewportSelectionOutline
+	updateMultiSelectionOutlines(selected, multiSelectionActive and viewportSettings.viewportSelectionOutline)
 
 	handles.Adornee = adornee
 	arcHandles.Adornee = if rotating then adornee else nil
@@ -324,20 +393,6 @@ local toolItems = {
 	{ name = "Rotate", icon = iconRoot .. "Rotate.svg", tooltip = "Rotate", key = Enum.KeyCode.Four },
 }
 
-if renderer.Dimension == "3D" then
-	table.insert(toolItems, { separator = true })
-	table.insert(toolItems, {
-		name = "Magnet", icon = iconRoot .. "Snap.svg",
-		tooltip = "Part snapping (B) | Hold Alt to bypass | Hold C to match centers",
-		toggle = true, active = Preferences.get("moveMagnetSnap"),
-	})
-	table.insert(toolItems, {
-		name = "MoveGrid", icon = iconRoot .. "UIGridLayout.svg",
-		tooltip = "Move grid snapping (N) | G changes grid step",
-		toggle = true, active = Preferences.get("moveGridSnap"),
-	})
-end
-
 if renderer.Dimension == "2D" then
 	table.insert(toolItems, { separator = true })
 	table.insert(toolItems, {
@@ -386,13 +441,6 @@ local function closeMenus()
 end
 
 toolControls.Changed:Connect(function(name, value)
-	if name == "Magnet" then
-		Preferences.set("moveMagnetSnap", value)
-		return
-	elseif name == "MoveGrid" then
-		Preferences.set("moveGridSnap", value)
-		return
-	end
 	if name == "Snap" then
 		snapEnabled = value
 		return
@@ -404,16 +452,8 @@ toolControls.Changed:Connect(function(name, value)
 end)
 
 if renderer.Dimension == "3D" then
-	Preferences.observe("moveMagnetSnap", function(value)
-		toolControls:SetActive("Magnet", value, true)
-	end)
-	Preferences.observe("moveGridSnap", function(value)
-		toolControls:SetActive("MoveGrid", value, true)
-		updateGizmos()
-	end)
-	Preferences.observe("moveGridSize", function()
-		updateGizmos()
-	end)
+	Preferences.observe("moveGridSnap", function() updateGizmos() end)
+	Preferences.observe("moveGridSize", function() updateGizmos() end)
 end
 
 local MENU_GAP = 8
@@ -1307,6 +1347,18 @@ local API = {
 
 	GetSelectionTool = function()
 		return selectionTool
+	end,
+
+	GetTransformProxy = function()
+		return if multiSelectionActive then multiProxy else nil
+	end,
+
+	GetTransformProxyBase = function()
+		return multiProxyBaseCFrame, multiProxyBaseSize
+	end,
+
+	RefreshTransformProxy = function()
+		updateGizmos()
 	end,
 
 	ScreenToViewportPoint = screenToViewportPoint,

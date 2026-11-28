@@ -4,6 +4,7 @@ end
 
 local Preferences = require("@internal/preferences")
 local PartSnap = require("@internal/part_snap")
+local MultiTransform = require("@internal/multi_transform")
 local RunService = game:GetService("RunService")
 local Selection = game:GetService("Selection")
 local UserInputService = game:GetService("UserInputService")
@@ -13,7 +14,6 @@ local viewport = require("@internal/viewport")
 local picker = require("@internal/picker")
 local tokens = editor_ui.tokens
 
-local MAX_PICK_SIZE = 100
 local MAX_RAY_DISTANCE = 2000
 local MAX_RAY_SKIPS = 8
 local DRAG_THRESHOLD = 4
@@ -52,8 +52,10 @@ local drag = {
 
 local highlight = Instance.new("Highlight")
 highlight.Name = "SelectionHighlight"
-highlight.FillTransparency = 1
+highlight.FillTransparency = 0.94
 highlight.OutlineColor = tokens.color.accent
+highlight.OutlineTransparency = 0
+highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
 highlight.Enabled = false
 editor_ui.keepSceneHelper(highlight)
 highlight.Parent = workspace
@@ -312,15 +314,11 @@ end
 
 local hoveredPart
 local function setHover(part: BasePart?)
-	if hoveredPart == part then return end
+	if part and not editor_ui.isAlive(part) then part = nil end
+	if hoveredPart == part and highlight.Enabled == (part ~= nil) then return end
 	hoveredPart = part
-	if part then
-		highlight.Adornee = part
-		highlight.Enabled = true
-	else
-		highlight.Adornee = nil
-		highlight.Enabled = false
-	end
+	highlight.Adornee = part
+	highlight.Enabled = part ~= nil
 end
 
 local GIZMO_ADORNMENT_NAMES = { "ViewportHandles", "ViewportArcHandles" }
@@ -335,13 +333,13 @@ local function gizmoCapturesMouse()
 	return false
 end
 
-local mouseOverGui = false
 local hoverDirty = true
 local hoverElapsed = 0
 local lastReferenceMode = false
-UserInputService.InputChanged:Connect(function(input, processed)
+-- The processed flag is also set for the viewport's own GUI surface, so it
+-- cannot tell us whether the cursor is over a button or over a 3D part.
+UserInputService.InputChanged:Connect(function(input)
 	if input.UserInputType == Enum.UserInputType.MouseMovement then
-		mouseOverGui = processed == true
 		hoverDirty = true
 	end
 end)
@@ -401,15 +399,6 @@ local function canUseViewport(point: Vector2?): boolean
 	return true
 end
 
-local function isOutOfBounds(num: number)
-	return num >= MAX_PICK_SIZE
-end
-
-local function isOutOfBoundsTarget(target: BasePart)
-	local size = target.Size
-	return isOutOfBounds(size.X) or isOutOfBounds(size.Y) or isOutOfBounds(size.Z)
-end
-
 local function isPickable(inst: Instance, forReference: boolean?): boolean
 	if not inst then
 		return false
@@ -424,9 +413,6 @@ local function isPickable(inst: Instance, forReference: boolean?): boolean
 		return true
 	end
 	if inst.Locked then
-		return false
-	end
-	if isOutOfBoundsTarget(inst) then
 		return false
 	end
 	return true
@@ -500,21 +486,7 @@ local function getSelectableModel(part: BasePart): Instance?
 end
 
 local function collectMovableParts(): { BasePart }
-	local seen = {}
-	local list = {}
-	local function add(part: Instance)
-		if part:IsA("BasePart") and not part:IsA("Terrain") and not part.Locked and not seen[part] then
-			seen[part] = true
-			table.insert(list, part)
-		end
-	end
-	for _, inst in ipairs(Selection:Get()) do
-		add(inst)
-		for _, desc in ipairs(inst:GetDescendants()) do
-			add(desc)
-		end
-	end
-	return list
+	return MultiTransform.collect(Selection:Get())
 end
 
 local snapHighlight = Instance.new("Highlight")
@@ -543,6 +515,10 @@ local gizmo = {
 	startSizes = {} :: { [BasePart]: Vector3 },
 	startCenter = Vector3.zero,
 	first = nil :: BasePart?,
+	proxy = nil :: BasePart?,
+	proxyStartCFrame = nil :: CFrame?,
+	proxyStartSize = nil :: Vector3?,
+	mode = nil :: string?,
 }
 
 local function gizmoDragging(): boolean
@@ -594,6 +570,7 @@ local function recordTransform(label, parts, startCFrames, startSizes)
 				part.CFrame = values.cframe
 			end
 		end
+		viewport.RefreshTransformProxy()
 	end
 	editor_ui.history.record(label, function()
 		restore(before)
@@ -604,25 +581,36 @@ end
 
 local function beginGizmoTracking()
 	local selected = Selection:Get()[1]
-	if not selected then
-		return
-	end
+	if not selected then return end
 
-	-- The native gizmo transforms its Adornee, not every independent selection.
-	-- Keep the magnetic correction limited to that same part or model.
+	local proxy = viewport.GetTransformProxy()
 	local parts = {}
 	local excluded = {}
 	for _, part in ipairs(collectMovableParts()) do
-		if part == selected or part:IsDescendantOf(selected) then
+		-- A proxy is moved natively; all selected parts must follow it.
+		-- Without a proxy, native Handles only moves the first Adornee.
+		if proxy or part == selected or part:IsDescendantOf(selected) then
 			table.insert(parts, part)
 		end
 		excluded[part] = true
 	end
-	if #parts == 0 then
-		return
-	end
+	if #parts == 0 then return end
+
+	local handles = workspace:FindFirstChild("ViewportHandles")
+	local rotating = workspace:FindFirstChild("ViewportArcHandles")
+	local mode = if rotating and rotating.Dragging then "Rotate"
+		else if handles and handles.Style == Enum.HandlesStyle.Resize then "Size"
+		else "Move"
 
 	gizmo.active = true
+	gizmo.cancelled = false
+	gizmo.proxy = proxy
+	gizmo.mode = mode
+	if proxy then
+		gizmo.proxyStartCFrame, gizmo.proxyStartSize = viewport.GetTransformProxyBase()
+	else
+		gizmo.proxyStartCFrame, gizmo.proxyStartSize = nil, nil
+	end
 	gizmo.parts = parts
 	gizmo.first = parts[1]
 	gizmo.excluded = excluded
@@ -640,11 +628,28 @@ local function beginGizmoTracking()
 	end
 	gizmo.startCenter = centroidOf(parts)
 	local firstCF = parts[1].CFrame
-	if selected:IsA("Model") then
+	if proxy or selected:IsA("Model") then
 		gizmo.axes = { Vector3.xAxis, Vector3.yAxis, Vector3.zAxis }
 	else
 		gizmo.axes = { firstCF.RightVector, firstCF.UpVector, -firstCF.LookVector }
 	end
+end
+
+local function restoreGizmoSelection()
+	for _, part in ipairs(gizmo.parts) do
+		if editor_ui.isAlive(part) and part.Parent and gizmo.startCFrames[part] then
+			part.Size = gizmo.startSizes[part]
+			part.CFrame = gizmo.startCFrames[part]
+		end
+	end
+end
+
+local function applyMultiGizmo()
+	local proxy = gizmo.proxy
+	if not proxy or not editor_ui.isAlive(proxy) or not gizmo.proxyStartCFrame then return end
+	MultiTransform.apply(gizmo.parts, gizmo.startCFrames, gizmo.startSizes,
+		gizmo.proxyStartCFrame, gizmo.proxyStartSize,
+		proxy.CFrame, proxy.Size, gizmo.mode)
 end
 
 local function updateMagnetSnap(dt: number?)
@@ -660,14 +665,16 @@ local function updateMagnetSnap(dt: number?)
 		and not UserInputService:IsKeyDown(Enum.KeyCode.RightAlt)
 	local tolerance = tonumber(Preferences.get("moveMagnetDistance")) or 0.5
 	if not enabled or tolerance <= 0 then
-		if gizmo.correction.Magnitude > 0 then
+		-- Multi-selection is rebuilt from the immutable drag snapshot each
+		-- frame, so there is no previous correction to subtract.
+		if not gizmo.proxy and gizmo.correction.Magnitude > 0 then
 			for _, part in ipairs(gizmo.parts) do
 				if editor_ui.isAlive(part) and part.Parent then
 					part.CFrame += -gizmo.correction
 				end
 			end
-			gizmo.correction = Vector3.zero
 		end
+		gizmo.correction = Vector3.zero
 		gizmo.snapPart = nil
 		gizmo.snapKind = nil
 		snapHighlight.Enabled = false
@@ -700,14 +707,16 @@ local function updateMagnetSnap(dt: number?)
 
 	-- Remove the previous correction to recover the native mouse movement.
 	-- Always resolve against the original transforms, never an accumulated snap.
-	local rawDelta = centroidOf(gizmo.parts) - gizmo.startCenter - gizmo.correction
+	local rawDelta = if gizmo.proxy and gizmo.proxyStartCFrame
+		then gizmo.proxy.CFrame.Position - gizmo.proxyStartCFrame.Position
+		else centroidOf(gizmo.parts) - gizmo.startCenter - gizmo.correction
 	local centersOnly = UserInputService:IsKeyDown(Enum.KeyCode.C)
 	local correction, target, kind = PartSnap.find(
 		gizmo.parts, gizmo.startCFrames, gizmo.candidates, gizmo.excluded,
 		rawDelta, gizmo.axes, tolerance, centersOnly
 	)
 	local nextCorrection = correction or Vector3.zero
-	local change = nextCorrection - gizmo.correction
+	local change = if gizmo.proxy then nextCorrection else nextCorrection - gizmo.correction
 	if change.Magnitude > 0 then
 		for _, part in ipairs(gizmo.parts) do
 			if editor_ui.isAlive(part) and part.Parent then
@@ -723,6 +732,11 @@ local function updateMagnetSnap(dt: number?)
 end
 
 local function updateGizmoTracking(dt: number?)
+	if gizmo.cancelled then
+		restoreGizmoSelection()
+		return
+	end
+	applyMultiGizmo()
 	updateMagnetSnap(dt)
 	local first = gizmo.first
 	if not editor_ui.isAlive(first) or not first.Parent then
@@ -740,9 +754,9 @@ local function updateGizmoTracking(dt: number?)
 	local sizeDelta = first.Size - gizmo.startSizes[first]
 
 	local header = "Moving"
-	if sizeDelta.Magnitude >= 1e-3 then
+	if gizmo.mode == "Size" or sizeDelta.Magnitude >= 1e-3 then
 		header = "Resizing"
-	elseif angle >= math.rad(0.05) then
+	elseif gizmo.mode == "Rotate" or angle >= math.rad(0.05) then
 		header = "Rotating"
 	end
 	local count = #gizmo.parts
@@ -755,13 +769,23 @@ local function updateGizmoTracking(dt: number?)
 		rotation = angle,
 		sizeDelta = sizeDelta,
 		header = header,
-		footer = "Gizmo",
+		footer = gizmo.snapKind and ("Gizmo | " .. gizmo.snapKind .. " snap") or "Gizmo",
 	})
 end
 
 local function endGizmoTracking()
-	recordTransform("Transform parts", gizmo.parts, gizmo.startCFrames, gizmo.startSizes)
+	if gizmo.cancelled then
+		restoreGizmoSelection()
+	else
+		recordTransform("Transform parts", gizmo.parts, gizmo.startCFrames, gizmo.startSizes)
+	end
+	local hadProxy = gizmo.proxy ~= nil
 	gizmo.active = false
+	gizmo.cancelled = false
+	gizmo.proxy = nil
+	gizmo.proxyStartCFrame = nil
+	gizmo.proxyStartSize = nil
+	gizmo.mode = nil
 	gizmo.parts = {}
 	gizmo.startCFrames = {}
 	gizmo.startSizes = {}
@@ -774,6 +798,7 @@ local function endGizmoTracking()
 	gizmo.first = nil
 	snapHighlight.Adornee = nil
 	snapHighlight.Enabled = false
+	if hadProxy then viewport.RefreshTransformProxy() end
 	hideReadout()
 end
 
@@ -918,7 +943,7 @@ local function endDrag(commit: boolean)
 	drag.lastPoint = nil
 	drag.lastMode = nil
 
-	highlight.FillTransparency = 1
+	highlight.FillTransparency = 0.94
 	highlight.OutlineColor = tokens.color.accent
 	setHover(nil)
 	hideReadout()
@@ -932,7 +957,7 @@ local function setMoveMode(enabled: boolean)
 		endDrag(true)
 	end
 	state.moveMode = enabled
-	highlight.FillTransparency = 1
+	highlight.FillTransparency = 0.94
 	updateHud()
 end
 
@@ -976,7 +1001,7 @@ RunService.RenderStepped:Connect(function(dt)
 		hoverDirty = true
 	end
 
-	if mouseOverGui or (not referenceMode and viewport.GetSelectionTool() ~= nil) then
+	if not referenceMode and viewport.GetSelectionTool() ~= nil then
 		setHover(nil)
 		if referenceMode then picker.setViewportTarget(nil) end
 		hoverDirty = true
@@ -1048,7 +1073,9 @@ end
 
 UserInputService.InputBegan:Connect(function(input, processed)
 	hoverDirty = true
-	if processed then
+	-- MouseButton1 can be marked processed merely because the pointer is
+	-- inside the transparent viewport overlay. Only block real UI occlusion.
+	if processed and not (input.UserInputType == Enum.UserInputType.MouseButton1 and canUseViewport()) then
 		return
 	end
 
@@ -1112,6 +1139,9 @@ UserInputService.InputBegan:Connect(function(input, processed)
 	elseif key == KEY_CANCEL then
 		if drag.active then
 			endDrag(false)
+		elseif gizmo.active then
+			gizmo.cancelled = true
+			restoreGizmoSelection()
 		else
 			drag.pending = false
 		end
