@@ -51,12 +51,9 @@ local drag = {
 }
 
 local SELECTION_BLUE = Color3.fromRGB(0, 170, 255)
-local highlight = Instance.new("SelectionBox")
+local highlight = Instance.new("BoxHandleAdornment")
 highlight.Name = "EditorHoverSelectionBox"
 highlight.Color3 = SELECTION_BLUE
-highlight.Transparency = 0
-highlight.SurfaceTransparency = 1
-highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
 highlight.Enabled = false
 editor_ui.keepSceneHelper(highlight)
 highlight.Parent = workspace
@@ -510,12 +507,9 @@ local function collectMovableParts(): { BasePart }
 	return MultiTransform.collect(Selection:Get())
 end
 
-local snapHighlight = Instance.new("SelectionBox")
+local snapHighlight = Instance.new("BoxHandleAdornment")
 snapHighlight.Name = "PartSnapTarget"
-snapHighlight.SurfaceTransparency = 1
 snapHighlight.Color3 = Color3.fromRGB(85, 215, 175)
-snapHighlight.Transparency = 0
-snapHighlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
 snapHighlight.Enabled = false
 editor_ui.keepSceneHelper(snapHighlight)
 snapHighlight.Parent = workspace
@@ -883,7 +877,6 @@ local function beginDrag()
 	drag.lastMode = nil
 
 	highlight.Color3 = DRAG_COLOR
-	highlight.SurfaceTransparency = 1
 	setHover(drag.grabbed)
 end
 
@@ -986,7 +979,6 @@ local function endDrag(commit: boolean)
 	drag.lastPoint = nil
 	drag.lastMode = nil
 
-	highlight.SurfaceTransparency = 1
 	highlight.Color3 = SELECTION_BLUE
 	setHover(nil)
 	hideReadout()
@@ -1000,7 +992,6 @@ local function setMoveMode(enabled: boolean)
 		endDrag(true)
 	end
 	state.moveMode = enabled
-	highlight.SurfaceTransparency = 1
 	updateHud()
 end
 
