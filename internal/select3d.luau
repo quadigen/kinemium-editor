@@ -52,7 +52,7 @@ local drag = {
 
 local highlight = Instance.new("Highlight")
 highlight.Name = "SelectionHighlight"
-highlight.FillTransparency = 0.94
+highlight.FillTransparency = 1
 highlight.OutlineColor = tokens.color.accent
 highlight.OutlineTransparency = 0
 highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
@@ -110,11 +110,23 @@ local function createHud()
 		PaddingRight = UDim.new(0, 12),
 	}, bar)
 
-	local snapLabel = editor_ui.label(bar, "", UDim2.fromOffset(0, 0), UDim2.fromOffset(160, HUD_HEIGHT),
-		tokens.type.caption, colors.text)
+	local snapLabel = editor_ui.label(
+		bar,
+		"",
+		UDim2.fromOffset(0, 0),
+		UDim2.fromOffset(160, HUD_HEIGHT),
+		tokens.type.caption,
+		colors.text
+	)
 	snapLabel.LayoutOrder = 1
-	local hintsLabel = editor_ui.label(bar, "Shift: height  |  Ctrl: invert grid  |  R: rotate  |  Esc: cancel",
-		UDim2.fromOffset(0, 0), UDim2.fromOffset(400, HUD_HEIGHT), tokens.type.caption, colors.subtext)
+	local hintsLabel = editor_ui.label(
+		bar,
+		"Shift: height  |  Ctrl: invert grid  |  R: rotate  |  Esc: cancel",
+		UDim2.fromOffset(0, 0),
+		UDim2.fromOffset(400, HUD_HEIGHT),
+		tokens.type.caption,
+		colors.subtext
+	)
 	hintsLabel.LayoutOrder = 2
 
 	return { bar = bar, snap = snapLabel }
@@ -314,8 +326,12 @@ end
 
 local hoveredPart
 local function setHover(part: BasePart?)
-	if part and not editor_ui.isAlive(part) then part = nil end
-	if hoveredPart == part and highlight.Enabled == (part ~= nil) then return end
+	if part and not editor_ui.isAlive(part) then
+		part = nil
+	end
+	if hoveredPart == part and highlight.Enabled == (part ~= nil) then
+		return
+	end
 	hoveredPart = part
 	highlight.Adornee = part
 	highlight.Enabled = part ~= nil
@@ -362,7 +378,12 @@ end
 local function overlayContainsPointer(root: Instance, point: Vector2, ignored: Instance?): boolean
 	for _, child in ipairs(root:GetChildren()) do
 		if child:IsA("GuiObject") then
-			if not child.Visible or child == ignored or child == (hud and hud.bar) or child == (readout and readout.frame) then
+			if
+				not child.Visible
+				or child == ignored
+				or child == (hud and hud.bar)
+				or child == (readout and readout.frame)
+			then
 				continue
 			end
 			local position, size = child.AbsolutePosition, child.AbsoluteSize
@@ -390,7 +411,10 @@ local function canUseViewport(point: Vector2?): boolean
 	end
 	local tool = viewport.GetSelectionTool()
 	for _, root in ipairs(game.CoreGui:GetChildren()) do
-		if root:IsA("ScreenGui") and root.Enabled and root.RenderOnTop
+		if
+			root:IsA("ScreenGui")
+			and root.Enabled
+			and root.RenderOnTop
 			and overlayContainsPointer(root, point, tool and tool.overlay)
 		then
 			return false
@@ -581,7 +605,9 @@ end
 
 local function beginGizmoTracking()
 	local selected = Selection:Get()[1]
-	if not selected then return end
+	if not selected then
+		return
+	end
 
 	local proxy = viewport.GetTransformProxy()
 	local parts = {}
@@ -594,13 +620,15 @@ local function beginGizmoTracking()
 		end
 		excluded[part] = true
 	end
-	if #parts == 0 then return end
+	if #parts == 0 then
+		return
+	end
 
 	local handles = workspace:FindFirstChild("ViewportHandles")
 	local rotating = workspace:FindFirstChild("ViewportArcHandles")
-	local mode = if rotating and rotating.Dragging then "Rotate"
-		else if handles and handles.Style == Enum.HandlesStyle.Resize then "Size"
-		else "Move"
+	local mode = if rotating and rotating.Dragging
+		then "Rotate"
+		else if handles and handles.Style == Enum.HandlesStyle.Resize then "Size" else "Move"
 
 	gizmo.active = true
 	gizmo.cancelled = false
@@ -646,10 +674,19 @@ end
 
 local function applyMultiGizmo()
 	local proxy = gizmo.proxy
-	if not proxy or not editor_ui.isAlive(proxy) or not gizmo.proxyStartCFrame then return end
-	MultiTransform.apply(gizmo.parts, gizmo.startCFrames, gizmo.startSizes,
-		gizmo.proxyStartCFrame, gizmo.proxyStartSize,
-		proxy.CFrame, proxy.Size, gizmo.mode)
+	if not proxy or not editor_ui.isAlive(proxy) or not gizmo.proxyStartCFrame then
+		return
+	end
+	MultiTransform.apply(
+		gizmo.parts,
+		gizmo.startCFrames,
+		gizmo.startSizes,
+		gizmo.proxyStartCFrame,
+		gizmo.proxyStartSize,
+		proxy.CFrame,
+		proxy.Size,
+		gizmo.mode
+	)
 end
 
 local function updateMagnetSnap(dt: number?)
@@ -658,9 +695,9 @@ local function updateMagnetSnap(dt: number?)
 	end
 
 	local handles = workspace:FindFirstChild("ViewportHandles")
-	local moving = handles and handles.Visible and handles.Dragging
-		and handles.Style == Enum.HandlesStyle.Movement
-	local enabled = moving and Preferences.get("moveMagnetSnap")
+	local moving = handles and handles.Visible and handles.Dragging and handles.Style == Enum.HandlesStyle.Movement
+	local enabled = moving
+		and Preferences.get("moveMagnetSnap")
 		and not UserInputService:IsKeyDown(Enum.KeyCode.LeftAlt)
 		and not UserInputService:IsKeyDown(Enum.KeyCode.RightAlt)
 	local tolerance = tonumber(Preferences.get("moveMagnetDistance")) or 0.5
@@ -712,8 +749,14 @@ local function updateMagnetSnap(dt: number?)
 		else centroidOf(gizmo.parts) - gizmo.startCenter - gizmo.correction
 	local centersOnly = UserInputService:IsKeyDown(Enum.KeyCode.C)
 	local correction, target, kind = PartSnap.find(
-		gizmo.parts, gizmo.startCFrames, gizmo.candidates, gizmo.excluded,
-		rawDelta, gizmo.axes, tolerance, centersOnly
+		gizmo.parts,
+		gizmo.startCFrames,
+		gizmo.candidates,
+		gizmo.excluded,
+		rawDelta,
+		gizmo.axes,
+		tolerance,
+		centersOnly
 	)
 	local nextCorrection = correction or Vector3.zero
 	local change = if gizmo.proxy then nextCorrection else nextCorrection - gizmo.correction
@@ -798,7 +841,9 @@ local function endGizmoTracking()
 	gizmo.first = nil
 	snapHighlight.Adornee = nil
 	snapHighlight.Enabled = false
-	if hadProxy then viewport.RefreshTransformProxy() end
+	if hadProxy then
+		viewport.RefreshTransformProxy()
+	end
 	hideReadout()
 end
 
@@ -1003,13 +1048,17 @@ RunService.RenderStepped:Connect(function(dt)
 
 	if not referenceMode and viewport.GetSelectionTool() ~= nil then
 		setHover(nil)
-		if referenceMode then picker.setViewportTarget(nil) end
+		if referenceMode then
+			picker.setViewportTarget(nil)
+		end
 		hoverDirty = true
 		return
 	end
 
 	hoverElapsed += math.max(dt or 0, 0)
-	if not hoverDirty and hoverElapsed < 1 / 30 then return end
+	if not hoverDirty and hoverElapsed < 1 / 30 then
+		return
+	end
 	hoverDirty = false
 	hoverElapsed = 0
 
@@ -1020,7 +1069,8 @@ RunService.RenderStepped:Connect(function(dt)
 		return
 	end
 
-	if UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton2)
+	if
+		UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton2)
 		or not canUseViewport(point)
 		or gizmoCapturesMouse()
 	then
@@ -1131,7 +1181,9 @@ UserInputService.InputBegan:Connect(function(input, processed)
 		end
 	elseif key == KEY_TOGGLE_MAGNET then
 		Preferences.set("moveMagnetSnap", not Preferences.get("moveMagnetSnap"))
-	elseif key == KEY_ROTATE and drag.active
+	elseif
+		key == KEY_ROTATE
+		and drag.active
 		and not UserInputService:IsKeyDown(Enum.KeyCode.LeftControl)
 		and not UserInputService:IsKeyDown(Enum.KeyCode.RightControl)
 	then
