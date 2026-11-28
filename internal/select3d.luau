@@ -50,12 +50,10 @@ local drag = {
 	lastMode = nil :: string?,
 }
 
-local highlight = Instance.new("Highlight")
+local highlight = Instance.new("BoxHandleAdornment")
 highlight.Name = "SelectionHighlight"
 highlight.FillTransparency = 1
-highlight.OutlineColor = tokens.color.accent
-highlight.OutlineTransparency = 0
-highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+highlight.Color3 = tokens.color.accent
 highlight.Enabled = false
 editor_ui.keepSceneHelper(highlight)
 highlight.Parent = workspace
